@@ -3,7 +3,26 @@ const path = require('path');
 const fs = require('fs');
 const fse = require('fs-extra'); // helpful for file copying
 const { ipcMain } = require('electron');
-const configPath = path.join(__dirname, 'config.json');
+
+// Use Electron's userData directory for config and user files
+const userDataPath = app.getPath('userData');
+const configPath = path.join(userDataPath, 'config.json');
+const userSoundsDir = path.join(userDataPath, 'sounds');
+const defaultConfigPath = path.join(__dirname, 'config.json');
+const defaultSoundsDir = path.join(__dirname, 'public', 'assets', 'sounds');
+
+// Ensure config and sounds exist in userData on first run
+function ensureUserData() {
+  if (!fs.existsSync(configPath)) {
+    fse.copySync(defaultConfigPath, configPath);
+  }
+  if (!fs.existsSync(userSoundsDir)) {
+    fse.ensureDirSync(userSoundsDir);
+    if (fs.existsSync(defaultSoundsDir)) {
+      fse.copySync(defaultSoundsDir, userSoundsDir);
+    }
+  }
+}
 
 let win;
 
@@ -53,17 +72,22 @@ ipcMain.on('add-media', (event, data) => {
 
   // Only copy file if it's a new file (not editing existing)
   if (data.originalPath !== data.targetPath) {
-    fse.copySync(data.originalPath, path.join(__dirname, 'public', data.targetPath));
+    // Save to userData/sounds
+    const ext = path.extname(data.originalPath);
+    const safeLabel = data.label.replace(/[^a-z0-9_\-]/gi, '_');
+    const destFile = path.join(userSoundsDir, `${safeLabel}${ext}`);
+    fse.copySync(data.originalPath, destFile);
+    data.targetPath = path.relative(userDataPath, destFile).replace(/\\/g, '/');
   } else if (typeof data.editingIndex === 'number') {
     // Editing, no new file selected
     const oldButton = config.buttons[data.editingIndex];
     const oldLabel = oldButton.label;
     const oldSrc = oldButton.src;
     const ext = path.extname(oldSrc);
-    const oldFilePath = path.join(__dirname, 'public', oldSrc);
+    const oldFilePath = path.join(userDataPath, oldSrc);
     const newFileName = `${data.label}${ext}`;
     const newFilePath = path.join(path.dirname(oldFilePath), newFileName);
-    const newTargetPath = path.relative(path.join(__dirname, 'public'), newFilePath).replace(/\\/g, '/');
+    const newTargetPath = path.relative(userDataPath, newFilePath).replace(/\\/g, '/');
     // If label changed and file exists and file name doesn't match new label
     if (data.label !== oldLabel && fs.existsSync(oldFilePath) && !oldSrc.endsWith(newFileName)) {
       try {
@@ -94,7 +118,25 @@ ipcMain.on('add-media', (event, data) => {
 ipcMain.on('delete-button', (event, index) => {
   const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
   const removed = config.buttons.splice(index, 1);
+  
+  // Delete the audio file from disk
+  if (removed[0] && removed[0].src) {
+    const filePath = path.join(userDataPath, removed[0].src);
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (err) {
+      // File might not exist or be locked, continue anyway
+    }
+  }
+  
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  
+  // Notify renderer to refresh the UI
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('refresh-ui');
+  }
 });
 
 ipcMain.on('close-app', () => {
@@ -110,6 +152,20 @@ ipcMain.on('disable-hotkeys', () => {
 });
 ipcMain.on('enable-hotkeys', () => {
   registerHotkeys();
+});
+
+// IPC handler to get config
+ipcMain.handle('get-config', async () => {
+  try {
+    return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  } catch (e) {
+    return { buttons: [] };
+  }
+});
+
+// IPC handler to get sound path
+ipcMain.handle('get-sound-path', async (event, relativePath) => {
+  return path.join(userDataPath, relativePath);
 });
 
 function registerHotkeys() {
@@ -200,6 +256,7 @@ function registerHotkeys() {
 }
 
 app.whenReady().then(() => {
+  ensureUserData();
   createWindow();
   registerHotkeys();
   

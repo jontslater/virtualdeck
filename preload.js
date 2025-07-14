@@ -8,4 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   disableHotkeys: () => ipcRenderer.send('disable-hotkeys'),
   enableHotkeys: () => ipcRenderer.send('enable-hotkeys'),
   onTriggerMedia: (callback) => ipcRenderer.on('trigger-media', (event, mediaId) => callback(mediaId)),
+  onRefreshUI: (callback) => ipcRenderer.on('refresh-ui', (event) => callback()),
+  getConfig: async () => ipcRenderer.invoke('get-config'),
+  getSoundPath: async (relativePath) => ipcRenderer.invoke('get-sound-path', relativePath),
 }); 

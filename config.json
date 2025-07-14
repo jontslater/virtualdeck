@@ -1,16 +1,3 @@
 {
-  "buttons": [
-    {
-      "label": "Airhorn",
-      "type": "audio",
-      "src": "assets/sounds/Airhorn.mp3",
-      "hotkey": "F10"
-    },
-    {
-      "label": "drums",
-      "type": "audio",
-      "src": "assets/sounds/drums.mp3",
-      "hotkey": "1"
-    }
-  ]
+  "buttons": []
 }

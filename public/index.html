@@ -11,12 +11,12 @@
   <div id="move-bar">⇱ Move</div>
   <div class="container">
     <img src="logo.png" alt="Virtual Deck Logo" class="app-logo" />
+    <div class="hotkey-info">
+      <strong>Supported Hotkeys:</strong> F1-F12, 1-0 (number row only, not numpad)
+    </div>
     <button id="close-app" class="close-app-btn">✕</button>
     <div id="sound-grid"></div>
-    <div id="add-sound-card" class="sound-card add-card">
-      <div class="add-icon">+</div>
-      <div class="add-text">Add Sound</div>
-    </div>
+    <!-- Removed static Add Sound card -->
   </div>
 
   <div id="settings-modal" class="hidden">
@@ -34,6 +34,9 @@
           <input type="text" name="hotkey" id="hotkey-input" placeholder="Click 'Record Hotkey' to set" readonly />
           <button type="button" id="record-hotkey">Record Hotkey</button>
           <div id="hotkey-status"></div>
+          <div class="hotkey-help">
+            <small>Supported: F1-F12, 1-0 (number row only, not numpad)</small>
+          </div>
         </label><br>
         <label>File:
           <input type="file" name="file" id="file-input" required />

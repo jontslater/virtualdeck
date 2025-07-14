@@ -5,6 +5,56 @@ const visualContainer = document.getElementById("visual-container");
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
 
+// Add refresh UI listener
+window.electronAPI.onRefreshUI(() => {
+  loadButtons();
+});
+
+async function loadButtons() {
+  // Clear existing buttons
+  soundGrid.innerHTML = '';
+
+  // Add the Add Sound card as the first card
+  const addCard = document.createElement('div');
+  addCard.className = 'sound-card add-card';
+  addCard.id = 'add-sound-card';
+  addCard.innerHTML = `
+    <div class="add-icon">+</div>
+    <div class="add-text">Add Sound</div>
+  `;
+  addCard.onclick = () => {
+    document.getElementById('settings-form').reset();
+    document.getElementById('hotkey-input').value = '';
+    document.getElementById('hotkey-status').textContent = '';
+    delete document.getElementById('settings-form').dataset.editingIndex;
+    document.querySelector('#settings-modal h2').textContent = 'Add New Sound';
+    document.getElementById('file-input').required = true;
+    document.getElementById('settings-modal').classList.remove('hidden');
+    window.electronAPI.disableHotkeys();
+  };
+  soundGrid.appendChild(addCard);
+
+  // Load buttons from config
+  const data = await window.electronAPI.getConfig();
+  data.buttons.forEach((button, index) => {
+    const card = document.createElement("div");
+    card.className = "sound-card";
+    card.innerHTML = `
+      <button class="edit-button" onclick="editButton(${index})">Edit</button>
+      <div class="sound-type">${button.type}</div>
+      <div class="sound-name">${button.label}</div>
+      <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
+      <button class="delete-bottom-button" onclick="deleteButton(${index})" title="Delete">Delete</button>
+    `;
+    card.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('edit-button') && !e.target.classList.contains('delete-bottom-button')) {
+        handleTrigger(button);
+      }
+    });
+    soundGrid.appendChild(card);
+  });
+}
+
 dropZone.addEventListener("dragover", (e) => {
   e.preventDefault();
   dropZone.style.background = "#333";
@@ -23,35 +73,13 @@ dropZone.addEventListener("drop", (e) => {
   }
 });
 
-fetch("../config.json")
-  .then(res => res.json())
-  .then(data => {
-    data.buttons.forEach((button, index) => {
-      const card = document.createElement("div");
-      card.className = "sound-card";
-      
-      card.innerHTML = `
-        <button class="edit-button" onclick="editButton(${index})">Edit</button>
-        <div class="sound-type">${button.type}</div>
-        <div class="sound-name">${button.label}</div>
-        <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
-        <button class="delete-bottom-button" onclick="deleteButton(${index})" title="Delete">Delete</button>
-      `;
-      
-      // Add click handler for the card (but not the edit or delete button)
-      card.addEventListener('click', (e) => {
-        if (!e.target.classList.contains('edit-button') && !e.target.classList.contains('delete-bottom-button')) {
-          handleTrigger(button);
-        }
-      });
-      
-      soundGrid.appendChild(card);
-    });
-  });
+// Initial load
+loadButtons();
 
-function handleTrigger(button) {
+async function handleTrigger(button) {
   if (button.type === "audio") {
-    const audio = new Audio(button.src);
+    const audioPath = await window.electronAPI.getSoundPath(button.src);
+    const audio = new Audio(audioPath);
     audio.play().catch(error => {
     });
   }
@@ -60,24 +88,6 @@ function handleTrigger(button) {
 
 // Replace all ipcRenderer.send and ipcRenderer.on with window.electronAPI methods
 // Add sound card functionality
-document.getElementById('add-sound-card').onclick = () => {
-  // Clear form for new sound
-  document.getElementById('settings-form').reset();
-  document.getElementById('hotkey-input').value = '';
-  document.getElementById('hotkey-status').textContent = '';
-  delete document.getElementById('settings-form').dataset.editingIndex;
-  
-  // Update modal title
-  document.querySelector('#settings-modal h2').textContent = 'Add New Sound';
-  
-  // Make file input required for new
-  document.getElementById('file-input').required = true;
-
-  // Show modal
-  document.getElementById('settings-modal').classList.remove('hidden');
-  window.electronAPI.disableHotkeys();
-};
-
 document.getElementById('close-settings').onclick = () => {
   document.getElementById('settings-modal').classList.add('hidden');
   window.electronAPI.enableHotkeys();
@@ -134,65 +144,55 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   setTimeout(() => window.location.reload(), 500); // Reload to update buttons
 };
 
-window.editButton = (index) => {
-  fetch("../config.json")
-    .then(res => res.json())
-    .then(config => {
-      const btn = config.buttons[index];
-      
-      // Populate form fields
-      const labelInput = document.getElementById('label-input');
-      labelInput.value = btn.label;
-      labelInput.readOnly = false;
-      labelInput.disabled = false;
-      document.querySelector('#settings-form [name="type"]').value = btn.type;
-      document.getElementById('hotkey-input').value = btn.hotkey || "";
-      
-      // Store the existing file path for editing
-      document.getElementById('settings-form').dataset.existingFile = btn.src;
-      
-      // Update modal title
-      document.querySelector('#settings-modal h2').textContent = `Edit Sound: ${btn.label}`;
-      
-      // Show current file info
-      const fileInput = document.getElementById('file-input');
-      fileInput.required = false; // Not required when editing
-      const dropZone = document.getElementById('drop-zone');
-      const fileName = btn.src.split('/').pop();
-      dropZone.innerHTML = `
-        <div style="margin-bottom: 10px; color: #4CAF50; font-weight: bold;">
-          ✓ Current file: ${fileName}
-        </div>
-        <div style="color: #888; font-size: 0.9em;">
-          Drag new file here to replace, or leave empty to keep current file
-        </div>
-      `;
-      
-      document.getElementById('settings-modal').classList.remove('hidden');
-      window.electronAPI.disableHotkeys();
-      // mark index to replace
-      document.getElementById('settings-form').dataset.editingIndex = index;
-
-      // Stop hotkey recording if active
-      const recordHotkeyBtn = document.getElementById('record-hotkey');
-      if (hotkeyListener) {
-        document.removeEventListener('keydown', hotkeyListener);
-        hotkeyListener = null;
-        recordHotkeyBtn.textContent = 'Record Hotkey';
-        recordHotkeyBtn.classList.remove('recording');
-      }
-    });
+window.editButton = async (index) => {
+  const config = await window.electronAPI.getConfig();
+  const btn = config.buttons[index];
+  // Populate form fields
+  const labelInput = document.getElementById('label-input');
+  labelInput.value = btn.label;
+  labelInput.readOnly = false;
+  labelInput.disabled = false;
+  document.querySelector('#settings-form [name="type"]').value = btn.type;
+  document.getElementById('hotkey-input').value = btn.hotkey || "";
+  // Store the existing file path for editing
+  document.getElementById('settings-form').dataset.existingFile = btn.src;
+  // Update modal title
+  document.querySelector('#settings-modal h2').textContent = `Edit Sound: ${btn.label}`;
+  // Show current file info
+  const fileInput = document.getElementById('file-input');
+  fileInput.required = false; // Not required when editing
+  const dropZone = document.getElementById('drop-zone');
+  const fileName = btn.src.split('/').pop();
+  dropZone.innerHTML = `
+    <div style="margin-bottom: 10px; color: #4CAF50; font-weight: bold;">
+      ✓ Current file: ${fileName}
+    </div>
+    <div style="color: #888; font-size: 0.9em;">
+      Drag new file here to replace, or leave empty to keep current file
+    </div>
+  `;
+  document.getElementById('settings-modal').classList.remove('hidden');
+  window.electronAPI.disableHotkeys();
+  // mark index to replace
+  document.getElementById('settings-form').dataset.editingIndex = index;
+  // Stop hotkey recording if active
+  const recordHotkeyBtn = document.getElementById('record-hotkey');
+  if (hotkeyListener) {
+    document.removeEventListener('keydown', hotkeyListener);
+    hotkeyListener = null;
+    recordHotkeyBtn.textContent = 'Record Hotkey';
+    recordHotkeyBtn.classList.remove('recording');
+  }
 };
 
 window.deleteButton = (index) => {
   if (!confirm("Delete this button?")) return;
   window.electronAPI.deleteButton(index);
   window.electronAPI.refreshHotkeys();
-  setTimeout(() => window.location.reload(), 500);
 };
 
 // Close app button
-document.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', () => {
   const closeBtn = document.getElementById('close-app');
   if (closeBtn) {
     closeBtn.onclick = () => {
@@ -204,8 +204,8 @@ document.addEventListener('DOMContentLoaded', () => {
 // Hotkey recording functionality
 let hotkeyListener = null;
 
-// Wait for DOM to be ready
 window.addEventListener('DOMContentLoaded', () => {
+  // Attach Record Hotkey button handler
   const recordHotkeyBtn = document.getElementById('record-hotkey');
   const hotkeyInput = document.getElementById('hotkey-input');
   const hotkeyStatus = document.getElementById('hotkey-status');
@@ -214,81 +214,41 @@ window.addEventListener('DOMContentLoaded', () => {
     recordHotkeyBtn.addEventListener('click', () => {
       // Button click animation
       recordHotkeyBtn.classList.remove('clicked');
-      void recordHotkeyBtn.offsetWidth; // force reflow
+      void recordHotkeyBtn.offsetWidth;
       recordHotkeyBtn.classList.add('clicked');
-
-      // Show status
       hotkeyStatus.textContent = 'Press any key...';
       hotkeyInput.value = '';
       hotkeyInput.focus();
-
-      // Remove any previous listener
       if (hotkeyListener) document.removeEventListener('keydown', hotkeyListener);
-
-      // Listen for the next keydown
       hotkeyListener = function(e) {
         e.preventDefault();
-        
-        // Build hotkey string
         const keys = [];
         if (e.ctrlKey) keys.push('Control');
         if (e.shiftKey) keys.push('Shift');
         if (e.altKey) keys.push('Alt');
         if (e.metaKey) keys.push('Meta');
-        
-        // Handle numpad keys and regular keys
         let keyName = e.key;
         if (e.code.startsWith('Numpad')) {
-          // Convert numpad keys to regular number keys
           keyName = e.code.replace('Numpad', '');
         } else if (e.key.length === 1 && /[0-9]/.test(e.key)) {
-          // Ensure single digits are treated as numbers
           keyName = e.key;
         } else if (e.key.startsWith('F') && /^\d+$/.test(e.key.slice(1))) {
-          // Function keys like F1, F2, etc.
           keyName = e.key;
-        } else if (e.key.length === 1) {
-          keyName = e.key.toUpperCase();
         }
-        
-        // Only add the main key if it's not a pure modifier
-        if (!['Control', 'Shift', 'Alt', 'Meta'].includes(keyName)) {
-          keys.push(keyName);
-        }
-        
-        const hotkeyStr = keys.join('+');
-        hotkeyInput.value = hotkeyStr;
-        hotkeyStatus.textContent = hotkeyStr ? `Set to: ${hotkeyStr}` : '';
-        
-        // Clean up
+        keys.push(keyName);
+        hotkeyInput.value = keys.join('+');
+        hotkeyStatus.textContent = `Set to: ${hotkeyInput.value}`;
         document.removeEventListener('keydown', hotkeyListener);
         hotkeyListener = null;
         recordHotkeyBtn.textContent = 'Record Hotkey';
         recordHotkeyBtn.classList.remove('recording');
       };
       document.addEventListener('keydown', hotkeyListener);
-      // Visual feedback
       recordHotkeyBtn.textContent = 'Recording...';
       recordHotkeyBtn.classList.add('recording');
     });
   }
-}); 
-
-// Stop hotkey recording if any input in the modal is focused
-window.addEventListener('DOMContentLoaded', () => {
-  const modalInputs = document.querySelectorAll('#settings-form input, #settings-form select');
-  const recordHotkeyBtn = document.getElementById('record-hotkey');
-  modalInputs.forEach(input => {
-    input.addEventListener('focus', () => {
-      if (hotkeyListener) {
-        document.removeEventListener('keydown', hotkeyListener);
-        hotkeyListener = null;
-        recordHotkeyBtn.textContent = 'Record Hotkey';
-        recordHotkeyBtn.classList.remove('recording');
-      }
-    });
-  });
-}); 
+});
 
 // Move App Button: Hold to move the window
 window.addEventListener('DOMContentLoaded', () => {
@@ -304,22 +264,14 @@ window.addEventListener('DOMContentLoaded', () => {
     moveBtn.addEventListener('mouseleave', stopMoving);
     window.addEventListener('mouseup', stopMoving);
   }
-}); 
+});
 
 // Listen for trigger-media events from the main process
-window.electronAPI.onTriggerMedia((mediaId) => {
-  // Prevent hotkey triggers while modal is open
-  const modal = document.getElementById('settings-modal');
-  if (!modal.classList.contains('hidden')) {
-    return; // Modal is open, ignore trigger
-  }
-  // Find the corresponding config entry
-  fetch("../config.json")
-    .then(res => res.json())
-    .then(data => {
-      const button = data.buttons.find(btn =>
-        btn.label.toLowerCase().includes(mediaId.toLowerCase())
-      );
-      if (button) handleTrigger(button);
-    });
+window.electronAPI.onTriggerMedia(async (mediaId) => {
+  const config = await window.electronAPI.getConfig();
+  if (!config || !Array.isArray(config.buttons)) return;
+  const button = config.buttons.find(btn =>
+    btn.label.toLowerCase().includes(mediaId.toLowerCase())
+  );
+  if (button) handleTrigger(button);
 }); 
