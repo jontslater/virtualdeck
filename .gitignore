@@ -1,3 +1,9 @@
 dist/
 .history/
-node_modules/ 
+node_modules/
+# Audio files
+*.mp3
+*.wav
+*.ogg
+*.m4a
+public/assets/sounds/ 
