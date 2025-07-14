@@ -1,0 +1,39 @@
+{
+  "name": "virtualdeck",
+  "version": "1.0.0",
+  "description": "A virtual deck application built with Electron",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "keywords": [
+    "electron",
+    "virtual",
+    "deck",
+    "desktop"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.virtualdeck.app",
+    "productName": "VirtualDeck",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "config.json",
+      "public/**/*",
+      "node_modules/**/*"
+    ]
+  },
+  "dependencies": {
+    "fs-extra": "^11.3.0"
+  }
+}

@@ -1,0 +1,51 @@
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Media Trigger App</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="container">
+    <div id="title-bar" class="title-bar">
+      <h1>Media Trigger</h1>
+      <button id="close-app">✕</button>
+    </div>
+    <div id="buttons"></div>
+    <button id="open-settings">⚙ Settings</button>
+    <div id="visual-container"></div>
+  </div>
+
+  <div id="settings-modal" class="hidden">
+    <div class="modal-content">
+      <h2>Add New Trigger</h2>
+      <form id="settings-form">
+        <label>Label: <input type="text" name="label" required /></label><br>
+        <label>Type:
+          <select name="type">
+            <option value="audio">Audio</option>
+            <option value="visual">Visual</option>
+          </select>
+        </label><br>
+        <label>Hotkey: 
+          <input type="text" name="hotkey" id="hotkey-input" placeholder="Click 'Record Hotkey' to set" readonly />
+          <button type="button" id="record-hotkey">Record Hotkey</button>
+          <div id="hotkey-status"></div>
+        </label><br>
+        <label>File:
+          <input type="file" name="file" id="file-input" required />
+          <div id="drop-zone">or drag file here</div>
+        </label><br>
+        <button type="submit">Add</button>
+        <button type="button" id="close-settings">Cancel</button>
+      </form>
+      
+      <h3>Existing Buttons</h3>
+      <ul id="button-list"></ul>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html> 

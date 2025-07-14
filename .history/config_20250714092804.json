@@ -1,0 +1,14 @@
+{
+  "buttons": [
+    {
+      "label": "Airhorn",
+      "type": "audio",
+      "src": "assets/sounds/airhorn.mp3"
+    },
+    {
+      "label": "Fireworks",
+      "type": "visual",
+      "src": "assets/visuals/firework.gif"
+    }
+  ]
+} 

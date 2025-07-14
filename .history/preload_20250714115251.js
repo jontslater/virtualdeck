@@ -1,0 +1,11 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  addMedia: (data) => ipcRenderer.send('add-media', data),
+  deleteButton: (index) => ipcRenderer.send('delete-button', index),
+  closeApp: () => ipcRenderer.send('close-app'),
+  refreshHotkeys: () => ipcRenderer.send('refresh-hotkeys'),
+  disableHotkeys: () => ipcRenderer.send('disable-hotkeys'),
+  enableHotkeys: () => ipcRenderer.send('enable-hotkeys'),
+  onTriggerMedia: (callback) => ipcRenderer.on('trigger-media', (event, mediaId) => callback(mediaId)),
+}); 

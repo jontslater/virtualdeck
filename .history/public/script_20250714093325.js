@@ -1,0 +1,84 @@
+// public/script.js
+const { ipcRenderer } = require('electron');
+
+const buttonsDiv = document.getElementById("buttons");
+const visualContainer = document.getElementById("visual-container");
+
+fetch("../config.json")
+  .then(res => res.json())
+  .then(data => {
+    data.buttons.forEach(button => {
+      const btn = document.createElement("button");
+      btn.innerText = button.label;
+      btn.onclick = () => handleTrigger(button);
+      buttonsDiv.appendChild(btn);
+    });
+  });
+
+function handleTrigger(button) {
+  if (button.type === "audio") {
+    const audio = new Audio(button.src);
+    audio.play();
+  } else if (button.type === "visual") {
+    showVisual(button.src);
+  }
+}
+
+function showVisual(src) {
+  visualContainer.innerHTML = ""; // Clear previous
+  const img = document.createElement("img");
+  img.src = src;
+  visualContainer.appendChild(img);
+
+  setTimeout(() => {
+    visualContainer.innerHTML = "";
+  }, 4000);
+}
+
+ipcRenderer.on('trigger-media', (event, mediaId) => {
+  // Find the corresponding config entry
+  fetch("../config.json")
+    .then(res => res.json())
+    .then(data => {
+      const button = data.buttons.find(btn =>
+        btn.label.toLowerCase().includes(mediaId.toLowerCase())
+      );
+      if (button) handleTrigger(button);
+    });
+});
+
+// Settings modal logic
+document.getElementById('open-settings').onclick = () => {
+  document.getElementById('settings-modal').classList.remove('hidden');
+};
+
+document.getElementById('close-settings').onclick = () => {
+  document.getElementById('settings-modal').classList.add('hidden');
+};
+
+document.getElementById('settings-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const label = form.label.value.trim();
+  const type = form.type.value;
+  const hotkey = form.hotkey.value.trim();
+  const fileInput = form.file;
+
+  if (!label || !fileInput.files.length) return alert("Please fill in all required fields.");
+
+  const file = fileInput.files[0];
+  const ext = file.name.split('.').pop();
+  const targetPath = `assets/${type === 'audio' ? 'sounds' : 'visuals'}/${label}.${ext}`;
+
+  // Send file path and data to main
+  ipcRenderer.send('add-media', {
+    label,
+    type,
+    hotkey,
+    targetPath,
+    originalPath: file.path,
+  });
+
+  document.getElementById('settings-modal').classList.add('hidden');
+  setTimeout(() => window.location.reload(), 500); // Reload to update buttons
+}; 

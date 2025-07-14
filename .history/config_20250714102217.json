@@ -1,0 +1,22 @@
+{
+  "buttons": [
+    {
+      "label": "Airhorn",
+      "type": "audio",
+      "src": "assets/sounds/Airhorn.mp3",
+      "hotkey": "F1"
+    },
+    {
+      "label": "Fireworks",
+      "type": "visual",
+      "src": "assets/visuals/firework.gif",
+      "hotkey": "Control+2"
+    },
+    {
+      "label": "drums",
+      "type": "audio",
+      "src": "assets/sounds/drums.mp3",
+      "hotkey": "1"
+    }
+  ]
+}
