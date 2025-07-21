@@ -3,6 +3,10 @@ const path = require('path');
 const fs = require('fs');
 const fse = require('fs-extra'); // helpful for file copying
 const { ipcMain } = require('electron');
+const ws = require('windows-shortcuts'); // Import windows-shortcuts
+const { execFile } = require('child_process');
+const extractIcon = require('extract-file-icon');
+const { nativeImage } = require('electron');
 
 // Use Electron's userData directory for config and user files
 const userDataPath = app.getPath('userData');
@@ -68,33 +72,57 @@ function createWindow() {
 }
 
 ipcMain.on('add-media', (event, data) => {
+  console.log('add-media received:', data);
   const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 
-  // Only copy file if it's a new file (not editing existing)
-  if (data.originalPath !== data.targetPath) {
-    // Save to userData/sounds
-    const ext = path.extname(data.originalPath);
-    const safeLabel = data.label.replace(/[^a-z0-9_\-]/gi, '_');
-    const destFile = path.join(userSoundsDir, `${safeLabel}${ext}`);
-    fse.copySync(data.originalPath, destFile);
-    data.targetPath = path.relative(userDataPath, destFile).replace(/\\/g, '/');
-  } else if (typeof data.editingIndex === 'number') {
-    // Editing, no new file selected
-    const oldButton = config.buttons[data.editingIndex];
-    const oldLabel = oldButton.label;
-    const oldSrc = oldButton.src;
-    const ext = path.extname(oldSrc);
-    const oldFilePath = path.join(userDataPath, oldSrc);
-    const newFileName = `${data.label}${ext}`;
-    const newFilePath = path.join(path.dirname(oldFilePath), newFileName);
-    const newTargetPath = path.relative(userDataPath, newFilePath).replace(/\\/g, '/');
-    // If label changed and file exists and file name doesn't match new label
-    if (data.label !== oldLabel && fs.existsSync(oldFilePath) && !oldSrc.endsWith(newFileName)) {
+  // Handle app files differently than audio files
+  if (data.type === 'app') {
+    console.log('Processing as app file, using original path:', data.originalPath);
+    // For app files, just store the path without copying
+    data.targetPath = data.originalPath;
+  } else {
+    console.log('Processing as audio file');
+    // Only copy file if it's a new file (not editing existing) and it's an audio file
+    if (data.originalPath !== data.targetPath) {
+      // Save to userData/sounds
+      const ext = path.extname(data.originalPath);
+      const safeLabel = data.label.replace(/[^a-z0-9_\-]/gi, '_');
+      const destFile = path.join(userSoundsDir, `${safeLabel}${ext}`);
+      
+      console.log('Copying audio file from:', data.originalPath, 'to:', destFile);
+      
+      // Check if source file exists before copying
+      if (!fs.existsSync(data.originalPath)) {
+        console.error('Source file does not exist:', data.originalPath);
+        throw new Error(`Source file does not exist: ${data.originalPath}`);
+      }
+      
       try {
-        fs.renameSync(oldFilePath, newFilePath);
-        data.targetPath = newTargetPath;
-      } catch (err) {
-        data.targetPath = oldSrc; // fallback
+        fse.copySync(data.originalPath, destFile);
+        data.targetPath = path.relative(userDataPath, destFile).replace(/\\/g, '/');
+        console.log('Audio file copied successfully, target path:', data.targetPath);
+      } catch (error) {
+        console.error('Error copying audio file:', error);
+        throw error;
+      }
+    } else if (typeof data.editingIndex === 'number') {
+      // Editing, no new file selected
+      const oldButton = config.buttons[data.editingIndex];
+      const oldLabel = oldButton.label;
+      const oldSrc = oldButton.src;
+      const ext = path.extname(oldSrc);
+      const oldFilePath = path.join(userDataPath, oldSrc);
+      const newFileName = `${data.label}${ext}`;
+      const newFilePath = path.join(path.dirname(oldFilePath), newFileName);
+      const newTargetPath = path.relative(userDataPath, newFilePath).replace(/\\/g, '/');
+      // If label changed and file exists and file name doesn't match new label
+      if (data.label !== oldLabel && fs.existsSync(oldFilePath) && !oldSrc.endsWith(newFileName)) {
+        try {
+          fs.renameSync(oldFilePath, newFilePath);
+          data.targetPath = newTargetPath;
+        } catch (err) {
+          data.targetPath = oldSrc; // fallback
+        }
       }
     }
   }
@@ -103,7 +131,8 @@ ipcMain.on('add-media', (event, data) => {
     label: data.label,
     type: data.type,
     src: data.targetPath,
-    hotkey: data.hotkey || undefined
+    hotkey: data.hotkey || undefined,
+    args: data.args || undefined
   };
 
   if (typeof data.editingIndex === 'number') {
@@ -168,88 +197,183 @@ ipcMain.handle('get-sound-path', async (event, relativePath) => {
   return path.join(userDataPath, relativePath);
 });
 
-function registerHotkeys() {
-  // Unregister all existing hotkeys first to avoid conflicts
-  globalShortcut.unregisterAll();
+// IPC handler to resolve shortcut paths
+ipcMain.handle('resolve-shortcut', async (event, shortcutPath) => {
+  try {
+    console.log('Attempting to resolve shortcut:', shortcutPath);
+    
+    // Check if the shortcut file exists
+    if (!fs.existsSync(shortcutPath)) {
+      console.error('Shortcut file does not exist:', shortcutPath);
+      return null;
+    }
+    
+    return new Promise((resolve, reject) => {
+      ws.query(shortcutPath, (err, shortcut) => {
+        if (err) {
+          console.error('Error querying shortcut:', err);
+          // Return original path as fallback
+          resolve({ target: shortcutPath, args: '' });
+        } else {
+          console.log('Shortcut resolved successfully:', shortcut);
+          // Return both target and args
+          resolve({ 
+            target: shortcut.target, 
+            args: shortcut.args || '' 
+          });
+        }
+      });
+    });
+    
+  } catch (error) {
+    console.error('Error resolving shortcut:', error);
+    return { target: shortcutPath, args: '' }; // Return original path as fallback
+  }
+});
+
+ipcMain.on('launch-app', async (event, appData) => {
+  const { path: appPath, args } = appData;
+  console.log('Launching app:', appPath, args);
   
+  let finalPath = appPath;
+  let finalArgs = args || '';
+  let isUWPShortcut = false;
+
+  // Known UWP AppUserModelIDs for fallback
+  const uwpAppIds = {
+    spotify: 'SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify',
+    // Add more as needed: 'appname': 'AppUserModelID'
+  };
+
+  // If the path is a shortcut (.lnk file), resolve it first
+  if (appPath.toLowerCase().endsWith('.lnk')) {
+    try {
+      console.log('Resolving shortcut before launch:', appPath);
+      const shortcut = await new Promise((resolve, reject) => {
+        ws.query(appPath, (err, shortcut) => {
+          if (err) {
+            console.error('Error querying shortcut:', err);
+            resolve(null);
+          } else {
+            console.log('Shortcut resolved successfully:', shortcut);
+            resolve(shortcut);
+          }
+        });
+      });
+      
+      if (shortcut && shortcut.target) {
+        finalPath = shortcut.target;
+        finalArgs = shortcut.args || args || '';
+        console.log('Using resolved path:', finalPath, 'with args:', finalArgs);
+      } else {
+        // UWP/Store app detection: If shortcut target is empty, try to extract AppUserModelID from .lnk path or filename
+        const lnkName = path.basename(appPath, '.lnk').toLowerCase();
+        // Check for known UWP apps by filename
+        for (const [key, appId] of Object.entries(uwpAppIds)) {
+          if (lnkName.includes(key)) {
+            isUWPShortcut = true;
+            finalPath = `shell:AppsFolder\\${appId}`;
+            console.log(`Detected UWP/Store app shortcut for '${key}'. Will launch with explorer.exe`, finalPath);
+            break;
+          }
+        }
+        // If not found, try to extract from path
+        if (!isUWPShortcut) {
+          const appsFolderMatch = appPath.match(/AppsFolder\\([^!]+![^\\]+)/i);
+          if (appsFolderMatch) {
+            const appId = appsFolderMatch[1];
+            isUWPShortcut = true;
+            finalPath = `shell:AppsFolder\\${appId}`;
+            console.log('Detected UWP/Store app shortcut. Will launch with explorer.exe', finalPath);
+          } else {
+            // Try to extract AppUserModelID from the .lnk file path (common for desktop shortcuts)
+            const possibleAppId = lnkName.match(/([\w.]+_[\w]+![\w]+)/);
+            if (possibleAppId) {
+              isUWPShortcut = true;
+              finalPath = `shell:AppsFolder\\${possibleAppId[1]}`;
+              console.log('Detected UWP/Store app shortcut by name. Will launch with explorer.exe', finalPath);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error resolving shortcut during launch:', error);
+    }
+  }
+  
+  if (isUWPShortcut) {
+    // Launch UWP/Store app using explorer.exe shell:AppsFolder\APP_ID
+    try {
+      console.log('Launching UWP/Store app with explorer.exe', finalPath);
+      execFile('explorer.exe', [finalPath], (error) => {
+        if (error) {
+          console.error('Failed to launch UWP/Store app:', finalPath, error);
+        } else {
+          console.log('UWP/Store app launched successfully:', finalPath);
+        }
+      });
+    } catch (err) {
+      console.error('Error launching UWP/Store app:', finalPath, err);
+    }
+    return;
+  }
+
+  if (!fs.existsSync(finalPath)) {
+    console.error('App path does not exist:', finalPath);
+    return;
+  }
+  
+  try {
+    const argsArray = finalArgs ? finalArgs.split(' ') : [];
+    console.log('Executing:', finalPath, 'with args:', argsArray);
+    execFile(finalPath, argsArray, (error) => {
+      if (error) {
+        console.error('Failed to launch app:', finalPath, error);
+      } else {
+        console.log('App launched successfully:', finalPath);
+      }
+    });
+  } catch (err) {
+    console.error('Error launching app:', finalPath, err);
+  }
+});
+
+// IPC handler to get the app icon as a base64 PNG
+ipcMain.handle('get-app-icon', async (event, filePath) => {
+  try {
+    // For UWP/Store apps, we can't extract the icon directly, so return null or a default
+    if (filePath.startsWith('shell:AppsFolder')) {
+      // TODO: Optionally return a custom icon for known UWP apps
+      return null;
+    }
+    // For .exe or .lnk files, extract the icon
+    const iconBuffer = extractIcon(filePath, 64); // 64x64 icon
+    if (iconBuffer) {
+      const image = nativeImage.createFromBuffer(iconBuffer);
+      return image.toDataURL(); // Return as base64 PNG
+    }
+    return null;
+  } catch (error) {
+    console.error('Error extracting icon for', filePath, error);
+    return null;
+  }
+});
+
+function registerHotkeys() {
+  globalShortcut.unregisterAll();
   const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
   config.buttons.forEach((btn) => {
     if (btn.hotkey) {
-      // Convert hotkey to proper accelerator format
-      let accelerator = btn.hotkey;
-      
-      // Handle F1-F12 keys
-      if (/^F\d{1,2}$/.test(btn.hotkey)) {
-        // F1-F12 should work as-is, but let's try different formats
-        const fKeyFormats = [
-          btn.hotkey, // F1, F2, etc.
-          btn.hotkey.toLowerCase(), // f1, f2, etc.
-          `Key${btn.hotkey}`, // KeyF1, KeyF2, etc.
-          `F${btn.hotkey.slice(1)}`, // F1, F2, etc. (redundant but explicit)
-          `F${parseInt(btn.hotkey.slice(1))}`, // F1, F2, etc. (numeric)
-          // Additional formats for problematic keys like F1
-          `Function${btn.hotkey.slice(1)}`, // Function1, Function2, etc.
-          `F${btn.hotkey.slice(1)}Key`, // F1Key, F2Key, etc.
-          `KeyF${btn.hotkey.slice(1)}` // KeyF1, KeyF2, etc.
-        ];
-        
-        let registered = false;
-        fKeyFormats.forEach(format => {
-          if (!registered) {
-            try {
-              const success = globalShortcut.register(format, () => {
-                win.webContents.send('trigger-media', btn.label);
-              });
-              if (success) {
-                registered = true;
-              }
-            } catch (error) {
-            }
-          }
-        });
-        
-        if (!registered) {
-        }
-      }
-      // Handle single number keys (1-0)
-      else if (/^\d$/.test(btn.hotkey)) {
-        const numberFormats = [
-          btn.hotkey, // 1, 2, 3, etc.
-          `Digit${btn.hotkey}`, // Digit1, Digit2, etc.
-          `Key${btn.hotkey}`, // Key1, Key2, etc.
-          `NumPad${btn.hotkey}`, // NumPad1, NumPad2, etc.
-          `Numpad${btn.hotkey}`, // Numpad1, Numpad2, etc.
-          `KP${btn.hotkey}`, // KP1, KP2, etc.
-          `KP_${btn.hotkey}`, // KP_1, KP_2, etc.
-          `Keypad${btn.hotkey}` // Keypad1, Keypad2, etc.
-        ];
-        
-        let registered = false;
-        numberFormats.forEach(format => {
-          if (!registered) {
-            try {
-              const success = globalShortcut.register(format, () => {
-                win.webContents.send('trigger-media', btn.label);
-              });
-              if (success) {
-                registered = true;
-              }
-            } catch (error) {
-            }
-          }
-        });
-        
-        if (!registered) {
-        }
-      }
-      // Handle other hotkeys (like Control+2)
-      else {
-        const success = globalShortcut.register(accelerator, () => {
+      // Register the full hotkey string, including modifiers
+      try {
+        const success = globalShortcut.register(btn.hotkey, () => {
           win.webContents.send('trigger-media', btn.label);
         });
-
         if (!success) {
+          console.warn('Failed to register hotkey:', btn.hotkey);
         }
+      } catch (error) {
+        console.error('Error registering hotkey:', btn.hotkey, error);
       }
     }
   });

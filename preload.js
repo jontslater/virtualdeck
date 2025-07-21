@@ -11,4 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onRefreshUI: (callback) => ipcRenderer.on('refresh-ui', (event) => callback()),
   getConfig: async () => ipcRenderer.invoke('get-config'),
   getSoundPath: async (relativePath) => ipcRenderer.invoke('get-sound-path', relativePath),
+  resolveShortcut: async (shortcutPath) => ipcRenderer.invoke('resolve-shortcut', shortcutPath),
+  launchApp: (appData) => ipcRenderer.send('launch-app', appData),
+  getAppIcon: async (filePath) => ipcRenderer.invoke('get-app-icon', filePath),
 }); 

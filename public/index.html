@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div id="global-drop-zone" class="hidden">Drop files here</div>
   <div id="move-bar">⇱ Move</div>
   <div class="container">
     <img src="logo.png" alt="Virtual Deck Logo" class="app-logo" />
@@ -26,8 +27,9 @@
         <label for="label-input">Label:</label>
         <input type="text" id="label-input" name="label" required />
         <label>Type:
-          <select name="type">
+          <select name="type" id="type-select">
             <option value="audio">Audio</option>
+            <option value="app">App</option>
           </select>
         </label><br>
         <label>Hotkey: 
@@ -37,11 +39,23 @@
           <div class="hotkey-help">
             <small>Supported: F1-F12, 1-0 (number row only, not numpad)</small>
           </div>
+          <div class="modifier-keys">
+            <label><input type="checkbox" id="ctrl-required-checkbox" name="ctrl-required"> Ctrl</label>
+            <label><input type="checkbox" id="alt-required-checkbox" name="alt-required"> Alt</label>
+            <label><input type="checkbox" id="shift-required-checkbox" name="shift-required"> Shift</label>
+          </div>
         </label><br>
-        <label>File:
-          <input type="file" name="file" id="file-input" required />
-          <div id="drop-zone">or drag file here</div>
-        </label><br>
+        <div id="audio-file-section">
+          <label>File:
+            <input type="file" name="file" id="file-input" required />
+            <div id="drop-zone">or drag file here</div>
+          </label>
+        </div>
+        <div id="app-file-section" style="display:none;">
+          <label>App File:
+            <input type="file" name="app-file" id="app-file-input" accept=".exe,.bat,.cmd,.lnk,.app,.sh,.desktop" required />
+          </label>
+        </div>
         <button type="submit" id="save-sound">Save</button>
         <button type="button" id="close-settings">Cancel</button>
       </form>
