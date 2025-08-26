@@ -36,7 +36,7 @@ A customizable audio trigger deck with global hotkey support and a modern UI. Vi
 ## 🚀 Installation
 
 ### Windows
-1. Download the latest installer from [Releases](https://github.com/yourusername/VirtualDeck/releases)
+1. Download the latest installer from [Releases](https://github.com/jontslater/VirtualDeck/releases)
 2. Run the `.exe` installer
 3. Follow the installation wizard
 4. Launch VirtualDeck from your Start Menu or desktop shortcut
