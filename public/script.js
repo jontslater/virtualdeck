@@ -23,12 +23,33 @@ async function loadButtons() {
     <div class="add-text">Add Sound</div>
   `;
   addCard.onclick = () => {
-    document.getElementById('settings-form').reset();
+    const settingsForm = document.getElementById('settings-form');
+    settingsForm.reset();
     document.getElementById('hotkey-input').value = '';
     document.getElementById('hotkey-status').textContent = '';
-    delete document.getElementById('settings-form').dataset.editingIndex;
+    // Fully clear all dataset properties for new record
+    delete settingsForm.dataset.editingIndex;
+    delete settingsForm.dataset.resolvedPath;
+    delete settingsForm.dataset.resolvedArgs;
+    delete settingsForm.dataset.existingFile;
+    // Replace file inputs to clear previous file references
+    const oldFileInput = document.getElementById('file-input');
+    if (oldFileInput) {
+      const newFileInput = oldFileInput.cloneNode(false);
+      newFileInput.required = true;
+      newFileInput.id = 'file-input';
+      newFileInput.name = 'file';
+      oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
+    }
+    const oldAppFileInput = document.getElementById('app-file-input');
+    if (oldAppFileInput) {
+      const newAppFileInput = oldAppFileInput.cloneNode(false);
+      newAppFileInput.required = false;
+      newAppFileInput.id = 'app-file-input';
+      newAppFileInput.name = 'app-file';
+      oldAppFileInput.parentNode.replaceChild(newAppFileInput, oldAppFileInput);
+    }
     document.querySelector('#settings-modal h2').textContent = 'Add New Sound';
-    document.getElementById('file-input').required = true;
     document.getElementById('settings-modal').classList.remove('hidden');
     window.electronAPI.disableHotkeys();
   };
@@ -240,48 +261,64 @@ document.getElementById('settings-form').onsubmit = async (e) => {
 window.editButton = async (index) => {
   const config = await window.electronAPI.getConfig();
   const btn = config.buttons[index];
-  
+  const settingsForm = document.getElementById('settings-form');
+  // Always set editingIndex for edit, and clear resolvedPath/existingFile for safety
+  settingsForm.dataset.editingIndex = index;
+  delete settingsForm.dataset.resolvedPath;
+  delete settingsForm.dataset.existingFile;
+  // Replace file inputs to clear previous file references
+  const oldFileInput = document.getElementById('file-input');
+  if (oldFileInput) {
+    const newFileInput = oldFileInput.cloneNode(false);
+    newFileInput.required = false;
+    newFileInput.id = 'file-input';
+    newFileInput.name = 'file';
+    oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
+  }
+  const oldAppFileInput = document.getElementById('app-file-input');
+  if (oldAppFileInput) {
+    const newAppFileInput = oldAppFileInput.cloneNode(false);
+    newAppFileInput.required = false;
+    newAppFileInput.id = 'app-file-input';
+    newAppFileInput.name = 'app-file';
+    oldAppFileInput.parentNode.replaceChild(newAppFileInput, oldAppFileInput);
+  }
   // Populate form fields
   const labelInput = document.getElementById('label-input');
   labelInput.value = btn.label;
   labelInput.readOnly = false;
   labelInput.disabled = false;
-  
   // Set the type selection
   const typeSelect = document.getElementById('type-select');
   typeSelect.value = btn.type;
-  
-  // Toggle file input sections based on type
+  // Toggle file input sections and required states based on type
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
   const fileInput = document.getElementById('file-input');
   const appFileInput = document.getElementById('app-file-input');
-  
   if (btn.type === 'audio') {
     audioFileSection.style.display = '';
     appFileSection.style.display = 'none';
     fileInput.required = false; // Not required when editing
+    appFileInput.required = false;
   } else {
     audioFileSection.style.display = 'none';
     appFileSection.style.display = '';
+    fileInput.required = false;
     appFileInput.required = false; // Not required when editing
   }
-  
   // Set hotkey and parse modifiers
   const hotkeyInput = document.getElementById('hotkey-input');
   const ctrlCheckbox = document.getElementById('ctrl-required-checkbox');
   const altCheckbox = document.getElementById('alt-required-checkbox');
   const shiftCheckbox = document.getElementById('shift-required-checkbox');
-  
   if (btn.hotkey) {
     // Parse the hotkey string to extract modifiers and base key
     const hotkeyParts = btn.hotkey.split('+');
     const modifiers = hotkeyParts.slice(0, -1); // All parts except the last
     const baseKey = hotkeyParts[hotkeyParts.length - 1]; // The last part is the base key
-    
     // Set the base key
     hotkeyInput.value = baseKey;
-    
     // Set modifier checkboxes
     ctrlCheckbox.checked = modifiers.includes('Ctrl');
     altCheckbox.checked = modifiers.includes('Alt');
@@ -292,16 +329,13 @@ window.editButton = async (index) => {
     altCheckbox.checked = false;
     shiftCheckbox.checked = false;
   }
-  
   // Store the existing file path and args for editing
-  document.getElementById('settings-form').dataset.existingFile = btn.src;
+  settingsForm.dataset.existingFile = btn.src;
   if (btn.args) {
-    document.getElementById('settings-form').dataset.resolvedArgs = btn.args;
+    settingsForm.dataset.resolvedArgs = btn.args;
   }
-  
   // Update modal title
   document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : 'App'}: ${btn.label}`;
-  
   // Show current file info
   const dropZone = document.getElementById('drop-zone');
   if (dropZone) {
@@ -315,13 +349,8 @@ window.editButton = async (index) => {
       </div>
     `;
   }
-  
   document.getElementById('settings-modal').classList.remove('hidden');
   window.electronAPI.disableHotkeys();
-  
-  // Mark index to replace
-  document.getElementById('settings-form').dataset.editingIndex = index;
-  
   // Stop hotkey recording if active
   const recordHotkeyBtn = document.getElementById('record-hotkey');
   if (hotkeyListener) {
@@ -569,4 +598,18 @@ function updateFileDisplay(fileInput, fileName) {
     fileInput.parentElement.appendChild(displayElement);
   }
   displayElement.textContent = `✓ Selected: ${fileName}`;
-} 
+}
+
+// Add event listener to Type select to toggle required state dynamically
+const typeSelect = document.getElementById('type-select');
+typeSelect.addEventListener('change', function() {
+  const fileInput = document.getElementById('file-input');
+  const appFileInput = document.getElementById('app-file-input');
+  if (typeSelect.value === 'audio') {
+    fileInput.required = true;
+    appFileInput.required = false;
+  } else {
+    fileInput.required = false;
+    appFileInput.required = true;
+  }
+});

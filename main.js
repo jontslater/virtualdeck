@@ -33,7 +33,7 @@ let win;
 function createWindow() {
   win = new BrowserWindow({
     width: 800,
-    height: 600,
+    height: 800,
     alwaysOnTop: true,
     frame: false,
     movable: true,
@@ -142,6 +142,8 @@ ipcMain.on('add-media', (event, data) => {
   }
 
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  //checking if data is still here after write
+  //console.log('Data still here?',data);
 });
 
 ipcMain.on('delete-button', (event, index) => {
