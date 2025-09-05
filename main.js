@@ -7,6 +7,9 @@ const ws = require('windows-shortcuts'); // Import windows-shortcuts
 const { execFile } = require('child_process');
 const extractIcon = require('extract-file-icon');
 const { nativeImage } = require('electron');
+const tmi = require('tmi.js'); // Import tmi.js for Twitch chat
+const WebSocket = require('ws');
+const fetch = require('node-fetch');
 
 // Use Electron's userData directory for config and user files
 const userDataPath = app.getPath('userData');
@@ -361,6 +364,235 @@ ipcMain.handle('get-app-icon', async (event, filePath) => {
   }
 });
 
+let twitchClient = null;
+
+function startTwitchChatConnection({ username, oauth, clientId }) {
+  console.log('Starting Twitch chat connection for user:', username);
+  if (!username || !oauth) {
+    console.error('Missing Twitch credentials');
+    return;
+  }
+  const opts = {
+    identity: {
+      username: username,
+      password: oauth.startsWith('oauth:') ? oauth : 'oauth:' + oauth
+    },
+    channels: [username]
+  };
+  twitch_ClientId = clientId;
+  console.log('Using clientId:', twitch_ClientId);
+  twitchClient = new tmi.Client(opts);
+  twitchClient.connect().then(() => {
+    console.log('Connected to Twitch chat as', username);
+    // Notify renderer to update button state
+    if (win && win.webContents) {
+      win.webContents.send('twitch-connected');
+    }
+    // Trigger EventSub connection after chat connects
+    if (username && oauth && twitch_ClientId) {
+      startTwitchEventSub({ username, oauth, twitch_ClientId });
+    }
+  });
+  twitchClient.on('message', (channel, tags, message, self) => {
+    if (self) return;
+    // Log chat messages to terminal
+    console.log(`[Twitch Chat] ${tags.username}: ${message}`);
+    // Forward chat event to renderer via IPC
+    if (win && win.webContents) {
+      win.webContents.send('twitch-chat-event', {
+        type: 'chat',
+        user: tags.username,
+        message
+      });
+    }
+    // Trigger command type buttons if message starts with '!'
+    if (message.startsWith('!')) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      const commandText = message.split(' ')[0].substring(1).toLowerCase();
+      config.buttons.forEach((btn) => {
+        if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+          if (win && win.webContents) {
+            win.webContents.send('trigger-media', btn.label);
+          }
+        }
+      });
+    }
+  });
+}
+
+// Example: Listen for IPC from renderer to start connection
+ipcMain.on('twitch-connect', (event, creds) => {
+  console.log('Received twitch-connect IPC with creds');
+  console.log('Creds:', creds);
+  startTwitchChatConnection(creds);
+});
+
+let lastFollowerIds = [];
+let lastPollTime = null;
+let eventSubSessionId = null;
+let eventSubRegistered = false;
+let twitchUserId = null;
+let twitchToken = null;
+let twitch_ClientId = null;
+let twitchUserName = null;
+
+async function getUserId() {
+  console.log('Fetching Twitch user ID for', twitchUserName);
+  if (twitchUserId) return twitchUserId;
+  console.log('Using token:', twitchToken);
+  console.log('Using clientId:', twitch_ClientId);
+  console.log('Using username:', twitchUserName);
+  console.log('Requesting user ID from Twitch API');
+  const response = await fetch(`https://api.twitch.tv/helix/users?login=${twitchUserName}`, {
+    headers: {
+      'Client-ID': twitch_ClientId,
+      'Authorization': `Bearer ${twitchToken}`
+    }
+  });
+  const data = await response.json();
+  if (data.data && data.data.length > 0) {
+    twitchUserId = data.data[0].id;
+    return twitchUserId;
+  } else {
+    throw new Error('Could not fetch Twitch user ID.');
+  }
+}
+
+async function pollFollowers() {
+  try {
+    console.log('Polling Twitch followers');;
+    const resp = await fetch(`https://api.twitch.tv/helix/channels/followers?broadcaster_id=${twitchUserId}&first=10`, {
+      headers: {
+        'Client-ID': twitch_ClientId,
+        'Authorization': `Bearer ${twitchToken}`
+      }
+    });
+    const data = await resp.json();
+    if (data.data) {
+      const now = new Date();
+      let newFollowers = data.data;
+      if (lastPollTime) {
+        newFollowers = newFollowers.filter(f => new Date(f.followed_at) > lastPollTime);
+      } else if (data.data.length > 0) {
+        lastPollTime = new Date(data.data[0].followed_at);
+        newFollowers = [];
+      }
+      if (newFollowers.length > 0) {
+        newFollowers.forEach(f => {
+          console.log('[Poll] New Follower:', f);
+          if (win && win.webContents) {
+            win.webContents.send('twitch-eventsub', { type: 'poll.follow', event: f });
+          }
+        });
+      }
+      lastFollowerIds = data.data.map(f => f.user_id);
+      if (lastPollTime && now > lastPollTime) lastPollTime = now;
+    }
+  } catch (err) {
+    console.error('Error polling followers:', err);
+  }
+}
+
+async function subscribeEventSub(type, condition, sessionId) {
+  console.log('Subscribing to EventSub:', type, condition);
+  const response = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
+    method: 'POST',
+    headers: {
+      'Client-ID': twitch_ClientId,
+      'Authorization': `Bearer ${twitchToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      type,
+      version: '1',
+      condition,
+      transport: {
+        method: 'websocket',
+        session_id: sessionId
+      }
+    })
+  });
+  const data = await response.json();
+  if (data.error) {
+    console.error(`Failed to subscribe to ${type}:`, data);
+  } else {
+    console.log(`Subscription for ${type}:`, data);
+  }
+}
+
+function startTwitchEventSub({ username, oauth, twitch_ClientId}) {
+  console.log('Starting Twitch EventSub for user:', username);
+  twitchUserName = username;
+  twitchToken = oauth.replace('oauth:', '');
+
+  getUserId().then((userId) => {
+    twitchUserId = userId;
+    setInterval(pollFollowers, 30000);
+    pollFollowers();
+    const ws = new WebSocket('wss://eventsub.wss.twitch.tv/ws');
+    ws.on('open', () => {
+      console.log('EventSub WebSocket connected');
+    });
+    ws.on('message', async (data) => {
+      const msg = JSON.parse(data);
+      console.log('Raw EventSub message:', msg);
+      if (!eventSubSessionId && msg.metadata && msg.metadata.message_type === 'session_welcome') {
+        eventSubSessionId = msg.payload.session.id;
+        console.log('Session ID:', eventSubSessionId);
+      }
+      if (eventSubSessionId && !eventSubRegistered) {
+        eventSubRegistered = true;
+        const events = [
+          { type: 'channel.channel_points_custom_reward_redemption.add', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.subscribe', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.subscription.gift', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.subscription.message', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.follow', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.raid', condition: { to_broadcaster_user_id: twitchUserId } },
+          { type: 'channel.cheer', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.ban', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.unban', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.moderator.add', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.moderator.remove', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.poll.begin', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.poll.progress', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.poll.end', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.prediction.begin', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.prediction.progress', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.prediction.lock', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.prediction.end', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.hype_train.begin', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.hype_train.progress', condition: { broadcaster_user_id: twitchUserId } },
+          { type: 'channel.hype_train.end', condition: { broadcaster_user_id: twitchUserId } },
+        ];
+        for (const event of events) {
+          await subscribeEventSub(event.type, event.condition, eventSubSessionId);
+        }
+      }
+      if (msg.metadata && msg.payload && msg.payload.subscription) {
+        const type = msg.payload.subscription.type;
+        const eventData = msg.payload.event;
+        if (win && win.webContents) {
+          win.webContents.send('twitch-eventsub', { type, event: eventData });
+        }
+        console.log(`[EventSub] ${type}:`, eventData);
+      }
+    });
+    ws.on('error', (err) => {
+      console.error('EventSub WebSocket error:', err);
+    });
+    ws.on('close', () => {
+      console.log('EventSub WebSocket closed');
+    });
+  }).catch((err) => {
+    console.error('Failed to get userId:', err);
+  });
+}
+
+ipcMain.on('twitch-eventsub-connect', (event, creds) => {
+  startTwitchEventSub(creds);
+});
+
 function registerHotkeys() {
   globalShortcut.unregisterAll();
   const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
@@ -396,4 +628,4 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
-}); 
+});
