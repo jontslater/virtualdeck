@@ -1,3 +1,4 @@
+//const twitchConnected = require('./TwitchConnected/tc.js');
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -14,4 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   resolveShortcut: async (shortcutPath) => ipcRenderer.invoke('resolve-shortcut', shortcutPath),
   launchApp: (appData) => ipcRenderer.send('launch-app', appData),
   getAppIcon: async (filePath) => ipcRenderer.invoke('get-app-icon', filePath),
-}); 
+  sendTwitchConnect: (creds) => ipcRenderer.send('twitch-connect', creds),
+  onTwitchConnected: (callback) => ipcRenderer.on('twitch-connected', callback),
+  sendTwitchEventSubConnect: (creds) => ipcRenderer.send('twitch-eventsub-connect', creds),
+  onTwitchEventSub: (callback) => ipcRenderer.on('twitch-eventsub', (event, eventData) => callback(eventData)),
+});

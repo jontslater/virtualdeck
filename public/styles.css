@@ -278,6 +278,36 @@ body {
   background: #ff6666;
 }
 
+/* Twitch Connect button styled as a square, matching close-app-btn */
+.twitch-btn {
+  position: fixed;
+  top: 10px;
+  right: 60px;
+  background: #ff4444;
+  border: none;
+  color: white;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.twitch-btn:hover {
+  background: #ff6666;
+}
+.twitch-btn img {
+  height: 28px;
+  width: 28px;
+  margin: 0;
+  vertical-align: middle;
+  display: block;
+}
+
 #record-hotkey {
   margin-left: 10px;
   padding: 5px 10px;
@@ -447,4 +477,4 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   border-radius: 8px;
   background: #eee;
   object-fit: contain;
-} 
+}
