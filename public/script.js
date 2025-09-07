@@ -255,7 +255,18 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   }
 
   document.getElementById('settings-modal').classList.add('hidden');
-  setTimeout(() => window.location.reload(), 500); // Reload to update buttons
+  // Refresh buttons in-place to avoid a full reload which triggers auto-reconnect to Twitch
+  setTimeout(() => {
+    try {
+      loadButtons();
+      // Re-enable hotkeys after closing modal
+      if (window.electronAPI && window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+    } catch (e) {
+      // Fallback to full reload if something goes wrong
+      console.error('In-place refresh failed, falling back to full reload:', e);
+      window.location.reload();
+    }
+  }, 200);
 };
 
 window.editButton = async (index) => {
