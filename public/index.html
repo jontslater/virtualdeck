@@ -13,11 +13,81 @@
   <div class="container">
     <img src="logo.png" alt="Virtual Deck Logo" class="app-logo" />
     <div class="hotkey-info">
-      <strong>Supported Hotkeys:</strong> F1-F12, 1-0 (number row only, not numpad)
+      <strong>Numpad Currently Not supported</strong>
     </div>
+    <button id="twitch-connect" class="twitch-btn"></button>
     <button id="close-app" class="close-app-btn">✕</button>
-    <div id="sound-grid"></div>
-    <!-- Removed static Add Sound card -->
+    
+    <!-- Main Content Area -->
+    <!-- Twitch Statistics Display -->
+    <div id="twitch-stats-container" class="hidden">
+      <div class="stats-grid">
+        <div class="stat-item" data-stat="viewers">
+          <div class="stat-content">
+            <div class="stat-label">Viewers</div>
+            <div class="stat-value" id="viewer-count">-</div>
+          </div>
+        </div>
+        <div class="stat-item" data-stat="followers">
+          <div class="stat-content">
+            <div class="stat-label">Followers</div>
+            <div class="stat-value" id="follower-count">-</div>
+          </div>
+        </div>
+        <div class="stat-item" data-stat="subscribers">
+          <div class="stat-content">
+            <div class="stat-label">Subscribers</div>
+            <div class="stat-value" id="subscriber-count">-</div>
+          </div>
+        </div>
+        <div class="stat-item" data-stat="subpoints">
+          <div class="stat-content">
+            <div class="stat-label">Sub Points</div>
+            <div class="stat-value" id="sub-points">-</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Activity Display -->
+    <div id="recent-activity-container" class="hidden">
+      <div class="recent-activity-simple">
+        <div class="recent-item-simple">
+          <div class="recent-label">Latest Follower:</div>
+          <div class="recent-value" id="latest-follower">-</div>
+        </div>
+        <div class="recent-item-simple">
+          <div class="recent-label">Latest Subscriber:</div>
+          <div class="recent-value" id="latest-subscriber">-</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sound-controls">
+      <button id="toggle-drag-mode" class="drag-toggle-btn" title="Toggle Drag Mode">
+        🔒 Lock
+      </button>
+      <span class="drag-status">Sound buttons are locked</span>
+    </div>
+    
+    <div class="main-content">
+      <div id="sound-grid"></div>
+      <!-- Removed static Add Sound card -->
+      
+      <!-- Twitch Chat Display -->
+      <div id="twitch-chat-container">
+        <div class="chat-header">
+        <div class="chat-title-section">
+          <span class="chat-title">Twitch Chat</span>
+          <div id="chat-status-indicator" class="status-indicator" title="Checking connection..."></div>
+        </div>
+        <div class="chat-controls">
+          <button id="toggle-chat" class="toggle-chat-btn">−</button>
+        </div>
+        </div>
+        <div id="twitch-chat-messages" class="chat-messages"></div>
+      </div>
+    </div>
   </div>
 
   <div id="settings-modal" class="hidden">
@@ -37,7 +107,7 @@
           <button type="button" id="record-hotkey">Record Hotkey</button>
           <div id="hotkey-status"></div>
           <div class="hotkey-help">
-            <small>Supported: F1-F12, 1-0 (number row only, not numpad)</small>
+            <small>Supported: F1-F12, 1-0 (number row only, numpad not currently supported)</small>
           </div>
           <div class="modifier-keys">
             <label><input type="checkbox" id="ctrl-required-checkbox" name="ctrl-required"> Ctrl</label>
@@ -62,5 +132,6 @@
     </div>
   </div>
   <script src="script.js"></script>
+  <script src="../TwitchConnected/tc.js"></script>
 </body>
 </html> 
