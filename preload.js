@@ -38,6 +38,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkUserVip: async (username) => ipcRenderer.invoke('check-user-vip', username),
   checkUserMod: async (username) => ipcRenderer.invoke('check-user-mod', username),
   checkUserSubTier: async (username) => ipcRenderer.invoke('check-user-sub-tier', username),
+  // Get channel statistics
+  getViewerCount: async () => ipcRenderer.invoke('get-viewer-count'),
+  getFollowerCount: async () => ipcRenderer.invoke('get-follower-count'),
+  getSubscriberStats: async () => ipcRenderer.invoke('get-subscriber-stats'),
+  // Get recent activity
+  getRecentFollowers: async () => ipcRenderer.invoke('get-recent-followers'),
+  getRecentSubscribers: async () => ipcRenderer.invoke('get-recent-subscribers'),
   hasTwitchCreds: async () => ipcRenderer.invoke('has-twitch-creds'),
   // Clear stored Twitch credentials and shutdown connections
   clearTwitchCreds: (opts) => ipcRenderer.send('twitch-clear-creds', opts || {}),

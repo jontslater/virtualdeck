@@ -73,7 +73,7 @@ let win;
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 800,
+    width: 1000,
     height: 800,
     alwaysOnTop: true,
     frame: false,
@@ -434,6 +434,92 @@ ipcMain.handle('check-user-subscriber', async (event, username) => {
   }
 });
 
+// IPC: get current viewer count for the channel
+ipcMain.handle('get-viewer-count', async () => {
+  try {
+    if (!twitchUserId) await getUserId();
+    if (!twitchClientId || !twitchToken) return 0;
+    
+    const resp = await fetch(`https://api.twitch.tv/helix/streams?user_id=${encodeURIComponent(twitchUserId)}`, {
+      headers: {
+        'Client-ID': twitchClientId,
+        'Authorization': `Bearer ${twitchToken}`
+      }
+    });
+    const data = await resp.json();
+    if (data.data && data.data.length > 0) {
+      return data.data[0].viewer_count || 0;
+    }
+    return 0;
+  } catch (err) {
+    console.error('Error fetching viewer count:', err);
+    return 0;
+  }
+});
+
+// IPC: get total follower count for the channel
+ipcMain.handle('get-follower-count', async () => {
+  try {
+    if (!twitchUserId) await getUserId();
+    if (!twitchClientId || !twitchToken) return 0;
+    
+    const resp = await fetch(`https://api.twitch.tv/helix/channels/followers?broadcaster_id=${encodeURIComponent(twitchUserId)}&first=1`, {
+      headers: {
+        'Client-ID': twitchClientId,
+        'Authorization': `Bearer ${twitchToken}`
+      }
+    });
+    const data = await resp.json();
+    return data.total || 0;
+  } catch (err) {
+    console.error('Error fetching follower count:', err);
+    return 0;
+  }
+});
+
+// IPC: get total subscriber count and subscription points for the channel
+ipcMain.handle('get-subscriber-stats', async () => {
+  try {
+    if (!twitchUserId) await getUserId();
+    if (!twitchClientId || !twitchToken) return { count: 0, points: 0 };
+    
+    let totalCount = 0;
+    let totalPoints = 0;
+    let cursor = '';
+    
+    do {
+      const url = `https://api.twitch.tv/helix/subscriptions?broadcaster_id=${encodeURIComponent(twitchUserId)}&first=100${cursor ? `&after=${cursor}` : ''}`;
+      const resp = await fetch(url, {
+        headers: {
+          'Client-ID': twitchClientId,
+          'Authorization': `Bearer ${twitchToken}`
+        }
+      });
+      const data = await resp.json();
+      
+      if (data.data) {
+        totalCount += data.data.length;
+        
+        // Calculate subscription points
+        data.data.forEach(sub => {
+          const tier = sub.tier || '1000'; // Default to tier 1 if not specified
+          if (tier === '1000') totalPoints += 1;      // Tier 1
+          else if (tier === '2000') totalPoints += 2;  // Tier 2
+          else if (tier === '3000') totalPoints += 6;  // Tier 3
+          else if (tier === 'prime') totalPoints += 1; // Prime
+        });
+      }
+      
+      cursor = data.pagination?.cursor || '';
+    } while (cursor);
+    
+    return { count: totalCount, points: totalPoints };
+  } catch (err) {
+    console.error('Error fetching subscriber stats:', err);
+    return { count: 0, points: 0 };
+  }
+});
+
 // IPC: get a user's subscription tier (best-effort). Returns 'tier1','tier2','tier3','prime','any' or null
 ipcMain.handle('check-user-sub-tier', async (event, username) => {
   try {
@@ -481,6 +567,46 @@ ipcMain.handle('check-user-sub-tier', async (event, username) => {
 // Simple cache for check-user-sub-tier to reduce Helix calls: Map<lowercaseUsername, {tier, ts}>
 const subTierCache = new Map();
 const SUB_TIER_CACHE_TTL = 60 * 1000; // 60s
+
+// IPC: get recent followers (last 10)
+ipcMain.handle('get-recent-followers', async () => {
+  try {
+    if (!twitchUserId) await getUserId();
+    if (!twitchClientId || !twitchToken) return [];
+    
+    const resp = await fetch(`https://api.twitch.tv/helix/channels/followers?broadcaster_id=${encodeURIComponent(twitchUserId)}&first=10`, {
+      headers: {
+        'Client-ID': twitchClientId,
+        'Authorization': `Bearer ${twitchToken}`
+      }
+    });
+    const data = await resp.json();
+    return data.data || [];
+  } catch (err) {
+    console.error('Error fetching recent followers:', err);
+    return [];
+  }
+});
+
+// IPC: get recent subscribers (last 10)
+ipcMain.handle('get-recent-subscribers', async () => {
+  try {
+    if (!twitchUserId) await getUserId();
+    if (!twitchClientId || !twitchToken) return [];
+    
+    const resp = await fetch(`https://api.twitch.tv/helix/subscriptions?broadcaster_id=${encodeURIComponent(twitchUserId)}&first=10`, {
+      headers: {
+        'Client-ID': twitchClientId,
+        'Authorization': `Bearer ${twitchToken}`
+      }
+    });
+    const data = await resp.json();
+    return data.data || [];
+  } catch (err) {
+    console.error('Error fetching recent subscribers:', err);
+    return [];
+  }
+});
 
 // Expose whether Twitch credentials are present for UI warnings
 ipcMain.handle('has-twitch-creds', async () => {
@@ -717,7 +843,8 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
       win.webContents.send('twitch-chat-event', {
         type: 'chat',
         user: tags.username,
-        message
+        message,
+        badges: tags.badges || {}
       });
     }
     // Trigger command type buttons if message starts with '!'
@@ -1381,7 +1508,12 @@ ipcMain.on('twitch-fake-event', (event, evt) => {
   // Forward to renderer as if it came from twitch
   if (win && win.webContents) {
     if (evt.type === 'chat') {
-      win.webContents.send('twitch-chat-event', { type: 'chat', user: evt.user, message: evt.message });
+      win.webContents.send('twitch-chat-event', { 
+        type: 'chat', 
+        user: evt.user, 
+        message: evt.message,
+        badges: evt.badges || {}
+      });
       // also run command matching logic to trigger media
       if (evt.message && evt.message.startsWith('!')) {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
