@@ -10,6 +10,37 @@
 <body>
   <div id="global-drop-zone" class="hidden">Drop files here</div>
   <div id="move-bar">⇱ Move</div>
+  
+  <!-- Component Visibility Dropdown -->
+  <div id="visibility-dropdown" class="visibility-dropdown">
+    <button id="visibility-toggle" class="visibility-toggle-btn">⚙️ Components</button>
+    <div id="visibility-menu" class="visibility-menu hidden">
+      <div class="visibility-header">Show/Hide Components</div>
+      <label class="visibility-item">
+        <input type="checkbox" id="toggle-sound-grid" checked> Sound Grid
+      </label>
+      <label class="visibility-item">
+        <input type="checkbox" id="toggle-twitch-stats" checked> Twitch Statistics
+      </label>
+      <label class="visibility-item">
+        <input type="checkbox" id="toggle-recent-activity" checked> Recent Activity
+      </label>
+      <label class="visibility-item">
+        <input type="checkbox" id="toggle-twitch-chat" checked> Twitch Chat
+      </label>
+      <label class="visibility-item">
+        <input type="checkbox" id="toggle-sound-controls" checked> Sound Controls
+      </label>
+      <label class="visibility-item">
+        <input type="checkbox" id="toggle-move-bar" checked> Move Bar
+      </label>
+      <div class="visibility-actions">
+        <button id="hide-all-components" class="visibility-action-btn">Hide All</button>
+        <button id="show-all-components" class="visibility-action-btn">Show All</button>
+      </div>
+    </div>
+  </div>
+  
   <div class="container">
     <img src="logo.png" alt="Virtual Deck Logo" class="app-logo" />
     <div class="hotkey-info">
@@ -63,7 +94,7 @@
       </div>
     </div>
 
-    <div class="sound-controls">
+    <div id="sound-controls" class="sound-controls">
       <button id="toggle-drag-mode" class="drag-toggle-btn" title="Toggle Drag Mode">
         🔒 Lock
       </button>
@@ -99,16 +130,13 @@
         <label>Type:
           <select name="type" id="type-select">
             <option value="audio">Audio</option>
-            <option value="app">App</option>
+            <!-- <option value="app">App</option> -->
           </select>
         </label><br>
         <label>Hotkey: 
           <input type="text" name="hotkey" id="hotkey-input" placeholder="Click 'Record Hotkey' to set" readonly />
           <button type="button" id="record-hotkey">Record Hotkey</button>
           <div id="hotkey-status"></div>
-          <div class="hotkey-help">
-            <small>Supported: F1-F12, 1-0 (number row only, numpad not currently supported)</small>
-          </div>
           <div class="modifier-keys">
             <label><input type="checkbox" id="ctrl-required-checkbox" name="ctrl-required"> Ctrl</label>
             <label><input type="checkbox" id="alt-required-checkbox" name="alt-required"> Alt</label>
