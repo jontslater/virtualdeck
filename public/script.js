@@ -296,9 +296,9 @@ function initializeChatDisplay() {
   const statusIndicator = document.getElementById('chat-status-indicator');
   const chatMessagesContainer = document.getElementById('twitch-chat-messages');
   
-  // Start with chat collapsed
+  // Start with chat collapsed (not hidden)
   if (chatContainer) {
-    chatContainer.classList.add('hidden');
+    chatContainer.classList.add('collapsed');
   }
   
   // Initialize status indicator
@@ -350,8 +350,8 @@ function initializeChatDisplay() {
   
   if (toggleBtn) {
     toggleBtn.addEventListener('click', () => {
-      chatContainer.classList.toggle('hidden');
-      toggleBtn.textContent = chatContainer.classList.contains('hidden') ? '+' : '−';
+      chatContainer.classList.toggle('collapsed');
+      toggleBtn.textContent = chatContainer.classList.contains('collapsed') ? '+' : '−';
     });
   }
   
@@ -486,8 +486,10 @@ function updateChatVisibility(isConnected) {
   if (chatContainer) {
     if (isConnected) {
       chatContainer.classList.remove('hidden');
+      chatContainer.classList.add('collapsed'); // Start collapsed when connected
     } else {
       chatContainer.classList.add('hidden');
+      chatContainer.classList.remove('collapsed');
     }
   }
 }
@@ -640,6 +642,143 @@ initializeChatDisplay();
 // Initialize drag and drop
 initializeDragAndDrop();
 
+// Initialize component visibility dropdown
+initializeVisibilityDropdown();
+
+// Component Visibility Dropdown Functions
+function initializeVisibilityDropdown() {
+  console.log('Initializing visibility dropdown...'); // Debug log
+  
+  const toggleBtn = document.getElementById('visibility-toggle');
+  const menu = document.getElementById('visibility-menu');
+  
+  console.log('Toggle button found:', !!toggleBtn); // Debug log
+  console.log('Menu found:', !!menu); // Debug log
+  const checkboxes = {
+    'toggle-sound-grid': 'sound-grid',
+    'toggle-twitch-stats': 'twitch-stats-container',
+    'toggle-recent-activity': 'recent-activity-container',
+    'toggle-twitch-chat': 'twitch-chat-container',
+    'toggle-sound-controls': 'sound-controls',
+    'toggle-move-bar': 'move-bar'
+  };
+
+  // Toggle dropdown menu visibility
+  if (toggleBtn && menu) {
+    toggleBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      console.log('Visibility toggle clicked'); // Debug log
+      menu.classList.toggle('hidden');
+    });
+    
+    // Also handle mousedown to prevent drag interference
+    toggleBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    });
+  }
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (menu && !menu.contains(e.target) && !toggleBtn.contains(e.target)) {
+      menu.classList.add('hidden');
+    }
+  });
+
+  // Handle individual component toggles
+  Object.keys(checkboxes).forEach(checkboxId => {
+    const checkbox = document.getElementById(checkboxId);
+    const componentId = checkboxes[checkboxId];
+    
+    if (checkbox && componentId) {
+      checkbox.addEventListener('change', (e) => {
+        e.stopPropagation();
+        const component = document.getElementById(componentId);
+        if (component) {
+          if (checkbox.checked) {
+            component.classList.remove('hidden');
+            // Special handling for chat container - restore to collapsed state when shown
+            if (componentId === 'twitch-chat-container') {
+              component.classList.add('collapsed');
+            }
+            console.log(`Showing ${componentId}`); // Debug log
+          } else {
+            component.classList.add('hidden');
+            // Remove collapsed class when hiding to avoid conflicts
+            if (componentId === 'twitch-chat-container') {
+              component.classList.remove('collapsed');
+            }
+            console.log(`Hiding ${componentId}`); // Debug log
+          }
+        }
+      });
+      
+      // Also handle click on the label
+      const label = checkbox.closest('.visibility-item');
+      if (label) {
+        label.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          checkbox.checked = !checkbox.checked;
+          checkbox.dispatchEvent(new Event('change'));
+        });
+      }
+    }
+  });
+
+  // Handle "Hide All" button
+  const hideAllBtn = document.getElementById('hide-all-components');
+  if (hideAllBtn) {
+    hideAllBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('Hide All clicked'); // Debug log
+      Object.keys(checkboxes).forEach(checkboxId => {
+        const checkbox = document.getElementById(checkboxId);
+        if (checkbox) {
+          checkbox.checked = false;
+          const componentId = checkboxes[checkboxId];
+          const component = document.getElementById(componentId);
+          if (component) {
+            component.classList.add('hidden');
+            // Remove collapsed class when hiding chat to avoid conflicts
+            if (componentId === 'twitch-chat-container') {
+              component.classList.remove('collapsed');
+            }
+          }
+        }
+      });
+    });
+  }
+
+  // Handle "Show All" button
+  const showAllBtn = document.getElementById('show-all-components');
+  if (showAllBtn) {
+    showAllBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('Show All clicked'); // Debug log
+      Object.keys(checkboxes).forEach(checkboxId => {
+        const checkbox = document.getElementById(checkboxId);
+        if (checkbox) {
+          checkbox.checked = true;
+          const componentId = checkboxes[checkboxId];
+          const component = document.getElementById(componentId);
+          if (component) {
+            component.classList.remove('hidden');
+            // Restore chat to collapsed state when showing
+            if (componentId === 'twitch-chat-container') {
+              component.classList.add('collapsed');
+            }
+          }
+        }
+      });
+    });
+  }
+}
 
 // Initialize stats display
 initializeStatsDisplay();
@@ -1085,6 +1224,7 @@ window.electronAPI.onTwitchConnected(() => {
   const chatContainer = document.getElementById('twitch-chat-container');
   if (chatContainer) {
     chatContainer.classList.remove('hidden');
+    chatContainer.classList.remove('collapsed'); // Expand when connected
     const toggleBtn = document.getElementById('toggle-chat');
     if (toggleBtn) {
       toggleBtn.textContent = '−';
@@ -1453,17 +1593,57 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // Move App Button: Hold to move the window
 window.addEventListener('DOMContentLoaded', () => {
-  const moveBtn = document.getElementById('move-app-btn');
-  const container = document.querySelector('.container');
-  if (moveBtn && container) {
-    moveBtn.addEventListener('mousedown', () => {
-      container.classList.add('moving');
+  const moveBar = document.getElementById('move-bar');
+  if (moveBar) {
+    let isDragging = false;
+    let startX, startY;
+
+    moveBar.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      moveBar.classList.add('dragging');
+      
+      // Store initial mouse position relative to screen
+      startX = e.screenX;
+      startY = e.screenY;
+      
+      e.preventDefault();
+      e.stopPropagation();
     });
-    // Remove moving class on mouseup or mouseleave (anywhere on window)
-    const stopMoving = () => container.classList.remove('moving');
-    moveBtn.addEventListener('mouseup', stopMoving);
-    moveBtn.addEventListener('mouseleave', stopMoving);
-    window.addEventListener('mouseup', stopMoving);
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      
+      // Calculate movement delta
+      const deltaX = e.screenX - startX;
+      const deltaY = e.screenY - startY;
+      
+      // Only move if there's significant movement to avoid jitter
+      if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+        // Move the window by the delta amount
+        window.electronAPI.moveWindow({
+          x: deltaX,
+          y: deltaY
+        });
+        
+        // Update start position to current position
+        startX = e.screenX;
+        startY = e.screenY;
+      }
+      
+      e.preventDefault();
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        moveBar.classList.remove('dragging');
+      }
+    });
+
+    // Prevent context menu on move bar
+    moveBar.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
   }
 });
 

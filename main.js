@@ -215,6 +215,22 @@ ipcMain.on('close-app', () => {
   app.quit();
 });
 
+ipcMain.on('move-window', (event, delta) => {
+  if (win && !win.isDestroyed()) {
+    const [currentX, currentY] = win.getPosition();
+    win.setPosition(currentX + delta.x, currentY + delta.y);
+  }
+});
+
+ipcMain.handle('get-window-bounds', () => {
+  if (win && !win.isDestroyed()) {
+    const [x, y] = win.getPosition();
+    const [width, height] = win.getSize();
+    return { x, y, width, height };
+  }
+  return { x: 0, y: 0, width: 0, height: 0 };
+});
+
 ipcMain.on('refresh-hotkeys', () => {
   registerHotkeys();
 });

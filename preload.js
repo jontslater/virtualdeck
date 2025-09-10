@@ -54,4 +54,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onMappingSaveFailed: (callback) => ipcRenderer.on('mapping-save-failed', (event, payload) => callback(payload)),
   onMappingSaved: (callback) => ipcRenderer.on('mapping-saved', (event, payload) => callback(payload)),
   onMappingDeleted: (callback) => ipcRenderer.on('mapping-deleted', (event, payload) => callback(payload)),
+  moveWindow: (position) => ipcRenderer.send('move-window', position),
+  getWindowBounds: async () => ipcRenderer.invoke('get-window-bounds'),
 });

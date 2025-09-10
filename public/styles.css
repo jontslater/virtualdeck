@@ -16,7 +16,7 @@ body {
 .container {
   text-align: center;
   padding: 1.5vw;
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -92,6 +92,10 @@ body {
   overflow: visible;
   position: relative;
   min-height: 120px;
+}
+
+#sound-grid.hidden {
+  display: none !important;
 }
 
 .sound-card {
@@ -490,18 +494,120 @@ body {
   -webkit-app-region: drag;
 }
 
-/* When moving, make the whole container draggable */
-.container.moving {
-  -webkit-app-region: drag !important;
+/* Removed old moving class - now using proper drag handling */
+
+/* General hidden class */
+.hidden {
+  display: none !important;
+}
+
+/* Component Visibility Dropdown Styles */
+.visibility-dropdown {
+  position: fixed;
+  top: 10px;
+  right: 100px;
+  z-index: 3000;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+.visibility-toggle-btn {
+  background: #444;
+  color: #fff;
+  border: 1px solid #666;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  opacity: 0.85;
+}
+
+.visibility-toggle-btn:hover {
+  background: #555;
+  border-color: #777;
+  opacity: 1;
+}
+
+.visibility-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #222;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 200px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  z-index: 3001;
+  pointer-events: auto;
+}
+
+.visibility-menu.hidden {
+  display: none;
+}
+
+.visibility-header {
+  color: #fff;
+  font-weight: bold;
+  font-size: 14px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #444;
+}
+
+.visibility-item {
+  display: flex;
+  align-items: center;
+  color: #ccc;
+  font-size: 13px;
+  margin: 6px 0;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.visibility-item input[type="checkbox"] {
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+.visibility-item:hover {
+  color: #fff;
+}
+
+.visibility-actions {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #444;
+  display: flex;
+  gap: 8px;
+}
+
+.visibility-action-btn {
+  background: #444;
+  color: #fff;
+  border: 1px solid #666;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s ease;
+  flex: 1;
+}
+
+.visibility-action-btn:hover {
+  background: #555;
+  border-color: #777;
 }
 
 /* Prevent drag on interactive elements */
-button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-card, .edit-button, #settings-modal, #drop-zone, #twitch-chat-container, #twitch-chat-messages, .sound-controls, .drag-toggle-btn, .drag-status {
+button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-card, .edit-button, #settings-modal, #drop-zone, #twitch-chat-container, #twitch-chat-messages, .sound-controls, .drag-toggle-btn, .drag-status, .visibility-dropdown, .visibility-menu, .visibility-item {
   -webkit-app-region: no-drag;
 }
 
 #move-bar {
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
   position: fixed;
   top: 10px;
   left: 10px;
@@ -525,6 +631,18 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
 #move-bar:hover {
   background: #333;
   opacity: 1;
+}
+#move-bar.dragging {
+  background: #444;
+  cursor: grabbing;
+}
+
+#move-bar.hidden {
+  display: none !important;
+}
+
+#sound-controls.hidden {
+  display: none !important;
 }
 
 .app-logo {
@@ -605,11 +723,19 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
 }
 
 #twitch-chat-container.hidden {
+  display: none !important;
+}
+
+#twitch-chat-container.collapsed {
   width: 20vw;
   height: 2.5vh;
   min-height: 40px;
   overflow: hidden;
   transition: height 0.3s ease;
+}
+
+#twitch-chat-container.collapsed .chat-messages {
+  display: none;
 }
 
 #twitch-chat-container.hidden .chat-messages {
@@ -677,7 +803,7 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
 }
 
 #twitch-stats-container.hidden {
-  display: none;
+  display: none !important;
 }
 
 /* Removed stats header styles - no longer needed */
@@ -796,7 +922,7 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
 }
 
 #recent-activity-container.hidden {
-  display: none;
+  display: none !important;
 }
 
 .recent-activity-simple {
