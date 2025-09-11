@@ -50,6 +50,38 @@ function ensureUserData() {
     };
     fs.writeFileSync(tcConfigPath, JSON.stringify(defaultTc, null, 2));
   }
+  // Run migration to backfill button ids if missing
+  ensureButtonIds();
+}
+
+// Ensure each button in config has a stable unique id (migration/backfill)
+function ensureButtonIds() {
+  try {
+    if (!fs.existsSync(configPath)) return;
+    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    if (!Array.isArray(cfg.buttons)) return;
+    let changed = false;
+    const existingIds = new Set(cfg.buttons.filter(b => b && b.id).map(b => b.id));
+    for (let i = 0; i < cfg.buttons.length; i++) {
+      const b = cfg.buttons[i];
+      if (b && !b.id) {
+        // create a compact unique id
+        let newId;
+        do {
+          newId = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+        } while (existingIds.has(newId));
+        b.id = newId;
+        existingIds.add(newId);
+        changed = true;
+      }
+    }
+    if (changed) {
+      fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2));
+      console.log('Backfilled missing button ids in config.json');
+    }
+  } catch (err) {
+    console.error('Error ensuring button ids:', err);
+  }
 }
 
 function loadTcConfig() {
@@ -176,9 +208,15 @@ ipcMain.on('add-media', (event, data) => {
     args: data.args || undefined
   };
 
+  // Ensure each button has a stable unique id
   if (typeof data.editingIndex === 'number') {
+    // Preserve existing id if present
+    const existing = config.buttons[data.editingIndex];
+    if (existing && existing.id) newButton.id = existing.id;
+    else newButton.id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
     config.buttons[data.editingIndex] = newButton;
   } else {
+    newButton.id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
     config.buttons.push(newButton);
   }
 
