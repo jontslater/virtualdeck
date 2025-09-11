@@ -18,6 +18,16 @@ const MAX_CHAT_MESSAGES = 50;
 let isDragMode = false;
 let draggedElement = null;
 let dragStartIndex = -1;
+// Slot-drag state
+let vdDragState = {
+  draggingCard: null,
+  ghost: null,
+  fromIndex: -1,
+  activeSlot: null,
+  startX: 0,
+  startY: 0,
+  moved: false
+};
 
 // Helper function for smart auto-scroll
 function smartAutoScroll(chatMessagesContainer) {
@@ -104,132 +114,260 @@ function enableDragMode() {
       return;
     }
     
-    console.log('Setting up drag for card', index, card);
-    card.classList.add('draggable');
-    card.draggable = true;
-    card.dataset.index = index;
-    
-    // Remove click handlers temporarily
-    card.style.pointerEvents = 'auto';
-    
-    // Add drag event listeners
-    card.addEventListener('dragstart', handleDragStart);
-    card.addEventListener('dragend', handleDragEnd);
-    card.addEventListener('dragover', handleDragOver);
-    card.addEventListener('drop', handleDrop);
-    
-    console.log('Added drag listeners to card', index);
+  // Prepare card for external drag system (GSAP Draggable).
+  // Keep dataset index for ordering, but do NOT enable native draggable or add listeners here.
+  card.dataset.index = index;
+  card.classList.remove('draggable', 'dragging', 'drag-over');
+  
+  // Attach pointerdown for slot-based dragging
+  if (!card._vdPointerDown) {
+    card._vdPointerDown = (e) => startPointerDrag(e, card);
+    card.addEventListener('pointerdown', card._vdPointerDown);
+  }
   });
+
+  // Create drop slots between cards
+  createSlots();
 }
 
 function disableDragMode() {
   const soundCards = document.querySelectorAll('.sound-card');
   soundCards.forEach(card => {
     // Skip the "Add Sound" card
-    if (card.id === 'add-sound-card') {
-      return;
-    }
-    
+    if (card.id === 'add-sound-card') return;
     card.classList.remove('draggable', 'dragging', 'drag-over');
-    card.draggable = false;
-    card.style.pointerEvents = 'auto';
-    
-    // Remove drag event listeners
-    card.removeEventListener('dragstart', handleDragStart);
-    card.removeEventListener('dragend', handleDragEnd);
-    card.removeEventListener('dragover', handleDragOver);
-    card.removeEventListener('drop', handleDrop);
+    // leave pointer events/default behavior to GSAP Draggable or CSS
+    // Remove pointer handlers attached in enableDragMode
+    if (card._vdPointerDown) {
+      card.removeEventListener('pointerdown', card._vdPointerDown);
+      delete card._vdPointerDown;
+    }
   });
+
+  // Remove drop slots and any ghost
+  removeSlots();
 }
 
-function handleDragStart(e) {
-  console.log('handleDragStart called, isDragMode:', isDragMode, 'target:', e.target);
-  
-  if (!isDragMode) {
-    console.log('Not in drag mode, returning');
-    return;
+// ----- Slot creation/removal -----
+function createSlots() {
+  removeSlots();
+  const grid = document.getElementById('sound-grid');
+  if (!grid) return;
+
+  const cards = Array.from(grid.querySelectorAll('.sound-card'));
+  const gridRect = grid.getBoundingClientRect();
+
+  // Create a slot before the first real sound card (skip the Add card)
+  const firstRealIndex = cards.findIndex(c => c.id !== 'add-sound-card');
+  if (firstRealIndex !== -1) {
+    const firstCard = cards[firstRealIndex];
+    const firstRect = firstCard.getBoundingClientRect();
+    const slotWidth = 10;
+    const slotHeight = Math.max(...cards.map(c => c.getBoundingClientRect().height)) - 8 || (firstRect.height - 8);
+    // Place slot slightly to the left of the first real card
+  let x = (firstRect.left - slotWidth - 8) - gridRect.left + 6; // nudge right by 10px
+    if (x < 4) x = 4; // keep inside grid
+    const y = ((firstRect.top + firstRect.bottom) / 2) - gridRect.top;
+    const preSlot = document.createElement('div');
+    preSlot.className = 'drop-slot';
+    preSlot.dataset.nextCardIndex = firstRealIndex; // insert before this card
+    preSlot.style.position = 'absolute';
+    preSlot.style.width = slotWidth + 'px';
+    preSlot.style.height = slotHeight + 'px';
+    preSlot.style.left = (x) + 'px';
+    preSlot.style.top = (y - slotHeight / 2) + 'px';
+    grid.appendChild(preSlot);
   }
-  
-  // Skip the "Add Sound" card
-  if (e.target.id === 'add-sound-card') {
-    console.log('Skipping add-sound-card');
-    e.preventDefault();
-    return false;
+
+  // Create an absolutely-positioned slot between adjacent cards (won't affect layout)
+  for (let i = 0; i < cards.length - 1; i++) {
+    const leftCard = cards[i];
+    const rightCard = cards[i + 1];
+
+    // Skip slots adjacent to the Add card (so Add remains visually isolated)
+    if (leftCard.id === 'add-sound-card' || rightCard.id === 'add-sound-card') continue;
+
+    const leftRect = leftCard.getBoundingClientRect();
+    const rightRect = rightCard.getBoundingClientRect();
+
+    // midpoint between the two card centers
+    const x = ((leftRect.right + rightRect.left) / 2) - gridRect.left;
+    const y = ((leftRect.top + leftRect.bottom) / 2) - gridRect.top;
+
+    const slot = document.createElement('div');
+    slot.className = 'drop-slot';
+    slot.dataset.nextCardIndex = i + 1; // insertion before card at i+1
+    slot.style.position = 'absolute';
+    // center the slot vertically at y, and horizontally around x
+    const slotWidth = 10;
+    const slotHeight = Math.max(leftRect.height, rightRect.height) - 8;
+    slot.style.width = slotWidth + 'px';
+    slot.style.height = slotHeight + 'px';
+    slot.style.left = (x - slotWidth / 2) + 'px';
+    slot.style.top = (y - slotHeight / 2) + 'px';
+    grid.appendChild(slot);
   }
-  
-  console.log('Starting drag for:', e.target);
-  
-  // Don't prevent default here - we need the drag to start
-  e.stopPropagation();
-  e.stopImmediatePropagation();
-  
-  draggedElement = e.target;
-  dragStartIndex = parseInt(e.target.dataset.index);
-  e.target.classList.add('dragging');
-  
-  // Set drag effect
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/html', e.target.outerHTML);
-  
-  console.log('Drag started successfully');
-  return false;
+
+  // reposition on window resize
+  window.addEventListener('resize', repositionSlots);
 }
 
-function handleDragEnd(e) {
-  if (!isDragMode) return;
-  
-  // Prevent window drag interference
-  e.preventDefault();
-  e.stopPropagation();
-  e.stopImmediatePropagation();
-  
-  e.target.classList.remove('dragging');
-  
-  // Remove drag-over class from all cards
-  const soundCards = document.querySelectorAll('.sound-card');
-  soundCards.forEach(card => card.classList.remove('drag-over'));
-  
-  draggedElement = null;
-  dragStartIndex = -1;
-  
-  return false;
+function removeSlots() {
+  const slots = document.querySelectorAll('#sound-grid .drop-slot');
+  slots.forEach(s => s.remove());
+  // Clean up any ghost
+  if (vdDragState.ghost && vdDragState.ghost.parentNode) {
+    vdDragState.ghost.parentNode.removeChild(vdDragState.ghost);
+  }
+  vdDragState = { draggingCard: null, ghost: null, fromIndex: -1, activeSlot: null, startX: 0, startY: 0, moved: false };
+  window.removeEventListener('resize', repositionSlots);
 }
 
-function handleDragOver(e) {
-  if (!isDragMode) return;
-  
-  // Prevent window drag interference
-  e.preventDefault();
-  e.stopPropagation();
-  e.stopImmediatePropagation();
-  
-  e.dataTransfer.dropEffect = 'move';
-  
-  // Add visual feedback
-  e.target.classList.add('drag-over');
-  
-  return false;
+function repositionSlots() {
+  // recreate slots to reposition accurately
+  const grid = document.getElementById('sound-grid');
+  if (!grid) return;
+  // simply recreate slots
+  createSlots();
 }
 
-function handleDrop(e) {
-  if (!isDragMode) return;
-  
-  // Prevent window drag interference
+// ----- Pointer drag handlers -----
+function startPointerDrag(e, card) {
+  // Only left button (or primary pointer)
+  if (e.button !== undefined && e.button !== 0) return;
+  // Ignore interactions with edit/delete buttons
+  if (e.target.classList.contains('edit-button') || e.target.classList.contains('delete-x-button')) return;
+  // Ignore Add card
+  if (card.id === 'add-sound-card') return;
+
   e.preventDefault();
-  e.stopPropagation();
-  e.stopImmediatePropagation();
-  
-  e.target.classList.remove('drag-over');
-  
-  const dropIndex = parseInt(e.target.dataset.index);
-  
-  if (dragStartIndex === -1 || dragStartIndex === dropIndex) return;
-  
-  // Reorder the buttons
-  reorderButtons(dragStartIndex, dropIndex);
-  
-  return false;
+  card.setPointerCapture && card.setPointerCapture(e.pointerId);
+
+  vdDragState.draggingCard = card;
+  vdDragState.fromIndex = parseInt(card.dataset.index || '-1');
+  vdDragState.startX = e.clientX;
+  vdDragState.startY = e.clientY;
+  vdDragState.moved = false;
+
+  // Create ghost
+  const ghost = card.cloneNode(true);
+  ghost.classList.add('drag-ghost');
+  ghost.style.position = 'fixed';
+  ghost.style.left = `${e.clientX - 40}px`;
+  ghost.style.top = `${e.clientY - 20}px`;
+  ghost.style.width = `${card.offsetWidth}px`;
+  ghost.style.height = `${card.offsetHeight}px`;
+  ghost.style.zIndex = 9999;
+  document.body.appendChild(ghost);
+  vdDragState.ghost = ghost;
+
+  // Add global listeners
+  document.addEventListener('pointermove', onPointerMove);
+  document.addEventListener('pointerup', endPointerDrag);
+
+  // Prevent selection while dragging
+  document.body.style.userSelect = 'none';
 }
+
+function onPointerMove(e) {
+  if (!vdDragState.draggingCard) return;
+  const dx = e.clientX - vdDragState.startX;
+  const dy = e.clientY - vdDragState.startY;
+  if (!vdDragState.moved && Math.hypot(dx, dy) > 6) vdDragState.moved = true;
+
+  // Move ghost
+  if (vdDragState.ghost) {
+    vdDragState.ghost.style.left = `${e.clientX - 40}px`;
+    vdDragState.ghost.style.top = `${e.clientY - 20}px`;
+  }
+
+  // Detect slot under pointer
+  const elem = document.elementFromPoint(e.clientX, e.clientY);
+  let slot = null;
+  if (elem && elem.classList && elem.classList.contains('drop-slot')) slot = elem;
+
+  if (vdDragState.activeSlot && vdDragState.activeSlot !== slot) {
+    vdDragState.activeSlot.classList.remove('slot-active');
+    vdDragState.activeSlot = null;
+  }
+  if (slot && slot !== vdDragState.activeSlot) {
+    vdDragState.activeSlot = slot;
+    slot.classList.add('slot-active');
+  }
+}
+
+function endPointerDrag(e) {
+  if (!vdDragState.draggingCard) return cleanupDrag();
+
+  // Release pointer capture
+  try { vdDragState.draggingCard.releasePointerCapture && vdDragState.draggingCard.releasePointerCapture(e.pointerId); } catch (err) {}
+
+  // Decide target and perform DOM insertion, then persist order
+  if (vdDragState.activeSlot && vdDragState.moved) {
+    const slot = vdDragState.activeSlot;
+    const grid = document.getElementById('sound-grid');
+    const cards = Array.from(grid.querySelectorAll('.sound-card'));
+    const dragged = vdDragState.draggingCard;
+
+    // Determine nextCardIndex stored on slot (or compute from DOM)
+    let nextIndex = -1;
+    if (slot.dataset.nextCardIndex && slot.dataset.nextCardIndex !== '-1') {
+      nextIndex = parseInt(slot.dataset.nextCardIndex);
+    } else {
+      // fallback: find the next sibling element after slot
+      const nextEl = slot.nextElementSibling && slot.nextElementSibling.classList.contains('sound-card') ? slot.nextElementSibling : null;
+      nextIndex = nextEl ? Array.from(grid.querySelectorAll('.sound-card')).indexOf(nextEl) : -1;
+    }
+
+    // If nextIndex is -1, append to end
+    if (nextIndex === -1) {
+      grid.appendChild(dragged);
+    } else {
+      // Insert before the element currently at nextIndex
+      const targetEl = Array.from(grid.querySelectorAll('.sound-card'))[nextIndex];
+      if (targetEl) grid.insertBefore(dragged, targetEl);
+      else grid.appendChild(dragged);
+    }
+
+    // Mark the dragged card to suppress immediate click activation
+    try {
+      dragged._vdJustDragged = true;
+      setTimeout(() => { dragged._vdJustDragged = false; }, 150);
+    } catch (e) {}
+
+    // Update dataset.index for all cards and persist
+    Array.from(grid.querySelectorAll('.sound-card')).forEach((c, idx) => c.dataset.index = idx);
+    saveButtonOrder();
+  }
+
+  cleanupDrag();
+}
+
+function cleanupDrag() {
+  // Remove ghost
+  if (vdDragState.ghost && vdDragState.ghost.parentNode) vdDragState.ghost.parentNode.removeChild(vdDragState.ghost);
+  // Remove slot highlight
+  if (vdDragState.activeSlot) vdDragState.activeSlot.classList.remove('slot-active');
+  // Remove global listeners
+  document.removeEventListener('pointermove', onPointerMove);
+  document.removeEventListener('pointerup', endPointerDrag);
+  // Restore selection
+  document.body.style.userSelect = '';
+
+  // Reset state
+  vdDragState = { draggingCard: null, ghost: null, fromIndex: -1, activeSlot: null, startX: 0, startY: 0, moved: false };
+}
+
+function handleDragStart() {
+  // native dragstart intentionally disabled - GSAP Draggable handles dragging instead
+  return;
+}
+
+function handleDragEnd() { return; }
+
+function handleDragOver() { return; }
+
+function handleDrop() { return; }
 
 function reorderButtons(fromIndex, toIndex) {
   const soundGrid = document.getElementById('sound-grid');

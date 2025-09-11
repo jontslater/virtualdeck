@@ -83,7 +83,7 @@ function showTwitchConfigModal() {
         oauthToggle.addEventListener('click', () => {
           if (oauthInput.type === 'password') {
             oauthInput.type = 'text';
-            oauthToggle.textContent = '🙈';
+            oauthToggle.textContent = '😑';
             oauthToggle.setAttribute('aria-label', 'Hide token');
           } else {
             oauthInput.type = 'password';
@@ -98,7 +98,7 @@ function showTwitchConfigModal() {
         clientToggle.addEventListener('click', () => {
           if (clientInput.type === 'password') {
             clientInput.type = 'text';
-            clientToggle.textContent = '🙈';
+            clientToggle.textContent = '😑';
             clientToggle.setAttribute('aria-label', 'Hide client id');
           } else {
             clientInput.type = 'password';
