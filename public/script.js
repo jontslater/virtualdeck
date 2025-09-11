@@ -654,8 +654,9 @@ async function loadButtons() {
     settingsForm.reset();
     document.getElementById('hotkey-input').value = '';
     document.getElementById('hotkey-status').textContent = '';
-    // Fully clear all dataset properties for new record
-    delete settingsForm.dataset.editingIndex;
+  // Fully clear all dataset properties for new record
+  delete settingsForm.dataset.editingIndex;
+  delete settingsForm.dataset.editingId;
     delete settingsForm.dataset.resolvedPath;
     delete settingsForm.dataset.resolvedArgs;
     delete settingsForm.dataset.existingFile;
@@ -740,7 +741,13 @@ async function loadButtons() {
         // Suppress trigger if in drag mode or the card was just dragged
         if (isDragMode) return;
         if (card._vdJustDragged) return;
-        handleTrigger(button);
+        // Read fresh soundData from the DOM so edits/reorders take effect
+        try {
+          const sd = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
+          if (sd) handleTrigger(sd);
+        } catch (err) {
+          console.error('Failed to parse soundData on click:', err);
+        }
       }
     });
     soundGrid.appendChild(card);
@@ -1643,6 +1650,9 @@ window.editButton = async (index) => {
   const settingsForm = document.getElementById('settings-form');
   // Always set editingIndex for edit, and clear resolvedPath/existingFile for safety
   settingsForm.dataset.editingIndex = index;
+  // Store stable id for in-place updates
+  if (btn && btn.id) settingsForm.dataset.editingId = btn.id;
+  else delete settingsForm.dataset.editingId;
   delete settingsForm.dataset.resolvedPath;
   delete settingsForm.dataset.existingFile;
   // Replace file inputs to clear previous file references
@@ -2002,6 +2012,7 @@ function handleFileDrop(file) {
   hotkeyInput.value = '';
   hotkeyStatus.textContent = '';
   delete settingsForm.dataset.editingIndex;
+  delete settingsForm.dataset.editingId;
   document.querySelector('#settings-modal h2').textContent = 'Add New ' + (type === 'audio' ? 'Sound' : 'App');
   typeSelect.value = type;
 
