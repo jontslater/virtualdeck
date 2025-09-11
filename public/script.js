@@ -1468,6 +1468,7 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   const type = form.type.value;
   const hotkey = document.getElementById('hotkey-input').value.trim();
   const isEditing = form.dataset.editingIndex !== undefined;
+  let skipReload = false;
 
   // Get modifier checkboxes
   const ctrlRequired = document.getElementById('ctrl-required-checkbox').checked;
@@ -1521,6 +1522,28 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       editingIndex: parseInt(form.dataset.editingIndex)
     });
     window.electronAPI.refreshHotkeys();
+    // Update the displayed card in-place to avoid full re-render flash
+    try {
+      const editingId = form.dataset.editingId;
+      const updated = {
+        id: editingId,
+        label,
+        type,
+        src: existingFile,
+        hotkey: completeHotkey || undefined,
+        args: form.dataset.resolvedArgs || undefined
+      };
+      if (editingId) {
+        const card = document.querySelector(`.sound-card[data-button-id="${editingId}"]`);
+        if (card) {
+          card.dataset.soundData = JSON.stringify(updated);
+          const nameEl = card.querySelector('.sound-name'); if (nameEl) nameEl.textContent = updated.label;
+          const hotkeyEl = card.querySelector('.sound-hotkey'); if (hotkeyEl) hotkeyEl.textContent = updated.hotkey || 'No hotkey';
+          const typeEl = card.querySelector('.sound-type'); if (typeEl) typeEl.textContent = updated.type;
+        }
+      }
+    } catch (err) { console.error('In-place update failed:', err); }
+    skipReload = true;
   } else if (fileInput.files.length || resolvedPath) {
     // New file selected or resolved path from drag-and-drop
     console.log('Form submission - resolvedPath:', resolvedPath);
@@ -1564,6 +1587,30 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined
     });
     window.electronAPI.refreshHotkeys();
+    // If editing (with new file), update in-place using the computed targetPath
+    if (isEditing) {
+      try {
+        const editingId = form.dataset.editingId;
+        const updated = {
+          id: editingId,
+          label,
+          type,
+          src: targetPath,
+          hotkey: completeHotkey || undefined,
+          args: args || undefined
+        };
+        if (editingId) {
+          const card = document.querySelector(`.sound-card[data-button-id="${editingId}"]`);
+          if (card) {
+            card.dataset.soundData = JSON.stringify(updated);
+            const nameEl = card.querySelector('.sound-name'); if (nameEl) nameEl.textContent = updated.label;
+            const hotkeyEl = card.querySelector('.sound-hotkey'); if (hotkeyEl) hotkeyEl.textContent = updated.hotkey || 'No hotkey';
+            const typeEl = card.querySelector('.sound-type'); if (typeEl) typeEl.textContent = updated.type;
+          }
+        }
+      } catch (err) { console.error('In-place update failed:', err); }
+      skipReload = true;
+    }
   } else if (!isEditing) {
     // Only require file selection for new buttons, not when editing
     console.log('No file found and not editing - showing alert');
@@ -1572,17 +1619,22 @@ document.getElementById('settings-form').onsubmit = async (e) => {
 
   document.getElementById('settings-modal').classList.add('hidden');
   // Refresh buttons in-place to avoid a full reload which triggers auto-reconnect to Twitch
-  setTimeout(() => {
-    try {
-      loadButtons();
-      // Re-enable hotkeys after closing modal
-      if (window.electronAPI && window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
-    } catch (e) {
-      // Fallback to full reload if something goes wrong
-      console.error('In-place refresh failed, falling back to full reload:', e);
-      window.location.reload();
-    }
-  }, 200);
+  if (!skipReload) {
+    setTimeout(() => {
+      try {
+        loadButtons();
+        // Re-enable hotkeys after closing modal
+        if (window.electronAPI && window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+      } catch (e) {
+        // Fallback to full reload if something goes wrong
+        console.error('In-place refresh failed, falling back to full reload:', e);
+        window.location.reload();
+      }
+    }, 200);
+  } else {
+    // Re-enable hotkeys immediately when we've done an in-place update
+    if (window.electronAPI && window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+  }
 };
 
 window.editButton = async (index) => {
