@@ -179,7 +179,7 @@ function createSlots() {
     grid.appendChild(preSlot);
   }
 
-  // Create an absolutely-positioned slot between adjacent cards (won't affect layout)
+  // Create an absolutely-positioned slot between adjacen t cards (won't affect layout)
   for (let i = 0; i < cards.length - 1; i++) {
     const leftCard = cards[i];
     const rightCard = cards[i + 1];
@@ -688,18 +688,34 @@ async function loadButtons() {
   
   // Check for saved order
   const savedOrder = loadButtonOrder();
-  let orderedButtons = data.buttons;
-  
-  if (savedOrder && savedOrder.length === data.buttons.length) {
-    // Use saved order
-    orderedButtons = savedOrder;
+  let orderedButtons = data.buttons || [];
+
+  if (savedOrder && Array.isArray(savedOrder) && savedOrder.length > 0 && Array.isArray(data.buttons)) {
+    // Try to map saved UI order to authoritative config by id when possible
+    const configById = new Map((data.buttons || []).map(b => [b.id, b]));
+    const ordered = [];
+    const usedIds = new Set();
+
+    for (const s of savedOrder) {
+      if (s && s.id && configById.has(s.id)) {
+        ordered.push(configById.get(s.id));
+        usedIds.add(s.id);
+      }
+    }
+    // Append any remaining buttons from config that weren't in saved order
+    for (const b of data.buttons) {
+      if (!b || !b.id) continue;
+      if (!usedIds.has(b.id)) ordered.push(b);
+    }
+    if (ordered.length > 0) orderedButtons = ordered;
   }
   
   for (const [index, button] of orderedButtons.entries()) {
     const card = document.createElement("div");
     card.className = "sound-card";
     card.dataset.index = index;
-    card.dataset.soundData = JSON.stringify(button);
+  card.dataset.soundData = JSON.stringify(button);
+  if (button.id) card.dataset.buttonId = button.id;
     
     // Fetch icon for app buttons
     let iconImg = '';
@@ -712,8 +728,8 @@ async function loadButtons() {
       iconImg = `<img src="${iconData}" alt="App Icon" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;" />`;
     }
     card.innerHTML = `
-      <button class="edit-button" onclick="editButton(${index})">Edit</button>
-      <button class="delete-x-button" onclick="deleteButton(${index})" title="Delete">&times;</button>
+      <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
+      <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
       ${iconImg}
       <div class="sound-type">${button.type}</div>
       <div class="sound-name">${button.label}</div>
@@ -721,6 +737,9 @@ async function loadButtons() {
     `;
     card.addEventListener('click', (e) => {
       if (!e.target.classList.contains('edit-button') && !e.target.classList.contains('delete-x-button')) {
+        // Suppress trigger if in drag mode or the card was just dragged
+        if (isDragMode) return;
+        if (card._vdJustDragged) return;
         handleTrigger(button);
       }
     });
@@ -1414,6 +1433,11 @@ window.electronAPI.onTwitchCleared(() => {
 });
 
 async function handleTrigger(button) {
+  // Prevent accidental plays while editing/reordering
+  if (isDragMode) return;
+  // If caller passed a DOM element instead of button object, normalize
+  if (button && button._vdJustDragged) return;
+
   if (button.type === "audio") {
     const audioPath = await window.electronAPI.getSoundPath(button.src);
     const audio = new Audio(audioPath);
@@ -1444,6 +1468,7 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   const type = form.type.value;
   const hotkey = document.getElementById('hotkey-input').value.trim();
   const isEditing = form.dataset.editingIndex !== undefined;
+  let skipReload = false;
 
   // Get modifier checkboxes
   const ctrlRequired = document.getElementById('ctrl-required-checkbox').checked;
@@ -1497,6 +1522,28 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       editingIndex: parseInt(form.dataset.editingIndex)
     });
     window.electronAPI.refreshHotkeys();
+    // Update the displayed card in-place to avoid full re-render flash
+    try {
+      const editingId = form.dataset.editingId;
+      const updated = {
+        id: editingId,
+        label,
+        type,
+        src: existingFile,
+        hotkey: completeHotkey || undefined,
+        args: form.dataset.resolvedArgs || undefined
+      };
+      if (editingId) {
+        const card = document.querySelector(`.sound-card[data-button-id="${editingId}"]`);
+        if (card) {
+          card.dataset.soundData = JSON.stringify(updated);
+          const nameEl = card.querySelector('.sound-name'); if (nameEl) nameEl.textContent = updated.label;
+          const hotkeyEl = card.querySelector('.sound-hotkey'); if (hotkeyEl) hotkeyEl.textContent = updated.hotkey || 'No hotkey';
+          const typeEl = card.querySelector('.sound-type'); if (typeEl) typeEl.textContent = updated.type;
+        }
+      }
+    } catch (err) { console.error('In-place update failed:', err); }
+    skipReload = true;
   } else if (fileInput.files.length || resolvedPath) {
     // New file selected or resolved path from drag-and-drop
     console.log('Form submission - resolvedPath:', resolvedPath);
@@ -1540,6 +1587,30 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined
     });
     window.electronAPI.refreshHotkeys();
+    // If editing (with new file), update in-place using the computed targetPath
+    if (isEditing) {
+      try {
+        const editingId = form.dataset.editingId;
+        const updated = {
+          id: editingId,
+          label,
+          type,
+          src: targetPath,
+          hotkey: completeHotkey || undefined,
+          args: args || undefined
+        };
+        if (editingId) {
+          const card = document.querySelector(`.sound-card[data-button-id="${editingId}"]`);
+          if (card) {
+            card.dataset.soundData = JSON.stringify(updated);
+            const nameEl = card.querySelector('.sound-name'); if (nameEl) nameEl.textContent = updated.label;
+            const hotkeyEl = card.querySelector('.sound-hotkey'); if (hotkeyEl) hotkeyEl.textContent = updated.hotkey || 'No hotkey';
+            const typeEl = card.querySelector('.sound-type'); if (typeEl) typeEl.textContent = updated.type;
+          }
+        }
+      } catch (err) { console.error('In-place update failed:', err); }
+      skipReload = true;
+    }
   } else if (!isEditing) {
     // Only require file selection for new buttons, not when editing
     console.log('No file found and not editing - showing alert');
@@ -1548,17 +1619,22 @@ document.getElementById('settings-form').onsubmit = async (e) => {
 
   document.getElementById('settings-modal').classList.add('hidden');
   // Refresh buttons in-place to avoid a full reload which triggers auto-reconnect to Twitch
-  setTimeout(() => {
-    try {
-      loadButtons();
-      // Re-enable hotkeys after closing modal
-      if (window.electronAPI && window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
-    } catch (e) {
-      // Fallback to full reload if something goes wrong
-      console.error('In-place refresh failed, falling back to full reload:', e);
-      window.location.reload();
-    }
-  }, 200);
+  if (!skipReload) {
+    setTimeout(() => {
+      try {
+        loadButtons();
+        // Re-enable hotkeys after closing modal
+        if (window.electronAPI && window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+      } catch (e) {
+        // Fallback to full reload if something goes wrong
+        console.error('In-place refresh failed, falling back to full reload:', e);
+        window.location.reload();
+      }
+    }, 200);
+  } else {
+    // Re-enable hotkeys immediately when we've done an in-place update
+    if (window.electronAPI && window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+  }
 };
 
 window.editButton = async (index) => {
@@ -1661,6 +1737,69 @@ window.editButton = async (index) => {
     hotkeyListener = null;
     recordHotkeyBtn.textContent = 'Record Hotkey';
     recordHotkeyBtn.classList.remove('recording');
+  }
+};
+
+// New helper: edit by element (maps displayed card back to config index)
+window.editButtonByEl = async (btnEl) => {
+  try {
+    const card = btnEl.closest && btnEl.closest('.sound-card');
+    if (!card) return;
+    const config = await window.electronAPI.getConfig();
+    let origIndex = -1;
+    // Prefer stable id mapping if present
+    const bid = card.dataset.buttonId;
+    if (bid && config && Array.isArray(config.buttons)) {
+      origIndex = config.buttons.findIndex(b => b.id === bid);
+    }
+    if (origIndex === -1) {
+      // Fallback: try matching by soundData
+      const soundData = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
+      if (soundData && config && Array.isArray(config.buttons)) {
+        origIndex = config.buttons.findIndex(b => b.src === soundData.src && b.label === soundData.label && b.type === soundData.type);
+      }
+    }
+    if (origIndex === -1) {
+      // fallback to dataset.index (this is the displayed index)
+      origIndex = parseInt(card.dataset.index || '-1');
+    }
+    // Delegate to existing editButton handler which expects a config index
+    if (typeof window.editButton === 'function') {
+      window.editButton(origIndex);
+    }
+  } catch (e) {
+    console.error('editButtonByEl error:', e);
+  }
+};
+
+// New helper: delete by element (maps displayed card back to config index)
+window.deleteButtonByEl = async (btnEl) => {
+  try {
+    const card = btnEl.closest && btnEl.closest('.sound-card');
+    if (!card) return;
+    const config = await window.electronAPI.getConfig();
+    let origIndex = -1;
+    const bid = card.dataset.buttonId;
+    if (bid && config && Array.isArray(config.buttons)) {
+      origIndex = config.buttons.findIndex(b => b.id === bid);
+    }
+    if (origIndex === -1) {
+      const soundData = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
+      if (soundData && config && Array.isArray(config.buttons)) {
+        origIndex = config.buttons.findIndex(b => b.src === soundData.src && b.label === soundData.label && b.type === soundData.type);
+      }
+    }
+    if (origIndex === -1) origIndex = parseInt(card.dataset.index || '-1');
+    if (origIndex === -1) return;
+    // Confirm and call existing delete flow
+    if (confirm("Delete this button?")) {
+      window.electronAPI.deleteButton(origIndex);
+      window.electronAPI.refreshHotkeys();
+      // Refresh UI after deletion
+      setTimeout(() => loadButtons(), 150);
+    }
+  } catch (e) {
+    console.error('deleteButtonByEl error:', e);
   }
 };
 
