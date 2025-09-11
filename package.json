@@ -4,8 +4,9 @@
   "description": "A virtual deck application built with Electron",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "dist": "electron-builder"
+  "start": "electron .",
+  "dist": "electron-builder",
+  "build:win": "electron-builder --win"
   },
   "keywords": [
     "electron",
@@ -29,7 +30,8 @@
       "main.js",
       "preload.js",
       "config.json",
-      "public/**/*",
+  "public/**/*",
+  "TwitchConnected/**/*",
       "node_modules/**/*"
     ],
     "mac": {
