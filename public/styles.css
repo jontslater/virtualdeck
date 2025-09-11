@@ -802,6 +802,36 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   box-sizing: border-box;
 }
 
+/* Drop slot for slot-based dragging */
+/* absolute-positioned vertical drop slot (doesn't change grid layout) */
+.drop-slot {
+  position: absolute;
+  width: 10px;
+  height: 60px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.02);
+  transition: background 0.12s ease, transform 0.12s ease, opacity 0.12s ease;
+  opacity: 0.9;
+  pointer-events: auto;
+}
+.drop-slot.slot-active {
+  background: rgba(255,107,107,0.32);
+  transform: scale(1.05);
+  opacity: 1;
+}
+
+/* Ghost clone while dragging */
+.drag-ghost {
+  pointer-events: none;
+  opacity: 0.9;
+  transform: translateY(-2px) scale(1);
+  transition: transform 0.06s linear;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.45);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 6px;
+}
+
 #twitch-stats-container.hidden {
   display: none !important;
 }
