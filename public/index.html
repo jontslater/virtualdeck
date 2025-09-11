@@ -134,14 +134,10 @@
           </select>
         </label><br>
         <label>Hotkey: 
-          <input type="text" name="hotkey" id="hotkey-input" placeholder="Click 'Record Hotkey' to set" readonly />
+          <input type="text" name="hotkey" id="hotkey-input" placeholder="Press any key or combination with Ctrl, Alt, Shift | Ex: 'Ctrl + F1'" readonly />
           <button type="button" id="record-hotkey">Record Hotkey</button>
           <div id="hotkey-status"></div>
-          <div class="modifier-keys">
-            <label><input type="checkbox" id="ctrl-required-checkbox" name="ctrl-required"> Ctrl</label>
-            <label><input type="checkbox" id="alt-required-checkbox" name="alt-required"> Alt</label>
-            <label><input type="checkbox" id="shift-required-checkbox" name="shift-required"> Shift</label>
-          </div>
+          <!-- modifier checkboxes removed — recorder captures modifiers live -->
         </label><br>
         <div id="audio-file-section">
           <label>File:
