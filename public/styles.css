@@ -452,6 +452,15 @@ body {
   text-align: left;
 }
 
+/* Visual style for disabled hotkey input to make it apparent */
+#hotkey-input[readonly], #hotkey-input[disabled] {
+  background: #2a2a2a;
+  color: #ddd;
+  border: 1px dashed #444;
+  cursor: not-allowed;
+  opacity: 0.95;
+}
+
 #record-hotkey.clicked {
   animation: buttonClick 0.15s linear;
 }
