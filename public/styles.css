@@ -579,6 +579,10 @@ body {
 .visibility-item input[type="checkbox"] {
   margin-right: 8px;
   cursor: pointer;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  position: relative;
+  z-index: 1;
 }
 
 .visibility-item:hover {
@@ -608,6 +612,28 @@ body {
 .visibility-action-btn:hover {
   background: #555;
   border-color: #777;
+}
+
+.version-info {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #444;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #ccc;
+  pointer-events: none;
+  user-select: none;
+}
+
+.version-label {
+  font-weight: bold;
+}
+
+.version-value {
+  color: #888;
+  font-family: monospace;
 }
 
 /* Prevent drag on interactive elements */
