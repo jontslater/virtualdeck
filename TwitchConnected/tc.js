@@ -60,16 +60,56 @@ function showTwitchConfigModal() {
         After entering these values, click <b>Save</b>. You can reset them later in the app under Settings if needed.
       </div>
       <label for="twitch-oauth" style="font-weight:bold;">ACCESS_TOKEN:</label><br>
-      <input id="twitch-oauth" type="text" style="width:100%;margin-bottom:14px;padding:8px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" /><br>
+      <div style="position:relative;margin-bottom:14px;">
+  <input id="twitch-oauth" type="password" style="width:100%;box-sizing:border-box;padding:8px;padding-right:40px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" />
+        <button id="twitch-oauth-toggle" aria-label="Show token" title="Show/Hide" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#fff;cursor:pointer;font-size:16px;line-height:1;padding:4px">👁</button>
+      </div>
       <label for="twitch-clientid" style="font-weight:bold;">CLIENT_ID:</label><br>
-      <input id="twitch-clientid" type="text" style="width:100%;margin-bottom:14px;padding:8px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" /><br>
+      <div style="position:relative;margin-bottom:14px;">
+  <input id="twitch-clientid" type="password" style="width:100%;box-sizing:border-box;padding:8px;padding-right:40px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" />
+        <button id="twitch-clientid-toggle" aria-label="Show client id" title="Show/Hide" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#fff;cursor:pointer;font-size:16px;line-height:1;padding:4px">👁</button>
+      </div>
       <label for="twitch-channel" style="font-weight:bold;">TWITCH_USER_NAME:</label><br>
-      <input id="twitch-channel" type="text" style="width:100%;margin-bottom:18px;padding:8px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" /><br>
+  <input id="twitch-channel" type="text" style="width:100%;box-sizing:border-box;margin-bottom:18px;padding:8px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" /><br>
       <button id="twitch-save" style="width:100%;background:#a6f34a;color:#222;font-weight:bold;padding:10px 0;border:none;border-radius:6px;font-size:1.1em;cursor:pointer;">Save</button>
       <button id="twitch-cancel" style="width:100%;margin-top:8px;background:#eee;color:#222;padding:8px 0;border:none;border-radius:6px;font-size:1em;cursor:pointer;">Cancel</button>
     `;
     document.body.appendChild(modal);
-    // Load values from localStorage if they exist
+    // Wire up show/hide toggles for sensitive fields
+    try {
+      const oauthInput = document.getElementById('twitch-oauth');
+      const oauthToggle = document.getElementById('twitch-oauth-toggle');
+      if (oauthInput && oauthToggle) {
+        oauthToggle.addEventListener('click', () => {
+          if (oauthInput.type === 'password') {
+            oauthInput.type = 'text';
+            oauthToggle.textContent = '🙈';
+            oauthToggle.setAttribute('aria-label', 'Hide token');
+          } else {
+            oauthInput.type = 'password';
+            oauthToggle.textContent = '👁';
+            oauthToggle.setAttribute('aria-label', 'Show token');
+          }
+        });
+      }
+      const clientInput = document.getElementById('twitch-clientid');
+      const clientToggle = document.getElementById('twitch-clientid-toggle');
+      if (clientInput && clientToggle) {
+        clientToggle.addEventListener('click', () => {
+          if (clientInput.type === 'password') {
+            clientInput.type = 'text';
+            clientToggle.textContent = '🙈';
+            clientToggle.setAttribute('aria-label', 'Hide client id');
+          } else {
+            clientInput.type = 'password';
+            clientToggle.textContent = '👁';
+            clientToggle.setAttribute('aria-label', 'Show client id');
+          }
+        });
+      }
+  } catch (e) { console.warn('Could not wire toggles:', e); }
+
+  // Load values from localStorage if they exist
     document.getElementById('twitch-oauth').value = localStorage.getItem('twitch_oauth') || '';
     document.getElementById('twitch-clientid').value = localStorage.getItem('twitch_clientid') || '';
     document.getElementById('twitch-channel').value = localStorage.getItem('twitch_channel') || '';
