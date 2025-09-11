@@ -811,6 +811,9 @@ initializeDragAndDrop();
 // Initialize component visibility dropdown
 initializeVisibilityDropdown();
 
+// Load and display app version
+loadAppVersion();
+
 // Component Visibility Dropdown Functions
 function initializeVisibilityDropdown() {
   console.log('Initializing visibility dropdown...'); // Debug log
@@ -853,6 +856,14 @@ function initializeVisibilityDropdown() {
       menu.classList.add('hidden');
     }
   });
+  
+  // Prevent version info from closing dropdown when clicked
+  const versionInfo = document.querySelector('.version-info');
+  if (versionInfo) {
+    versionInfo.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
 
   // Handle individual component toggles
   Object.keys(checkboxes).forEach(checkboxId => {
@@ -860,6 +871,12 @@ function initializeVisibilityDropdown() {
     const componentId = checkboxes[checkboxId];
     
     if (checkbox && componentId) {
+      // Handle direct checkbox clicks
+      checkbox.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Don't prevent default - let the checkbox toggle naturally
+      });
+      
       checkbox.addEventListener('change', (e) => {
         e.stopPropagation();
         const component = document.getElementById(componentId);
@@ -886,10 +903,13 @@ function initializeVisibilityDropdown() {
       const label = checkbox.closest('.visibility-item');
       if (label) {
         label.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          checkbox.checked = !checkbox.checked;
-          checkbox.dispatchEvent(new Event('change'));
+          // Only handle if the click wasn't on the checkbox itself
+          if (e.target !== checkbox) {
+            e.preventDefault();
+            e.stopPropagation();
+            checkbox.checked = !checkbox.checked;
+            checkbox.dispatchEvent(new Event('change'));
+          }
         });
       }
     }
@@ -943,6 +963,22 @@ function initializeVisibilityDropdown() {
         }
       });
     });
+  }
+}
+
+// Load and display app version
+function loadAppVersion() {
+  const versionElement = document.getElementById('app-version');
+  if (versionElement && window.electronAPI && window.electronAPI.getAppVersion) {
+    window.electronAPI.getAppVersion().then(version => {
+      versionElement.textContent = version || 'Unknown';
+    }).catch(error => {
+      console.error('Error loading app version:', error);
+      versionElement.textContent = 'Unknown';
+    });
+  } else if (versionElement) {
+    // Fallback if Electron API is not available
+    versionElement.textContent = '1.0.0';
   }
 }
 

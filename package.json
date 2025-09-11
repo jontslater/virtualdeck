@@ -46,7 +46,7 @@
           ]
         }
       ],
-      "icon": "public/logo.png",
+      "icon": "public/icons/VD.gif",
       "sign": null
     },
     "nsis": {

@@ -676,6 +676,17 @@ ipcMain.handle('get-sound-path', async (event, relativePath) => {
   return path.join(userDataPath, relativePath);
 });
 
+// IPC handler to get app version
+ipcMain.handle('get-app-version', async () => {
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8'));
+    return packageJson.version || 'Unknown';
+  } catch (error) {
+    console.error('Error reading package.json:', error);
+    return 'Unknown';
+  }
+});
+
 // IPC handler to resolve shortcut paths
 ipcMain.handle('resolve-shortcut', async (event, shortcutPath) => {
   try {
