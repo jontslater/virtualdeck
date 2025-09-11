@@ -652,8 +652,10 @@ async function loadButtons() {
   addCard.onclick = () => {
     const settingsForm = document.getElementById('settings-form');
     settingsForm.reset();
-    document.getElementById('hotkey-input').value = '';
-    document.getElementById('hotkey-status').textContent = '';
+  // Stop any active hotkey recording and clear displayed status/value
+  if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
+  const hkIn = document.getElementById('hotkey-input'); if (hkIn) hkIn.value = '';
+  const hkStatus = document.getElementById('hotkey-status'); if (hkStatus) hkStatus.textContent = '';
   // Fully clear all dataset properties for new record
   delete settingsForm.dataset.editingIndex;
   delete settingsForm.dataset.editingId;
@@ -1465,6 +1467,8 @@ async function handleTrigger(button) {
 // Add sound card functionality
 document.getElementById('close-settings').onclick = () => {
   document.getElementById('settings-modal').classList.add('hidden');
+  // Ensure hotkey recorder is stopped when closing modal
+  if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
   window.electronAPI.enableHotkeys();
 };
 
@@ -1473,27 +1477,16 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   const form = e.target;
   const label = form.label.value.trim();
   const type = form.type.value;
-  const hotkey = document.getElementById('hotkey-input').value.trim();
+  // Ensure we reference the hotkey input element safely
+  const hotkeyInput = document.getElementById('hotkey-input');
+  const hotkey = hotkeyInput && hotkeyInput.value ? hotkeyInput.value.trim() : '';
   const isEditing = form.dataset.editingIndex !== undefined;
   let skipReload = false;
 
   // Get modifier checkboxes
-  const ctrlRequired = document.getElementById('ctrl-required-checkbox').checked;
-  const altRequired = document.getElementById('alt-required-checkbox').checked;
-  const shiftRequired = document.getElementById('shift-required-checkbox').checked;
-
   if (!label) return alert("Please fill in the label field.");
-
-  // Build the complete hotkey string with modifiers
-  let completeHotkey = hotkey;
-  const modifiers = [];
-  if (ctrlRequired) modifiers.push('Ctrl');
-  if (altRequired) modifiers.push('Alt');
-  if (shiftRequired) modifiers.push('Shift');
-  
-  if (modifiers.length > 0 && hotkey) {
-    completeHotkey = modifiers.join('+') + '+' + hotkey;
-  }
+  // Use the recorded hotkey directly (accumulative recorder populates hotkeyInput.value)
+  const completeHotkey = (hotkeyInput && hotkeyInput.value && hotkeyInput.value.trim()) ? hotkeyInput.value.trim() : hotkey;
 
   // Get the appropriate file input based on type
   const fileInput = type === 'app' ? document.getElementById('app-file-input') : document.getElementById('file-input');
@@ -1507,12 +1500,18 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   console.log('- Label:', label);
   console.log('- Type:', type);
   console.log('- Base hotkey:', hotkey);
-  console.log('- Modifiers:', { ctrlRequired, altRequired, shiftRequired });
+  // Modifiers UI removed; recorders supply full combo
+  console.log('- Modifiers: (recorder-based)');
   console.log('- Complete hotkey:', completeHotkey);
   console.log('- Is editing:', isEditing);
   console.log('- File input files length:', fileInput.files.length);
   console.log('- Resolved path:', resolvedPath);
   console.log('- Resolved args:', resolvedArgs);
+
+  // Prevent dangerous system shortcuts like Alt+F4 from being saved
+  if (completeHotkey && (completeHotkey.includes('Alt') && completeHotkey.includes('F4'))) {
+    return alert('Alt+F4 is not allowed as a hotkey. Please choose a different combination.');
+  }
 
   // If editing and no new file selected, use existing file
   if (isEditing && !fileInput.files.length && !resolvedPath) {
@@ -1698,25 +1697,11 @@ window.editButton = async (index) => {
   }
   // Set hotkey and parse modifiers
   const hotkeyInput = document.getElementById('hotkey-input');
-  const ctrlCheckbox = document.getElementById('ctrl-required-checkbox');
-  const altCheckbox = document.getElementById('alt-required-checkbox');
-  const shiftCheckbox = document.getElementById('shift-required-checkbox');
   if (btn.hotkey) {
-    // Parse the hotkey string to extract modifiers and base key
-    const hotkeyParts = btn.hotkey.split('+');
-    const modifiers = hotkeyParts.slice(0, -1); // All parts except the last
-    const baseKey = hotkeyParts[hotkeyParts.length - 1]; // The last part is the base key
-    // Set the base key
-    hotkeyInput.value = baseKey;
-    // Set modifier checkboxes
-    ctrlCheckbox.checked = modifiers.includes('Ctrl');
-    altCheckbox.checked = modifiers.includes('Alt');
-    shiftCheckbox.checked = modifiers.includes('Shift');
+    // Place full recorded hotkey string into input (recorder uses same format)
+    hotkeyInput.value = btn.hotkey;
   } else {
     hotkeyInput.value = '';
-    ctrlCheckbox.checked = false;
-    altCheckbox.checked = false;
-    shiftCheckbox.checked = false;
   }
   // Store the existing file path and args for editing
   settingsForm.dataset.existingFile = btn.src;
@@ -1740,14 +1725,8 @@ window.editButton = async (index) => {
   }
   document.getElementById('settings-modal').classList.remove('hidden');
   window.electronAPI.disableHotkeys();
-  // Stop hotkey recording if active
-  const recordHotkeyBtn = document.getElementById('record-hotkey');
-  if (hotkeyListener) {
-    document.removeEventListener('keydown', hotkeyListener);
-    hotkeyListener = null;
-    recordHotkeyBtn.textContent = 'Record Hotkey';
-    recordHotkeyBtn.classList.remove('recording');
-  }
+  // Ensure recorder is stopped when opening edit
+  if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
 };
 
 // New helper: edit by element (maps displayed card back to config index)
@@ -1831,6 +1810,34 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // Hotkey recording functionality
 let hotkeyListener = null;
+// Recorder state accessible to other UI actions so we can cancel pending timers/listeners
+let recorderState = {
+  recorded: new Set(),
+  finalizeTimer: null
+};
+
+function stopHotkeyRecording() {
+  try {
+    if (recorderState.finalizeTimer) {
+      clearTimeout(recorderState.finalizeTimer);
+      recorderState.finalizeTimer = null;
+    }
+    recorderState.recorded.clear();
+    if (hotkeyListener) {
+      document.removeEventListener('keydown', hotkeyListener);
+      hotkeyListener = null;
+    }
+    const recordHotkeyBtn = document.getElementById('record-hotkey');
+    if (recordHotkeyBtn) {
+      recordHotkeyBtn.textContent = 'Record Hotkey';
+      recordHotkeyBtn.classList.remove('recording');
+    }
+    const hotkeyStatus = document.getElementById('hotkey-status');
+    if (hotkeyStatus) hotkeyStatus.textContent = '';
+  } catch (e) {
+    console.error('Error stopping hotkey recorder:', e);
+  }
+}
 
 window.addEventListener('DOMContentLoaded', () => {
   // Attach Record Hotkey button handler
@@ -1838,39 +1845,82 @@ window.addEventListener('DOMContentLoaded', () => {
   const hotkeyInput = document.getElementById('hotkey-input');
   const hotkeyStatus = document.getElementById('hotkey-status');
 
+  // Make the hotkey input read-only to force use of the recorder button
+  if (hotkeyInput) hotkeyInput.readOnly = true;
+
   if (recordHotkeyBtn) {
     recordHotkeyBtn.addEventListener('click', () => {
       // Button click animation
       recordHotkeyBtn.classList.remove('clicked');
       void recordHotkeyBtn.offsetWidth;
       recordHotkeyBtn.classList.add('clicked');
-      hotkeyStatus.textContent = 'Press any key...';
+  hotkeyStatus.textContent = 'Press any key or combination with Ctrl, Alt, Shift | Ex: "Ctrl + F1"';
       hotkeyInput.value = '';
       hotkeyInput.focus();
       if (hotkeyListener) document.removeEventListener('keydown', hotkeyListener);
-      hotkeyListener = function(e) {
-        e.preventDefault();
-        const keys = [];
-        if (e.ctrlKey) keys.push('Control');
-        if (e.shiftKey) keys.push('Shift');
-        if (e.altKey) keys.push('Alt');
-        if (e.metaKey) keys.push('Meta');
-        let keyName = e.key;
-        if (e.code.startsWith('Numpad')) {
-          keyName = e.code.replace('Numpad', '');
-        } else if (e.key.length === 1 && /[0-9]/.test(e.key)) {
-          keyName = e.key;
-        } else if (e.key.startsWith('F') && /^\d+$/.test(e.key.slice(1))) {
-          keyName = e.key;
+      // Accumulative listener: collect all keys pressed within a short window and record them as a combo
+  // reset any previous recorder state
+  stopHotkeyRecording();
+  recorderState.recorded = new Set();
+      const finalizeDelay = 700; // ms
+
+      function normalizeKeyEvent(ev) {
+        // Prefer code for clarity on F-keys and Numpad
+        if (ev.code) {
+          if (ev.code.startsWith('F') && /^F\d+$/.test(ev.code)) return ev.code.toUpperCase();
+          if (ev.code.startsWith('Numpad')) return ev.code.replace('Numpad', 'Num');
         }
-        keys.push(keyName);
-        hotkeyInput.value = keys.join('+');
-        hotkeyStatus.textContent = `Set to: ${hotkeyInput.value}`;
-        document.removeEventListener('keydown', hotkeyListener);
-        hotkeyListener = null;
-        recordHotkeyBtn.textContent = 'Record Hotkey';
-        recordHotkeyBtn.classList.remove('recording');
-      };
+        if (ev.key === ' ') return 'Space';
+        if (ev.key && ev.key.length === 1) return ev.key.toUpperCase();
+        if (ev.key) return ev.key;
+        return ev.code || String.fromCharCode(0);
+      }
+
+      function keyHandler(ev) {
+  ev.preventDefault();
+  const k = normalizeKeyEvent(ev);
+  recorderState.recorded.add(k);
+
+  // reset finalize timer
+  if (recorderState.finalizeTimer) clearTimeout(recorderState.finalizeTimer);
+  recorderState.finalizeTimer = setTimeout(() => {
+          // Build a stable ordering: modifiers first (Ctrl, Alt, Shift, Meta), then others sorted
+          const modifiersOrder = ['Control','Ctrl','Alt','Shift','Meta'];
+          const items = Array.from(recorderState.recorded);
+          const mods = items.filter(i => modifiersOrder.includes(i));
+          const others = items.filter(i => !modifiersOrder.includes(i));
+          // Normalize modifier names (use short forms)
+          const normMods = [];
+          if (mods.includes('Control') || mods.includes('Ctrl')) normMods.push('Ctrl');
+          if (mods.includes('Alt')) normMods.push('Alt');
+          if (mods.includes('Shift')) normMods.push('Shift');
+          if (mods.includes('Meta')) normMods.push('Meta');
+
+          const combo = normMods.concat(others).join('+');
+          // Reject Alt+F4 as a hotkey (closes the app on many platforms)
+          if (normMods.includes('Alt') && others.includes('F4')) {
+            hotkeyInput.value = '';
+            hotkeyStatus.textContent = 'Alt+F4 is not allowed as a hotkey.';
+            recorderState.recorded.clear();
+            if (recorderState.finalizeTimer) { clearTimeout(recorderState.finalizeTimer); recorderState.finalizeTimer = null; }
+            document.removeEventListener('keydown', keyHandler);
+            hotkeyListener = null;
+            recordHotkeyBtn.textContent = 'Record Hotkey';
+            recordHotkeyBtn.classList.remove('recording');
+            return;
+          }
+          hotkeyInput.value = combo;
+          hotkeyStatus.textContent = `Set to: ${hotkeyInput.value}`;
+          document.removeEventListener('keydown', keyHandler);
+          hotkeyListener = null;
+          recordHotkeyBtn.textContent = 'Record Hotkey';
+          recordHotkeyBtn.classList.remove('recording');
+          recorderState.recorded.clear();
+          if (recorderState.finalizeTimer) { clearTimeout(recorderState.finalizeTimer); recorderState.finalizeTimer = null; }
+        }, finalizeDelay);
+      }
+
+      hotkeyListener = keyHandler;
       document.addEventListener('keydown', hotkeyListener);
       recordHotkeyBtn.textContent = 'Recording...';
       recordHotkeyBtn.classList.add('recording');
