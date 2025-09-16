@@ -315,19 +315,75 @@ body {
 
 #settings-modal {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0,0,0,0.85);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 500px;
+  height: auto;
+  max-height: 80vh;
+  background: rgba(0,0,0,0.95);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 10000; /* Make sure this is high */
+  z-index: 999999; /* Very high z-index to appear on top of everything */
+  pointer-events: auto; /* allows interaction */
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+#settings-modal.drag-drop-ready {
+  pointer-events: none; /* disables blocking while still visible */
+}
+
+/* Ensure modal content can always be clicked */
+#settings-modal .modal-content {
+  pointer-events: auto !important;
+}
+
+#settings-modal .modal-content * {
+  pointer-events: auto !important;
 }
 
 #settings-modal.hidden {
-  display: none;
+  display: none !important;
+  pointer-events: none !important;
+}
+
+/* Make save button more prominent and easier to click */
+#save-sound {
+  background: #4CAF50 !important;
+  color: white !important;
+  padding: 12px 24px !important;
+  font-size: 16px !important;
+  font-weight: bold !important;
+  border: none !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  margin-right: 10px !important;
+  min-width: 80px !important;
+  transition: background-color 0.3s ease !important;
+}
+
+#save-sound:hover {
+  background: #45a049 !important;
+}
+
+#close-settings {
+  background: #f44336 !important;
+  color: white !important;
+  padding: 12px 24px !important;
+  font-size: 16px !important;
+  font-weight: bold !important;
+  border: none !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  min-width: 80px !important;
+  transition: background-color 0.3s ease !important;
+}
+
+#close-settings:hover {
+  background: #da190b !important;
 }
 
 .modal-content {
@@ -1233,4 +1289,55 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
     height: 25vh;
     min-height: 200px;
   }
+}
+
+/* Add Item Drop Zone */
+.add-item-drop-zone {
+  width: 100%;
+  min-height: 80px;
+  border: 2px dashed #555;
+  border-radius: 8px;
+  background: #1a1a1a;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  position: relative;
+  z-index: 10001; /* Higher than modal to ensure it can receive events */
+}
+
+.add-item-drop-zone:hover {
+  border-color: #777;
+  background: #222;
+}
+
+.add-item-drop-zone.drag-over {
+  border-color: #4CAF50;
+  background: #1a3d1a;
+  border-style: solid;
+}
+
+.drop-zone-content {
+  text-align: center;
+  padding: 20px;
+}
+
+.drop-zone-icon {
+  font-size: 2em;
+  margin-bottom: 10px;
+  opacity: 0.7;
+}
+
+.drop-zone-text {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin-bottom: 5px;
+  color: #ccc;
+}
+
+.drop-zone-subtext {
+  font-size: 0.9em;
+  color: #888;
 }
