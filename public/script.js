@@ -45,7 +45,7 @@ function handleGlobalMouseWheel(e) {
   const chatMessagesContainer = document.getElementById('twitch-chat-messages');
   const chatContainer = document.getElementById('twitch-chat-container');
   
-  // Only handle if chat is visible and not collapsed
+  // Only handle if chat is visible
   if (!chatMessagesContainer || !chatContainer || chatContainer.classList.contains('hidden')) {
     return;
   }
@@ -434,10 +434,7 @@ function initializeChatDisplay() {
   const statusIndicator = document.getElementById('chat-status-indicator');
   const chatMessagesContainer = document.getElementById('twitch-chat-messages');
   
-  // Start with chat collapsed (not hidden)
-  if (chatContainer) {
-    chatContainer.classList.add('collapsed');
-  }
+  // Chat is always fully visible when shown (no collapse functionality)
   
   // Initialize resize functionality
   initializeChatResize();
@@ -622,10 +619,8 @@ function updateChatVisibility(isConnected) {
   if (chatContainer) {
     if (isConnected) {
       chatContainer.classList.remove('hidden');
-      chatContainer.classList.add('collapsed'); // Start collapsed when connected
     } else {
       chatContainer.classList.add('hidden');
-      chatContainer.classList.remove('collapsed');
     }
   }
 }
@@ -883,17 +878,9 @@ function initializeVisibilityDropdown() {
         if (component) {
           if (checkbox.checked) {
             component.classList.remove('hidden');
-            // Special handling for chat container - restore to collapsed state when shown
-            if (componentId === 'twitch-chat-container') {
-              component.classList.add('collapsed');
-            }
             console.log(`Showing ${componentId}`); // Debug log
           } else {
             component.classList.add('hidden');
-            // Remove collapsed class when hiding to avoid conflicts
-            if (componentId === 'twitch-chat-container') {
-              component.classList.remove('collapsed');
-            }
             console.log(`Hiding ${componentId}`); // Debug log
           }
         }
@@ -930,10 +917,6 @@ function initializeVisibilityDropdown() {
           const component = document.getElementById(componentId);
           if (component) {
             component.classList.add('hidden');
-            // Remove collapsed class when hiding chat to avoid conflicts
-            if (componentId === 'twitch-chat-container') {
-              component.classList.remove('collapsed');
-            }
           }
         }
       });
@@ -955,10 +938,6 @@ function initializeVisibilityDropdown() {
           const component = document.getElementById(componentId);
           if (component) {
             component.classList.remove('hidden');
-            // Restore chat to collapsed state when showing
-            if (componentId === 'twitch-chat-container') {
-              component.classList.add('collapsed');
-            }
           }
         }
       });
@@ -1422,15 +1401,10 @@ function addTwitchEvent(type, eventData) {
 window.electronAPI.onTwitchConnected(() => {
   updateChatVisibility(true);
   updateChatStatusIndicator(true);
-  // Auto-expand chat when connected
+  // Show chat when connected
   const chatContainer = document.getElementById('twitch-chat-container');
   if (chatContainer) {
     chatContainer.classList.remove('hidden');
-    chatContainer.classList.remove('collapsed'); // Expand when connected
-    const toggleBtn = document.getElementById('toggle-chat');
-    if (toggleBtn) {
-      toggleBtn.textContent = '−';
-    }
   }
   // Update and show stats when connected
   updateTwitchStats();
@@ -1857,6 +1831,16 @@ window.addEventListener('DOMContentLoaded', () => {
   // Initialize drop zone for drag-to-add functionality
   initializeAddItemDropZone();
 });
+
+// Initialize drag-to-add drop zone functionality
+// This function is called to ensure the drop zone is properly initialized
+// The actual drag-to-add functionality is handled by the global drop zone system
+function initializeAddItemDropZone() {
+  // The original drag-to-add system uses the global drop zone and handleFileDrop
+  // This function exists to prevent errors when called, but doesn't need to do anything
+  // since the global system handles all drag-to-add functionality
+  console.log('initializeAddItemDropZone called - using global drop zone system');
+}
 
 // Hotkey recording functionality
 let hotkeyListener = null;
