@@ -680,11 +680,7 @@ async function loadButtons() {
       oldAppFileInput.parentNode.replaceChild(newAppFileInput, oldAppFileInput);
     }
     document.querySelector('#settings-modal h2').textContent = 'Add New Sound';
-    const modal = document.getElementById('settings-modal');
-    modal.classList.remove('hidden');
-    modal.classList.remove('drag-drop-ready'); // Ensure clean state
-    modal.style.display = 'flex';
-    modal.style.pointerEvents = 'auto';
+    document.getElementById('settings-modal').classList.remove('hidden');
     window.electronAPI.disableHotkeys();
   };
   
@@ -765,13 +761,36 @@ async function loadButtons() {
   }
 }
 
-// Global debugging to confirm drag events reach document level
+// Essential: Both preventDefault() and stopPropagation() are required for Electron
+// Only prevent drag events when NOT in sound card drag mode
 document.addEventListener('dragover', (e) => {
-  console.log('GLOBAL dragover fired on:', e.target);
-  console.log('GLOBAL dragover target classes:', e.target?.className);
-  e.preventDefault(); // CRITICAL: This is required for drop events to fire
+  console.log('Global dragover, isDragMode:', isDragMode, 'target:', e.target);
+  if (!isDragMode || !e.target.classList.contains('sound-card')) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
 });
 
+document.addEventListener('drop', (e) => {
+  console.log('Global drop, isDragMode:', isDragMode, 'target:', e.target);
+  if (!isDragMode || !e.target.classList.contains('sound-card')) {
+    e.preventDefault();
+    e.stopPropagation();
+    // Visual feedback
+    const globalDropZone = document.getElementById('global-drop-zone');
+    if (globalDropZone) globalDropZone.classList.add('hidden');
+    // Process dropped files
+    for (const file of e.dataTransfer.files) {
+      handleFileDrop(file);
+      break; // Only handle the first file
+    }
+  }
+});
+
+document.addEventListener('dragenter', (e) => {
+  const globalDropZone = document.getElementById('global-drop-zone');
+  if (globalDropZone) globalDropZone.classList.remove('hidden');
+});
 
 document.addEventListener('dragleave', (e) => {
   if (!document.body.contains(e.relatedTarget)) {
@@ -788,157 +807,6 @@ initializeChatDisplay();
 
 // Initialize drag and drop
 initializeDragAndDrop();
-
-// Reset drop zone state
-function resetDropZone() {
-  const dropZone = document.getElementById('add-item-drop-zone');
-  if (dropZone) {
-    dropZone.classList.remove('drag-over');
-  }
-}
-
-// Initialize add item drop zone - minimal working example
-function initializeAddItemDropZone() {
-  console.log('=== INITIALIZING DROP ZONE ===');
-  const dropZone = document.getElementById('add-item-drop-zone');
-  console.log('Drop zone element found:', !!dropZone);
-  console.log('Drop zone element:', dropZone);
-  
-  if (!dropZone) {
-    console.error('Add item drop zone not found!');
-    return;
-  }
-  
-  // Remove any existing listeners to prevent duplicates
-  const newDropZone = dropZone.cloneNode(true);
-  dropZone.parentNode.replaceChild(newDropZone, dropZone);
-  
-  console.log('Add item drop zone initialized:', newDropZone);
-  console.log('Drop zone visible:', newDropZone.offsetWidth > 0 && newDropZone.offsetHeight > 0);
-  
-  // Add click handler to open file dialog
-  console.log('Adding click handler...');
-  newDropZone.addEventListener('click', () => {
-    console.log('Drop zone clicked');
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = '.mp3,.wav,.ogg,.exe,.lnk,.bat,.cmd,.app,.sh,.desktop';
-    fileInput.multiple = false;
-    
-    fileInput.addEventListener('change', (e) => {
-      if (e.target.files.length > 0) {
-        handleFileDrop(e.target.files[0]);
-      }
-    });
-    
-    fileInput.click();
-  });
-  
-  // Minimal working drag and drop handlers (based on your example)
-  console.log('Adding dragover handler...');
-  newDropZone.addEventListener('dragover', (e) => {
-    console.log('=== DROP ZONE DRAGOVER ===');
-    console.log('Event target:', e.target);
-    console.log('Current target:', e.currentTarget);
-    console.log('Modal exists?', !!document.getElementById('settings-modal'));
-    console.log('Modal hidden?', document.getElementById('settings-modal')?.classList.contains('hidden'));
-    console.log('Modal display:', document.getElementById('settings-modal')?.style.display);
-    console.log('Modal pointer-events:', document.getElementById('settings-modal')?.style.pointerEvents);
-    console.log('Is drag mode?', isDragMode);
-    e.preventDefault(); // VERY IMPORTANT: enables dropping
-    e.stopPropagation();
-    newDropZone.classList.add('drag-over');
-  });
-
-  console.log('Adding dragenter handler...');
-  newDropZone.addEventListener('dragenter', (e) => {
-    console.log('dragenter event fired');
-    e.preventDefault();
-    e.stopPropagation();
-    newDropZone.classList.add('drag-over');
-  });
-
-  console.log('Adding dragleave handler...');
-  newDropZone.addEventListener('dragleave', (e) => {
-    console.log('dragleave event fired');
-    e.preventDefault();
-    e.stopPropagation();
-    newDropZone.classList.remove('drag-over');
-  });
-
-  console.log('Adding drop handler...');
-  newDropZone.addEventListener('drop', (e) => {
-    console.log('=== DROP ZONE DROP ===');
-    console.log('Event target:', e.target);
-    console.log('Current target:', e.currentTarget);
-    console.log('Files count:', e.dataTransfer.files.length);
-    console.log('Modal exists?', !!document.getElementById('settings-modal'));
-    console.log('Modal hidden?', document.getElementById('settings-modal')?.classList.contains('hidden'));
-    
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Always reset drop zone styling
-    newDropZone.classList.remove('drag-over');
-
-    // Handle the dropped file(s)
-    for (const file of e.dataTransfer.files) {
-      console.log('Dropped file:', file.path);
-      handleFileDrop(file);
-      break; // Only handle first file
-    }
-
-    // Don't set drag-drop-ready state - let user interact with modal
-    const modal = document.getElementById('settings-modal');
-    if (modal) {
-      // Remove any existing drag-drop-ready class
-      modal.classList.remove('drag-drop-ready');
-      console.log('Modal ready for user interaction');
-    }
-
-    setTimeout(() => {
-      console.log('Drop zone ready for next drag');
-      newDropZone.classList.remove('drag-over');
-    }, 50);
-  });
-  
-  console.log('=== DROP ZONE INITIALIZATION COMPLETE ===');
-}
-
-// Re-initialization function removed - no longer needed
-
-// Initialize add item drop zone with a delay to ensure DOM is ready
-setTimeout(() => {
-  console.log('About to initialize drop zone...');
-  const dropZone = document.getElementById('add-item-drop-zone');
-  console.log('Drop zone found during init:', !!dropZone);
-  if (dropZone) {
-    console.log('Drop zone element:', dropZone);
-    console.log('Drop zone visible:', dropZone.offsetWidth > 0 && dropZone.offsetHeight > 0);
-  }
-  initializeAddItemDropZone();
-  console.log('Drop zone initialization completed');
-}, 100);
-
-// Add modal focus handler to re-enable interactions when user focuses
-const modal = document.getElementById('settings-modal');
-if (modal) {
-  modal.addEventListener('focusin', () => {
-    console.log('Modal focused - re-enabling interactions');
-    modal.classList.remove('drag-drop-ready'); // accept interactions
-  });
-} else {
-  console.error('Modal not found during initialization!');
-}
-
-// Debug: Check if drop zone exists after initialization
-setTimeout(() => {
-  const dropZone = document.getElementById('add-item-drop-zone');
-  console.log('Drop zone check after init:', !!dropZone);
-  console.log('Drop zone visible:', dropZone?.offsetWidth > 0 && dropZone?.offsetHeight > 0);
-  console.log('Drop zone classes:', dropZone?.className);
-  console.log('Drop zone style:', dropZone?.style.cssText);
-}, 1000);
 
 // Initialize component visibility dropdown
 initializeVisibilityDropdown();
@@ -1634,18 +1502,7 @@ async function handleTrigger(button) {
 // Replace all ipcRenderer.send and ipcRenderer.on with window.electronAPI methods
 // Add sound card functionality
 document.getElementById('close-settings').onclick = () => {
-  const modal = document.getElementById('settings-modal');
-  modal.classList.add('hidden');
-  // Remove drag-drop-ready class to ensure modal is fully reset
-  modal.classList.remove('drag-drop-ready');
-  // Force disable modal to prevent event blocking
-  setTimeout(() => {
-    modal.style.display = 'none';
-    modal.style.pointerEvents = 'none';
-    resetDropZone(); // Reset drop zone state
-    console.log('Modal closed and reset');
-    console.log('Modal classes after close:', modal.className);
-  }, 50);
+  document.getElementById('settings-modal').classList.add('hidden');
   // Ensure hotkey recorder is stopped when closing modal
   if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
   window.electronAPI.enableHotkeys();
@@ -1802,21 +1659,7 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     return alert("Please select a file.");
   }
 
-  const modal = document.getElementById('settings-modal');
-  modal.classList.add('hidden');
-  // Remove drag-drop-ready class to ensure modal is fully reset
-  modal.classList.remove('drag-drop-ready');
-  // Force disable modal to prevent event blocking
-  setTimeout(() => {
-    modal.style.display = 'none';
-    modal.style.pointerEvents = 'none';
-    // Reset form to clean state
-    const form = document.getElementById('settings-form');
-    if (form) form.reset();
-    resetDropZone(); // Reset drop zone state
-    console.log('Modal completely reset after form submission');
-    console.log('Modal classes after reset:', modal.className);
-  }, 50);
+  document.getElementById('settings-modal').classList.add('hidden');
   // Refresh buttons in-place to avoid a full reload which triggers auto-reconnect to Twitch
   if (!skipReload) {
     setTimeout(() => {
@@ -1830,24 +1673,9 @@ document.getElementById('settings-form').onsubmit = async (e) => {
         window.location.reload();
       }
     }, 200);
-    
-    // Re-initialize drop zone after a longer delay to ensure DOM is ready
-    setTimeout(() => {
-      console.log('Re-initializing drop zone after form submission...');
-      const dropZone = document.getElementById('add-item-drop-zone');
-      console.log('Drop zone exists before re-init:', !!dropZone);
-      initializeAddItemDropZone();
-      console.log('Drop zone re-initialization completed');
-    }, 300);
   } else {
     // Re-enable hotkeys immediately when we've done an in-place update
     if (window.electronAPI && window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
-    
-    // Also re-initialize drop zone for in-place updates
-    setTimeout(() => {
-      console.log('Re-initializing drop zone after in-place update...');
-      initializeAddItemDropZone();
-    }, 100);
   }
 };
 
@@ -1931,11 +1759,7 @@ window.editButton = async (index) => {
       </div>
     `;
   }
-  const modal = document.getElementById('settings-modal');
-  modal.classList.remove('hidden');
-  modal.classList.remove('drag-drop-ready'); // Ensure clean state
-  modal.style.display = 'flex';
-  modal.style.pointerEvents = 'auto';
+  document.getElementById('settings-modal').classList.remove('hidden');
   window.electronAPI.disableHotkeys();
   // Ensure recorder is stopped when opening edit
   if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
