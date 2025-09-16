@@ -45,7 +45,7 @@ function handleGlobalMouseWheel(e) {
   const chatMessagesContainer = document.getElementById('twitch-chat-messages');
   const chatContainer = document.getElementById('twitch-chat-container');
   
-  // Only handle if chat is visible and not collapsed
+  // Only handle if chat is visible
   if (!chatMessagesContainer || !chatContainer || chatContainer.classList.contains('hidden')) {
     return;
   }
@@ -434,10 +434,10 @@ function initializeChatDisplay() {
   const statusIndicator = document.getElementById('chat-status-indicator');
   const chatMessagesContainer = document.getElementById('twitch-chat-messages');
   
-  // Start with chat collapsed (not hidden)
-  if (chatContainer) {
-    chatContainer.classList.add('collapsed');
-  }
+  // Chat is always fully visible when shown (no collapse functionality)
+  
+  // Initialize resize functionality
+  initializeChatResize();
   
   // Initialize status indicator
   if (statusIndicator) {
@@ -486,12 +486,7 @@ function initializeChatDisplay() {
     
   }
   
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', () => {
-      chatContainer.classList.toggle('collapsed');
-      toggleBtn.textContent = chatContainer.classList.contains('collapsed') ? '+' : '−';
-    });
-  }
+  // Collapse functionality removed - chat is always fully visible when shown
   
   
   // Add global mouse wheel handler
@@ -624,10 +619,8 @@ function updateChatVisibility(isConnected) {
   if (chatContainer) {
     if (isConnected) {
       chatContainer.classList.remove('hidden');
-      chatContainer.classList.add('collapsed'); // Start collapsed when connected
     } else {
       chatContainer.classList.add('hidden');
-      chatContainer.classList.remove('collapsed');
     }
   }
 }
@@ -670,6 +663,7 @@ async function loadButtons() {
       newFileInput.id = 'file-input';
       newFileInput.name = 'file';
       oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
+      initializeAddItemDropZone();
     }
     const oldAppFileInput = document.getElementById('app-file-input');
     if (oldAppFileInput) {
@@ -678,6 +672,7 @@ async function loadButtons() {
       newAppFileInput.id = 'app-file-input';
       newAppFileInput.name = 'app-file';
       oldAppFileInput.parentNode.replaceChild(newAppFileInput, oldAppFileInput);
+      initializeAddItemDropZone();
     }
     document.querySelector('#settings-modal h2').textContent = 'Add New Sound';
     document.getElementById('settings-modal').classList.remove('hidden');
@@ -883,17 +878,9 @@ function initializeVisibilityDropdown() {
         if (component) {
           if (checkbox.checked) {
             component.classList.remove('hidden');
-            // Special handling for chat container - restore to collapsed state when shown
-            if (componentId === 'twitch-chat-container') {
-              component.classList.add('collapsed');
-            }
             console.log(`Showing ${componentId}`); // Debug log
           } else {
             component.classList.add('hidden');
-            // Remove collapsed class when hiding to avoid conflicts
-            if (componentId === 'twitch-chat-container') {
-              component.classList.remove('collapsed');
-            }
             console.log(`Hiding ${componentId}`); // Debug log
           }
         }
@@ -930,10 +917,6 @@ function initializeVisibilityDropdown() {
           const component = document.getElementById(componentId);
           if (component) {
             component.classList.add('hidden');
-            // Remove collapsed class when hiding chat to avoid conflicts
-            if (componentId === 'twitch-chat-container') {
-              component.classList.remove('collapsed');
-            }
           }
         }
       });
@@ -955,10 +938,6 @@ function initializeVisibilityDropdown() {
           const component = document.getElementById(componentId);
           if (component) {
             component.classList.remove('hidden');
-            // Restore chat to collapsed state when showing
-            if (componentId === 'twitch-chat-container') {
-              component.classList.add('collapsed');
-            }
           }
         }
       });
@@ -1422,15 +1401,10 @@ function addTwitchEvent(type, eventData) {
 window.electronAPI.onTwitchConnected(() => {
   updateChatVisibility(true);
   updateChatStatusIndicator(true);
-  // Auto-expand chat when connected
+  // Show chat when connected
   const chatContainer = document.getElementById('twitch-chat-container');
   if (chatContainer) {
     chatContainer.classList.remove('hidden');
-    chatContainer.classList.remove('collapsed'); // Expand when connected
-    const toggleBtn = document.getElementById('toggle-chat');
-    if (toggleBtn) {
-      toggleBtn.textContent = '−';
-    }
   }
   // Update and show stats when connected
   updateTwitchStats();
@@ -1489,6 +1463,7 @@ async function handleTrigger(button) {
     audio.play().catch(error => {
     });
   } else if (button.type === "app") {
+    console.log('Launching app:', button.src, 'with args:', button.args);
     // If the button has args, pass them along
     if (button.args) {
       window.electronAPI.launchApp({ path: button.src, args: button.args });
@@ -1506,6 +1481,8 @@ document.getElementById('close-settings').onclick = () => {
   // Ensure hotkey recorder is stopped when closing modal
   if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
   window.electronAPI.enableHotkeys();
+  // Re-initialize drop zone in case it was affected
+  initializeAddItemDropZone();
 };
 
 document.getElementById('settings-form').onsubmit = async (e) => {
@@ -1665,6 +1642,8 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     setTimeout(() => {
       try {
         loadButtons();
+        // Re-initialize drop zone after loadButtons() recreates the DOM
+        initializeAddItemDropZone();
         // Re-enable hotkeys after closing modal
         if (window.electronAPI && window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
       } catch (e) {
@@ -1698,6 +1677,7 @@ window.editButton = async (index) => {
     newFileInput.id = 'file-input';
     newFileInput.name = 'file';
     oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
+    initializeAddItemDropZone();
   }
   const oldAppFileInput = document.getElementById('app-file-input');
   if (oldAppFileInput) {
@@ -1706,6 +1686,7 @@ window.editButton = async (index) => {
     newAppFileInput.id = 'app-file-input';
     newAppFileInput.name = 'app-file';
     oldAppFileInput.parentNode.replaceChild(newAppFileInput, oldAppFileInput);
+    initializeAddItemDropZone();
   }
   // Populate form fields
   const labelInput = document.getElementById('label-input');
@@ -1821,7 +1802,11 @@ window.deleteButtonByEl = async (btnEl) => {
       window.electronAPI.deleteButton(origIndex);
       window.electronAPI.refreshHotkeys();
       // Refresh UI after deletion
-      setTimeout(() => loadButtons(), 150);
+      setTimeout(() => {
+        loadButtons();
+        // Re-initialize drop zone after loadButtons() recreates the DOM
+        initializeAddItemDropZone();
+      }, 150);
     }
   } catch (e) {
     console.error('deleteButtonByEl error:', e);
@@ -1842,7 +1827,20 @@ window.addEventListener('DOMContentLoaded', () => {
       window.electronAPI.closeApp();
     };
   }
+  
+  // Initialize drop zone for drag-to-add functionality
+  initializeAddItemDropZone();
 });
+
+// Initialize drag-to-add drop zone functionality
+// This function is called to ensure the drop zone is properly initialized
+// The actual drag-to-add functionality is handled by the global drop zone system
+function initializeAddItemDropZone() {
+  // The original drag-to-add system uses the global drop zone and handleFileDrop
+  // This function exists to prevent errors when called, but doesn't need to do anything
+  // since the global system handles all drag-to-add functionality
+  console.log('initializeAddItemDropZone called - using global drop zone system');
+}
 
 // Hotkey recording functionality
 let hotkeyListener = null;
@@ -2192,3 +2190,137 @@ typeSelect.addEventListener('change', function() {
     appFileInput.required = true;
   }
 });
+
+// Chat Resize Functionality
+function initializeChatResize() {
+  const chatContainer = document.getElementById('twitch-chat-container');
+  const rightResizeHandle = document.querySelector('.chat-resize-handle-right');
+  const leftResizeHandle = document.querySelector('.chat-resize-handle-left');
+  
+  if (!chatContainer || !rightResizeHandle || !leftResizeHandle) return;
+  
+  let isResizing = false;
+  let resizeDirection = null; // 'right' or 'left'
+  let startX, startY, startWidth, startHeight, startFlexBasis;
+  
+  // Common resize handler
+  function handleResizeStart(e, direction) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    isResizing = true;
+    resizeDirection = direction;
+    startX = e.clientX;
+    startY = e.clientY;
+    startWidth = parseInt(window.getComputedStyle(chatContainer).width, 10);
+    startHeight = parseInt(window.getComputedStyle(chatContainer).height, 10);
+    startFlexBasis = parseInt(window.getComputedStyle(chatContainer).flexBasis, 10) || startWidth;
+    
+    // Add visual feedback
+    chatContainer.style.transition = 'none';
+    document.body.style.cursor = 'ew-resize'; // Both directions use east-west resize cursor
+    document.body.style.userSelect = 'none';
+    
+    // Add resize class for visual feedback
+    chatContainer.classList.add('resizing');
+  }
+  
+  // Right resize handle (expand right and down)
+  rightResizeHandle.addEventListener('mousedown', (e) => {
+    handleResizeStart(e, 'right');
+  });
+  
+  // Left resize handle (expand left and down)
+  leftResizeHandle.addEventListener('mousedown', (e) => {
+    handleResizeStart(e, 'left');
+  });
+  
+  // Mouse move during resize
+  document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+    
+    e.preventDefault();
+    
+    const deltaX = e.clientX - startX;
+    const deltaY = e.clientY - startY;
+    
+    // Calculate new dimensions
+    let newWidth = startWidth;
+    let newHeight = startHeight + deltaY;
+    
+    // Handle width changes based on resize direction
+    if (resizeDirection === 'right') {
+      // Right resize: extend to the right
+      newWidth = startWidth + deltaX;
+    } else if (resizeDirection === 'left') {
+      // Left resize: extend to the left
+      newWidth = startWidth - deltaX;
+    }
+    
+    // Apply constraints
+    const minWidth = 200;
+    const maxWidth = 600;
+    const minHeight = 200;
+    const maxHeight = 800;
+    
+    newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+    newHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
+    
+    // Get container bounds for constraint handling
+    const mainContent = chatContainer.parentElement;
+    const containerRect = mainContent.getBoundingClientRect();
+    
+    // Ensure the chat doesn't exceed the main content area
+    const maxAllowedWidth = containerRect.width - 20; // Account for gap
+    newWidth = Math.min(newWidth, maxAllowedWidth);
+    
+    // Apply new dimensions - only change width and height
+    chatContainer.style.width = newWidth + 'px';
+    chatContainer.style.height = newHeight + 'px';
+    chatContainer.style.flexBasis = newWidth + 'px';
+    
+    // Don't adjust margin or position - let flexbox handle it naturally
+  });
+  
+  // Mouse up to end resize
+  document.addEventListener('mouseup', () => {
+    if (!isResizing) return;
+    
+    isResizing = false;
+    resizeDirection = null;
+    
+    // Clean up any width issues
+    cleanupChatWidth();
+    
+    // Remove visual feedback
+    chatContainer.style.transition = 'width 0.3s ease, height 0.3s ease';
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    chatContainer.classList.remove('resizing');
+  });
+  
+  // Function to clean up chat width and ensure it stays within bounds
+  function cleanupChatWidth() {
+    const mainContent = chatContainer.parentElement;
+    const containerRect = mainContent.getBoundingClientRect();
+    
+    // Ensure the chat doesn't exceed the main content area
+    const maxWidth = containerRect.width - 20; // Account for gap
+    const currentWidth = parseInt(window.getComputedStyle(chatContainer).width, 10);
+    
+    if (currentWidth > maxWidth) {
+      chatContainer.style.width = maxWidth + 'px';
+      chatContainer.style.flexBasis = maxWidth + 'px';
+    }
+  }
+  
+  // Resize handles are always visible when chat is shown
+  // They will be hidden by CSS when the chat container has 'hidden' class
+  
+  // Clean up width on window resize
+  window.addEventListener('resize', () => {
+    if (!isResizing) {
+      cleanupChatWidth();
+    }
+  });
+}

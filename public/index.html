@@ -117,10 +117,12 @@
           <div id="chat-status-indicator" class="status-indicator" title="Checking connection..."></div>
         </div>
         <div class="chat-controls">
-          <button id="toggle-chat" class="toggle-chat-btn">−</button>
+          <!-- Resize handles are now on the sides -->
         </div>
         </div>
         <div id="twitch-chat-messages" class="chat-messages"></div>
+        <div class="chat-resize-handle chat-resize-handle-right"></div>
+        <div class="chat-resize-handle chat-resize-handle-left"></div>
       </div>
     </div>
   </div>
@@ -134,7 +136,7 @@
         <label>Type:
           <select name="type" id="type-select">
             <option value="audio">Audio</option>
-            <!-- <option value="app">App</option> -->
+            <option value="app">App</option>
           </select>
         </label><br>
         <label>Hotkey: 

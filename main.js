@@ -727,6 +727,7 @@ ipcMain.on('launch-app', async (event, appData) => {
   
   let finalPath = appPath;
   let finalArgs = args || '';
+  let finalWorkingDir = null;
   let isUWPShortcut = false;
 
   // Known UWP AppUserModelIDs for fallback
@@ -752,8 +753,16 @@ ipcMain.on('launch-app', async (event, appData) => {
       });
       
       if (shortcut && shortcut.target) {
-        finalPath = shortcut.target;
-        finalArgs = shortcut.args || args || '';
+        // Use expanded.target (resolved path) if available, otherwise fall back to target
+        finalPath = shortcut.expanded?.target || shortcut.target;
+        finalArgs = shortcut.expanded?.args || shortcut.args || args || '';
+        
+        // Get working directory from shortcut
+        finalWorkingDir = shortcut.expanded?.workingDir || shortcut.workingDir;
+        if (finalWorkingDir) {
+          console.log('Using working directory from shortcut:', finalWorkingDir);
+        }
+        
         console.log('Using resolved path:', finalPath, 'with args:', finalArgs);
       } else {
         // UWP/Store app detection: If shortcut target is empty, try to extract AppUserModelID from .lnk path or filename
@@ -816,7 +825,15 @@ ipcMain.on('launch-app', async (event, appData) => {
   try {
     const argsArray = finalArgs ? finalArgs.split(' ') : [];
     console.log('Executing:', finalPath, 'with args:', argsArray);
-    execFile(finalPath, argsArray, (error) => {
+    
+    // Prepare execFile options
+    const execOptions = {};
+    if (finalWorkingDir) {
+      execOptions.cwd = finalWorkingDir;
+      console.log('Using working directory:', finalWorkingDir);
+    }
+    
+    execFile(finalPath, argsArray, execOptions, (error) => {
       if (error) {
         console.error('Failed to launch app:', finalPath, error);
       } else {

@@ -755,23 +755,15 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
+  flex-basis: 20vw;
 }
 
 #twitch-chat-container.hidden {
   display: none !important;
 }
 
-#twitch-chat-container.collapsed {
-  width: 20vw;
-  height: 2.5vh;
-  min-height: 40px;
-  overflow: hidden;
-  transition: height 0.3s ease;
-}
-
-#twitch-chat-container.collapsed .chat-messages {
-  display: none;
-}
+/* Collapse functionality removed - chat is always fully visible when shown */
 
 #twitch-chat-container.hidden .chat-messages {
   display: none;
@@ -1233,4 +1225,91 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
     height: 25vh;
     min-height: 200px;
   }
+}
+
+/* Chat Resize Handle */
+.chat-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  background: #444;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.2s ease;
+  z-index: 10;
+}
+
+.chat-resize-handle-right {
+  right: 0;
+  cursor: ew-resize;
+  border-radius: 0 0.5vw 0.5vw 0;
+}
+
+.chat-resize-handle-left {
+  left: 0;
+  cursor: ew-resize;
+  border-radius: 0.5vw 0 0 0.5vw;
+}
+
+.chat-resize-handle:hover {
+  background: #666;
+  opacity: 1;
+}
+
+#twitch-chat-container:hover .chat-resize-handle {
+  opacity: 0.7;
+}
+
+/* Side resize handles don't need arrow indicators */
+
+/* Hide resize handles when chat is hidden */
+#twitch-chat-container.hidden .chat-resize-handle {
+  display: none;
+}
+
+/* Visual feedback during resize */
+#twitch-chat-container.resizing {
+  border-color: #666;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+}
+
+#twitch-chat-container.resizing .chat-resize-handle {
+  background: #888;
+  opacity: 1;
+}
+
+/* Better visibility for resize handles */
+.chat-resize-handle {
+  background: #555;
+  border: 1px solid #777;
+}
+
+.chat-resize-handle:hover {
+  background: #777;
+  border-color: #999;
+  opacity: 1;
+}
+
+/* Ensure handles are always visible when container is hovered */
+#twitch-chat-container:hover .chat-resize-handle {
+  opacity: 0.8;
+}
+
+/* Add a subtle visual indicator for resize handles */
+.chat-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 20px;
+  background: #999;
+  opacity: 0.5;
+}
+
+.chat-resize-handle:hover::before {
+  background: #ccc;
+  opacity: 1;
 }
