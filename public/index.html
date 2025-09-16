@@ -106,6 +106,15 @@
     </div>
     
     <div class="main-content">
+      <!-- Dedicated Drop Zone for Adding Items -->
+      <div id="add-item-drop-zone" class="add-item-drop-zone" draggable="false">
+        <div class="drop-zone-content">
+          <div class="drop-zone-icon">📁</div>
+          <div class="drop-zone-text">Drop files here to add new items</div>
+          <div class="drop-zone-subtext">Supports audio files and applications</div>
+        </div>
+      </div>
+      
       <div id="sound-grid"></div>
       <!-- Removed static Add Sound card -->
       
@@ -134,7 +143,7 @@
         <label>Type:
           <select name="type" id="type-select">
             <option value="audio">Audio</option>
-            <!-- <option value="app">App</option> -->
+            <option value="app">App</option>
           </select>
         </label><br>
         <label>Hotkey: 
