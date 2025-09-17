@@ -225,11 +225,20 @@ function createSlots() {
 function removeSlots() {
   const slots = document.querySelectorAll('#sound-grid .drop-slot');
   slots.forEach(s => s.remove());
-  // Clean up any ghost
-  if (vdDragState.ghost && vdDragState.ghost.parentNode) {
-    vdDragState.ghost.parentNode.removeChild(vdDragState.ghost);
+  // If a drag is currently active, keep the ghost and dragging state
+  if (vdDragState && vdDragState.draggingCard) {
+    // just clear any active slot marker
+    if (vdDragState.activeSlot) {
+      vdDragState.activeSlot.classList.remove('slot-active');
+      vdDragState.activeSlot = null;
+    }
+  } else {
+    // Clean up any ghost and reset state when not dragging
+    if (vdDragState.ghost && vdDragState.ghost.parentNode) {
+      vdDragState.ghost.parentNode.removeChild(vdDragState.ghost);
+    }
+    vdDragState = { draggingCard: null, ghost: null, fromIndex: -1, activeSlot: null, startX: 0, startY: 0, moved: false };
   }
-  vdDragState = { draggingCard: null, ghost: null, fromIndex: -1, activeSlot: null, startX: 0, startY: 0, moved: false };
   window.removeEventListener('resize', repositionSlots);
 }
 
@@ -387,8 +396,6 @@ function clearEdgeHold() {
 }
 
 function cleanupDrag() {
-  // Remove ghost
-  if (vdDragState.ghost && vdDragState.ghost.parentNode) vdDragState.ghost.parentNode.removeChild(vdDragState.ghost);
   // Remove slot highlight
   if (vdDragState.activeSlot) vdDragState.activeSlot.classList.remove('slot-active');
   // Remove global listeners
@@ -396,6 +403,13 @@ function cleanupDrag() {
   document.removeEventListener('pointerup', endPointerDrag);
   // Restore selection
   document.body.style.userSelect = '';
+
+  // Remove ghost if present in DOM (some flows may have kept it)
+  try {
+    if (vdDragState.ghost && vdDragState.ghost.parentNode) vdDragState.ghost.parentNode.removeChild(vdDragState.ghost);
+  } catch (err) {
+    // ignore
+  }
 
   // Reset state
   vdDragState = { draggingCard: null, ghost: null, fromIndex: -1, activeSlot: null, startX: 0, startY: 0, moved: false };
@@ -900,6 +914,15 @@ function renderCurrentPage() {
 
   // Show/hide cards based on page
   cards.forEach((c, idx) => {
+    // If we're dragging a card, keep it visible regardless of page
+    const draggingCard = (vdDragState && vdDragState.draggingCard) ? vdDragState.draggingCard : null;
+    const isDraggedElement = (draggingCard && c === draggingCard) || (c === draggedElement);
+    const isGhostInGrid = (vdDragState && vdDragState.ghost && c === vdDragState.ghost);
+    if (isDraggedElement || isGhostInGrid) {
+      c.classList.remove('page-hidden');
+      return;
+    }
+
     if (idx >= start && idx < end) c.classList.remove('page-hidden');
     else c.classList.add('page-hidden');
   });
@@ -941,6 +964,110 @@ window.addEventListener('resize', () => {
     updateBottomPaddingForPagination();
   }, 150);
 });
+
+// Map vertical mouse wheel to page navigation when over the grid/pagination
+let wheelNavTimer = null;
+let lastWheelTime = 0;
+const WHEEL_NAV_DELAY = 250; // ms between navigations
+document.addEventListener('wheel', (e) => {
+  try {
+    // Determine a robust vertical wheel delta (support legacy wheelDelta variations)
+    let verticalDelta = 0;
+    try {
+      // Prefer standard deltaY when it's non-zero
+      if (typeof e.deltaY === 'number' && Math.abs(e.deltaY) > 0) {
+        verticalDelta = e.deltaY;
+      } else if (typeof e.wheelDeltaY === 'number' && Math.abs(e.wheelDeltaY) > 0) {
+        // wheelDeltaY is positive for wheel-up; invert to match deltaY convention (positive -> down)
+        verticalDelta = -e.wheelDeltaY;
+      } else if (typeof e.wheelDelta === 'number' && Math.abs(e.wheelDelta) > 0) {
+        verticalDelta = -e.wheelDelta;
+      } else if (typeof e.deltaY === 'number') {
+        verticalDelta = e.deltaY || 0;
+      }
+      // If horizontal movement larger than vertical, treat as horizontal gesture and ignore
+      const absX = Math.abs(e.deltaX || 0);
+      const absY = Math.abs(verticalDelta || 0);
+      if (absY < absX) return;
+    } catch (err) {
+      return;
+    }
+
+    // Ignore when user is typing in inputs or contentEditable
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || active.isContentEditable)) return;
+
+    // Only when pointer is over relevant areas (grid or pagination)
+    const grid = document.getElementById('sound-grid');
+    const pag = document.getElementById('pagination-controls');
+    let overGrid = false;
+    let overPag = false;
+    try {
+      if (grid) {
+        const r = grid.getBoundingClientRect();
+        overGrid = (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom);
+      }
+      if (pag) {
+        const pr = pag.getBoundingClientRect();
+        overPag = (e.clientX >= pr.left && e.clientX <= pr.right && e.clientY >= pr.top && e.clientY <= pr.bottom);
+      }
+      // Also allow the broader container area to count as grid region so empty areas still navigate
+      const container = document.querySelector('.container');
+      if (!overGrid && container) {
+        const cr = container.getBoundingClientRect();
+        if (e.clientX >= cr.left && e.clientX <= cr.right && e.clientY >= cr.top && e.clientY <= cr.bottom) {
+          overGrid = true;
+        }
+      }
+      // fallback to contains if bounding rect check misses (e.g., SVGs or layering)
+      if (!overGrid && grid && grid.contains(e.target)) overGrid = true;
+      if (!overPag && pag && pag.contains(e.target)) overPag = true;
+    } catch (err) {
+      // if any error, fall back to simple contains
+      overGrid = grid && grid.contains(e.target);
+      overPag = pag && pag.contains(e.target);
+    }
+    if (!overGrid && !overPag) return;
+
+    const now = Date.now();
+    if (now - lastWheelTime < WHEEL_NAV_DELAY) return; // rate limit
+
+    if (verticalDelta > 0) {
+      // wheel moved down -> next page
+      if (vdDragState && vdDragState.draggingCard) {
+        if (currentPage < totalPages - 1) {
+          currentPage++;
+          computePagination();
+          renderCurrentPage();
+          // Recreate slots for new page but keep ghost in DOM
+          removeSlots();
+          createSlots();
+        }
+      } else {
+        goToNextPage();
+      }
+    } else if (verticalDelta < 0) {
+      // wheel moved up -> previous page
+      if (vdDragState && vdDragState.draggingCard) {
+        if (currentPage > 0) {
+          currentPage--;
+          computePagination();
+          renderCurrentPage();
+          removeSlots();
+          createSlots();
+        }
+      } else {
+        goToPrevPage();
+      }
+    }
+    lastWheelTime = now;
+    // prevent page scroll while navigating pages
+    e.preventDefault();
+    e.stopPropagation();
+  } catch (err) {
+    // ignore
+  }
+}, { passive: false });
 
 // Essential: Both preventDefault() and stopPropagation() are required for Electron
 // Only prevent drag events when NOT in sound card drag mode
