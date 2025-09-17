@@ -289,6 +289,27 @@ ipcMain.handle('get-config', async () => {
   }
 });
 
+// Persist button order sent from renderer to config.json
+ipcMain.on('save-button-order', (event, orderedIds) => {
+  try {
+    if (!Array.isArray(orderedIds)) return;
+    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    if (!Array.isArray(cfg.buttons)) cfg.buttons = [];
+    const byId = new Map(cfg.buttons.map(b => [b.id, b]));
+    const newButtons = [];
+    for (const id of orderedIds) {
+      if (byId.has(id)) newButtons.push(byId.get(id));
+    }
+    // append any missing buttons that weren't included in orderedIds
+    for (const b of cfg.buttons) if (!newButtons.includes(b)) newButtons.push(b);
+    cfg.buttons = newButtons;
+    fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2), 'utf-8');
+    if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
+  } catch (err) {
+    console.error('Failed to save button order:', err);
+  }
+});
+
 // Event->Sound mappings helpers stored inside config.json under 'mappings'
 function loadMappings() {
   try {
