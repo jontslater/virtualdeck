@@ -57,4 +57,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   moveWindow: (position) => ipcRenderer.send('move-window', position),
   getWindowBounds: async () => ipcRenderer.invoke('get-window-bounds'),
   getAppVersion: async () => ipcRenderer.invoke('get-app-version'),
+  // Persist UI button order (array of ids) to main process
+  saveButtonOrder: (orderedIds) => ipcRenderer.send('save-button-order', orderedIds),
 });
