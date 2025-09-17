@@ -6,11 +6,16 @@ body {
   margin: 0;
   padding: 0;
   display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
+  justify-content: center; /* center horizontally */
+  align-items: flex-start;  /* align content to top */
+  min-height: 100vh;
   width: 100vw;
-  overflow: hidden;
+  overflow: auto; /* allow the grid to grow and the page to scroll */
+}
+
+:root {
+  --card-size: 110px; /* width and height of each sound card */
+  --card-gap: 12px;   /* gap between cards */
 }
 
 .container {
@@ -32,9 +37,30 @@ body {
   gap: 20px;
   width: 100%;
   height: auto;
-  margin: 1vh 0;
+  margin: 0.5vh 0 1vh 0;
   min-height: 200px;
   align-items: flex-start;
+}
+
+/* Responsive behavior: stack secondary panes under the grid on narrow viewports */
+@media (max-width: 900px) {
+  .main-content {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  /* On narrow screens switch to a wrapping flex layout to avoid grid overlap */
+  #sound-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: var(--card-gap);
+    align-items: flex-start;
+  }
+  #twitch-chat-container, #twitch-stats-container, #recent-activity-container {
+    width: 100%;
+    box-sizing: border-box;
+  }
 }
 
 /* Sound Controls */
@@ -86,12 +112,83 @@ body {
 
 #sound-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-  gap: 10px;
+  /* fixed-size columns using the CSS variable so layout is consistent; use auto-fit so items wrap cleanly */
+  grid-template-columns: repeat(auto-fit, minmax(var(--card-size), var(--card-size)));
+  column-gap: var(--card-gap);
+  row-gap: var(--card-gap);
+  /* Let rows be at least card-size but grow if content needs more height */
+  grid-auto-rows: minmax(var(--card-size), auto);
+  align-content: start;
+  justify-content: center;
   width: 100%;
   overflow: visible;
   position: relative;
   min-height: 120px;
+}
+
+/* Pagination controls */
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  width: 100%;
+}
+.page-btn {
+  background: #333;
+  color: #fff;
+  border: 1px solid #555;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.page-btn:hover { background: #444; }
+.pagination-indicator {
+  color: #ccc;
+  font-size: 13px;
+  min-width: 80px;
+  text-align: center;
+}
+
+/* When pagination is placed at the bottom of the main content, center it and add spacing */
+.bottom-pagination {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 18px;
+  z-index: 9998;
+  background: rgba(20,20,20,0.6);
+  padding: 8px 12px;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+}
+
+/* Add breathing room at the bottom of the main container so fixed pagination won't overlap content */
+.container {
+  align-items: stretch;
+  padding-bottom: 80px; /* make room for fixed pagination */
+  /* Slight top padding to avoid overlap with fixed logo */
+  padding-top: calc(64px + 8px);
+}
+
+/* App logo fixed to the center top of the viewport */
+.app-logo {
+  position: fixed;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 64px;
+  z-index: 900;
+  display: block;
+  pointer-events: none; /* don't intercept clicks */
+  /* Keep original logo color - no tint */
+  filter: none;
+}
+
+/* Hide cards not on current page */
+.sound-card.page-hidden {
+  display: none !important;
 }
 
 #sound-grid.hidden {
@@ -106,16 +203,21 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
   border: 2px solid transparent;
-  aspect-ratio: 1;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   position: relative;
-  min-width: 60px;
-  min-height: 60px;
-  max-width: 100px;
-  max-height: 100px;
+  box-sizing: border-box;
+  width: var(--card-size);
+  min-width: var(--card-size);
+  min-height: var(--card-size);
+  max-width: var(--card-size);
+  /* allow height to grow naturally if content wraps */
+  height: auto;
+  max-height: none;
+  overflow: hidden;
+  flex-shrink: 0; /* prevent cards from shrinking when container is narrow */
 }
 
 .sound-card:hover {
@@ -166,10 +268,16 @@ body {
 
 .sound-name {
   font-weight: bold;
-  font-size: 10px;
+  font-size: 12px;
   margin-bottom: 4px;
   color: white;
   line-height: 1.2;
+  word-break: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .sound-hotkey {
