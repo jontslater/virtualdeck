@@ -29,6 +29,16 @@ let vdDragState = {
   moved: false
 };
 
+// Pagination state
+let currentPage = 0;
+let itemsPerPage = 12; // fallback
+let totalPages = 1;
+
+// Edge-hold page shift state
+let edgeHoldTimer = null;
+let edgeHoldDirection = null; // 'next' | 'prev'
+const EDGE_HOLD_MS = 2000; // 2 seconds
+
 // Helper function for smart auto-scroll
 function smartAutoScroll(chatMessagesContainer) {
   if (!chatMessagesContainer) return;
@@ -294,6 +304,21 @@ function onPointerMove(e) {
     vdDragState.activeSlot = slot;
     slot.classList.add('slot-active');
   }
+
+  // Check for edge-hold to trigger page change while dragging
+  if (vdDragState.moved) {
+    const grid = document.getElementById('sound-grid');
+    const rect = grid.getBoundingClientRect();
+    const margin = 20; // px near edge to consider
+    // if near right edge and there is a next page
+    if (e.clientX >= rect.right - margin && currentPage < totalPages - 1) {
+      if (edgeHoldDirection !== 'next') startEdgeHold('next');
+    } else if (e.clientX <= rect.left + margin && currentPage > 0) {
+      if (edgeHoldDirection !== 'prev') startEdgeHold('prev');
+    } else {
+      clearEdgeHold();
+    }
+  }
 }
 
 function endPointerDrag(e) {
@@ -341,6 +366,24 @@ function endPointerDrag(e) {
   }
 
   cleanupDrag();
+}
+
+function startEdgeHold(dir) {
+  clearEdgeHold();
+  edgeHoldDirection = dir;
+  edgeHoldTimer = setTimeout(() => {
+    if (dir === 'next') goToNextPage();
+    else if (dir === 'prev') goToPrevPage();
+    clearEdgeHold();
+    // After page change, recreate slots so insertion points match new DOM
+    removeSlots();
+    if (isDragMode) createSlots();
+  }, EDGE_HOLD_MS);
+}
+
+function clearEdgeHold() {
+  if (edgeHoldTimer) { clearTimeout(edgeHoldTimer); edgeHoldTimer = null; }
+  edgeHoldDirection = null;
 }
 
 function cleanupDrag() {
@@ -581,6 +624,32 @@ function addChatMessage(username, message, badges = {}) {
   }
 }
 
+// Setup pagination controls after DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  const prev = document.getElementById('page-prev');
+  const next = document.getElementById('page-next');
+  if (prev) prev.addEventListener('click', () => { goToPrevPage(); });
+  if (next) next.addEventListener('click', () => { goToNextPage(); });
+  // Ensure container has enough bottom padding to avoid fixed pagination overlap
+  updateBottomPaddingForPagination();
+});
+
+// Adjust container bottom padding so fixed pagination doesn't overlap the grid
+function updateBottomPaddingForPagination() {
+  try {
+    const pag = document.getElementById('pagination-controls');
+    const container = document.querySelector('.container');
+    if (!pag || !container) return;
+    const rect = pag.getBoundingClientRect();
+    // add some breathing room (16-24px) so the cards never butt up to the bar
+    const extra = 24;
+    const pad = Math.ceil(rect.height + extra);
+    container.style.paddingBottom = pad + 'px';
+  } catch (e) {
+    // ignore
+  }
+}
+
 // Helper function for HTML escaping (from tc.js)
 function escapeHtml(str) {
   if (!str) return '';
@@ -636,7 +705,18 @@ function updateChatVisibility(isConnected) {
   const chatContainer = document.getElementById('twitch-chat-container');
   if (chatContainer) {
     if (isConnected) {
-      chatContainer.classList.remove('hidden');
+      // Respect persisted visibility prefs when showing chat
+      try {
+        const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+        const visible = prefs.hasOwnProperty('twitch-chat-container') ? !!prefs['twitch-chat-container'] : true;
+        if (visible) {
+          chatContainer.classList.remove('hidden');
+        } else {
+          chatContainer.classList.add('hidden');
+        }
+      } catch (err) {
+        chatContainer.classList.remove('hidden');
+      }
       chatContainer.classList.add('collapsed'); // Start collapsed when connected
     } else {
       chatContainer.classList.add('hidden');
@@ -693,7 +773,8 @@ async function loadButtons() {
       oldAppFileInput.parentNode.replaceChild(newAppFileInput, oldAppFileInput);
     }
     document.querySelector('#settings-modal h2').textContent = 'Add New Sound';
-    document.getElementById('settings-modal').classList.remove('hidden');
+  // Show settings modal (user-initiated) - always allow
+  document.getElementById('settings-modal').classList.remove('hidden');
     window.electronAPI.disableHotkeys();
   };
   
@@ -730,7 +811,7 @@ async function loadButtons() {
     const card = document.createElement("div");
     card.className = "sound-card";
     card.dataset.index = index;
-  card.dataset.soundData = JSON.stringify(button);
+    card.dataset.soundData = JSON.stringify(button);
   if (button.id) card.dataset.buttonId = button.id;
     
     // Fetch icon for app buttons
@@ -767,12 +848,99 @@ async function loadButtons() {
     });
     soundGrid.appendChild(card);
   }
+
+  // After full list appended to DOM, compute pagination and show page
+  computePagination();
+  renderCurrentPage();
   
   // Re-enable drag mode if it was active
   if (isDragMode) {
     enableDragMode();
   }
 }
+
+function computePagination() {
+  const grid = document.getElementById('sound-grid');
+  if (!grid) return;
+  // Measure a representative card size; if none, fallback to CSS sizes
+  const sample = grid.querySelector('.sound-card');
+  const gridRect = grid.getBoundingClientRect();
+  let cardW = 100, cardH = 100, gap = 10;
+  if (sample) {
+    const sRect = sample.getBoundingClientRect();
+    cardW = sRect.width;
+    cardH = sRect.height;
+    // try to read gap from computed style
+    const cs = window.getComputedStyle(grid);
+    const g = parseInt(cs.getPropertyValue('gap'));
+    if (!isNaN(g)) gap = g;
+  }
+  const cols = Math.max(1, Math.floor((gridRect.width + gap) / (cardW + gap)));
+  // Use the visible viewport area below the grid's top as the available height for pagination
+  const pag = document.getElementById('pagination-controls');
+  const pagRect = pag ? pag.getBoundingClientRect() : { height: 0 };
+  // Reserve some bottom space: pagination height + extra margin
+  const reservedBottom = (pagRect.height || 0) + 32;
+  // Compute available height from grid top to viewport bottom minus reserved space
+  const availableHeight = Math.max(0, (window.innerHeight - gridRect.top) - reservedBottom);
+  const rows = Math.max(1, Math.floor((availableHeight + gap) / (cardH + gap)));
+  itemsPerPage = Math.max(1, cols * rows);
+  const totalItems = grid.querySelectorAll('.sound-card').length;
+  totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  if (currentPage >= totalPages) currentPage = totalPages - 1;
+  updatePaginationIndicator();
+}
+
+function renderCurrentPage() {
+  const grid = document.getElementById('sound-grid');
+  if (!grid) return;
+  const cards = Array.from(grid.querySelectorAll('.sound-card'));
+  const start = currentPage * itemsPerPage;
+  const end = start + itemsPerPage;
+
+  // Show/hide cards based on page
+  cards.forEach((c, idx) => {
+    if (idx >= start && idx < end) c.classList.remove('page-hidden');
+    else c.classList.add('page-hidden');
+  });
+  // Recreate slots for drag when on current page
+  removeSlots();
+  if (isDragMode) createSlots();
+  updatePaginationIndicator();
+  // ensure bottom padding accounts for pagination bar height after render
+  updateBottomPaddingForPagination();
+}
+
+function updatePaginationIndicator() {
+  const el = document.getElementById('pagination-indicator');
+  if (!el) return;
+  el.textContent = `${currentPage + 1} / ${totalPages}`;
+}
+
+function goToNextPage() {
+  if (currentPage < totalPages - 1) {
+    currentPage++;
+    renderCurrentPage();
+  }
+}
+
+function goToPrevPage() {
+  if (currentPage > 0) {
+    currentPage--;
+    renderCurrentPage();
+  }
+}
+
+// Debounce resize handling
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  if (resizeTimer) clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    computePagination();
+    renderCurrentPage();
+    updateBottomPaddingForPagination();
+  }, 150);
+});
 
 // Essential: Both preventDefault() and stopPropagation() are required for Electron
 // Only prevent drag events when NOT in sound card drag mode
@@ -821,6 +989,18 @@ initializeChatDisplay();
 // Initialize drag and drop
 initializeDragAndDrop();
 
+// Visibility mapping used across helpers
+function getVisibilityMap() {
+  return {
+    'toggle-sound-grid': 'sound-grid',
+    'toggle-twitch-stats': 'twitch-stats-container',
+    'toggle-recent-activity': 'recent-activity-container',
+    'toggle-twitch-chat': 'twitch-chat-container',
+    'toggle-sound-controls': 'sound-controls',
+    'toggle-move-bar': 'move-bar'
+  };
+}
+
 // Initialize component visibility dropdown
 initializeVisibilityDropdown();
 
@@ -836,14 +1016,7 @@ function initializeVisibilityDropdown() {
   
   console.log('Toggle button found:', !!toggleBtn); // Debug log
   console.log('Menu found:', !!menu); // Debug log
-  const checkboxes = {
-    'toggle-sound-grid': 'sound-grid',
-    'toggle-twitch-stats': 'twitch-stats-container',
-    'toggle-recent-activity': 'recent-activity-container',
-    'toggle-twitch-chat': 'twitch-chat-container',
-    'toggle-sound-controls': 'sound-controls',
-    'toggle-move-bar': 'move-bar'
-  };
+  const checkboxes = getVisibilityMap();
 
   // Toggle dropdown menu visibility
   if (toggleBtn && menu) {
@@ -1001,25 +1174,51 @@ function initializeVisibilityDropdown() {
       });
     });
 
-  // Load persisted visibility prefs and apply initial state
+  // Apply persisted visibility prefs via centralized helper
   try {
-    const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
-    Object.keys(checkboxes).forEach(checkboxId => {
-      const componentId = checkboxes[checkboxId];
-      const checkbox = document.getElementById(checkboxId);
-      const component = document.getElementById(componentId);
-      if (typeof prefs[componentId] === 'boolean') {
-        if (checkbox) checkbox.checked = !!prefs[componentId];
-        if (component) {
-          if (prefs[componentId]) component.classList.remove('hidden');
-          else component.classList.add('hidden');
+    applyVisibilityPrefs();
+  } catch (err) {
+    console.warn('Failed to apply visibility prefs:', err);
+  }
+  }
+
+// Apply visibility preferences from localStorage to all mapped components
+function applyVisibilityPrefs() {
+  const map = (typeof getVisibilityMap === 'function') ? getVisibilityMap() : {
+    'toggle-sound-grid': 'sound-grid',
+    'toggle-twitch-stats': 'twitch-stats-container',
+    'toggle-recent-activity': 'recent-activity-container',
+    'toggle-twitch-chat': 'twitch-chat-container',
+    'toggle-sound-controls': 'sound-controls',
+    'toggle-move-bar': 'move-bar'
+  };
+
+  let prefs = {};
+  try {
+    prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+  } catch (err) {
+    prefs = {};
+  }
+
+  Object.keys(map).forEach(checkboxId => {
+    const componentId = map[checkboxId];
+    const checkbox = document.getElementById(checkboxId);
+    const component = document.getElementById(componentId);
+    const visible = prefs.hasOwnProperty(componentId) ? !!prefs[componentId] : true;
+
+    if (checkbox) checkbox.checked = visible;
+    if (component) {
+      if (visible) component.classList.remove('hidden');
+      else component.classList.add('hidden');
+      // Keep chat collapsed preference intact when hidden/shown
+      if (componentId === 'twitch-chat-container') {
+        if (visible && component.classList.contains('collapsed')) {
+          // leave collapsed state alone
         }
       }
-    });
-  } catch (err) {
-    console.warn('Failed to load visibility prefs:', err);
-  }
-  }
+    }
+  });
+}
 }
 
 // Load and display app version
@@ -1052,6 +1251,28 @@ if (window.electronAPI && window.electronAPI.hasTwitchCreds) {
   }).catch(() => {
     updateChatStatusIndicator(false);
   });
+
+// Keyboard navigation: PageUp / PageDown to move pages
+document.addEventListener('keydown', (e) => {
+  try {
+    const active = document.activeElement;
+    // Don't intercept when user is typing in inputs, textareas, selects or contentEditable
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || active.isContentEditable)) return;
+
+    // Support both key and code values for broader compatibility
+    const k = e.key || e.code || '';
+    if (k === 'PageDown' || k === 'PageDown') {
+      e.preventDefault();
+      goToNextPage();
+    } else if (k === 'PageUp' || k === 'PageUp') {
+      e.preventDefault();
+      goToPrevPage();
+    }
+  } catch (err) {
+    // be silent on any errors in the global handler
+    console.warn('Keyboard page navigation error:', err);
+  }
+});
 }
 
 // Test function to demonstrate Twitch statistics
@@ -1116,15 +1337,8 @@ async function updateTwitchStats() {
     document.getElementById('subscriber-count').textContent = subStats.count.toLocaleString();
     document.getElementById('sub-points').textContent = subStats.points.toLocaleString();
 
-    // Show stats container only if user didn't hide it in prefs
-    try {
-      const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
-      const visible = prefs.hasOwnProperty('twitch-stats-container') ? !!prefs['twitch-stats-container'] : true;
-      if (visible) statsContainer.classList.remove('hidden');
-      else statsContainer.classList.add('hidden');
-    } catch (err) {
-      statsContainer.classList.remove('hidden');
-    }
+    // Respect persisted visibility preferences
+    try { applyVisibilityPrefs(); } catch (e) { /* ignore */ }
     
     // Add debug info
     let debugDiv = document.getElementById('debug-info');
@@ -1152,17 +1366,8 @@ async function updateTwitchStats() {
 function initializeStatsDisplay() {
   const statsContainer = document.getElementById('twitch-stats-container');
   
-  // Start with stats hidden
-  if (statsContainer) {
-    try {
-      const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
-      const visible = prefs.hasOwnProperty('twitch-stats-container') ? !!prefs['twitch-stats-container'] : false;
-      if (!visible) statsContainer.classList.add('hidden');
-      else statsContainer.classList.remove('hidden');
-    } catch (err) {
-      statsContainer.classList.add('hidden');
-    }
-  }
+  // Apply visibility prefs for stats via central helper
+  try { applyVisibilityPrefs(); } catch (e) { /* ignore */ }
   
   // Set up stat click handlers immediately
   setupStatClickHandlers();
@@ -1331,8 +1536,15 @@ async function loadRecentActivity() {
   if (!activityContainer || !window.electronAPI) return;
   
   try {
-    // Show loading state
-    activityContainer.classList.remove('hidden');
+    // Show loading state only if user hasn't hidden recent activity
+    try {
+      const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+      const visible = prefs.hasOwnProperty('recent-activity-container') ? !!prefs['recent-activity-container'] : true;
+      if (visible) activityContainer.classList.remove('hidden');
+      else activityContainer.classList.add('hidden');
+    } catch (err) {
+      activityContainer.classList.remove('hidden');
+    }
     
     // Fetch recent followers and subscribers
     const [followers, subscribers] = await Promise.all([
@@ -1501,7 +1713,15 @@ window.electronAPI.onTwitchConnected(() => {
   // Auto-expand chat when connected
   const chatContainer = document.getElementById('twitch-chat-container');
   if (chatContainer) {
-    chatContainer.classList.remove('hidden');
+    // Respect persisted visibility preferences for chat
+    try {
+      const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+      const visible = prefs.hasOwnProperty('twitch-chat-container') ? !!prefs['twitch-chat-container'] : true;
+      if (visible) chatContainer.classList.remove('hidden');
+      else chatContainer.classList.add('hidden');
+    } catch (err) {
+      chatContainer.classList.remove('hidden');
+    }
     chatContainer.classList.remove('collapsed'); // Expand when connected
     const toggleBtn = document.getElementById('toggle-chat');
     if (toggleBtn) {
@@ -1515,22 +1735,8 @@ window.electronAPI.onTwitchConnected(() => {
   // Load recent activity when connected
   loadRecentActivity();
   
-  // Respect persisted visibility preference for stats container
-  const statsContainer = document.getElementById('twitch-stats-container');
-  if (statsContainer) {
-    try {
-      const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
-      const visible = prefs.hasOwnProperty('twitch-stats-container') ? !!prefs['twitch-stats-container'] : true;
-      if (visible) {
-        // ensure the stats are visible on connect
-        statsContainer.classList.remove('hidden');
-      } else {
-        statsContainer.classList.add('hidden');
-      }
-    } catch (err) {
-      statsContainer.classList.remove('hidden');
-    }
-  }
+  // Re-apply visibility prefs globally after connection changes
+  try { applyVisibilityPrefs(); } catch (e) { /* ignore */ }
 });
 
 // Listen for Twitch disconnection
