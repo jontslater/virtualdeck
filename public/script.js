@@ -413,6 +413,19 @@ function saveButtonOrder() {
   
   // Save to localStorage
   localStorage.setItem('soundButtonOrder', JSON.stringify(newOrder));
+
+  // Also persist order to main config.json by sending ordered ids
+  try {
+    const orderedIds = newOrder.map(b => b.id).filter(Boolean);
+    if (window.electronAPI && typeof window.electronAPI.saveButtonOrder === 'function') {
+      window.electronAPI.saveButtonOrder(orderedIds);
+    } else if (window.electronAPI && window.electronAPI.send) {
+      // fallback if older API exposure
+      window.electronAPI.send('save-button-order', orderedIds);
+    }
+  } catch (e) {
+    console.warn('Failed to persist button order to main process:', e);
+  }
 }
 
 function loadButtonOrder() {
@@ -896,6 +909,14 @@ function initializeVisibilityDropdown() {
             }
             console.log(`Hiding ${componentId}`); // Debug log
           }
+          // Persist visibility preference
+          try {
+            const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+            prefs[componentId] = checkbox.checked;
+            localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+          } catch (err) {
+            console.warn('Failed to persist visibility prefs:', err);
+          }
         }
       });
       
@@ -936,6 +957,14 @@ function initializeVisibilityDropdown() {
             }
           }
         }
+        // Persist all prefs
+        try {
+          const prefs = {};
+          Object.keys(checkboxes).forEach(id => {
+            prefs[checkboxes[id]] = false;
+          });
+          localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+        } catch (err) { console.warn('Failed to persist visibility prefs:', err); }
       });
     });
   }
@@ -961,8 +990,35 @@ function initializeVisibilityDropdown() {
             }
           }
         }
+        // Persist all prefs
+        try {
+          const prefs = {};
+          Object.keys(checkboxes).forEach(id => {
+            prefs[checkboxes[id]] = true;
+          });
+          localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+        } catch (err) { console.warn('Failed to persist visibility prefs:', err); }
       });
     });
+
+  // Load persisted visibility prefs and apply initial state
+  try {
+    const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+    Object.keys(checkboxes).forEach(checkboxId => {
+      const componentId = checkboxes[checkboxId];
+      const checkbox = document.getElementById(checkboxId);
+      const component = document.getElementById(componentId);
+      if (typeof prefs[componentId] === 'boolean') {
+        if (checkbox) checkbox.checked = !!prefs[componentId];
+        if (component) {
+          if (prefs[componentId]) component.classList.remove('hidden');
+          else component.classList.add('hidden');
+        }
+      }
+    });
+  } catch (err) {
+    console.warn('Failed to load visibility prefs:', err);
+  }
   }
 }
 
@@ -1060,8 +1116,15 @@ async function updateTwitchStats() {
     document.getElementById('subscriber-count').textContent = subStats.count.toLocaleString();
     document.getElementById('sub-points').textContent = subStats.points.toLocaleString();
 
-    // Show stats container
-    statsContainer.classList.remove('hidden');
+    // Show stats container only if user didn't hide it in prefs
+    try {
+      const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+      const visible = prefs.hasOwnProperty('twitch-stats-container') ? !!prefs['twitch-stats-container'] : true;
+      if (visible) statsContainer.classList.remove('hidden');
+      else statsContainer.classList.add('hidden');
+    } catch (err) {
+      statsContainer.classList.remove('hidden');
+    }
     
     // Add debug info
     let debugDiv = document.getElementById('debug-info');
@@ -1075,7 +1138,13 @@ async function updateTwitchStats() {
   } catch (error) {
     console.error('Error updating Twitch stats:', error);
     // Hide stats on error
-    statsContainer.classList.add('hidden');
+    try {
+      const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+      const visible = prefs.hasOwnProperty('twitch-stats-container') ? !!prefs['twitch-stats-container'] : true;
+      if (!visible) statsContainer.classList.add('hidden');
+    } catch (err) {
+      statsContainer.classList.add('hidden');
+    }
   }
 }
 
@@ -1085,7 +1154,14 @@ function initializeStatsDisplay() {
   
   // Start with stats hidden
   if (statsContainer) {
-    statsContainer.classList.add('hidden');
+    try {
+      const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+      const visible = prefs.hasOwnProperty('twitch-stats-container') ? !!prefs['twitch-stats-container'] : false;
+      if (!visible) statsContainer.classList.add('hidden');
+      else statsContainer.classList.remove('hidden');
+    } catch (err) {
+      statsContainer.classList.add('hidden');
+    }
   }
   
   // Set up stat click handlers immediately
@@ -1439,21 +1515,20 @@ window.electronAPI.onTwitchConnected(() => {
   // Load recent activity when connected
   loadRecentActivity();
   
-  // Make sure stats container is visible
+  // Respect persisted visibility preference for stats container
   const statsContainer = document.getElementById('twitch-stats-container');
   if (statsContainer) {
-    statsContainer.classList.remove('hidden');
-    
-    // Add debug info
-    let debugDiv = document.getElementById('debug-info');
-    if (debugDiv) {
-      debugDiv.innerHTML += `Stats container made visible on connection, classes: ${statsContainer.className}<br>`;
-    }
-  } else {
-    // Add debug info
-    let debugDiv = document.getElementById('debug-info');
-    if (debugDiv) {
-      debugDiv.innerHTML += 'Stats container not found!<br>';
+    try {
+      const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+      const visible = prefs.hasOwnProperty('twitch-stats-container') ? !!prefs['twitch-stats-container'] : true;
+      if (visible) {
+        // ensure the stats are visible on connect
+        statsContainer.classList.remove('hidden');
+      } else {
+        statsContainer.classList.add('hidden');
+      }
+    } catch (err) {
+      statsContainer.classList.remove('hidden');
     }
   }
 });
