@@ -503,6 +503,7 @@ function initializeChatDisplay() {
   const toggleBtn = document.getElementById('toggle-chat');
   const statusIndicator = document.getElementById('chat-status-indicator');
   const chatMessagesContainer = document.getElementById('twitch-chat-messages');
+  const resizeHandle = document.getElementById('chat-resize-handle');
   
   // Start with chat collapsed (not hidden)
   if (chatContainer) {
@@ -563,9 +564,126 @@ function initializeChatDisplay() {
     });
   }
   
+  // Initialize chat resize functionality
+  if (resizeHandle && chatContainer) {
+    initializeChatResize(resizeHandle, chatContainer);
+  }
+  
   
   // Add global mouse wheel handler
   document.addEventListener('wheel', handleGlobalMouseWheel, { passive: false });
+}
+
+// Initialize chat resize functionality
+function initializeChatResize(resizeHandle, chatContainer) {
+  let isResizing = false;
+  let startX = 0;
+  let startWidth = 0;
+  
+  // Load saved width from localStorage
+  const savedWidth = localStorage.getItem('twitchChatWidth');
+  if (savedWidth) {
+    const width = parseInt(savedWidth);
+    if (width >= 200 && width <= 600) {
+      chatContainer.style.width = width + 'px';
+    }
+  }
+  
+  // Hide resize handle when chat is collapsed
+  function updateResizeHandleVisibility() {
+    if (chatContainer.classList.contains('collapsed') || chatContainer.classList.contains('hidden')) {
+      resizeHandle.style.display = 'none';
+    } else {
+      resizeHandle.style.display = 'block';
+    }
+  }
+  
+  // Initial visibility check
+  updateResizeHandleVisibility();
+  
+  // Watch for class changes on the chat container
+  const observer = new MutationObserver(updateResizeHandleVisibility);
+  observer.observe(chatContainer, { attributes: true, attributeFilter: ['class'] });
+  
+  // Mouse down on resize handle
+  resizeHandle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    isResizing = true;
+    startX = e.clientX;
+    startWidth = chatContainer.offsetWidth;
+    
+    // Add visual feedback
+    document.body.classList.add('resizing-chat');
+    
+    // Add global event listeners
+    document.addEventListener('mousemove', handleResize);
+    document.addEventListener('mouseup', stopResize);
+  });
+  
+  function handleResize(e) {
+    if (!isResizing) return;
+    
+    e.preventDefault();
+    
+    const deltaX = e.clientX - startX;
+    // Invert the deltaX so dragging right expands the chat
+    const newWidth = startWidth - deltaX;
+    
+    // Constrain width between min and max
+    const minWidth = 200;
+    const maxWidth = 600;
+    const constrainedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+    
+    // Apply new width
+    chatContainer.style.width = constrainedWidth + 'px';
+    
+    // Disable transition during resize for smooth dragging
+    chatContainer.style.transition = 'none';
+    
+    // Trigger layout recalculation for the sound grid
+    triggerLayoutUpdate();
+  }
+  
+  function stopResize() {
+    if (!isResizing) return;
+    
+    isResizing = false;
+    
+    // Restore cursor and selection
+    document.body.classList.remove('resizing-chat');
+    
+    // Re-enable transition
+    chatContainer.style.transition = 'width 0.3s ease, height 0.3s ease';
+    
+    // Save width to localStorage
+    const currentWidth = chatContainer.offsetWidth;
+    localStorage.setItem('twitchChatWidth', currentWidth.toString());
+    
+    // Trigger final layout update
+    triggerLayoutUpdate();
+    
+    // Remove global event listeners
+    document.removeEventListener('mousemove', handleResize);
+    document.removeEventListener('mouseup', stopResize);
+  }
+  
+  // Function to trigger layout recalculation
+  function triggerLayoutUpdate() {
+    // Force a reflow to recalculate the grid layout
+    const soundGrid = document.getElementById('sound-grid');
+    if (soundGrid) {
+      // Trigger a reflow by reading a layout property
+      soundGrid.offsetHeight;
+      
+      // If pagination is active, recalculate it
+      if (typeof computePagination === 'function') {
+        computePagination();
+        renderCurrentPage();
+      }
+    }
+  }
 }
 
 // Add a chat message to the display using the existing Twitch activity system
@@ -638,14 +756,18 @@ function addChatMessage(username, message, badges = {}) {
   }
 }
 
-// Setup pagination controls after DOM is ready
+// Setup pagination controls and visibility dropdown after DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+  // Initialize pagination controls
   const prev = document.getElementById('page-prev');
   const next = document.getElementById('page-next');
   if (prev) prev.addEventListener('click', () => { goToPrevPage(); });
   if (next) next.addEventListener('click', () => { goToNextPage(); });
   // Ensure container has enough bottom padding to avoid fixed pagination overlap
   updateBottomPaddingForPagination();
+  
+  // Initialize visibility dropdown
+  initializeVisibilityDropdown();
 });
 
 // Adjust container bottom padding so fixed pagination doesn't overlap the grid
@@ -1128,8 +1250,8 @@ function getVisibilityMap() {
   };
 }
 
-// Initialize component visibility dropdown
-initializeVisibilityDropdown();
+// Initialize component visibility dropdown after DOM is ready
+// (consolidated with pagination setup below)
 
 // Listen for menu-driven view commands from main process
 if (window.electronAPI && typeof window.electronAPI.onViewShowAll === 'function') {
