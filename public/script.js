@@ -1894,6 +1894,16 @@ async function handleTrigger(button) {
   if (button.type === "audio") {
     const audioPath = await window.electronAPI.getSoundPath(button.src);
     const audio = new Audio(audioPath);
+    // Apply saved volume if present (expect 0.0 - 1.0). Fallback to 1.0
+    // Note: volume is stored per-button in `config.json` and only applied for
+    // audio-type buttons. The renderer sends `volume` as a float (0.0-1.0)
+    // when saving; the main process persists it into the button config.
+    try {
+      const vol = (typeof button.volume === 'number') ? button.volume : (button.volume ? parseFloat(button.volume) : 1.0);
+      if (!isNaN(vol)) audio.volume = Math.max(0, Math.min(1, vol));
+    } catch (err) {
+      // ignore and use default
+    }
     audio.play().catch(error => {
     });
   } else if (button.type === "app") {
@@ -1967,6 +1977,7 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       label,
       type,
       hotkey: completeHotkey,
+      volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
       targetPath: existingFile,
       originalPath: existingFile,
       editingIndex: parseInt(form.dataset.editingIndex)
@@ -1981,6 +1992,7 @@ document.getElementById('settings-form').onsubmit = async (e) => {
         type,
         src: existingFile,
         hotkey: completeHotkey || undefined,
+        volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
         args: form.dataset.resolvedArgs || undefined
       };
       if (editingId) {
@@ -2031,6 +2043,7 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       label,
       type,
       hotkey: completeHotkey,
+      volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
       targetPath,
       originalPath: filePath,
       args,
@@ -2047,6 +2060,7 @@ document.getElementById('settings-form').onsubmit = async (e) => {
           type,
           src: targetPath,
           hotkey: completeHotkey || undefined,
+          volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
           args: args || undefined
         };
         if (editingId) {
@@ -2152,6 +2166,15 @@ window.editButton = async (index) => {
   if (btn.args) {
     settingsForm.dataset.resolvedArgs = btn.args;
   }
+  // Populate volume slider if present
+  const volumeInput = document.getElementById('volume-input');
+  const volumeValue = document.getElementById('volume-value');
+  if (volumeInput) {
+    const vol = (typeof btn.volume === 'number') ? btn.volume : (btn.volume ? parseFloat(btn.volume) : 1.0);
+    const percent = Math.round((!isNaN(vol) ? vol : 1.0) * 100);
+    volumeInput.value = percent;
+    if (volumeValue) volumeValue.textContent = `${percent}%`;
+  }
   // Update modal title
   document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : 'App'}: ${btn.label}`;
   // Show current file info
@@ -2172,6 +2195,16 @@ window.editButton = async (index) => {
   // Ensure recorder is stopped when opening edit
   if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
 };
+
+// Update displayed volume percentage when slider moves
+const volSlider = document.getElementById('volume-input');
+if (volSlider) {
+  volSlider.addEventListener('input', (e) => {
+    const v = e.target.value;
+    const label = document.getElementById('volume-value');
+    if (label) label.textContent = `${v}%`;
+  });
+}
 
 // New helper: edit by element (maps displayed card back to config index)
 window.editButtonByEl = async (btnEl) => {
