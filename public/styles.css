@@ -40,6 +40,7 @@ body {
   margin: 0.5vh 0 1vh 0;
   min-height: 200px;
   align-items: flex-start;
+  overflow: hidden; /* Prevent content from overflowing */
 }
 
 /* Responsive behavior: stack secondary panes under the grid on narrow viewports */
@@ -120,7 +121,8 @@ body {
   grid-auto-rows: minmax(var(--card-size), auto);
   align-content: start;
   justify-content: center;
-  width: 100%;
+  flex: 1; /* Allow the grid to grow and shrink */
+  min-width: 0; /* Allow flex item to shrink below content size */
   overflow: visible;
   position: relative;
   min-height: 120px;
@@ -773,7 +775,7 @@ body {
 }
 
 /* Prevent drag on interactive elements */
-button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-card, .edit-button, #settings-modal, #drop-zone, #twitch-chat-container, #twitch-chat-messages, .sound-controls, .drag-toggle-btn, .drag-status, .visibility-dropdown, .visibility-menu, .visibility-item {
+button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-card, .edit-button, #settings-modal, #drop-zone, #twitch-chat-container, #twitch-chat-messages, .sound-controls, .drag-toggle-btn, .drag-status, .visibility-dropdown, .visibility-menu, .visibility-item, .chat-resize-handle {
   -webkit-app-region: no-drag;
 }
 
@@ -851,13 +853,15 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   height: 40vh;
   min-width: 200px;
   min-height: 300px;
-  max-width: 400px;
+  max-width: 600px; /* Increased max-width to allow expansion */
   max-height: 600px;
   overflow: visible;
   transition: width 0.3s ease, height 0.3s ease;
   flex-shrink: 0;
+  flex-grow: 0; /* Don't grow automatically */
   display: flex;
   flex-direction: column;
+  position: relative; /* Enable absolute positioning for resize handle */
 }
 
 #twitch-chat-container.hidden {
@@ -1230,6 +1234,56 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
 
 .toggle-chat-btn:hover {
   background: #666;
+}
+
+/* Chat Resize Handle */
+.chat-resize-handle {
+  position: absolute;
+  left: -6px;
+  top: 0;
+  width: 12px;
+  height: 100%;
+  background: transparent;
+  cursor: col-resize;
+  z-index: 10;
+  -webkit-app-region: no-drag;
+  transition: background 0.2s ease;
+}
+
+.chat-resize-handle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.chat-resize-handle:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Visual feedback during resize */
+body.resizing-chat {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.resizing-chat * {
+  cursor: col-resize !important;
+}
+
+.chat-resize-handle::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 40px;
+  background: #666;
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.chat-resize-handle:hover::before {
+  opacity: 1;
 }
 
 .chat-messages {
