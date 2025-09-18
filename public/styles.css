@@ -455,6 +455,26 @@ body {
   padding: 6px;
 }
 
+/* Volume control styling inside the settings modal */
+.modal-content .volume-label {
+  display: block;
+  margin: 8px 6px 4px 6px; /* small left/right spacing and top/bottom spacing */
+  font-size: 13px;
+  color: #ddd;
+}
+
+#volume-input {
+  width: calc(100% - 24px); /* slightly narrower than full width */
+  margin: 0 12px 10px 12px; /* spacing on left and right to keep it breathing room */
+  accent-color: #2e86de; /* give slider a color in modern browsers */
+}
+
+/* Small tweak for the percent label next to the volume text */
+#volume-value {
+  font-weight: 600;
+  color: #bfe1ff;
+}
+
 #drop-zone {
   border: 2px dashed #666;
   padding: 10px;
