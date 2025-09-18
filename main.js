@@ -107,8 +107,8 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1000,
     height: 800,
-    alwaysOnTop: true,
-    frame: false,
+    //alwaysOnTop: true,
+    //frame: false,
     movable: true,
     resizable: true,
     webPreferences: {
@@ -250,17 +250,6 @@ ipcMain.on('delete-button', (event, index) => {
   // Notify renderer to refresh the UI
   if (win && !win.isDestroyed()) {
     win.webContents.send('refresh-ui');
-  }
-});
-
-ipcMain.on('close-app', () => {
-  app.quit();
-});
-
-ipcMain.on('move-window', (event, delta) => {
-  if (win && !win.isDestroyed()) {
-    const [currentX, currentY] = win.getPosition();
-    win.setPosition(currentX + delta.x, currentY + delta.y);
   }
 });
 
@@ -1657,6 +1646,60 @@ app.whenReady().then(() => {
   createWindow();
   registerHotkeys();
   
+  // Build application menu: Edit contains Preferences, View & Window removed, Tools added
+  const menuTemplate = [
+    { label: 'File', submenu: [ { role: 'quit' } ] },
+    { label: 'Edit', submenu: [
+      { label: 'Preferences', accelerator: 'CmdOrCtrl+,', click: () => {
+        if (win && !win.isDestroyed()) win.webContents.send('open-preferences');
+      } }
+    ] },
+    { label: 'View', submenu: [
+  { id: 'view_show_all', label: 'Show All', click: () => { if (win && !win.isDestroyed()) win.webContents.send('view-show-all'); } },
+  { id: 'view_hide_all', label: 'Hide All', click: () => { if (win && !win.isDestroyed()) win.webContents.send('view-hide-all'); } },
+      { type: 'separator' },
+  { id: 'view_sound_grid', label: 'Sound Grid', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-grid', checked: menuItem.checked }); } },
+  { id: 'view_twitch_stats', label: 'Twitch Statistics', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'twitch-stats-container', checked: menuItem.checked }); } },
+  { id: 'view_recent_activity', label: 'Recent Activity', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'recent-activity-container', checked: menuItem.checked }); } },
+  { id: 'view_twitch_chat', label: 'Twitch Chat', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'twitch-chat-container', checked: menuItem.checked }); } },
+  { id: 'view_sound_controls', label: 'Sound Controls', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-controls', checked: menuItem.checked }); } }
+    ] },
+    { label: 'Tools', submenu: [
+      { label: 'Developer Tools', accelerator: 'F12', click: () => { if (win && !win.isDestroyed()) win.webContents.toggleDevTools(); } },
+      { role: 'reload' }
+    ] },
+    { label: 'Help', submenu: [ { label: 'About', click: () => {
+        if (win && !win.isDestroyed()) win.webContents.send('show-about');
+      } } ] }
+  ];
+  // Keep a reference to the built application menu so we can update checkbox states later
+  const appMenu = Menu.buildFromTemplate(menuTemplate);
+  Menu.setApplicationMenu(appMenu);
+
+  // Listen for visibility prefs from renderer and sync menu checkbox states
+  ipcMain.on('sync-view-prefs', (event, prefs) => {
+    try {
+      const menu = Menu.getApplicationMenu();
+      if (!menu) return;
+      const mapping = {
+        'sound-grid': 'view_sound_grid',
+        'twitch-stats-container': 'view_twitch_stats',
+        'recent-activity-container': 'view_recent_activity',
+        'twitch-chat-container': 'view_twitch_chat',
+        'sound-controls': 'view_sound_controls'
+      };
+      Object.keys(mapping).forEach(componentId => {
+        const itemId = mapping[componentId];
+        const mi = menu.getMenuItemById ? menu.getMenuItemById(itemId) : null;
+        if (mi && typeof mi.checked !== 'undefined') {
+          mi.checked = !!(prefs && prefs[componentId]);
+        }
+      });
+    } catch (e) {
+      console.warn('Failed to sync view prefs to menu:', e);
+    }
+  });
+
   // Register DevTools shortcut
   globalShortcut.register('F12', () => {
     if (win && !win.isDestroyed()) {

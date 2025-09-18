@@ -4,15 +4,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Media Trigger App</title>
+  <title>Virtual Deck</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="global-drop-zone" class="hidden">Drop files here</div>
-  <div id="move-bar">⇱ Move</div>
   
   <!-- Component Visibility Dropdown -->
-  <div id="visibility-dropdown" class="visibility-dropdown">
+  <div id="visibility-dropdown" class="visibility-dropdown visibility-menu hidden">
     <button id="visibility-toggle" class="visibility-toggle-btn">⚙️ Components</button>
     <div id="visibility-menu" class="visibility-menu hidden">
       <div class="visibility-header">Show/Hide Components</div>
@@ -32,7 +31,7 @@
         <input type="checkbox" id="toggle-sound-controls" checked> Sound Controls
       </label>
       <label class="visibility-item">
-        <input type="checkbox" id="toggle-move-bar" checked> Move Bar
+        <!-- Move Bar removed -->
       </label>
       <div class="visibility-actions">
         <button id="hide-all-components" class="visibility-action-btn">Hide All</button>
@@ -51,7 +50,7 @@
       <strong>Numpad Currently Not supported</strong>
     </div>
     <button id="twitch-connect" class="twitch-btn"></button>
-    <button id="close-app" class="close-app-btn">✕</button>
+    
     
     <!-- Main Content Area -->
     <!-- Twitch Statistics Display -->
@@ -165,6 +164,17 @@
         <button type="submit" id="save-sound">Save</button>
         <button type="button" id="close-settings">Cancel</button>
       </form>
+    </div>
+  </div>
+  <!-- About Modal -->
+  <div id="about-modal" class="hidden">
+    <div class="modal-content about-content">
+      <button id="about-close" class="modal-close">✕</button>
+      <div class="about-body">
+        <img src="logo.png" alt="VirtualDeck" class="about-logo">
+        <div id="about-version" class="about-version">Version: ...</div>
+        <p id="about-desc" class="about-desc">Loading description...</p>
+      </div>
     </div>
   </div>
   <script src="script.js"></script>

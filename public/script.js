@@ -1124,12 +1124,71 @@ function getVisibilityMap() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
-    'toggle-move-bar': 'move-bar'
+    // move-bar removed
   };
 }
 
 // Initialize component visibility dropdown
 initializeVisibilityDropdown();
+
+// Listen for menu-driven view commands from main process
+if (window.electronAPI && typeof window.electronAPI.onViewShowAll === 'function') {
+  window.electronAPI.onViewShowAll(() => {
+    const showAllBtn = document.getElementById('show-all-components');
+    if (showAllBtn) showAllBtn.click();
+  });
+}
+if (window.electronAPI && typeof window.electronAPI.onViewHideAll === 'function') {
+  window.electronAPI.onViewHideAll(() => {
+    const hideAllBtn = document.getElementById('hide-all-components');
+    if (hideAllBtn) hideAllBtn.click();
+  });
+}
+if (window.electronAPI && typeof window.electronAPI.onViewToggle === 'function') {
+  window.electronAPI.onViewToggle((payload) => {
+    try {
+      const map = getVisibilityMap();
+      // map keys are checkbox ids, and map values are component element ids
+      const target = payload && payload.key;
+      const checked = !!payload.checked;
+      if (!target) return;
+
+      // helper: resolve provided key to the component id
+      let componentId = null;
+      // If payload.key already looks like a component id (contains 'container' or 'sound' etc), use it
+      if (typeof target === 'string' && (target.includes('container') || target.includes('sound') || target.includes('controls') || target === 'sound-grid')) {
+        componentId = target;
+      }
+
+      // If not resolved yet, try mapping known short keys to component ids
+      if (!componentId) {
+        const shortToFull = {
+          'twitch-stats': 'twitch-stats-container',
+          'twitch-chat': 'twitch-chat-container',
+          'recent-activity': 'recent-activity-container',
+          'sound-controls': 'sound-controls',
+          'sound-grid': 'sound-grid'
+        };
+        componentId = shortToFull[target] || null;
+      }
+
+      if (!componentId) return;
+
+      // find the checkbox id for this component
+      let checkboxId = null;
+      Object.keys(map).forEach(id => {
+        if (map[id] === componentId) checkboxId = id;
+      });
+      if (checkboxId) {
+        const checkbox = document.getElementById(checkboxId);
+        if (checkbox) {
+          checkbox.checked = checked;
+          checkbox.dispatchEvent(new Event('change'));
+        }
+      }
+    } catch (e) { console.warn('Failed to handle view-toggle from menu', e); }
+  });
+}
 
 // Load and display app version
 loadAppVersion();
@@ -1214,6 +1273,10 @@ function initializeVisibilityDropdown() {
             const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
             prefs[componentId] = checkbox.checked;
             localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+            // Notify main process so menu checkbox states can be synced
+            if (window.electronAPI && typeof window.electronAPI.syncViewPrefs === 'function') {
+              try { window.electronAPI.syncViewPrefs(prefs); } catch (err) { console.warn('Failed to send view prefs to main', err); }
+            }
           } catch (err) {
             console.warn('Failed to persist visibility prefs:', err);
           }
@@ -1264,6 +1327,9 @@ function initializeVisibilityDropdown() {
             prefs[checkboxes[id]] = false;
           });
           localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+          if (window.electronAPI && typeof window.electronAPI.syncViewPrefs === 'function') {
+            try { window.electronAPI.syncViewPrefs(prefs); } catch (err) { console.warn('Failed to send view prefs to main', err); }
+          }
         } catch (err) { console.warn('Failed to persist visibility prefs:', err); }
       });
     });
@@ -1297,6 +1363,9 @@ function initializeVisibilityDropdown() {
             prefs[checkboxes[id]] = true;
           });
           localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+          if (window.electronAPI && typeof window.electronAPI.syncViewPrefs === 'function') {
+            try { window.electronAPI.syncViewPrefs(prefs); } catch (err) { console.warn('Failed to send view prefs to main', err); }
+          }
         } catch (err) { console.warn('Failed to persist visibility prefs:', err); }
       });
     });
@@ -1304,6 +1373,13 @@ function initializeVisibilityDropdown() {
   // Apply persisted visibility prefs via centralized helper
   try {
     applyVisibilityPrefs();
+    // Send to main so application menu can reflect persisted state
+    try {
+      const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+      if (window.electronAPI && typeof window.electronAPI.syncViewPrefs === 'function') {
+        window.electronAPI.syncViewPrefs(prefs);
+      }
+    } catch (err) { /* ignore send errors */ }
   } catch (err) {
     console.warn('Failed to apply visibility prefs:', err);
   }
@@ -1317,7 +1393,7 @@ function applyVisibilityPrefs() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
-    'toggle-move-bar': 'move-bar'
+    // move-bar removed
   };
 
   let prefs = {};
@@ -1366,6 +1442,51 @@ function loadAppVersion() {
 
 // Initialize stats display
 initializeStatsDisplay();
+
+// About modal handling: listen for the main process 'show-about' event
+function openAboutModal() {
+  const modal = document.getElementById('about-modal');
+  if (!modal) return;
+  // Populate version
+  const versionEl = document.getElementById('about-version');
+  const descEl = document.getElementById('about-desc');
+  if (window.electronAPI && window.electronAPI.getAppVersion) {
+    window.electronAPI.getAppVersion().then(v => {
+      if (versionEl) versionEl.textContent = `Version: ${v || 'Unknown'}`;
+    }).catch(() => {});
+  }
+  // Try to load description from package.json via fetch
+  fetch('../package.json').then(r => r.json()).then(pkg => {
+    if (descEl && pkg && pkg.description) descEl.textContent = pkg.description;
+  }).catch(() => {
+    if (descEl) descEl.textContent = '';
+  });
+
+  modal.classList.remove('hidden');
+  // Close when clicking outside modal content
+  modal.addEventListener('click', function onOutClick(e) {
+    if (e.target === modal) {
+      modal.classList.add('hidden');
+      modal.removeEventListener('click', onOutClick);
+    }
+  });
+  const btn = document.getElementById('about-close');
+  if (btn) btn.onclick = () => { modal.classList.add('hidden'); };
+}
+
+if (window.electronAPI && window.electronAPI.onShowAbout) {
+  window.electronAPI.onShowAbout(() => {
+    openAboutModal();
+  });
+}
+
+// Open settings modal when Preferences menu item is clicked
+if (window.electronAPI && window.electronAPI.onOpenPreferences) {
+  window.electronAPI.onOpenPreferences(() => {
+    const settingsModal = document.getElementById('settings-modal');
+    if (settingsModal) settingsModal.classList.remove('hidden');
+  });
+}
 
 // Check initial Twitch connection status
 if (window.electronAPI && window.electronAPI.hasTwitchCreds) {
@@ -2276,14 +2397,7 @@ window.deleteButton = (index) => {
 };
 
 // Close app button
-window.addEventListener('DOMContentLoaded', () => {
-  const closeBtn = document.getElementById('close-app');
-  if (closeBtn) {
-    closeBtn.onclick = () => {
-      window.electronAPI.closeApp();
-    };
-  }
-});
+// close-app button removed — app window controlled via menu bar
 
 // Hotkey recording functionality
 let hotkeyListener = null;
@@ -2405,61 +2519,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// Move App Button: Hold to move the window
-window.addEventListener('DOMContentLoaded', () => {
-  const moveBar = document.getElementById('move-bar');
-  if (moveBar) {
-    let isDragging = false;
-    let startX, startY;
-
-    moveBar.addEventListener('mousedown', (e) => {
-      isDragging = true;
-      moveBar.classList.add('dragging');
-      
-      // Store initial mouse position relative to screen
-      startX = e.screenX;
-      startY = e.screenY;
-      
-      e.preventDefault();
-      e.stopPropagation();
-    });
-
-    document.addEventListener('mousemove', (e) => {
-      if (!isDragging) return;
-      
-      // Calculate movement delta
-      const deltaX = e.screenX - startX;
-      const deltaY = e.screenY - startY;
-      
-      // Only move if there's significant movement to avoid jitter
-      if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
-        // Move the window by the delta amount
-        window.electronAPI.moveWindow({
-          x: deltaX,
-          y: deltaY
-        });
-        
-        // Update start position to current position
-        startX = e.screenX;
-        startY = e.screenY;
-      }
-      
-      e.preventDefault();
-    });
-
-    document.addEventListener('mouseup', () => {
-      if (isDragging) {
-        isDragging = false;
-        moveBar.classList.remove('dragging');
-      }
-    });
-
-    // Prevent context menu on move bar
-    moveBar.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-    });
-  }
-});
+// move-bar removed — menu bar is used instead for window controls
 
 // Listen for trigger-media events from the main process
 window.electronAPI.onTriggerMedia(async (mediaId) => {
