@@ -484,6 +484,30 @@ body {
   text-align: center;
 }
 
+/* About modal specifics */
+.about-content { text-align: center; position: relative; }
+.about-logo { max-width: 160px; max-height: 160px; width: auto; height: auto; display: block; margin: 8px auto; }
+.about-body { color: #ddd; }
+.modal-close { position: absolute; right: 8px; top: 8px; background: transparent; border: none; color: #bbb; font-size: 18px; cursor: pointer; }
+.about-version { margin-top: 6px; font-size: 14px; color: #ccc; }
+.about-desc { margin-top: 8px; color: #bbb; font-size: 13px; }
+
+/* Make the about modal absolutely centered and independent of other modals */
+#about-modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 11000;
+  background: rgba(0,0,0,0.6);
+}
+#about-modal.hidden { display: none; }
+
 .title-bar {
   -webkit-app-region: drag;
   display: flex;
@@ -499,23 +523,7 @@ body {
   font-size: 18px;
 }
 
-.close-app-btn {
-  position: fixed;
-  top: 10px;
-  right: 10px;
-  background: #ff4444;
-  border: none;
-  color: white;
-  padding: 8px 12px;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 16px;
-  z-index: 1000;
-}
-
-.close-app-btn:hover {
-  background: #ff6666;
-}
+/* close-app button removed */
 
 /* Twitch Connect button styled as a square, matching close-app-btn */
 .twitch-btn {
@@ -769,40 +777,7 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   -webkit-app-region: no-drag;
 }
 
-#move-bar {
-  -webkit-app-region: no-drag;
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  height: 32px;
-  width: 80px;
-  background: #222;
-  color: #fff;
-  text-align: center;
-  line-height: 32px;
-  border-radius: 8px;
-  border: 1px solid #444;
-  cursor: move;
-  user-select: none;
-  z-index: 2000;
-  font-size: 15px;
-  letter-spacing: 1px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  opacity: 0.85;
-  transition: background 0.2s, opacity 0.2s;
-}
-#move-bar:hover {
-  background: #333;
-  opacity: 1;
-}
-#move-bar.dragging {
-  background: #444;
-  cursor: grabbing;
-}
-
-#move-bar.hidden {
-  display: none !important;
-}
+/* move-bar removed — UI cleaned up */
 
 #sound-controls.hidden {
   display: none !important;
