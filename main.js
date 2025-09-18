@@ -205,7 +205,11 @@ ipcMain.on('add-media', (event, data) => {
     type: data.type,
     src: data.targetPath,
     hotkey: data.hotkey || undefined,
-    args: data.args || undefined
+    args: data.args || undefined,
+    // Persist volume if provided (expected 0.0 - 1.0). This value is only
+    // meaningful for `type: 'audio'` buttons; the renderer will set the
+    // Audio element's `volume` property when a button is triggered.
+    volume: (typeof data.volume === 'number') ? data.volume : (data.volume ? parseFloat(data.volume) : undefined)
   };
 
   // Ensure each button has a stable unique id
