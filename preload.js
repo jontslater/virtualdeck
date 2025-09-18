@@ -4,7 +4,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   addMedia: (data) => ipcRenderer.send('add-media', data),
   deleteButton: (index) => ipcRenderer.send('delete-button', index),
-  closeApp: () => ipcRenderer.send('close-app'),
   refreshHotkeys: () => ipcRenderer.send('refresh-hotkeys'),
   disableHotkeys: () => ipcRenderer.send('disable-hotkeys'),
   enableHotkeys: () => ipcRenderer.send('enable-hotkeys'),
@@ -59,4 +58,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: async () => ipcRenderer.invoke('get-app-version'),
   // Persist UI button order (array of ids) to main process
   saveButtonOrder: (orderedIds) => ipcRenderer.send('save-button-order', orderedIds),
+  onShowAbout: (callback) => ipcRenderer.on('show-about', callback),
+  onOpenPreferences: (callback) => ipcRenderer.on('open-preferences', callback),
+  onViewShowAll: (callback) => ipcRenderer.on('view-show-all', callback),
+  onViewHideAll: (callback) => ipcRenderer.on('view-hide-all', callback),
+  onViewToggle: (callback) => ipcRenderer.on('view-toggle', (event, payload) => callback(payload)),
+  syncViewPrefs: (prefs) => ipcRenderer.send('sync-view-prefs', prefs),
 });
