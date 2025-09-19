@@ -282,6 +282,28 @@ ipcMain.handle('get-config', async () => {
   }
 });
 
+// IPC handler to update config
+ipcMain.handle('update-config', async (event, configUpdate) => {
+  try {
+    // Read current config
+    let config = { buttons: [] };
+    if (fs.existsSync(configPath)) {
+      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    }
+    
+    // Merge the update with existing config
+    config = { ...config, ...configUpdate };
+    
+    // Write back to file
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log('Config updated successfully:', configUpdate);
+    return true;
+  } catch (e) {
+    console.error('Error updating config:', e);
+    return false;
+  }
+});
+
 // Persist button order sent from renderer to config.json
 ipcMain.on('save-button-order', (event, orderedIds) => {
   try {
@@ -1666,6 +1688,15 @@ app.whenReady().then(() => {
     ] },
     { label: 'Tools', submenu: [
       { label: 'Developer Tools', accelerator: 'F12', click: () => { if (win && !win.isDestroyed()) win.webContents.toggleDevTools(); } },
+      { type: 'separator' },
+      { label: 'Themes', submenu: [
+        { id: 'theme_dark', label: '🌙 Dark', type: 'radio', checked: true, click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'dark'); } },
+        { id: 'theme_light', label: '☀️ Light', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'light'); } },
+        { id: 'theme_red', label: '❤️ Red', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'red'); } },
+        { id: 'theme_purple', label: '💜 Purple', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'purple'); } },
+        { id: 'theme_blue', label: '💙 Blue', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'blue'); } },
+        { id: 'theme_darkpop', label: '🎵 Dark Pop', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'darkpop'); } }
+      ] },
       { role: 'reload' }
     ] },
     { label: 'Help', submenu: [ { label: 'About', click: () => {
@@ -1697,6 +1728,34 @@ app.whenReady().then(() => {
       });
     } catch (e) {
       console.warn('Failed to sync view prefs to menu:', e);
+    }
+  });
+
+  // Listen for theme changes from renderer and sync menu radio states
+  ipcMain.on('sync-theme', (event, themeName) => {
+    try {
+      const menu = Menu.getApplicationMenu();
+      if (!menu) return;
+      
+      // Clear all theme radio buttons
+      const themeIds = ['theme_dark', 'theme_light', 'theme_red', 'theme_purple', 'theme_blue', 'theme_darkpop'];
+      themeIds.forEach(themeId => {
+        const mi = menu.getMenuItemById ? menu.getMenuItemById(themeId) : null;
+        if (mi && typeof mi.checked !== 'undefined') {
+          mi.checked = false;
+        }
+      });
+      
+      // Set the active theme
+      const activeThemeId = `theme_${themeName}`;
+      const activeMenuItem = menu.getMenuItemById ? menu.getMenuItemById(activeThemeId) : null;
+      if (activeMenuItem && typeof activeMenuItem.checked !== 'undefined') {
+        activeMenuItem.checked = true;
+      }
+      
+      console.log('Synced theme menu to:', themeName);
+    } catch (e) {
+      console.error('Error syncing theme menu:', e);
     }
   });
 

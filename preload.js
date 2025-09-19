@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onTriggerMedia: (callback) => ipcRenderer.on('trigger-media', (event, mediaId) => callback(mediaId)),
   onRefreshUI: (callback) => ipcRenderer.on('refresh-ui', (event) => callback()),
   getConfig: async () => ipcRenderer.invoke('get-config'),
+  updateConfig: async (configUpdate) => ipcRenderer.invoke('update-config', configUpdate),
   // Return persisted Twitch Client config (tc_config.json in userData)
   getTwitchConfig: async () => ipcRenderer.invoke('get-tc-config'),
   getSoundPath: async (relativePath) => ipcRenderer.invoke('get-sound-path', relativePath),
@@ -64,4 +65,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onViewHideAll: (callback) => ipcRenderer.on('view-hide-all', callback),
   onViewToggle: (callback) => ipcRenderer.on('view-toggle', (event, payload) => callback(payload)),
   syncViewPrefs: (prefs) => ipcRenderer.send('sync-view-prefs', prefs),
+  onThemeChange: (callback) => ipcRenderer.on('theme-change', (event, themeName) => callback(themeName)),
+  syncTheme: (themeName) => ipcRenderer.send('sync-theme', themeName),
 });
