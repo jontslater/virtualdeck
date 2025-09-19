@@ -2815,3 +2815,200 @@ typeSelect.addEventListener('change', function() {
     appFileInput.required = true;
   }
 });
+
+// Theme System
+class ThemeManager {
+  constructor() {
+    this.currentTheme = 'dark';
+    this.themes = ['dark', 'light', 'red', 'purple', 'blue', 'darkpop'];
+    this.storageKey = 'virtualdeck-theme-v1'; // Versioned key to avoid conflicts
+    this.init().catch(console.error);
+  }
+
+  async init() {
+    await this.loadSavedTheme();
+    this.setupEventListeners();
+    this.applyTheme(this.currentTheme);
+    
+    // Ensure theme is applied after delays to handle any timing issues
+    setTimeout(() => {
+      this.applyTheme(this.currentTheme);
+    }, 100);
+    
+    // Apply again after a longer delay to ensure it sticks
+    setTimeout(() => {
+      this.applyTheme(this.currentTheme);
+    }, 500);
+    
+    // Sync the menu state with the loaded theme
+    setTimeout(() => {
+      if (window.electronAPI?.syncTheme) {
+        window.electronAPI.syncTheme(this.currentTheme);
+      }
+    }, 600);
+  }
+
+  async loadSavedTheme() {
+    try {
+      let savedTheme = null;
+      
+      // Try Electron API first (production)
+      if (window.electronAPI?.getConfig) {
+        try {
+          const config = await window.electronAPI.getConfig();
+          savedTheme = config?.theme;
+        } catch (error) {
+          savedTheme = localStorage.getItem(this.storageKey);
+        }
+      } else {
+        // Fallback to localStorage (development)
+        savedTheme = localStorage.getItem(this.storageKey);
+      }
+      
+      if (savedTheme && this.themes.includes(savedTheme)) {
+        this.currentTheme = savedTheme;
+      }
+    } catch (error) {
+      // Use default theme on error
+    }
+  }
+
+  setupEventListeners() {
+    // Listen for theme changes from the menu bar
+    if (window.electronAPI?.onThemeChange) {
+      window.electronAPI.onThemeChange((themeName) => {
+        this.setTheme(themeName);
+      });
+    }
+  }
+
+  setTheme(themeName) {
+    if (this.themes.includes(themeName)) {
+      this.currentTheme = themeName;
+      this.applyTheme(themeName);
+      this.saveTheme(themeName);
+      
+      // Sync the menu state
+      if (window.electronAPI?.syncTheme) {
+        window.electronAPI.syncTheme(themeName);
+      }
+    }
+  }
+
+  applyTheme(themeName) {
+    // Set the theme attribute on document and body
+    document.documentElement.setAttribute('data-theme', themeName);
+    document.body.setAttribute('data-theme', themeName);
+    
+    // Force a style recalculation to ensure the theme is applied
+    document.documentElement.style.display = 'none';
+    document.documentElement.offsetHeight; // Trigger reflow
+    document.documentElement.style.display = '';
+  }
+
+
+  saveTheme(themeName) {
+    try {
+      // Try Electron API first (production)
+      if (window.electronAPI?.updateConfig) {
+        window.electronAPI.updateConfig({ theme: themeName });
+      } else {
+        // Fallback to localStorage (development)
+        localStorage.setItem(this.storageKey, themeName);
+      }
+    } catch (error) {
+      // Try localStorage as fallback
+      try {
+        localStorage.setItem(this.storageKey, themeName);
+      } catch (localError) {
+        // Silent fail if both methods fail
+      }
+    }
+  }
+
+  getCurrentTheme() {
+    return this.currentTheme;
+  }
+
+  // Method to cycle through themes (useful for hotkeys)
+  cycleTheme() {
+    const currentIndex = this.themes.indexOf(this.currentTheme);
+    const nextIndex = (currentIndex + 1) % this.themes.length;
+    this.setTheme(this.themes[nextIndex]);
+  }
+}
+
+// Initialize theme manager
+let themeManager;
+
+// Apply theme immediately to prevent flash
+(function applyThemeImmediately() {
+  const storageKey = 'virtualdeck-theme-v1';
+  const oldKey = 'virtualdeck-theme';
+  
+  // Check both new and old keys
+  let savedTheme = localStorage.getItem(storageKey);
+  
+  if (!savedTheme) {
+    savedTheme = localStorage.getItem(oldKey);
+    if (savedTheme) {
+      localStorage.setItem(storageKey, savedTheme);
+      localStorage.removeItem(oldKey);
+    }
+  }
+  
+  if (savedTheme && ['dark', 'light', 'red', 'purple', 'blue', 'darkpop'].includes(savedTheme)) {
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    
+    // Sync menu state after a delay to ensure Electron API is ready
+    setTimeout(() => {
+      if (window.electronAPI?.syncTheme) {
+        window.electronAPI.syncTheme(savedTheme);
+      }
+    }, 100);
+  }
+})();
+
+// Wait for DOM to be ready before initializing theme manager
+document.addEventListener('DOMContentLoaded', () => {
+  themeManager = new ThemeManager();
+  
+  // Add hotkey to cycle through themes (Ctrl+Shift+T)
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key === 'T') {
+      e.preventDefault();
+      if (themeManager) {
+        themeManager.cycleTheme();
+      }
+    }
+  });
+  
+  // Export for potential use by other parts of the app
+  window.themeManager = themeManager;
+  
+  // Watch for any changes to the document element's data-theme attribute
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        if (currentTheme !== themeManager.getCurrentTheme()) {
+          setTimeout(() => {
+            themeManager.applyTheme(themeManager.getCurrentTheme());
+          }, 10);
+        }
+      }
+    });
+  });
+  
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme']
+  });
+  
+  // Final theme application after everything else has loaded
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      themeManager.applyTheme(themeManager.getCurrentTheme());
+    }, 1000);
+  });
+});
