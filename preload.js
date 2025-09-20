@@ -57,6 +57,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   moveWindow: (position) => ipcRenderer.send('move-window', position),
   getWindowBounds: async () => ipcRenderer.invoke('get-window-bounds'),
   getAppVersion: async () => ipcRenderer.invoke('get-app-version'),
+  onOpenTwitchActivity: (callback) => ipcRenderer.on('open-twitch-activity', callback),
+  onOpenEventSubSubscriptions: (callback) => ipcRenderer.on('open-eventsub-subscriptions', callback),
+  onClearTwitchCreds: (callback) => ipcRenderer.on('clear-twitch-creds', callback),
+  onOpenTwitchMapping: (callback) => ipcRenderer.on('open-twitch-mapping', callback),
+  onRendererReady: (callback) => ipcRenderer.on('renderer-ready', callback),
   // Persist UI button order (array of ids) to main process
   saveButtonOrder: (orderedIds) => ipcRenderer.send('save-button-order', orderedIds),
   onShowAbout: (callback) => ipcRenderer.on('show-about', callback),

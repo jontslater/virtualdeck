@@ -260,7 +260,7 @@ html[data-theme], body[data-theme] {
   margin: 0.5vh 0 1vh 0;
   min-height: 200px;
   align-items: flex-start;
-  overflow: hidden; /* Prevent content from overflowing */
+  overflow: visible; /* Allow hovered cards to lift without being clipped */
 }
 
 /* Responsive behavior: stack secondary panes under the grid on narrow viewports */
@@ -450,6 +450,7 @@ html[data-theme], body[data-theme] {
   background: var(--hover-bg);
   transform: translateY(-2px);
   border-color: var(--border-tertiary);
+  z-index: 20; /* bring hovered card above neighbors so the lifted top is visible */
 }
 
 /* Drag and Drop Styles */
@@ -464,6 +465,7 @@ html[data-theme], body[data-theme] {
   background: var(--hover-bg);
   transform: translateY(-2px);
   box-shadow: 0 4px 8px var(--shadow-color);
+  z-index: 30;
 }
 
 .sound-card.dragging {
