@@ -154,6 +154,8 @@ window.addEventListener('DOMContentLoaded', () => {
     img.src = '../TwitchConnected/tc.gif';
     img.alt = 'Twitch Connect';
     twitchBtn.appendChild(img);
+    // Hide the on-screen Twitch Connect button — functionality moved to Tools menu
+    try { twitchBtn.style.display = 'none'; } catch (e) {}
     // Set aria-label for accessibility
     twitchBtn.setAttribute('aria-label', 'Connect to Twitch');
     // Set initial disconnected style
@@ -178,6 +180,7 @@ window.addEventListener('DOMContentLoaded', () => {
         btn.style.backgroundColor = '#6441a5'; // Twitch purple
         btn.setAttribute('aria-label', 'Connected to Twitch');
       }
+      try { localStorage.setItem('vd_hide_twitch_banner', '1'); } catch (e) {}
     });
   } else if (window.ipcRenderer) {
     window.ipcRenderer.on('twitch-connected', () => {
@@ -187,6 +190,7 @@ window.addEventListener('DOMContentLoaded', () => {
         btn.style.backgroundColor = '#6441a5'; // Twitch purple
         btn.setAttribute('aria-label', 'Connected to Twitch');
       }
+      try { localStorage.setItem('vd_hide_twitch_banner', '1'); } catch (e) {}
     });
   }
 
@@ -207,6 +211,52 @@ window.addEventListener('DOMContentLoaded', () => {
       });
     }
     connectToTwitch();
+  }
+
+    // Top banner removed — small centered banner handles the prompt now
+
+  // Register app-menu IPC handlers so menu items can open the same modals
+  try {
+    if (window.electronAPI && window.electronAPI.onOpenTwitchActivity) {
+      window.electronAPI.onOpenTwitchActivity(() => {
+        try { showTwitchActivityModal(); } catch (e) { console.error('Failed to open activity modal from menu:', e); }
+      });
+    }
+    if (window.electronAPI && window.electronAPI.onOpenEventSubSubscriptions) {
+      window.electronAPI.onOpenEventSubSubscriptions(() => {
+        try { showTwitchSubscriptionsModal(); } catch (e) { console.error('Failed to open subscriptions modal from menu:', e); }
+      });
+    }
+    if (window.electronAPI && window.electronAPI.onOpenTwitchMapping) {
+      window.electronAPI.onOpenTwitchMapping(() => {
+        try {
+          // Open the connected menu and show the mappings overview.
+          try { showTwitchConnectedMenu(); } catch (e) {}
+          // After the connected modal is created, ensure the mappings list is visible.
+          setTimeout(() => {
+            try {
+              const mappingsList = document.getElementById('twitch-connected-menu') && document.getElementById('twitch-connected-menu').querySelector('#mappings-list');
+              if (mappingsList && mappingsList.scrollIntoView) mappingsList.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } catch (e) { /* ignore */ }
+          }, 80);
+        } catch (e) { console.error('Failed to open mapping overview from menu:', e); }
+      });
+    }
+    if (window.electronAPI && window.electronAPI.onClearTwitchCreds) {
+      window.electronAPI.onClearTwitchCreds(() => {
+        try {
+          // Ensure the clear confirmation flow is shown (reuse existing handler path)
+          showTwitchConnectedMenu();
+          // small delay to allow modal to be created
+          setTimeout(() => {
+            const btn = document.getElementById('twitch-menu-clear-creds');
+            if (btn && typeof btn.onclick === 'function') btn.onclick();
+          }, 60);
+        } catch (e) { console.error('Failed to trigger clear creds from menu:', e); }
+      });
+    }
+  } catch (e) {
+    console.warn('Failed to register menu IPC handlers:', e);
   }
 });
 
@@ -1012,11 +1062,12 @@ function showTwitchConnectedMenu() {
   modal.style.width = '320px';
   modal.style.boxShadow = '0 8px 40px rgba(0,0,0,0.6)';
   modal.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><strong>Twitch Menu</strong><button id="twitch-connected-menu-close">Close</button></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><strong></strong><button id="twitch-connected-menu-close">Close</button></div>
     <div style="display:flex;flex-direction:column;gap:10px;">
-      <button id="twitch-menu-view-events" style="padding:8px;border-radius:6px;background:#222;color:#fff;border:1px solid #333;">View Twitch Events / Test Events</button>
-      <button id="twitch-menu-subscriptions" style="padding:8px;border-radius:6px;background:#222;color:#fff;border:1px solid #333;">EventSub Subscriptions (Select)</button>
-  <button id="twitch-menu-clear-creds" style="padding:8px;border-radius:6px;background:#661111;color:#fff;border:1px solid #330000;">Clear Twitch Credentials</button>
+      <!-- Buttons hidden: functionality moved to application menu under Tools -> Twitch Setup -->
+      <button id="twitch-menu-view-events" style="display:none;padding:8px;border-radius:6px;background:#222;color:#fff;border:1px solid #333;">View Twitch Events / Test Events</button>
+      <button id="twitch-menu-subscriptions" style="display:none;padding:8px;border-radius:6px;background:#222;color:#fff;border:1px solid #333;">EventSub Subscriptions (Select)</button>
+  <button id="twitch-menu-clear-creds" style="display:none;padding:8px;border-radius:6px;background:#661111;color:#fff;border:1px solid #330000;">Clear Twitch Credentials</button>
     </div>
   `;
   document.body.appendChild(modal);
@@ -1067,6 +1118,42 @@ function showTwitchConnectedMenu() {
           try { conf.remove(); } catch (e) {}
           try { modal.remove(); } catch (e) {}
 
+
+      // The on-screen buttons are hidden; listen for IPC from the app menu to open these modals
+      try {
+        if (window.electronAPI && window.electronAPI.onOpenTwitchActivity) {
+          window.electronAPI.onOpenTwitchActivity(() => { try { modal.remove(); showTwitchActivityModal(); } catch (e) {} });
+        }
+        if (window.electronAPI && window.electronAPI.onOpenEventSubSubscriptions) {
+          window.electronAPI.onOpenEventSubSubscriptions(() => { try { modal.remove(); showTwitchSubscriptionsModal(); } catch (e) {} });
+        }
+        if (window.electronAPI && window.electronAPI.onOpenTwitchMapping) {
+          window.electronAPI.onOpenTwitchMapping(() => {
+            try {
+              // Remove the confirmation and ensure the connected modal shows the mapping overview
+              try { modal.remove(); } catch (e) {}
+              try { showTwitchConnectedMenu(); } catch (e) {}
+              setTimeout(() => {
+                try {
+                  const list = document.getElementById('twitch-connected-menu') && document.getElementById('twitch-connected-menu').querySelector('#mappings-list');
+                  if (list && list.scrollIntoView) list.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } catch (e) {}
+              }, 80);
+            } catch (e) {}
+          });
+        }
+        if (window.electronAPI && window.electronAPI.onClearTwitchCreds) {
+          window.electronAPI.onClearTwitchCreds(async () => { try { modal.remove(); document.getElementById('twitch-menu-clear-creds').onclick(); } catch (e) {} });
+        }
+      } catch (e) {}
+      // Fallback for direct ipcRenderer
+      try {
+        if (window.ipcRenderer) {
+          window.ipcRenderer.on('open-twitch-activity', () => { try { modal.remove(); showTwitchActivityModal(); } catch (e) {} });
+          window.ipcRenderer.on('open-eventsub-subscriptions', () => { try { modal.remove(); showTwitchSubscriptionsModal(); } catch (e) {} });
+          window.ipcRenderer.on('clear-twitch-creds', () => { try { modal.remove(); document.getElementById('twitch-menu-clear-creds').onclick(); } catch (e) {} });
+        }
+      } catch (e) {}
           // Show a persistent "Clearing..." modal while main performs teardown.
           try {
             // Avoid creating multiple clearing modals
@@ -1840,6 +1927,68 @@ function showTwitchConnectedMenu() {
       };
     };
 }
+// Small centered banner prompting user to connect Twitch when creds missing
+try {
+  document.addEventListener('DOMContentLoaded', async () => {
+    try {
+      const hideKey = 'vd_hide_twitch_banner';
+      const hidden = localStorage.getItem(hideKey);
+      // If user previously chose to hide, do nothing
+      if (hidden) return;
+      const hasCreds = (window.electronAPI && window.electronAPI.hasTwitchCreds) ? await window.electronAPI.hasTwitchCreds() : false;
+      if (hasCreds) return;
+
+      // build a small centered banner
+      if (document.getElementById('vd-twitch-conn-banner')) return;
+      const b = document.createElement('div');
+      b.id = 'vd-twitch-conn-banner';
+      b.style.position = 'fixed';
+      b.style.top = '50%';
+      b.style.left = '50%';
+      b.style.transform = 'translate(-50%, -50%)';
+      b.style.zIndex = '10050';
+      b.style.background = 'linear-gradient(180deg,#0b0b0b,#141414)';
+      b.style.color = '#fff';
+      b.style.padding = '10px 14px';
+      b.style.borderRadius = '10px';
+      b.style.boxShadow = '0 6px 20px rgba(0,0,0,0.5)';
+      b.style.display = 'flex';
+      b.style.alignItems = 'center';
+      b.style.gap = '10px';
+      b.style.minWidth = '320px';
+      b.style.maxWidth = '90%';
+      b.innerHTML = `
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:14px">Twitch Not Connected</div>
+          <div style="font-size:12px;color:#bfbfbf;margin-top:4px">Connect your Twitch account to enable Event mappings and live checks.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;gap:6px">
+            <button id="vd-twitch-conn-button" style="padding:6px 10px;background:#4dd0e1;border:none;border-radius:6px;color:#111;cursor:pointer">Connect</button>
+            <button id="vd-twitch-conn-dismiss" style="padding:6px 10px;background:#333;border:none;border-radius:6px;color:#fff;cursor:pointer">Dismiss</button>
+          </div>
+          <button id="vd-twitch-conn-hide" style="padding:6px 10px;background:transparent;border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:#ddd;cursor:pointer">Don't show again</button>
+        </div>
+      `;
+      document.body.appendChild(b);
+
+      const btn = document.getElementById('vd-twitch-conn-button');
+      const dismissBtn = document.getElementById('vd-twitch-conn-dismiss');
+      const hide = document.getElementById('vd-twitch-conn-hide');
+      btn.onclick = () => {
+        try { showTwitchConfigModal(); } catch (e) { console.warn('Failed to open Twitch config modal:', e); }
+        try { b.remove(); } catch (e) {}
+      };
+      // Dismiss for this session only
+      dismissBtn.onclick = () => { try { b.remove(); } catch (e) {} };
+      // Persist 'don't show again'
+      hide.onclick = () => {
+        try { localStorage.setItem(hideKey, '1'); } catch (e) {}
+        try { b.remove(); } catch (e) {}
+      };
+    } catch (e) { /* don't break app if banner fails */ }
+  });
+} catch (e) {}
 
 // EventSub subscriptions selector modal
 function showTwitchSubscriptionsModal() {
@@ -2046,6 +2195,7 @@ if (window.electronAPI && window.electronAPI.onTwitchCleared) {
       localStorage.removeItem('twitch_oauth');
       localStorage.removeItem('twitch_clientid');
       localStorage.removeItem('twitch_channel');
+      try { localStorage.removeItem('vd_hide_twitch_banner'); } catch (e) {}
       window.twitchConfig = { oauth: '', clientId: '', channel: '' };
     } catch (e) {}
     // reopen the config modal so the user can re-enter creds
@@ -2057,6 +2207,7 @@ if (window.electronAPI && window.electronAPI.onTwitchCleared) {
       localStorage.removeItem('twitch_oauth');
       localStorage.removeItem('twitch_clientid');
       localStorage.removeItem('twitch_channel');
+      try { localStorage.removeItem('vd_hide_twitch_banner'); } catch (e) {}
       window.twitchConfig = { oauth: '', clientId: '', channel: '' };
     } catch (e) {}
     showTwitchConfigModal();

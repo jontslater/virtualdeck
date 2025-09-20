@@ -105,8 +105,10 @@ let win;
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1000,
-    height: 800,
+    width: 1280,
+    height: 820,
+    minWidth: 900,
+    minHeight: 660,
     //alwaysOnTop: true,
     //frame: false,
     movable: true,
@@ -119,7 +121,17 @@ function createWindow() {
   });
 
   win.loadFile(path.join(__dirname, 'public/index.html'));
-  
+  // Show window only when ready-to-show to avoid initial mis-sizing
+  win.once('ready-to-show', () => {
+    try { win.show(); } catch (e) {}
+  });
+
+  // After renderer finishes loading, notify it so it can perform layout work
+  win.webContents.on('did-finish-load', () => {
+    try {
+      win.webContents.send('renderer-ready');
+    } catch (e) { console.warn('Failed to send renderer-ready:', e); }
+  });
   // Create context menu
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -1688,6 +1700,13 @@ app.whenReady().then(() => {
     ] },
     { label: 'Tools', submenu: [
       { label: 'Developer Tools', accelerator: 'F12', click: () => { if (win && !win.isDestroyed()) win.webContents.toggleDevTools(); } },
+      { label: 'Twitch Setup', submenu: [
+          { label: 'View Twitch Events / Test Events', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-twitch-activity'); } },
+          { label: 'EventSub Subscriptions (Select)', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-eventsub-subscriptions'); } },
+          { label: 'Twitch Event Mapping', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-twitch-mapping'); } },
+        { type: 'separator' },
+        { label: 'Clear Twitch Credentials', click: () => { if (win && !win.isDestroyed()) win.webContents.send('clear-twitch-creds'); } }
+      ] },
       { type: 'separator' },
       { label: 'Themes', submenu: [
         { id: 'theme_dark', label: '🌙 Dark', type: 'radio', checked: true, click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'dark'); } },
