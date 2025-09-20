@@ -42,11 +42,11 @@ const EDGE_HOLD_MS = 2000; // 2 seconds
 // Helper function for smart auto-scroll
 function smartAutoScroll(chatMessagesContainer) {
   if (!chatMessagesContainer) return;
-  
-  // Auto-scroll to bottom only if user is near the bottom
-  const isNearBottom = chatMessagesContainer.scrollTop + chatMessagesContainer.clientHeight >= chatMessagesContainer.scrollHeight - 50;
-  if (isNearBottom) {
-    chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+  // Auto-scroll behavior when messages are prepended (newest at top)
+  // If user is already near the top, keep view pinned to top
+  const isNearTop = (chatMessagesContainer.scrollTop <= 50);
+  if (isNearTop) {
+    chatMessagesContainer.scrollTop = 0;
   }
 }
 
@@ -734,24 +734,22 @@ function addChatMessage(username, message, badges = {}) {
     
     row.innerHTML = `<span style="color:#666;margin-right:12px;font-size:11px">[${time}]</span> ${msg}`;
     
-    // Add to container
-    chatMessagesContainer.appendChild(row);
-    
-    // Store in array for management
-    chatMessages.push({
-      element: row,
-      timestamp: Date.now()
-    });
-    
-    // Limit number of messages
+    // Add to container at the top so newest messages appear first
+    if (chatMessagesContainer.firstChild) chatMessagesContainer.insertBefore(row, chatMessagesContainer.firstChild);
+    else chatMessagesContainer.appendChild(row);
+
+    // Store in array (newest at index 0)
+    chatMessages.unshift({ element: row, timestamp: Date.now() });
+
+    // Limit number of messages: remove oldest from the end
     if (chatMessages.length > MAX_CHAT_MESSAGES) {
-      const oldMessage = chatMessages.shift();
-      if (oldMessage.element.parentNode) {
+      const oldMessage = chatMessages.pop();
+      if (oldMessage && oldMessage.element && oldMessage.element.parentNode) {
         oldMessage.element.parentNode.removeChild(oldMessage.element);
       }
     }
-    
-    // Smart auto-scroll to bottom
+
+    // Smart auto-scroll to top if user is near the top
     smartAutoScroll(chatMessagesContainer);
   }
 }
@@ -1238,6 +1236,28 @@ initializeChatDisplay();
 // Initialize drag and drop
 initializeDragAndDrop();
 
+// Ensure pagination is evaluated when renderer signals it's ready (or main notifies)
+if (window.electronAPI && window.electronAPI.onRendererReady) {
+  window.electronAPI.onRendererReady(() => {
+    try {
+      computePagination();
+      renderCurrentPage();
+      updateBottomPaddingForPagination();
+    } catch (e) { console.warn('Error during renderer-ready pagination:', e); }
+  });
+} else {
+  // Fallback: listen to a DOM event from main via the IPC channel if available
+  try {
+    window.addEventListener('renderer-ready', () => {
+      try {
+        computePagination();
+        renderCurrentPage();
+        updateBottomPaddingForPagination();
+      } catch (e) { console.warn('Error during renderer-ready (DOM) pagination:', e); }
+    });
+  } catch (e) {}
+}
+
 // Visibility mapping used across helpers
 function getVisibilityMap() {
   return {
@@ -1402,6 +1422,14 @@ function initializeVisibilityDropdown() {
           } catch (err) {
             console.warn('Failed to persist visibility prefs:', err);
           }
+          // Recompute pagination now that a component's visibility changed
+          try {
+            if (typeof computePagination === 'function') {
+              computePagination();
+              renderCurrentPage();
+              updateBottomPaddingForPagination();
+            }
+          } catch (e) { console.warn('Failed to recompute pagination after visibility change', e); }
         }
       });
       
@@ -1478,6 +1506,8 @@ function initializeVisibilityDropdown() {
             }
           }
         }
+    // Recompute pagination after hiding all
+    try { if (typeof computePagination === 'function') { computePagination(); renderCurrentPage(); updateBottomPaddingForPagination(); } } catch (e) { console.warn('Failed to recompute pagination after hide all', e); }
         // Persist all prefs
         try {
           const prefs = {};
@@ -1492,6 +1522,8 @@ function initializeVisibilityDropdown() {
       });
     });
 
+  // Recompute pagination after showing all
+  try { if (typeof computePagination === 'function') { computePagination(); renderCurrentPage(); updateBottomPaddingForPagination(); } } catch (e) { console.warn('Failed to recompute pagination after show all', e); }
   // Apply persisted visibility prefs via centralized helper
   try {
     applyVisibilityPrefs();
@@ -1543,6 +1575,14 @@ function applyVisibilityPrefs() {
       }
     }
   });
+  // Recompute pagination once after applying all persisted visibility prefs
+  try {
+    if (typeof computePagination === 'function') {
+      computePagination();
+      renderCurrentPage();
+      updateBottomPaddingForPagination();
+    }
+  } catch (e) { console.warn('Failed to recompute pagination after applyVisibilityPrefs', e); }
 }
 }
 
@@ -2055,24 +2095,22 @@ function addTwitchEvent(type, eventData) {
   
   row.innerHTML = `<span style="color:#666;margin-right:12px;font-size:11px">[${time}]</span> ${msg}`;
   
-  // Add to container
-  chatMessagesContainer.appendChild(row);
-  
-  // Store in array for management
-  chatMessages.push({
-    element: row,
-    timestamp: Date.now()
-  });
-  
-  // Limit number of messages
+  // Add to container at the top so newest events appear first
+  if (chatMessagesContainer.firstChild) chatMessagesContainer.insertBefore(row, chatMessagesContainer.firstChild);
+  else chatMessagesContainer.appendChild(row);
+
+  // Store in array (newest at index 0)
+  chatMessages.unshift({ element: row, timestamp: Date.now() });
+
+  // Limit number of messages: remove oldest from the end
   if (chatMessages.length > MAX_CHAT_MESSAGES) {
-    const oldMessage = chatMessages.shift();
-    if (oldMessage.element.parentNode) {
+    const oldMessage = chatMessages.pop();
+    if (oldMessage && oldMessage.element && oldMessage.element.parentNode) {
       oldMessage.element.parentNode.removeChild(oldMessage.element);
     }
   }
-  
-  // Smart auto-scroll to bottom
+
+  // Smart auto-scroll (top-anchored)
   smartAutoScroll(chatMessagesContainer);
 }
 
