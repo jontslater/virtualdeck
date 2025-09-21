@@ -3127,8 +3127,8 @@ class ThemeManager {
         const result = await window.electronAPI.showDeleteSkinDialog();
         if (result) {
           if (result.canceled) {
-            if (result.message) {
-              alert(result.message);
+            if (result.message && window.notificationManager) {
+              window.notificationManager.show(result.message, 'warning', 3000);
             }
             return;
           }
@@ -3149,7 +3149,9 @@ class ThemeManager {
               }
             }, 100);
             
-            alert(result.message);
+            if (result.message && window.notificationManager) {
+              window.notificationManager.show(result.message, 'success', 3000);
+            }
           }
         }
       }
@@ -3174,7 +3176,7 @@ class NotificationManager {
 
   show(message, type = 'info', duration = 4000) {
     const id = Date.now() + Math.random();
-    const notification = this.createNotification(id, message, type);
+    const notification = this.createNotification(id, message, type, duration);
     
     this.container.appendChild(notification);
     this.notifications.set(id, notification);
@@ -3194,7 +3196,7 @@ class NotificationManager {
     return id;
   }
 
-  createNotification(id, message, type) {
+  createNotification(id, message, type, duration = 4000) {
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
     notification.dataset.id = id;
@@ -3202,27 +3204,50 @@ class NotificationManager {
     const icon = this.getIcon(type);
     const title = this.getTitle(type);
     
-    notification.innerHTML = `
-      <div class="notification-header">
-        <div class="notification-title">
-          <span class="notification-icon">${icon}</span>
-          ${title}
-        </div>
-        <button class="notification-close" onclick="notificationManager.hide(${id})">×</button>
-      </div>
-      <div class="notification-message">${message}</div>
-      <div class="notification-progress"></div>
-    `;
+    // Create notification header
+    const header = document.createElement('div');
+    header.className = 'notification-header';
     
-    // Add progress bar animation
-    const progressBar = notification.querySelector('.notification-progress');
-    if (progressBar) {
-      progressBar.style.width = '100%';
-      progressBar.style.transition = 'width 4000ms linear';
-      setTimeout(() => {
-        progressBar.style.width = '0%';
-      }, 100);
-    }
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'notification-title';
+    
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'notification-icon';
+    iconSpan.textContent = icon;
+    
+    const titleText = document.createTextNode(title);
+    
+    titleDiv.appendChild(iconSpan);
+    titleDiv.appendChild(titleText);
+    
+    const closeButton = document.createElement('button');
+    closeButton.className = 'notification-close';
+    closeButton.textContent = '×';
+    closeButton.onclick = () => this.hide(id);
+    
+    header.appendChild(titleDiv);
+    header.appendChild(closeButton);
+    
+    // Create notification message (safely escaped)
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'notification-message';
+    messageDiv.textContent = message; // Use textContent to prevent XSS
+    
+    // Create progress bar
+    const progressBar = document.createElement('div');
+    progressBar.className = 'notification-progress';
+    progressBar.style.width = '100%';
+    progressBar.style.transition = `width ${duration}ms linear`;
+    
+    // Assemble notification
+    notification.appendChild(header);
+    notification.appendChild(messageDiv);
+    notification.appendChild(progressBar);
+    
+    // Start progress bar animation
+    setTimeout(() => {
+      progressBar.style.width = '0%';
+    }, 100);
     
     return notification;
   }
