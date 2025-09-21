@@ -1,0 +1,49 @@
+{
+  "name": "Neon Cyber",
+  "description": "A futuristic cyberpunk-inspired skin with neon accents",
+  "version": "1.0.0",
+  "author": "VirtualDeck Team",
+  "variables": {
+    "--bg-primary": "#0a0a0f",
+    "--bg-secondary": "#1a1a2e",
+    "--bg-tertiary": "#16213e",
+    "--bg-quaternary": "#0f3460",
+    "--bg-quinary": "#533483",
+    "--text-primary": "#00ffff",
+    "--text-secondary": "#ff00ff",
+    "--text-tertiary": "#ffff00",
+    "--text-quaternary": "#ffffff",
+    "--border-primary": "#00ffff",
+    "--border-secondary": "#ff00ff",
+    "--border-tertiary": "#ffff00",
+    "--border-quaternary": "#ffffff",
+    "--accent-primary": "#00ffff",
+    "--accent-secondary": "#ff00ff",
+    "--accent-tertiary": "#ffff00",
+    "--accent-quaternary": "#ff6600",
+    "--hover-bg": "#1a1a2e",
+    "--active-bg": "#16213e",
+    "--focus-bg": "#0f3460",
+    "--shadow-color": "rgba(0, 255, 255, 0.3)",
+    "--shadow-hover": "rgba(255, 0, 255, 0.5)",
+    "--success-color": "#00ff00",
+    "--warning-color": "#ffff00",
+    "--error-color": "#ff0066",
+    "--info-color": "#00ffff"
+  },
+  "css": ".sound-card { box-shadow: 0 0 10px var(--accent-primary), inset 0 0 10px rgba(0, 255, 255, 0.1); border: 1px solid var(--accent-primary); } .sound-card:hover { box-shadow: 0 0 20px var(--accent-secondary), inset 0 0 15px rgba(255, 0, 255, 0.2); } .twitch-btn { background: linear-gradient(45deg, #ff00ff, #00ffff); box-shadow: 0 0 10px rgba(255, 0, 255, 0.5); } .twitch-btn:hover { box-shadow: 0 0 20px rgba(0, 255, 255, 0.8); }",
+  "components": {
+    ".sound-card": {
+      "transition": "all 0.3s ease",
+      "border-radius": "12px",
+      "background": "linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary))"
+    },
+    ".sound-card:hover": {
+      "transform": "translateY(-2px) scale(1.02)"
+    },
+    ".modal-content": {
+      "border": "2px solid var(--accent-primary)",
+      "box-shadow": "0 0 20px var(--shadow-color)"
+    }
+  }
+}
