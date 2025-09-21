@@ -1,0 +1,36 @@
+{
+  "name": "Cyberpunk Neon",
+  "description": "A futuristic cyberpunk theme with neon colors and dark backgrounds",
+  "version": "1.0.0",
+  "author": "VirtualDeck Team",
+  "variables": {
+    "--bg-primary": "#0a0a0a",
+    "--bg-secondary": "#1a1a1a",
+    "--bg-tertiary": "#2a2a2a",
+    "--text-primary": "#00ff41",
+    "--text-secondary": "#ffffff",
+    "--accent-primary": "#ff0080",
+    "--accent-secondary": "#00ffff",
+    "--border-color": "#333333",
+    "--button-bg": "#1a1a1a",
+    "--button-hover": "#2a2a2a",
+    "--success-color": "#00ff41",
+    "--warning-color": "#ffff00",
+    "--error-color": "#ff0040"
+  },
+  "css": "/* Cyberpunk glow effects */\n.sound-button {\n  box-shadow: 0 0 10px var(--accent-primary);\n  border: 1px solid var(--accent-primary);\n}\n\n.sound-button:hover {\n  box-shadow: 0 0 20px var(--accent-primary), 0 0 30px var(--accent-primary);\n  transform: scale(1.05);\n}\n\n/* Neon text effects */\nh1, h2, h3 {\n  text-shadow: 0 0 5px var(--text-primary);\n}\n\n/* Grid glow */\n#sound-grid {\n  background: radial-gradient(circle at center, var(--bg-secondary) 0%, var(--bg-primary) 100%);\n  border: 2px solid var(--accent-secondary);\n  box-shadow: 0 0 20px var(--accent-secondary);\n}",
+  "components": {
+    ".chat-message": {
+      "background": "linear-gradient(90deg, rgba(0, 255, 65, 0.1) 0%, rgba(0, 0, 0, 0.8) 100%)",
+      "border": "1px solid var(--accent-primary)",
+      "border-radius": "8px",
+      "padding": "8px 12px",
+      "margin": "4px 0"
+    },
+    ".twitch-chat-container": {
+      "background": "linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%)",
+      "border": "2px solid var(--accent-primary)",
+      "box-shadow": "0 0 15px rgba(0, 255, 65, 0.3)"
+    }
+  }
+}

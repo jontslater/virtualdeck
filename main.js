@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, Menu } = require('electron');
+const { app, BrowserWindow, globalShortcut, Menu, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fse = require('fs-extra'); // helpful for file copying
@@ -15,8 +15,10 @@ const fetch = require('node-fetch');
 const userDataPath = app.getPath('userData');
 const configPath = path.join(userDataPath, 'config.json');
 const userSoundsDir = path.join(userDataPath, 'sounds');
+const userSkinsDir = path.join(userDataPath, 'skins');
 const defaultConfigPath = path.join(__dirname, 'config.json');
 const defaultSoundsDir = path.join(__dirname, 'public', 'assets', 'sounds');
+const defaultSkinsDir = path.join(__dirname, 'skins');
 const tcConfigPath = path.join(userDataPath, 'tc_config.json');
 
 // Ensure config and sounds exist in userData on first run
@@ -28,6 +30,13 @@ function ensureUserData() {
     fse.ensureDirSync(userSoundsDir);
     if (fs.existsSync(defaultSoundsDir)) {
       fse.copySync(defaultSoundsDir, userSoundsDir);
+    }
+  }
+  // Ensure skins directory exists
+  if (!fs.existsSync(userSkinsDir)) {
+    fse.ensureDirSync(userSkinsDir);
+    if (fs.existsSync(defaultSkinsDir)) {
+      fse.copySync(defaultSkinsDir, userSkinsDir);
     }
   }
   // Ensure tc_config exists with default topics
@@ -734,6 +743,244 @@ ipcMain.handle('get-app-version', async () => {
     return 'Unknown';
   }
 });
+
+// Skin System IPC Handlers
+
+// Get available skins from the skins directory
+ipcMain.handle('get-available-skins', async () => {
+  try {
+    const skins = [];
+    if (!fs.existsSync(userSkinsDir)) {
+      return skins;
+    }
+    
+    const files = fs.readdirSync(userSkinsDir);
+    for (const file of files) {
+      if (file.endsWith('.json')) {
+        const skinPath = path.join(userSkinsDir, file);
+        try {
+          const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
+          if (skinData.name && skinData.version) {
+            skins.push({
+              id: path.basename(file, '.json'),
+              name: skinData.name,
+              description: skinData.description || '',
+              version: skinData.version,
+              author: skinData.author || '',
+              filename: file
+            });
+          }
+        } catch (err) {
+          console.warn(`Failed to parse skin file ${file}:`, err);
+        }
+      }
+    }
+    
+    return skins.sort((a, b) => a.name.localeCompare(b.name));
+  } catch (error) {
+    console.error('Error loading available skins:', error);
+    return [];
+  }
+});
+
+// Load a specific skin by name
+ipcMain.handle('load-skin', async (event, skinId) => {
+  try {
+    const skinPath = path.join(userSkinsDir, `${skinId}.json`);
+    if (!fs.existsSync(skinPath)) {
+      throw new Error(`Skin file not found: ${skinId}`);
+    }
+    
+    const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
+    
+    // Validate skin structure
+    if (!skinData.name || !skinData.version) {
+      throw new Error('Invalid skin format: missing name or version');
+    }
+    
+    return skinData;
+  } catch (error) {
+    console.error(`Error loading skin ${skinId}:`, error);
+    throw error;
+  }
+});
+
+// Import a skin from a file
+ipcMain.handle('import-skin', async (event, filePath) => {
+  return await importSkinFile(filePath);
+});
+
+// Handle import skin dialog
+ipcMain.handle('show-import-skin-dialog', async () => {
+  try {
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Import Skin',
+      filters: [
+        { name: 'Skin Files', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      properties: ['openFile']
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      const filePath = result.filePaths[0];
+      // Call the import logic directly instead of re-registering the handler
+      return await importSkinFile(filePath);
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error showing import skin dialog:', error);
+    throw error;
+  }
+});
+
+// Handle delete skin dialog
+ipcMain.handle('show-delete-skin-dialog', async () => {
+  try {
+    // Get available skins
+    const skins = [];
+    if (fs.existsSync(userSkinsDir)) {
+      const files = fs.readdirSync(userSkinsDir);
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          const skinPath = path.join(userSkinsDir, file);
+          try {
+            const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
+            if (skinData.name && skinData.version) {
+              skins.push({
+                id: path.basename(file, '.json'),
+                name: skinData.name,
+                description: skinData.description || '',
+                version: skinData.version,
+                author: skinData.author || '',
+                filename: file
+              });
+            }
+          } catch (err) {
+            console.warn(`Failed to parse skin file ${file}:`, err);
+          }
+        }
+      }
+    }
+    
+    if (skins.length === 0) {
+      return { canceled: true, message: 'No custom themes found to delete.' };
+    }
+    
+    // Create options for the dialog
+    const skinOptions = skins.map(skin => ({
+      label: skin.name,
+      detail: skin.description || `Version ${skin.version}`,
+      id: skin.id,
+      filename: skin.filename
+    }));
+    
+    const result = await dialog.showMessageBox(win, {
+      type: 'question',
+      title: 'Delete Theme',
+      message: 'Select a theme to delete:',
+      detail: 'This action cannot be undone.',
+      buttons: ['Cancel', ...skinOptions.map(option => option.label)],
+      defaultId: 0,
+      cancelId: 0
+    });
+    
+    if (result.response === 0) {
+      return { canceled: true };
+    }
+    
+    const selectedSkin = skinOptions[result.response - 1];
+    const skinPath = path.join(userSkinsDir, selectedSkin.filename);
+    
+    // Confirm deletion
+    const confirmResult = await dialog.showMessageBox(win, {
+      type: 'warning',
+      title: 'Confirm Deletion',
+      message: `Are you sure you want to delete "${selectedSkin.label}"?`,
+      detail: 'This action cannot be undone.',
+      buttons: ['Cancel', 'Delete'],
+      defaultId: 0,
+      cancelId: 0
+    });
+    
+    if (confirmResult.response === 0) {
+      return { canceled: true };
+    }
+    
+    // Delete the skin file
+    if (fs.existsSync(skinPath)) {
+      fs.unlinkSync(skinPath);
+      console.log(`Deleted skin: ${selectedSkin.filename}`);
+      
+      // Trigger menu rebuild
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('refresh-menu');
+      }
+      
+      return {
+        deleted: true,
+        skin: selectedSkin,
+        message: `Theme "${selectedSkin.label}" has been deleted.`
+      };
+    } else {
+      throw new Error('Skin file not found');
+    }
+    
+  } catch (error) {
+    console.error('Error showing delete skin dialog:', error);
+    throw error;
+  }
+});
+
+// Helper function to import skin file
+async function importSkinFile(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) {
+      throw new Error('File not found');
+    }
+    
+    const skinData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    
+    // Validate skin structure
+    if (!skinData.name || !skinData.version) {
+      throw new Error('Invalid skin format: missing name or version');
+    }
+    
+    // Generate a safe filename from the skin name
+    const safeName = skinData.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    
+    const targetPath = path.join(userSkinsDir, `${safeName}.json`);
+    
+    // Check if skin already exists
+    if (fs.existsSync(targetPath)) {
+      throw new Error('A skin with this name already exists');
+    }
+    
+    // Copy the skin file
+    fs.writeFileSync(targetPath, JSON.stringify(skinData, null, 2));
+    
+    // Trigger menu rebuild to show the new skin
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('refresh-menu');
+    }
+    
+    return {
+      id: safeName,
+      name: skinData.name,
+      description: skinData.description || '',
+      version: skinData.version,
+      author: skinData.author || ''
+    };
+  } catch (error) {
+    console.error('Error importing skin:', error);
+    throw error;
+  }
+}
 
 // IPC handler to resolve shortcut paths
 ipcMain.handle('resolve-shortcut', async (event, shortcutPath) => {
@@ -1708,23 +1955,101 @@ app.whenReady().then(() => {
         { label: 'Clear Twitch Credentials', click: () => { if (win && !win.isDestroyed()) win.webContents.send('clear-twitch-creds'); } }
       ] },
       { type: 'separator' },
-      { label: 'Themes', submenu: [
-        { id: 'theme_dark', label: '🌙 Dark', type: 'radio', checked: true, click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'dark'); } },
-        { id: 'theme_light', label: '☀️ Light', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'light'); } },
-        { id: 'theme_red', label: '❤️ Red', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'red'); } },
-        { id: 'theme_purple', label: '💜 Purple', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'purple'); } },
-        { id: 'theme_blue', label: '💙 Blue', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'blue'); } },
-        { id: 'theme_darkpop', label: '🎵 Dark Pop', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'darkpop'); } }
-      ] },
+      { label: 'Themes', submenu: [] }, // Will be populated dynamically with themes and skins
       { role: 'reload' }
     ] },
     { label: 'Help', submenu: [ { label: 'About', click: () => {
         if (win && !win.isDestroyed()) win.webContents.send('show-about');
       } } ] }
   ];
-  // Keep a reference to the built application menu so we can update checkbox states later
-  const appMenu = Menu.buildFromTemplate(menuTemplate);
-  Menu.setApplicationMenu(appMenu);
+  // Function to rebuild menu with integrated themes and skins
+  async function rebuildMenu() {
+    try {
+      console.log('Rebuilding menu with themes and skins...');
+      // Get available skins
+      const skins = [];
+      if (fs.existsSync(userSkinsDir)) {
+        const files = fs.readdirSync(userSkinsDir);
+        console.log(`Found ${files.length} files in skins directory:`, files);
+        for (const file of files) {
+          if (file.endsWith('.json')) {
+            const skinPath = path.join(userSkinsDir, file);
+            try {
+              const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
+              if (skinData.name && skinData.version) {
+                skins.push({
+                  id: path.basename(file, '.json'),
+                  name: skinData.name,
+                  description: skinData.description || '',
+                  version: skinData.version,
+                  author: skinData.author || '',
+                  filename: file
+                });
+              }
+            } catch (err) {
+              console.warn(`Failed to parse skin file ${file}:`, err);
+            }
+          }
+        }
+      }
+      const sortedSkins = skins.sort((a, b) => a.name.localeCompare(b.name));
+      console.log(`Loaded ${sortedSkins.length} skins:`, sortedSkins.map(s => s.name));
+      
+      // Build integrated themes submenu (themes + skins)
+      const themesSubmenu = [
+        // Built-in themes
+        { id: 'theme_dark', label: '🌙 Dark', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'dark'); } },
+        { id: 'theme_light', label: '☀️ Light', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'light'); } },
+        { id: 'theme_red', label: '❤️ Red', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'red'); } },
+        { id: 'theme_purple', label: '💜 Purple', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'purple'); } },
+        { id: 'theme_blue', label: '💙 Blue', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'blue'); } },
+        { id: 'theme_darkpop', label: '🎵 Dark Pop', type: 'radio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', 'darkpop'); } }
+      ];
+      
+      // Add skins as additional themes
+      if (sortedSkins && sortedSkins.length > 0) {
+        themesSubmenu.push({ type: 'separator' });
+        for (const skin of sortedSkins) {
+          themesSubmenu.push({
+            id: `theme_${skin.id}`,
+            label: `🎨 ${skin.name}`,
+            type: 'radio',
+            click: () => { if (win && !win.isDestroyed()) win.webContents.send('theme-change', skin.id); }
+          });
+        }
+      }
+      
+      // Add management options
+      themesSubmenu.push(
+        { type: 'separator' },
+        { label: 'Import Theme...', click: () => { if (win && !win.isDestroyed()) win.webContents.send('import-skin-dialog'); } },
+        { label: 'Delete Theme...', click: () => { if (win && !win.isDestroyed()) win.webContents.send('delete-skin-dialog'); } },
+        { label: 'Refresh Themes', click: () => { 
+          if (win && !win.isDestroyed()) {
+            rebuildMenu().catch(console.error);
+          }
+        } }
+      );
+      
+      // Find and replace the themes submenu in menuTemplate
+      const toolsMenu = menuTemplate.find(item => item.label === 'Tools');
+      if (toolsMenu && toolsMenu.submenu) {
+        const themesMenuIndex = toolsMenu.submenu.findIndex(item => item.label === 'Themes');
+        if (themesMenuIndex !== -1) {
+          toolsMenu.submenu[themesMenuIndex].submenu = themesSubmenu;
+        }
+      }
+      
+      const appMenu = Menu.buildFromTemplate(menuTemplate);
+      Menu.setApplicationMenu(appMenu);
+      console.log('Menu rebuilt successfully with themes and skins');
+    } catch (error) {
+      console.error('Error rebuilding menu:', error);
+    }
+  }
+
+  // Build initial menu
+  rebuildMenu().catch(console.error);
 
   // Listen for visibility prefs from renderer and sync menu checkbox states
   ipcMain.on('sync-view-prefs', (event, prefs) => {
@@ -1756,14 +2081,27 @@ app.whenReady().then(() => {
       const menu = Menu.getApplicationMenu();
       if (!menu) return;
       
-      // Clear all theme radio buttons
-      const themeIds = ['theme_dark', 'theme_light', 'theme_red', 'theme_purple', 'theme_blue', 'theme_darkpop'];
-      themeIds.forEach(themeId => {
+      // Clear all theme radio buttons (built-in themes)
+      const builtInThemeIds = ['theme_dark', 'theme_light', 'theme_red', 'theme_purple', 'theme_blue', 'theme_darkpop'];
+      builtInThemeIds.forEach(themeId => {
         const mi = menu.getMenuItemById ? menu.getMenuItemById(themeId) : null;
         if (mi && typeof mi.checked !== 'undefined') {
           mi.checked = false;
         }
       });
+      
+      // Clear all skin radio buttons (dynamic themes)
+      const toolsMenu = menu.items.find(item => item.label === 'Tools');
+      if (toolsMenu && toolsMenu.submenu) {
+        const themesMenu = toolsMenu.submenu.items.find(item => item.label === 'Themes');
+        if (themesMenu && themesMenu.submenu) {
+          for (const item of themesMenu.submenu.items) {
+            if (item.type === 'radio' && item.id && item.id.startsWith('theme_')) {
+              item.checked = false;
+            }
+          }
+        }
+      }
       
       // Set the active theme
       const activeThemeId = `theme_${themeName}`;
@@ -1776,6 +2114,13 @@ app.whenReady().then(() => {
     } catch (e) {
       console.error('Error syncing theme menu:', e);
     }
+  });
+
+  // Note: Skin functionality is now integrated into the theme system
+
+  // Listen for menu refresh requests
+  ipcMain.on('refresh-menu', () => {
+    rebuildMenu().catch(console.error);
   });
 
   // Register DevTools shortcut
