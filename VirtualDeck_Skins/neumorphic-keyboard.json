@@ -1,0 +1,81 @@
+{
+  "name": "Neumorphic Keyboard",
+  "description": "A soft, modern neumorphic design inspired by realistic keyboard buttons with pink tones and enhanced gradients",
+  "version": "1.0.0",
+  "author": "VirtualDeck Team",
+  "variables": {
+    "--bg-primary": "#FADADD",
+    "--bg-secondary": "#F7B7C0",
+    "--bg-tertiary": "#F4A7B3",
+    "--panel-bg": "#F7B7C0",
+    "--button-bg": "#F4A7B3",
+    "--button-hover": "#F1A0AF",
+    "--button-gradient-from": "#F4A7B3",
+    "--button-gradient-to": "#F1A0AF",
+    "--text-primary": "#FFFACD",
+    "--text-secondary": "#ffffff",
+    "--accent-primary": "#FF69B4",
+    "--accent-secondary": "#FFB6C1",
+    "--border-color": "#F4A7B3",
+    "--shadow-color": "rgba(244, 167, 179, 0.3)",
+    "--shadow-inner": "rgba(244, 167, 179, 0.4)",
+    "--highlight-color": "rgba(255, 255, 255, 0.4)",
+    "--success-color": "#98FB98",
+    "--warning-color": "#FFD700",
+    "--error-color": "#FF6B6B"
+  },
+  "css": "/* Enhanced Realistic Keyboard Button Styling */\n.sound-card {\n  background: linear-gradient(145deg, var(--button-gradient-from) 0%, var(--button-gradient-to) 100%);\n  border: none;\n  border-radius: 12px;\n  color: var(--text-primary);\n  font-weight: 600;\n  font-size: 12px;\n  cursor: pointer;\n  user-select: none;\n  transition: all 0.15s ease;\n  position: relative;\n  overflow: hidden;\n  min-height: 80px;\n  min-width: 80px;\n  display: flex;\n  flex-direction: column;\n  justify-content: center;\n  align-items: center;\n  text-align: center;\n  padding: 8px;\n  \n  /* Enhanced realistic keyboard button shadows with inner glow */\n  box-shadow: \n    0 4px 12px rgba(244, 167, 179, 0.3),\n    0 2px 6px rgba(244, 167, 179, 0.2),\n    inset 0 1px 0 rgba(255, 255, 255, 0.5),\n    inset 0 -1px 0 rgba(244, 167, 179, 0.3),\n    inset 0 0 20px rgba(244, 167, 179, 0.1);\n  \n  /* Soft inner shadow for depth */\n  &::after {\n    content: '';\n    position: absolute;\n    top: 0;\n    left: 0;\n    right: 0;\n    bottom: 0;\n    border-radius: 12px;\n    background: linear-gradient(145deg, rgba(255, 255, 255, 0.1) 0%, rgba(244, 167, 179, 0.1) 100%);\n    pointer-events: none;\n  }\n  \n  /* Hover effect - button lifts up with enhanced glow */\n  &:hover {\n    transform: translateY(-2px);\n    box-shadow: \n      0 8px 20px rgba(244, 167, 179, 0.4),\n      0 4px 12px rgba(244, 167, 179, 0.3),\n      inset 0 1px 0 rgba(255, 255, 255, 0.6),\n      inset 0 -1px 0 rgba(244, 167, 179, 0.2),\n      inset 0 0 25px rgba(244, 167, 179, 0.15);\n  }\n  \n  /* Active effect - button presses down with deeper shadows */\n  &:active {\n    transform: translateY(1px);\n    box-shadow: \n      inset 0 4px 8px rgba(244, 167, 179, 0.4),\n      inset 0 2px 4px rgba(244, 167, 179, 0.3),\n      0 2px 4px rgba(244, 167, 179, 0.2);\n  }\n  \n  /* Button text styling with enhanced shadows */\n  .sound-name {\n    color: var(--text-primary);\n    font-weight: 700;\n    font-size: 11px;\n    margin-bottom: 2px;\n    text-shadow: \n      0 1px 2px rgba(244, 167, 179, 0.4),\n      0 2px 4px rgba(0, 0, 0, 0.1);\n    line-height: 1.1;\n  }\n  \n  .sound-type {\n    color: var(--text-primary);\n    font-size: 9px;\n    opacity: 0.8;\n    margin-bottom: 2px;\n    text-transform: uppercase;\n    letter-spacing: 0.5px;\n    text-shadow: 0 1px 2px rgba(244, 167, 179, 0.3);\n  }\n  \n  .sound-hotkey {\n    color: var(--text-primary);\n    font-size: 8px;\n    opacity: 0.7;\n    margin-top: 2px;\n    font-family: 'Courier New', monospace;\n    text-shadow: 0 1px 2px rgba(244, 167, 179, 0.3);\n  }\n  \n  /* Enhanced recording animation with glow */\n  &.recording {\n    background: linear-gradient(145deg, var(--error-color) 0%, #ff4444 100%);\n    animation: keyPressGlow 0.8s ease-in-out infinite alternate;\n    box-shadow: \n      0 4px 12px rgba(255, 107, 107, 0.4),\n      inset 0 1px 0 rgba(255, 255, 255, 0.5),\n      0 0 20px rgba(255, 107, 107, 0.3);\n  }\n  \n  @keyframes keyPressGlow {\n    0% { \n      transform: translateY(-1px);\n      box-shadow: \n        0 4px 12px rgba(255, 107, 107, 0.4),\n        inset 0 1px 0 rgba(255, 255, 255, 0.5),\n        0 0 20px rgba(255, 107, 107, 0.3);\n    }\n    100% { \n      transform: translateY(1px);\n      box-shadow: \n        0 2px 6px rgba(255, 107, 107, 0.5),\n        inset 0 2px 4px rgba(255, 107, 107, 0.3),\n        0 0 30px rgba(255, 107, 107, 0.4);\n    }\n  }\n}\n\n/* Enhanced Grid container with floating effect */\n#sound-grid {\n  background: linear-gradient(145deg, var(--panel-bg) 0%, #F1A0AF 100%);\n  border-radius: 20px;\n  padding: 24px;\n  margin: 20px;\n  \n  /* Enhanced neumorphic container shadow with glow */\n  box-shadow: \n    0 20px 40px rgba(244, 167, 179, 0.3),\n    0 10px 20px rgba(244, 167, 179, 0.2),\n    inset 0 1px 0 rgba(255, 255, 255, 0.5),\n    inset 0 -1px 0 rgba(244, 167, 179, 0.2);\n  \n  /* Enhanced texture with multiple gradients */\n  background-image: \n    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.15) 0%, transparent 60%),\n    radial-gradient(circle at 80% 80%, rgba(244, 167, 179, 0.1) 0%, transparent 60%),\n    linear-gradient(45deg, rgba(255, 255, 255, 0.05) 0%, transparent 50%);\n}\n\n/* Body and main container styling */\nbody {\n  background: var(--bg-primary);\n  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n}\n\n/* Enhanced Chat container with floating effect */\n.twitch-chat-container {\n  background: linear-gradient(145deg, var(--panel-bg) 0%, #F1A0AF 100%);\n  border-radius: 16px;\n  padding: 16px;\n  margin: 12px;\n  \n  /* Enhanced neumorphic shadow */\n  box-shadow: \n    0 12px 24px rgba(244, 167, 179, 0.3),\n    0 6px 12px rgba(244, 167, 179, 0.2),\n    inset 0 1px 0 rgba(255, 255, 255, 0.5),\n    inset 0 -1px 0 rgba(244, 167, 179, 0.2);\n}\n\n/* Enhanced Statistics container */\n.twitch-stats-container {\n  background: linear-gradient(145deg, var(--panel-bg) 0%, #F1A0AF 100%);\n  border-radius: 12px;\n  padding: 12px;\n  margin: 8px;\n  \n  /* Enhanced neumorphic shadow */\n  box-shadow: \n    0 8px 16px rgba(244, 167, 179, 0.3),\n    0 4px 8px rgba(244, 167, 179, 0.2),\n    inset 0 1px 0 rgba(255, 255, 255, 0.5),\n    inset 0 -1px 0 rgba(244, 167, 179, 0.2);\n}\n\n/* Enhanced Recent activity container */\n.recent-activity-container {\n  background: linear-gradient(145deg, var(--panel-bg) 0%, #F1A0AF 100%);\n  border-radius: 12px;\n  padding: 12px;\n  margin: 8px;\n  \n  /* Enhanced neumorphic shadow */\n  box-shadow: \n    0 8px 16px rgba(244, 167, 179, 0.3),\n    0 4px 8px rgba(244, 167, 179, 0.2),\n    inset 0 1px 0 rgba(255, 255, 255, 0.5),\n    inset 0 -1px 0 rgba(244, 167, 179, 0.2);\n}\n\n/* Enhanced Sound controls */\n.sound-controls {\n  background: linear-gradient(145deg, var(--panel-bg) 0%, #F1A0AF 100%);\n  border-radius: 12px;\n  padding: 12px;\n  margin: 8px;\n  \n  /* Enhanced neumorphic shadow */\n  box-shadow: \n    0 8px 16px rgba(244, 167, 179, 0.3),\n    0 4px 8px rgba(244, 167, 179, 0.2),\n    inset 0 1px 0 rgba(255, 255, 255, 0.5),\n    inset 0 -1px 0 rgba(244, 167, 179, 0.2);\n}\n\n/* Enhanced Edit and Delete buttons with gradient */\n.edit-button, .delete-x-button {\n  background: linear-gradient(145deg, var(--button-gradient-from) 0%, var(--button-gradient-to) 100%);\n  border: none;\n  border-radius: 8px;\n  color: var(--text-primary);\n  font-size: 10px;\n  font-weight: 600;\n  padding: 4px 6px;\n  cursor: pointer;\n  transition: all 0.15s ease;\n  box-shadow: \n    0 2px 6px rgba(244, 167, 179, 0.3),\n    inset 0 1px 0 rgba(255, 255, 255, 0.4),\n    inset 0 -1px 0 rgba(244, 167, 179, 0.2);\n}\n\n.edit-button:hover, .delete-x-button:hover {\n  transform: translateY(-1px);\n  box-shadow: \n    0 4px 8px rgba(244, 167, 179, 0.4),\n    inset 0 1px 0 rgba(255, 255, 255, 0.5);\n}\n\n.delete-x-button:hover {\n  background: linear-gradient(145deg, var(--error-color) 0%, #ff4444 100%);\n  box-shadow: \n    0 4px 8px rgba(255, 107, 107, 0.4),\n    inset 0 1px 0 rgba(255, 255, 255, 0.5);\n}\n\n/* Enhanced App icon styling */\n.app-icon {\n  border-radius: 8px;\n  box-shadow: \n    0 2px 6px rgba(244, 167, 179, 0.3),\n    inset 0 1px 0 rgba(255, 255, 255, 0.2);\n  margin-bottom: 6px !important;\n}\n\n/* Enhanced Add card with floating effect */\n.add-card {\n  background: linear-gradient(145deg, var(--button-gradient-from) 0%, var(--button-gradient-to) 100%);\n  border: 2px dashed var(--accent-primary);\n  border-radius: 12px;\n  color: var(--text-primary);\n  cursor: pointer;\n  transition: all 0.15s ease;\n  box-shadow: \n    0 4px 12px rgba(244, 167, 179, 0.3),\n    inset 0 1px 0 rgba(255, 255, 255, 0.5),\n    inset 0 -1px 0 rgba(244, 167, 179, 0.2);\n}\n\n.add-card:hover {\n  transform: translateY(-2px);\n  border-color: var(--accent-secondary);\n  box-shadow: \n    0 8px 20px rgba(244, 167, 179, 0.4),\n    inset 0 1px 0 rgba(255, 255, 255, 0.6);\n}\n\n.add-icon {\n  font-size: 24px;\n  font-weight: bold;\n  margin-bottom: 4px;\n  text-shadow: \n    0 1px 2px rgba(244, 167, 179, 0.4),\n    0 2px 4px rgba(0, 0, 0, 0.1);\n}\n\n.add-text {\n  font-size: 10px;\n  font-weight: 600;\n  text-transform: uppercase;\n  letter-spacing: 0.5px;\n  text-shadow: 0 1px 2px rgba(244, 167, 179, 0.3);\n}\n\n/* Enhanced Control buttons with floating effect */\n.drag-toggle-btn, .page-btn {\n  background: linear-gradient(145deg, var(--button-gradient-from) 0%, var(--button-gradient-to) 100%);\n  border: none;\n  border-radius: 8px;\n  color: var(--text-primary);\n  font-weight: 600;\n  cursor: pointer;\n  transition: all 0.15s ease;\n  box-shadow: \n    0 4px 8px rgba(244, 167, 179, 0.3),\n    inset 0 1px 0 rgba(255, 255, 255, 0.4),\n    inset 0 -1px 0 rgba(244, 167, 179, 0.2);\n}\n\n.drag-toggle-btn:hover, .page-btn:hover {\n  transform: translateY(-1px);\n  box-shadow: \n    0 6px 12px rgba(244, 167, 179, 0.4),\n    inset 0 1px 0 rgba(255, 255, 255, 0.5);\n}\n\n.drag-toggle-btn:active, .page-btn:active {\n  transform: translateY(1px);\n  box-shadow: \n    inset 0 2px 4px rgba(244, 167, 179, 0.3),\n    inset 0 -1px 0 rgba(244, 167, 179, 0.2);\n}",
+  "components": {
+    ".chat-message": {
+      "background": "linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, rgba(247, 183, 192, 0.15) 100%)",
+      "border": "1px solid rgba(255, 255, 255, 0.3)",
+      "border-radius": "12px",
+      "padding": "12px 16px",
+      "margin": "8px 0",
+      "box-shadow": "inset 2px 2px 6px rgba(244, 167, 179, 0.2), inset -2px -2px 6px rgba(255, 255, 255, 0.3)",
+      "color": "var(--text-primary)",
+      "backdrop-filter": "blur(10px)"
+    },
+    ".twitch-chat-messages": {
+      "background": "transparent",
+      "border-radius": "12px",
+      "padding": "8px"
+    },
+    ".twitch-stats-item": {
+      "background": "linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, rgba(247, 183, 192, 0.15) 100%)",
+      "border-radius": "8px",
+      "padding": "8px 12px",
+      "margin": "4px 0",
+      "box-shadow": "inset 1px 1px 3px rgba(244, 167, 179, 0.2), inset -1px -1px 3px rgba(255, 255, 255, 0.3)",
+      "color": "var(--text-primary)"
+    },
+    ".recent-activity-item": {
+      "background": "linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, rgba(247, 183, 192, 0.15) 100%)",
+      "border-radius": "8px",
+      "padding": "8px 12px",
+      "margin": "4px 0",
+      "box-shadow": "inset 1px 1px 3px rgba(244, 167, 179, 0.2), inset -1px -1px 3px rgba(255, 255, 255, 0.3)",
+      "color": "var(--text-primary)"
+    },
+    ".sound-control-button": {
+      "background": "linear-gradient(145deg, var(--button-gradient-from) 0%, var(--button-gradient-to) 100%)",
+      "border": "none",
+      "border-radius": "8px",
+      "color": "var(--text-primary)",
+      "padding": "8px 12px",
+      "margin": "4px",
+      "cursor": "pointer",
+      "user-select": "none",
+      "transition": "all 0.2s ease",
+      "box-shadow": "0 4px 8px rgba(244, 167, 179, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 -1px 0 rgba(244, 167, 179, 0.2)"
+    },
+    ".sound-control-button:hover": {
+      "transform": "translateY(-1px)",
+      "box-shadow": "0 6px 12px rgba(244, 167, 179, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.5)"
+    },
+    ".sound-control-button:active": {
+      "transform": "translateY(1px)",
+      "box-shadow": "inset 0 2px 4px rgba(244, 167, 179, 0.3), inset 0 -1px 0 rgba(244, 167, 179, 0.2)"
+    }
+  }
+}

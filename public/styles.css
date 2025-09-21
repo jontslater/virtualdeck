@@ -1014,6 +1014,144 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   display: none !important;
 }
 
+/* Custom Notification System */
+.notification-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10000;
+  pointer-events: none;
+}
+
+.notification {
+  background: var(--bg-quaternary);
+  border: 2px solid var(--border-secondary);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  min-width: 300px;
+  max-width: 400px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+  transform: translateX(100%);
+  opacity: 0;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.notification.show {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.notification.hide {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.notification::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--accent-primary);
+  border-radius: 8px 8px 0 0;
+}
+
+.notification.success::before {
+  background: var(--success-color);
+}
+
+.notification.warning::before {
+  background: var(--warning-color);
+}
+
+.notification.error::before {
+  background: var(--error-color);
+}
+
+.notification.info::before {
+  background: var(--accent-primary);
+}
+
+.notification-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.notification-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-icon {
+  font-size: 16px;
+}
+
+.notification-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.notification-close:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.notification-message {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.notification-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--accent-primary);
+  border-radius: 0 0 8px 8px;
+  transition: width linear;
+}
+
+.notification.success .notification-progress {
+  background: var(--success-color);
+}
+
+.notification.warning .notification-progress {
+  background: var(--warning-color);
+}
+
+.notification.error .notification-progress {
+  background: var(--error-color);
+}
+
+.notification.info .notification-progress {
+  background: var(--accent-primary);
+}
+
 .app-logo {
   max-width: 200px;
   height: auto;

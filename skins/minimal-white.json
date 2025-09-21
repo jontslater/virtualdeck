@@ -1,0 +1,47 @@
+{
+  "name": "Minimal White",
+  "description": "A clean, minimal white skin for a professional look",
+  "version": "1.0.0",
+  "author": "VirtualDeck Team",
+  "variables": {
+    "--bg-primary": "#ffffff",
+    "--bg-secondary": "#f8f9fa",
+    "--bg-tertiary": "#e9ecef",
+    "--bg-quaternary": "#dee2e6",
+    "--bg-quinary": "#ced4da",
+    "--text-primary": "#212529",
+    "--text-secondary": "#495057",
+    "--text-tertiary": "#6c757d",
+    "--text-quaternary": "#adb5bd",
+    "--border-primary": "#dee2e6",
+    "--border-secondary": "#ced4da",
+    "--border-tertiary": "#adb5bd",
+    "--border-quaternary": "#6c757d",
+    "--accent-primary": "#007bff",
+    "--accent-secondary": "#6c757d",
+    "--accent-tertiary": "#28a745",
+    "--accent-quaternary": "#ffc107",
+    "--hover-bg": "#f8f9fa",
+    "--active-bg": "#e9ecef",
+    "--focus-bg": "#dee2e6",
+    "--shadow-color": "rgba(0, 0, 0, 0.1)",
+    "--shadow-hover": "rgba(0, 0, 0, 0.15)",
+    "--success-color": "#28a745",
+    "--warning-color": "#ffc107",
+    "--error-color": "#dc3545",
+    "--info-color": "#17a2b8"
+  },
+  "css": ".sound-card { border-radius: 8px; box-shadow: 0 2px 4px var(--shadow-color); border: 1px solid var(--border-primary); } .sound-card:hover { box-shadow: 0 4px 8px var(--shadow-hover); transform: translateY(-1px); } .twitch-btn { background: var(--accent-primary); border-radius: 6px; } .modal-content { border-radius: 8px; box-shadow: 0 4px 12px var(--shadow-color); }",
+  "components": {
+    ".sound-card": {
+      "transition": "all 0.2s ease",
+      "background": "var(--bg-secondary)"
+    },
+    ".sound-card:hover": {
+      "background": "var(--hover-bg)"
+    },
+    "body": {
+      "background": "var(--bg-primary)"
+    }
+  }
+}
