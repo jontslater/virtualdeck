@@ -2858,12 +2858,15 @@ typeSelect.addEventListener('change', function() {
 class ThemeManager {
   constructor() {
     this.currentTheme = 'dark';
-    this.themes = ['dark', 'light', 'red', 'purple', 'blue', 'darkpop'];
+    this.builtInThemes = ['dark', 'light', 'red', 'purple', 'blue', 'darkpop'];
+    this.availableSkins = [];
     this.storageKey = 'virtualdeck-theme-v1'; // Versioned key to avoid conflicts
+    this.skinStorageKey = 'virtualdeck-current-skin-v1';
     this.init().catch(console.error);
   }
 
   async init() {
+    await this.loadAvailableSkins();
     await this.loadSavedTheme();
     this.setupEventListeners();
     this.applyTheme(this.currentTheme);
@@ -2886,6 +2889,20 @@ class ThemeManager {
     }, 600);
   }
 
+  async loadAvailableSkins() {
+    try {
+      if (window.electronAPI?.getAvailableSkins) {
+        this.availableSkins = await window.electronAPI.getAvailableSkins();
+      } else {
+        // Fallback for development
+        this.availableSkins = [];
+      }
+    } catch (error) {
+      console.warn('Failed to load available skins:', error);
+      this.availableSkins = [];
+    }
+  }
+
   async loadSavedTheme() {
     try {
       let savedTheme = null;
@@ -2903,7 +2920,8 @@ class ThemeManager {
         savedTheme = localStorage.getItem(this.storageKey);
       }
       
-      if (savedTheme && this.themes.includes(savedTheme)) {
+      // Check if it's a built-in theme or an available skin
+      if (savedTheme && (this.builtInThemes.includes(savedTheme) || this.availableSkins.some(skin => skin.id === savedTheme))) {
         this.currentTheme = savedTheme;
       }
     } catch (error) {
@@ -2918,10 +2936,25 @@ class ThemeManager {
         this.setTheme(themeName);
       });
     }
+    
+    // Listen for import skin dialog
+    if (window.electronAPI?.onImportSkinDialog) {
+      window.electronAPI.onImportSkinDialog(async () => {
+        await this.showImportDialog();
+      });
+    }
+    
+    // Listen for delete skin dialog
+    if (window.electronAPI?.onDeleteSkinDialog) {
+      window.electronAPI.onDeleteSkinDialog(async () => {
+        await this.showDeleteDialog();
+      });
+    }
   }
 
   setTheme(themeName) {
-    if (this.themes.includes(themeName)) {
+    // Check if it's a built-in theme or an available skin
+    if (this.builtInThemes.includes(themeName) || this.availableSkins.some(skin => skin.id === themeName)) {
       this.currentTheme = themeName;
       this.applyTheme(themeName);
       this.saveTheme(themeName);
@@ -2933,10 +2966,18 @@ class ThemeManager {
     }
   }
 
-  applyTheme(themeName) {
+  async applyTheme(themeName) {
+    // Remove any existing skin styles first
+    this.removeCurrentSkin();
+    
     // Set the theme attribute on document and body
     document.documentElement.setAttribute('data-theme', themeName);
     document.body.setAttribute('data-theme', themeName);
+    
+    // If it's a skin (not a built-in theme), apply the skin styles
+    if (!this.builtInThemes.includes(themeName)) {
+      await this.applySkinStyles(themeName);
+    }
     
     // Force a style recalculation without visual flash
     // This triggers a reflow without causing visible flickering
@@ -2969,14 +3010,267 @@ class ThemeManager {
 
   // Method to cycle through themes (useful for hotkeys)
   cycleTheme() {
-    const currentIndex = this.themes.indexOf(this.currentTheme);
-    const nextIndex = (currentIndex + 1) % this.themes.length;
-    this.setTheme(this.themes[nextIndex]);
+    const allThemes = [...this.builtInThemes, ...this.availableSkins.map(skin => skin.id)];
+    const currentIndex = allThemes.indexOf(this.currentTheme);
+    const nextIndex = (currentIndex + 1) % allThemes.length;
+    this.setTheme(allThemes[nextIndex]);
+  }
+
+  // Skin-related methods
+  async applySkinStyles(skinName) {
+    try {
+      // Load skin data from main process
+      if (window.electronAPI?.loadSkin) {
+        const skinData = await window.electronAPI.loadSkin(skinName);
+        if (skinData) {
+          this.injectSkinStyles(skinData);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to apply skin styles:', error);
+    }
+  }
+
+  injectSkinStyles(skinData) {
+    // Remove any existing skin styles
+    this.removeCurrentSkin();
+
+    // Create a new style element for the skin
+    const skinStyle = document.createElement('style');
+    skinStyle.id = 'vd-skin-styles';
+    skinStyle.type = 'text/css';
+
+    let cssContent = '';
+
+    // Add CSS custom properties overrides
+    if (skinData.variables && typeof skinData.variables === 'object') {
+      cssContent += ':root {\n';
+      for (const [key, value] of Object.entries(skinData.variables)) {
+        // Ensure the variable name starts with --
+        const varName = key.startsWith('--') ? key : `--${key}`;
+        cssContent += `  ${varName}: ${value};\n`;
+      }
+      cssContent += '}\n';
+    }
+
+    // Add custom CSS rules
+    if (skinData.css && typeof skinData.css === 'string') {
+      cssContent += skinData.css;
+    }
+
+    // Add custom component styles
+    if (skinData.components && typeof skinData.components === 'object') {
+      for (const [selector, styles] of Object.entries(skinData.components)) {
+        if (typeof styles === 'object') {
+          cssContent += `${selector} {\n`;
+          for (const [property, value] of Object.entries(styles)) {
+            cssContent += `  ${property}: ${value};\n`;
+          }
+          cssContent += '}\n';
+        }
+      }
+    }
+
+    skinStyle.textContent = cssContent;
+    document.head.appendChild(skinStyle);
+
+    // Force a style recalculation
+    void document.documentElement.offsetHeight;
+  }
+
+  removeCurrentSkin() {
+    const existingSkinStyle = document.getElementById('vd-skin-styles');
+    if (existingSkinStyle) {
+      existingSkinStyle.remove();
+    }
+  }
+
+  async refreshSkins() {
+    await this.loadAvailableSkins();
+    // Optionally refresh the menu
+    if (window.electronAPI?.refreshMenu) {
+      window.electronAPI.refreshMenu();
+    }
+  }
+
+  async showImportDialog() {
+    try {
+      if (window.electronAPI?.showImportSkinDialog) {
+        const result = await window.electronAPI.showImportSkinDialog();
+        if (result) {
+          // Refresh available skins after import
+          await this.loadAvailableSkins();
+          // Apply the newly imported skin
+          this.setTheme(result.id);
+          // Refresh the menu to show the new theme (with a small delay to ensure skins are loaded)
+          setTimeout(() => {
+            if (window.electronAPI?.refreshMenu) {
+              window.electronAPI.refreshMenu();
+            }
+          }, 100);
+          if (window.notificationManager) {
+            window.notificationManager.show(`Theme "${result.name}" imported successfully!`, 'success', 3000);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error importing theme:', error);
+      if (window.notificationManager) {
+        window.notificationManager.show(`Failed to import theme: ${error.message}`, 'error', 5000);
+      }
+    }
+  }
+
+  async showDeleteDialog() {
+    try {
+      if (window.electronAPI?.showDeleteSkinDialog) {
+        const result = await window.electronAPI.showDeleteSkinDialog();
+        if (result) {
+          if (result.canceled) {
+            if (result.message) {
+              alert(result.message);
+            }
+            return;
+          }
+          
+          if (result.deleted) {
+            // Refresh available skins after deletion
+            await this.loadAvailableSkins();
+            
+            // If the deleted skin was currently active, switch to default theme
+            if (this.currentTheme === result.skin.id) {
+              this.setTheme('dark'); // Default to dark theme
+            }
+            
+            // Refresh the menu to remove the deleted theme
+            setTimeout(() => {
+              if (window.electronAPI?.refreshMenu) {
+                window.electronAPI.refreshMenu();
+              }
+            }, 100);
+            
+            alert(result.message);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting theme:', error);
+      if (window.notificationManager) {
+        window.notificationManager.show(`Failed to delete theme: ${error.message}`, 'error', 5000);
+      }
+    }
   }
 }
 
 // Initialize theme manager
 let themeManager;
+
+// Custom Notification System
+class NotificationManager {
+  constructor() {
+    this.container = document.getElementById('notification-container');
+    this.notifications = new Map();
+  }
+
+  show(message, type = 'info', duration = 4000) {
+    const id = Date.now() + Math.random();
+    const notification = this.createNotification(id, message, type);
+    
+    this.container.appendChild(notification);
+    this.notifications.set(id, notification);
+    
+    // Trigger animation
+    requestAnimationFrame(() => {
+      notification.classList.add('show');
+    });
+    
+    // Auto-hide after duration
+    if (duration > 0) {
+      setTimeout(() => {
+        this.hide(id);
+      }, duration);
+    }
+    
+    return id;
+  }
+
+  createNotification(id, message, type) {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.dataset.id = id;
+    
+    const icon = this.getIcon(type);
+    const title = this.getTitle(type);
+    
+    notification.innerHTML = `
+      <div class="notification-header">
+        <div class="notification-title">
+          <span class="notification-icon">${icon}</span>
+          ${title}
+        </div>
+        <button class="notification-close" onclick="notificationManager.hide(${id})">×</button>
+      </div>
+      <div class="notification-message">${message}</div>
+      <div class="notification-progress"></div>
+    `;
+    
+    // Add progress bar animation
+    const progressBar = notification.querySelector('.notification-progress');
+    if (progressBar) {
+      progressBar.style.width = '100%';
+      progressBar.style.transition = 'width 4000ms linear';
+      setTimeout(() => {
+        progressBar.style.width = '0%';
+      }, 100);
+    }
+    
+    return notification;
+  }
+
+  getIcon(type) {
+    const icons = {
+      success: '✅',
+      warning: '⚠️',
+      error: '❌',
+      info: 'ℹ️'
+    };
+    return icons[type] || icons.info;
+  }
+
+  getTitle(type) {
+    const titles = {
+      success: 'Success',
+      warning: 'Warning',
+      error: 'Error',
+      info: 'Information'
+    };
+    return titles[type] || titles.info;
+  }
+
+  hide(id) {
+    const notification = this.notifications.get(id);
+    if (notification) {
+      notification.classList.add('hide');
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.parentNode.removeChild(notification);
+        }
+        this.notifications.delete(id);
+      }, 300);
+    }
+  }
+
+  hideAll() {
+    this.notifications.forEach((notification, id) => {
+      this.hide(id);
+    });
+  }
+}
+
+// Initialize notification manager
+let notificationManager;
+
+// Note: Skin functionality is now integrated into ThemeManager
 
 // Apply theme immediately to prevent flash
 (function applyThemeImmediately() {
@@ -3009,6 +3303,7 @@ let themeManager;
 // Wait for DOM to be ready before initializing theme manager
 document.addEventListener('DOMContentLoaded', () => {
   themeManager = new ThemeManager();
+  notificationManager = new NotificationManager();
   
   // Add hotkey to cycle through themes (Ctrl+Shift+T)
   document.addEventListener('keydown', (e) => {
@@ -3022,6 +3317,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Export for potential use by other parts of the app
   window.themeManager = themeManager;
+  window.notificationManager = notificationManager;
   
   // Watch for any changes to the document element's data-theme attribute
   const observer = new MutationObserver((mutations) => {

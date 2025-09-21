@@ -72,4 +72,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   syncViewPrefs: (prefs) => ipcRenderer.send('sync-view-prefs', prefs),
   onThemeChange: (callback) => ipcRenderer.on('theme-change', (event, themeName) => callback(themeName)),
   syncTheme: (themeName) => ipcRenderer.send('sync-theme', themeName),
+  // Skin System APIs
+  getAvailableSkins: async () => ipcRenderer.invoke('get-available-skins'),
+  loadSkin: async (skinId) => ipcRenderer.invoke('load-skin', skinId),
+  importSkin: async (filePath) => ipcRenderer.invoke('import-skin', filePath),
+  showImportSkinDialog: async () => ipcRenderer.invoke('show-import-skin-dialog'),
+  showDeleteSkinDialog: async () => ipcRenderer.invoke('show-delete-skin-dialog'),
+  onSkinChange: (callback) => ipcRenderer.on('skin-change', (event, skinName) => callback(skinName)),
+  onImportSkinDialog: (callback) => ipcRenderer.on('import-skin-dialog', callback),
+  onDeleteSkinDialog: (callback) => ipcRenderer.on('delete-skin-dialog', callback),
+  onRefreshMenu: (callback) => ipcRenderer.on('refresh-menu', callback),
+  syncSkin: (skinName) => ipcRenderer.send('sync-skin', skinName),
+  refreshMenu: () => ipcRenderer.send('refresh-menu'),
 });
