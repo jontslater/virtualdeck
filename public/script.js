@@ -2900,10 +2900,9 @@ class ThemeManager {
     document.documentElement.setAttribute('data-theme', themeName);
     document.body.setAttribute('data-theme', themeName);
     
-    // Force a style recalculation to ensure the theme is applied
-    document.documentElement.style.display = 'none';
-    document.documentElement.offsetHeight; // Trigger reflow
-    document.documentElement.style.display = '';
+    // Force a style recalculation without visual flash
+    // This triggers a reflow without causing visible flickering
+    void document.documentElement.offsetHeight;
   }
 
 
