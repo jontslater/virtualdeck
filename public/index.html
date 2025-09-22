@@ -144,7 +144,6 @@
         <label>Type:
           <select name="type" id="type-select">
             <option value="audio">Audio</option>
-            <!-- <option value="app">App</option> -->
           </select>
         </label><br>
         <label>Hotkey: 
@@ -155,16 +154,14 @@
         </label><br>
         <div id="audio-file-section">
           <label>File:
-            <input type="file" name="file" id="file-input" required />
+            <input type="file" name="file" id="file-input" accept=".mp3,.wav,.ogg,.m4a,.aac,.flac,.wma" required />
             <div id="drop-zone">or drag file here</div>
           </label>
           <label for="volume-input" class="volume-label">Volume: <span id="volume-value">100%</span></label>
           <input type="range" id="volume-input" name="volume" min="0" max="100" value="100" />
         </div>
         <div id="app-file-section" style="display:none;">
-          <label>App File:
-            <input type="file" name="app-file" id="app-file-input" accept=".exe,.bat,.cmd,.lnk,.app,.sh,.desktop" required />
-          </label>
+          <!-- App file section removed - only audio files are supported -->
         </div>
         <button type="submit" id="save-sound">Save</button>
         <button type="button" id="close-settings">Cancel</button>

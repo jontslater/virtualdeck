@@ -896,6 +896,7 @@ async function loadButtons() {
       newFileInput.required = true;
       newFileInput.id = 'file-input';
       newFileInput.name = 'file';
+      newFileInput.accept = '.mp3,.wav,.ogg,.m4a,.aac,.flac,.wma';
       oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
     }
     const oldAppFileInput = document.getElementById('app-file-input');
@@ -942,22 +943,19 @@ async function loadButtons() {
   }
   
   for (const [index, button] of orderedButtons.entries()) {
+    // Only show audio buttons - skip app buttons
+    if (button.type !== 'audio') {
+      continue;
+    }
+    
     const card = document.createElement("div");
     card.className = "sound-card";
     card.dataset.index = index;
     card.dataset.soundData = JSON.stringify(button);
   if (button.id) card.dataset.buttonId = button.id;
     
-    // Fetch icon for app buttons
+    // No icons needed for audio buttons
     let iconImg = '';
-    if (button.type === 'app') {
-      let iconData = await window.electronAPI.getAppIcon(button.src);
-      if (!iconData) {
-        // Use a default icon if extraction fails
-        iconData = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="%23bbb"/><text x="24" y="30" font-size="20" text-anchor="middle" fill="%23666">App</text></svg>';
-      }
-      iconImg = `<img src="${iconData}" alt="App Icon" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;" />`;
-    }
     card.innerHTML = `
       <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
       <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
@@ -2172,6 +2170,7 @@ async function handleTrigger(button) {
   // If caller passed a DOM element instead of button object, normalize
   if (button && button._vdJustDragged) return;
 
+  // Only handle audio files
   if (button.type === "audio") {
     const audioPath = await window.electronAPI.getSoundPath(button.src);
     const audio = new Audio(audioPath);
@@ -2187,15 +2186,8 @@ async function handleTrigger(button) {
     }
     audio.play().catch(error => {
     });
-  } else if (button.type === "app") {
-    // If the button has args, pass them along
-    if (button.args) {
-      window.electronAPI.launchApp({ path: button.src, args: button.args });
-    } else {
-      window.electronAPI.launchApp({ path: button.src });
-    }
   }
-  // Removed visual handling
+  // App handling removed - only audio files supported
 }
 
 // Replace all ipcRenderer.send and ipcRenderer.on with window.electronAPI methods
@@ -2223,8 +2215,8 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   // Use the recorded hotkey directly (accumulative recorder populates hotkeyInput.value)
   const completeHotkey = (hotkeyInput && hotkeyInput.value && hotkeyInput.value.trim()) ? hotkeyInput.value.trim() : hotkey;
 
-  // Get the appropriate file input based on type
-  const fileInput = type === 'app' ? document.getElementById('app-file-input') : document.getElementById('file-input');
+  // Get the file input (only audio files supported)
+  const fileInput = document.getElementById('file-input');
 
   // Check if we have a resolved path from drag-and-drop
   const resolvedPath = form.dataset.resolvedPath;
@@ -2298,17 +2290,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     const filePath = resolvedPath || fileInput.files[0].path;
     const fileName = resolvedPath ? (resolvedPath.split('\\').pop() || resolvedPath.split('/').pop()) : fileInput.files[0].name;
     
-    // For app files, use the resolved path directly; for audio files, create a target path
-    let targetPath;
-    if (type === 'app') {
-      targetPath = filePath; // Use the actual file path for apps
-    } else {
-      const ext = fileName.split('.').pop();
-      targetPath = `assets/sounds/${label}.${ext}`;
-    }
+    // For audio files, create a target path
+    const ext = fileName.split('.').pop();
+    const targetPath = `assets/sounds/${label}.${ext}`;
 
-    // Save args for app buttons
-    const args = type === 'app' ? resolvedArgs : '';
+    // No args needed for audio files
+    const args = '';
 
     console.log('Sending to addMedia:', {
       label,
@@ -2400,16 +2387,10 @@ window.editButton = async (index) => {
     newFileInput.required = false;
     newFileInput.id = 'file-input';
     newFileInput.name = 'file';
+    newFileInput.accept = '.mp3,.wav,.ogg,.m4a,.aac,.flac,.wma';
     oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
   }
-  const oldAppFileInput = document.getElementById('app-file-input');
-  if (oldAppFileInput) {
-    const newAppFileInput = oldAppFileInput.cloneNode(false);
-    newAppFileInput.required = false;
-    newAppFileInput.id = 'app-file-input';
-    newAppFileInput.name = 'app-file';
-    oldAppFileInput.parentNode.replaceChild(newAppFileInput, oldAppFileInput);
-  }
+  // App file input removed - only audio files supported
   // Populate form fields
   const labelInput = document.getElementById('label-input');
   labelInput.value = btn.label;
@@ -2418,22 +2399,11 @@ window.editButton = async (index) => {
   // Set the type selection
   const typeSelect = document.getElementById('type-select');
   typeSelect.value = btn.type;
-  // Toggle file input sections and required states based on type
+  // Only handle audio files
   const audioFileSection = document.getElementById('audio-file-section');
-  const appFileSection = document.getElementById('app-file-section');
   const fileInput = document.getElementById('file-input');
-  const appFileInput = document.getElementById('app-file-input');
-  if (btn.type === 'audio') {
-    audioFileSection.style.display = '';
-    appFileSection.style.display = 'none';
-    fileInput.required = false; // Not required when editing
-    appFileInput.required = false;
-  } else {
-    audioFileSection.style.display = 'none';
-    appFileSection.style.display = '';
-    fileInput.required = false;
-    appFileInput.required = false; // Not required when editing
-  }
+  audioFileSection.style.display = '';
+  fileInput.required = false; // Not required when editing
   // Set hotkey and parse modifiers
   const hotkeyInput = document.getElementById('hotkey-input');
   if (btn.hotkey) {
@@ -2457,7 +2427,7 @@ window.editButton = async (index) => {
     if (volumeValue) volumeValue.textContent = `${percent}%`;
   }
   // Update modal title
-  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : 'App'}: ${btn.label}`;
+  document.querySelector('#settings-modal h2').textContent = `Edit Sound: ${btn.label}`;
   // Show current file info
   const dropZone = document.getElementById('drop-zone');
   if (dropZone) {
@@ -2707,31 +2677,17 @@ function handleFileDrop(file) {
     }
   }
 
-  // Supported extensions
-  const audioExts = ['mp3', 'wav', 'ogg'];
-  const appExts = [
-    'exe',    // Windows executable
-    'bat',    // Windows batch
-    'cmd',    // Windows command
-    'lnk',    // Windows shortcut
-    'app',    // macOS app bundle or Linux AppImage
-    'sh',     // Linux shell script
-    'desktop' // Linux desktop shortcut
-  ];
+  // Supported extensions - only audio files
+  const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'wma'];
   const ext = file.name.split('.').pop().toLowerCase();
   console.log('File extension:', ext);
   let type = 'audio';
-  if (appExts.includes(ext)) type = 'app';
   
-  // Additional check: if the file has no extension or an unknown extension,
-  // but the name contains common app names, treat it as an app
-  if (type === 'audio' && (!ext || !audioExts.includes(ext))) {
-    const fileName = file.name.toLowerCase();
-    const appKeywords = ['spotify', 'chrome', 'firefox', 'edge', 'steam', 'discord', 'slack', 'teams', 'zoom', 'postman', 'vscode', 'notepad', 'calculator', 'paint', 'word', 'excel', 'powerpoint'];
-    if (appKeywords.some(keyword => fileName.includes(keyword))) {
-      type = 'app';
-      console.log('Detected as app based on filename containing app keyword');
-    }
+  // Only accept audio files
+  if (!audioExts.includes(ext)) {
+    console.log('File rejected - not an audio file. Supported formats:', audioExts.join(', '));
+    alert(`Only audio files are supported. Supported formats: ${audioExts.join(', ')}`);
+    return;
   }
   
   console.log('Detected type:', type);
@@ -2743,13 +2699,11 @@ function handleFileDrop(file) {
   const labelInput = document.getElementById('label-input');
   const typeSelect = document.getElementById('type-select');
   const audioFileSection = document.getElementById('audio-file-section');
-  const appFileSection = document.getElementById('app-file-section');
   const fileInput = document.getElementById('file-input');
-  const appFileInput = document.getElementById('app-file-input');
   const settingsModal = document.getElementById('settings-modal');
 
   // Null checks
-  if (!settingsForm || !hotkeyInput || !hotkeyStatus || !labelInput || !typeSelect || !audioFileSection || !appFileSection || !fileInput || !appFileInput || !settingsModal) {
+  if (!settingsForm || !hotkeyInput || !hotkeyStatus || !labelInput || !typeSelect || !audioFileSection || !fileInput || !settingsModal) {
     console.warn('One or more required elements are missing in the DOM.');
     return;
   }
@@ -2760,37 +2714,13 @@ function handleFileDrop(file) {
   hotkeyStatus.textContent = '';
   delete settingsForm.dataset.editingIndex;
   delete settingsForm.dataset.editingId;
-  document.querySelector('#settings-modal h2').textContent = 'Add New ' + (type === 'audio' ? 'Sound' : 'App');
+  document.querySelector('#settings-modal h2').textContent = 'Add New Sound';
   typeSelect.value = type;
 
-  // Handle shortcut resolution for app files
-  if (type === 'app') {
-    // Try to resolve as shortcut regardless of extension
-    console.log('Attempting to resolve as shortcut:', file.path);
-    window.electronAPI.resolveShortcut(file.path).then(shortcut => {
-      if (shortcut && shortcut.target) {
-        console.log('Shortcut resolved to:', shortcut);
-        // Store the resolved path and args in the form
-        settingsForm.dataset.resolvedPath = shortcut.target;
-        settingsForm.dataset.resolvedArgs = shortcut.args || '';
-        setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
-      } else {
-        console.warn('Failed to resolve shortcut, using original file');
-        settingsForm.dataset.resolvedPath = file.path;
-        settingsForm.dataset.resolvedArgs = '';
-        setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
-      }
-    }).catch(error => {
-      console.error('Error resolving shortcut:', error);
-      settingsForm.dataset.resolvedPath = file.path;
-      settingsForm.dataset.resolvedArgs = '';
-      setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
-    });
-  } else {
-    settingsForm.dataset.resolvedPath = file.path;
-    settingsForm.dataset.resolvedArgs = '';
-    setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
-  }
+  // For audio files, just set the file directly
+  settingsForm.dataset.resolvedPath = file.path;
+  settingsForm.dataset.resolvedArgs = '';
+  setFileInForm(file, type, audioFileSection, fileInput);
 
   // Set label to file name (no extension)
   labelInput.value = file.name.replace(/\.[^/.]+$/, "");
@@ -2799,30 +2729,16 @@ function handleFileDrop(file) {
 }
 
 // Helper function to set file in the appropriate form input
-function setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput) {
-  if (type === 'audio') {
-    audioFileSection.style.display = '';
-    appFileSection.style.display = 'none';
-    fileInput.required = true;
-    appFileInput.required = false;
-    // Set file input
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(file);
-    fileInput.files = dataTransfer.files;
-    // Create or update file display
-    updateFileDisplay(fileInput, file.name);
-  } else {
-    audioFileSection.style.display = 'none';
-    appFileSection.style.display = '';
-    fileInput.required = false;
-    appFileInput.required = true;
-    // Set app file input
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(file);
-    appFileInput.files = dataTransfer.files;
-    // Create or update file display
-    updateFileDisplay(appFileInput, file.name);
-  }
+function setFileInForm(file, type, audioFileSection, fileInput) {
+  // Only handle audio files
+  audioFileSection.style.display = '';
+  fileInput.required = true;
+  // Set file input
+  const dataTransfer = new DataTransfer();
+  dataTransfer.items.add(file);
+  fileInput.files = dataTransfer.files;
+  // Create or update file display
+  updateFileDisplay(fileInput, file.name);
 }
 
 // Helper function to update file input display
