@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OBS Overlay Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        
+        .test-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(255, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 48px;
+            font-weight: bold;
+            text-align: center;
+            z-index: 9999;
+        }
+        
+        .test-message {
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            border: 5px solid yellow;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <div class="test-message">
+            🎯 OBS OVERLAY TEST<br>
+            <small style="font-size: 24px;">If you see this, the overlay is working!</small>
+        </div>
+    </div>
+    
+    <script>
+        console.log('Test overlay loaded');
+        
+        // Test WebSocket connection
+        const ws = new WebSocket('ws://localhost:8080');
+        
+        ws.onopen = function() {
+            console.log('WebSocket connected');
+        };
+        
+        ws.onmessage = function(event) {
+            console.log('WebSocket message received:', event.data);
+        };
+        
+        ws.onerror = function(error) {
+            console.error('WebSocket error:', error);
+        };
+        
+        // Test HTTP server
+        fetch('http://localhost:8080/overlay.html')
+            .then(response => {
+                console.log('HTTP test response:', response.status);
+            })
+            .catch(error => {
+                console.error('HTTP test error:', error);
+            });
+    </script>
+</body>
+</html>

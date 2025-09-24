@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VirtualDeck OBS Overlay</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: transparent;
+      overflow: hidden;
+      color: #ffffff;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #overlay-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: transparent;
+    }
+
+    /* Media Display - Full Screen */
+    #media-display {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      z-index: 1000;
+    }
+
+    #media-video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      border-radius: 0;
+      box-shadow: none;
+      background: transparent;
+    }
+
+    #media-image {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    #media-audio {
+      display: none; /* Audio element is hidden, we just use it for playback */
+    }
+
+    /* Message Display - Centered */
+    #message-display {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 20px 40px;
+      border-radius: 10px;
+      font-size: 24px;
+      font-weight: bold;
+      text-align: center;
+      z-index: 1001;
+      max-width: 80%;
+      word-wrap: break-word;
+    }
+
+    /* Stats Overlays - Corner Positioning */
+    #twitch-stats-overlay {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 15px;
+      border-radius: 10px;
+      z-index: 1002;
+      min-width: 200px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 15px;
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #ccc;
+      margin-bottom: 5px;
+    }
+
+    .stat-value {
+      font-size: 18px;
+      font-weight: bold;
+      color: #4CAF50;
+    }
+
+    /* Recent Activity Overlay */
+    #recent-activity-overlay {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 15px;
+      border-radius: 10px;
+      z-index: 1002;
+      min-width: 250px;
+    }
+
+    .activity-item {
+      margin-bottom: 10px;
+    }
+
+    .activity-label {
+      font-size: 12px;
+      color: #ccc;
+      margin-bottom: 5px;
+    }
+
+    .activity-value {
+      font-size: 16px;
+      font-weight: bold;
+      color: #FF9800;
+    }
+
+    /* Sound Status Overlay */
+    #sound-status-overlay {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 15px;
+      border-radius: 10px;
+      z-index: 1002;
+      min-width: 200px;
+    }
+
+    .sound-item {
+      text-align: center;
+    }
+
+    .sound-label {
+      font-size: 12px;
+      color: #ccc;
+      margin-bottom: 5px;
+    }
+
+    .sound-value {
+      font-size: 16px;
+      font-weight: bold;
+      color: #2196F3;
+    }
+
+    /* Multi-Action Container */
+    #multi-action-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    .multi-action-element {
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .multi-action-image {
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: 300px;
+      max-height: 300px;
+      z-index: 1001;
+    }
+
+    .multi-action-video {
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: 400px;
+      max-height: 300px;
+      z-index: 1001;
+    }
+
+    .multi-action-text {
+      position: absolute;
+      bottom: 10%;
+      left: 0;
+      right: 0;
+      width: 100%;
+      text-align: center;
+      padding: 10px 15px;
+      border-radius: 5px;
+      z-index: 1002;
+    }
+
+    /* Utility Classes */
+    .hidden {
+      display: none !important;
+    }
+
+    .fade-in {
+      animation: fadeIn 0.5s ease-in;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes fadeInOut {
+      0% { opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    /* Debug Info - Hidden by default for OBS */
+    #debug-info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 12px;
+      z-index: 1003;
+      font-family: monospace;
+      max-width: 300px;
+      display: none; /* Hidden by default for OBS */
+    }
+
+    /* Show debug info only when ?debug=true is in URL */
+    body.debug #debug-info {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="overlay-container">
+    <!-- Debug Info (hidden by default) -->
+    <div id="debug-info">
+      <div>VirtualDeck OBS Overlay Active</div>
+      <div id="current-media">No media</div>
+      <div id="connection-status">Disconnected</div>
+      <div id="last-message">No messages</div>
+    </div>
+
+    <!-- Connection Status (always visible for debugging) -->
+    <div id="connection-indicator" style="position: fixed; top: 10px; right: 10px; background: rgba(255,0,0,0.8); color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; z-index: 9999;">
+      <span id="connection-text">Disconnected</span>
+      <button onclick="window.obsOverlay.testMessage()" style="margin-left: 5px; padding: 2px 5px; font-size: 10px;">Msg</button>
+      <button onclick="window.obsOverlay.testAllMedia()" style="margin-left: 2px; padding: 2px 5px; font-size: 10px;">Media</button>
+    </div>
+
+    <!-- Media Display -->
+    <div id="media-display" class="hidden">
+      <video id="media-video" autoplay muted playsinline loop></video>
+      <img id="media-image" alt="Overlay Image" class="hidden">
+      <audio id="media-audio" preload="auto"></audio>
+    </div>
+
+    <!-- Message Display -->
+    <div id="message-display" class="hidden">
+      <div id="message-content">No message</div>
+    </div>
+
+    <!-- Twitch Stats Overlay -->
+    <div id="twitch-stats-overlay" class="hidden">
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-label">Viewers</div>
+          <div class="stat-value" id="overlay-viewer-count">-</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Followers</div>
+          <div class="stat-value" id="overlay-follower-count">-</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Subscribers</div>
+          <div class="stat-value" id="overlay-subscriber-count">-</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Activity Overlay -->
+    <div id="recent-activity-overlay" class="hidden">
+      <div class="activity-item">
+        <div class="activity-label">Latest Follower:</div>
+        <div class="activity-value" id="overlay-latest-follower">-</div>
+      </div>
+      <div class="activity-item">
+        <div class="activity-label">Latest Subscriber:</div>
+        <div class="activity-value" id="overlay-latest-subscriber">-</div>
+      </div>
+    </div>
+
+    <!-- Sound Status Overlay -->
+    <div id="sound-status-overlay" class="hidden">
+      <div class="sound-item">
+        <div class="sound-label">Now Playing:</div>
+        <div class="sound-value" id="overlay-current-sound">-</div>
+      </div>
+    </div>
+
+    <!-- Multi-Action Container -->
+    <div id="multi-action-container" class="hidden">
+      <!-- Dynamic elements will be added here -->
+    </div>
+  </div>
+
+  <script>
+    class OBSOverlay {
+      constructor() {
+        this.currentMedia = null;
+        this.mediaTimeout = null;
+        this.videoLoadTimeout = null;
+        this.debugInfo = document.getElementById('debug-info');
+        this.currentMediaDiv = document.getElementById('current-media');
+        this.connectionStatus = document.getElementById('connection-status');
+        this.lastMessage = document.getElementById('last-message');
+        this.connectionIndicator = document.getElementById('connection-indicator');
+        this.connectionText = document.getElementById('connection-text');
+        
+        this.mediaDisplay = document.getElementById('media-display');
+        this.mediaVideo = document.getElementById('media-video');
+        this.mediaImage = document.getElementById('media-image');
+        this.mediaAudio = document.getElementById('media-audio');
+        this.messageDisplay = document.getElementById('message-display');
+        this.messageContent = document.getElementById('message-content');
+        this.multiActionContainer = document.getElementById('multi-action-container');
+
+        this.init();
+      }
+
+      init() {
+        // Check for debug mode
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('debug') === 'true') {
+          document.body.classList.add('debug');
+        }
+
+        this.setupWebSocket();
+        this.setupEventListeners();
+        this.parseURLParameters();
+        this.updateDebugInfo('Initialized');
+        
+        console.log('OBSOverlay initialized');
+        
+        // Test message display on startup to verify it works
+        setTimeout(() => {
+          console.log('🧪 Running startup test...');
+          this.showMessage('🎬 Overlay Ready!', 3000, {
+            fontSize: 24,
+            textColor: '#00ff00',
+            backgroundColor: 'rgba(0,0,0,0.8)'
+          });
+        }, 2000);
+      }
+
+      setupEventListeners() {
+        // Video event listeners for OBS compatibility
+        this.mediaVideo.addEventListener('loadstart', () => {
+          console.log('Video load started');
+          this.updateDebugInfo('Video loading...');
+        });
+        
+        this.mediaVideo.addEventListener('canplay', () => {
+          console.log('Video can play');
+          this.updateDebugInfo('Video ready to play');
+          // Force play for OBS
+          this.mediaVideo.play().catch(e => {
+            console.error('Video play error:', e);
+            this.updateDebugInfo('Video play error: ' + e.message);
+          });
+        });
+        
+        this.mediaVideo.addEventListener('playing', () => {
+          console.log('Video is playing');
+          this.updateDebugInfo('Video playing');
+          
+          // Unmute for audio if volume > 0
+          if (this.mediaVideo.volume > 0) {
+            this.mediaVideo.muted = false;
+            console.log('Video unmuted for audio playback');
+          }
+        });
+        
+        this.mediaVideo.addEventListener('error', (e) => {
+          console.error('Video error:', e);
+          this.updateDebugInfo('Video error: ' + e.message);
+        });
+
+        // Handle page visibility changes (important for OBS)
+        document.addEventListener('visibilitychange', () => {
+          if (!document.hidden && this.mediaVideo.src && this.mediaVideo.paused) {
+            console.log('Page visible, restarting video');
+            this.mediaVideo.play().catch(e => console.error('Restart play error:', e));
+          }
+        });
+      }
+
+      parseURLParameters() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const mediaType = urlParams.get('type');
+        const mediaSrc = urlParams.get('src');
+        const duration = urlParams.get('duration') || 5;
+        const volume = parseFloat(urlParams.get('volume')) || 1.0;
+
+        if (mediaType && mediaSrc) {
+          this.showMedia(mediaType, mediaSrc, parseInt(duration) * 1000, volume);
+        }
+      }
+
+      setupWebSocket() {
+        console.log('🔌 === WEBSOCKET SETUP START ===');
+        const wsUrl = 'ws://localhost:8080';
+        console.log('🔌 Connecting to:', wsUrl);
+        
+        this.ws = new WebSocket(wsUrl);
+        
+        this.ws.onopen = () => {
+          console.log('✅ === WEBSOCKET CONNECTED ===');
+          this.connectionStatus.textContent = 'Connected';
+          this.connectionText.textContent = 'Connected';
+          this.connectionIndicator.style.background = 'rgba(0,255,0,0.8)';
+          this.updateDebugInfo('WebSocket connected');
+          console.log('✅ WebSocket connected to VirtualDeck');
+          console.log('📊 Ready state:', this.ws.readyState);
+        };
+
+        this.ws.onclose = (event) => {
+          console.log('🔌 === WEBSOCKET DISCONNECTED ===');
+          console.log('🔌 Close code:', event.code);
+          console.log('🔌 Close reason:', event.reason);
+          this.connectionStatus.textContent = 'Disconnected';
+          this.connectionText.textContent = 'Disconnected';
+          this.connectionIndicator.style.background = 'rgba(255,0,0,0.8)';
+          this.updateDebugInfo('WebSocket disconnected');
+          console.log('❌ WebSocket disconnected from VirtualDeck');
+          
+          // Attempt to reconnect after 3 seconds
+          setTimeout(() => {
+            console.log('🔄 === RECONNECTION ATTEMPT ===');
+            console.log('🔄 Attempting to reconnect...');
+            this.setupWebSocket();
+          }, 3000);
+        };
+
+        this.ws.onmessage = (event) => {
+          console.log('📨 === WEBSOCKET MESSAGE RECEIVED ===');
+          console.log('📨 Raw message:', event.data);
+          console.log('📨 Message type:', typeof event.data);
+          console.log('📨 Message length:', event.data.length);
+          
+          try {
+            const data = JSON.parse(event.data);
+            console.log('📨 Parsed message:', data);
+            console.log('📨 Message type:', data.type);
+            console.log('📨 Message data:', data.data);
+            
+            console.log('🎯 Calling handleMessage...');
+            this.handleMessage(data);
+            console.log('✅ handleMessage completed');
+          } catch (e) {
+            console.error('❌ === JSON PARSE ERROR ===');
+            console.error('❌ Error parsing WebSocket message:', e);
+            console.error('❌ Raw message was:', event.data);
+          }
+        };
+
+        this.ws.onerror = (error) => {
+          console.error('❌ === WEBSOCKET ERROR ===');
+          console.error('❌ WebSocket error:', error);
+          this.connectionIndicator.style.background = 'rgba(255,255,0,0.8)';
+          this.connectionText.textContent = 'Error';
+        };
+      }
+
+      handleMessage(data) {
+        console.log('🎯 === HANDLE MESSAGE START ===');
+        console.log('📨 Overlay received message:', data);
+        console.log('📨 Message type:', data.type);
+        console.log('📨 Message data:', data.data);
+        console.log('📨 Full message object:', JSON.stringify(data, null, 2));
+        
+        this.lastMessage.textContent = `Last: ${data.type} at ${new Date().toLocaleTimeString()}`;
+        this.connectionText.textContent = `Connected (${data.type})`;
+        
+        console.log('🎯 Processing message type:', data.type);
+        this.connectionIndicator.style.background = 'rgba(0,0,255,0.8)';
+        
+        switch (data.type) {
+          case 'showMedia':
+            const mediaSrc = data.data.type === 'message' || data.data.type === 'text' 
+              ? data.data.message 
+              : data.data.src;
+            this.showMedia(data.data.type, mediaSrc, data.data.duration * 1000, data.data.volume, {
+              fontSize: data.data.fontSize,
+              fontFamily: data.data.fontFamily,
+              textColor: data.data.textColor,
+              backgroundColor: data.data.backgroundColor
+            });
+            break;
+          case 'showMessage':
+            console.log('📨 Processing showMessage:', data.data);
+            this.showMessage(data.data.message, data.data.duration * 1000, {
+              fontSize: data.data.fontSize || null,
+              fontFamily: data.data.fontFamily || null,
+              textColor: data.data.textColor || null,
+              backgroundColor: data.data.backgroundColor || null
+            });
+            break;
+          case 'hideMedia':
+            this.hideAllMedia();
+            break;
+          case 'updateStats':
+            this.updateStats(data.data);
+            break;
+          case 'updateActivity':
+            this.updateActivity(data.data);
+            break;
+          case 'updateSoundStatus':
+            this.updateSoundStatus(data.data);
+            break;
+          case 'toggleOverlay':
+            this.toggleOverlay(data.data.overlayType, data.data.visible);
+            break;
+          case 'executeMultiAction':
+            console.log('📨 Processing executeMultiAction:', data.data);
+            if (data.data && data.data.actions) {
+              this.executeMultiAction(data.data.actions);
+            }
+            break;
+          default:
+            console.log('Unknown message type:', data.type);
+            break;
+        }
+      }
+
+      showMedia(type, src, duration = 5000, volume = 1.0, styling = {}) {
+        console.log(`🎬 showMedia called: type=${type}, src=${src}, duration=${duration}, volume=${volume}`);
+        
+        if (type !== 'message' && type !== 'text') {
+          this.hideAllMedia();
+        }
+        
+        this.currentMedia = { type, src, duration, volume, styling };
+        this.updateDebugInfo(`Showing ${type}: ${src}`);
+
+        switch (type) {
+          case 'video':
+          case 'mp4':
+          case 'webm':
+          case 'ogg':
+            this.showVideo(src, duration, volume);
+            break;
+          case 'image':
+          case 'jpg':
+          case 'jpeg':
+          case 'png':
+          case 'gif':
+          case 'svg':
+            this.showImage(src, duration);
+            break;
+          case 'audio':
+          case 'sound':
+          case 'mp3':
+          case 'wav':
+          case 'ogg':
+            this.playAudio(src, volume, duration);
+            break;
+          case 'message':
+          case 'text':
+            const messageText = src;
+            this.showMessage(messageText, duration, styling);
+            break;
+          default:
+            console.log(`⚠️ Unknown media type: ${type}, treating as image`);
+            this.showImage(src, duration);
+            break;
+        }
+
+        if (duration > 0 && type !== 'message' && type !== 'text') {
+          this.mediaTimeout = setTimeout(() => {
+            console.log('⏰ Media timeout reached, hiding media');
+            this.hideAllMedia();
+          }, duration);
+        }
+      }
+
+      showVideo(src, duration, volume = 1.0) {
+        console.log('🎥 showVideo called with src:', src, 'volume:', volume);
+        
+        // Clear any previous state
+        this.mediaVideo.onerror = null;
+        this.mediaVideo.onloadstart = null;
+        this.mediaVideo.oncanplay = null;
+        this.mediaVideo.onplaying = null;
+        this.mediaVideo.onended = null;
+        
+        if (this.videoLoadTimeout) {
+          clearTimeout(this.videoLoadTimeout);
+          this.videoLoadTimeout = null;
+        }
+        
+        // Convert local file path to file:// URL if needed
+        let videoSrc = src;
+        if (src && !src.startsWith('http') && !src.startsWith('file://')) {
+          videoSrc = 'file:///' + src.replace(/\\/g, '/');
+          console.log('🎥 Converted local path to file URL:', videoSrc);
+        }
+        
+        // Configure video for OBS
+        this.mediaVideo.src = videoSrc;
+        this.mediaVideo.muted = true; // Start muted for autoplay
+        this.mediaVideo.autoplay = true;
+        this.mediaVideo.loop = false;
+        this.mediaVideo.playsInline = true;
+        this.mediaVideo.controls = false;
+        this.mediaVideo.volume = volume;
+        this.mediaVideo.preload = 'auto';
+        
+        this.mediaImage.classList.add('hidden');
+        this.mediaVideo.classList.remove('hidden');
+        this.mediaDisplay.classList.remove('hidden');
+        this.mediaDisplay.classList.add('fade-in');
+
+        let hasLoaded = false;
+        let hasError = false;
+
+        this.mediaVideo.onerror = (e) => {
+          console.error('Video error:', e);
+          hasError = true;
+          if (e.target.error && e.target.error.code !== 0 && !hasLoaded) {
+            const errorMsg = e.message || 'Failed to load video';
+            this.updateDebugInfo(`Video error: ${errorMsg}`);
+          }
+        };
+
+        this.mediaVideo.onloadstart = () => {
+          console.log('Video loading started');
+          this.updateDebugInfo('Video loading...');
+          hasError = false;
+        };
+
+        this.mediaVideo.oncanplay = () => {
+          console.log('Video can play');
+          this.updateDebugInfo('Video ready to play');
+          hasLoaded = true;
+        };
+
+        this.mediaVideo.onplaying = () => {
+          console.log('Video is playing');
+          this.updateDebugInfo('Video playing');
+          hasLoaded = true;
+          
+          // Unmute for audio if volume > 0
+          if (this.mediaVideo.volume > 0) {
+            this.mediaVideo.muted = false;
+            console.log('Video unmuted for audio playback');
+          }
+        };
+
+        // Set timeout for loading
+        this.videoLoadTimeout = setTimeout(() => {
+          if (!hasLoaded && !hasError) {
+            console.log('Video loading timeout - this might be normal for large files');
+            this.updateDebugInfo('Video loading (large file, please wait)...');
+          }
+        }, 3000);
+
+        // Try to play immediately
+        this.mediaVideo.play().catch(e => {
+          console.error('Video play error:', e);
+          this.updateDebugInfo('Video play error (retrying): ' + e.message);
+        });
+      }
+
+      showImage(src, duration) {
+        console.log('🖼️ showImage called with src:', src, 'duration:', duration);
+        
+        // Hide video and show image
+        this.mediaVideo.classList.add('hidden');
+        this.mediaImage.classList.remove('hidden');
+        
+        // Set up image loading
+        this.mediaImage.onload = () => {
+          console.log('✅ Image loaded successfully');
+          this.updateDebugInfo(`Image loaded: ${src}`);
+        };
+        
+        this.mediaImage.onerror = (e) => {
+          console.error('❌ Image load error:', e);
+          this.updateDebugInfo(`Image load error: ${src}`);
+        };
+        
+        // Convert local file path to file:// URL if needed
+        let imageSrc = src;
+        if (src && !src.startsWith('http') && !src.startsWith('file://')) {
+          imageSrc = 'file:///' + src.replace(/\\/g, '/');
+          console.log('🖼️ Converted local path to file URL:', imageSrc);
+        }
+        
+        // Set the image source
+        this.mediaImage.src = imageSrc;
+        
+        // Show the media display
+        this.mediaDisplay.classList.remove('hidden');
+        this.mediaDisplay.classList.add('fade-in');
+        
+        console.log('🖼️ Image display shown');
+      }
+
+      showMessage(message, duration, styling = {}) {
+        console.log('💬 === SHOW MESSAGE START ===');
+        console.log('🎬 OBS Overlay showMessage called with:', { message, duration, styling });
+        
+        if (!this.messageContent) {
+          console.error('❌ Message content element not found!');
+          console.error('❌ this.messageContent:', this.messageContent);
+          return;
+        }
+        
+        console.log('✅ Message content element found:', this.messageContent);
+        console.log('✅ Setting message content to:', message);
+        this.messageContent.textContent = message;
+        console.log('✅ Message content set. Current text:', this.messageContent.textContent);
+        
+        // Apply custom styling if provided
+        if (styling.fontSize) {
+          this.messageContent.style.fontSize = styling.fontSize + 'px';
+        }
+        if (styling.fontFamily) {
+          this.messageContent.style.fontFamily = styling.fontFamily;
+        }
+        if (styling.textColor) {
+          this.messageContent.style.color = styling.textColor;
+        }
+        if (styling.backgroundColor) {
+          this.messageContent.style.backgroundColor = styling.backgroundColor;
+          this.messageContent.style.padding = '10px 15px';
+          this.messageContent.style.borderRadius = '5px';
+        }
+        
+        console.log('🎬 Showing message display');
+        console.log('🎬 Message display classes before:', this.messageDisplay.className);
+        this.messageDisplay.classList.remove('hidden');
+        this.messageDisplay.classList.add('fade-in');
+        console.log('🎬 Message display classes after:', this.messageDisplay.className);
+        console.log('🎬 Message display style:', this.messageDisplay.style.cssText);
+        console.log('🎬 Message display visible:', !this.messageDisplay.classList.contains('hidden'));
+        console.log('🎬 Message display text:', this.messageDisplay.textContent);
+        console.log('🎬 Message display innerHTML:', this.messageDisplay.innerHTML);
+        console.log('🎬 === SHOW MESSAGE END ===');
+
+        if (duration > 0) {
+          console.log(`⏰ Message will hide after ${duration}ms`);
+          setTimeout(() => {
+            console.log('⏰ Hiding message display');
+            this.messageDisplay.classList.add('hidden');
+          }, duration);
+        }
+      }
+
+      playAudio(src, volume = 1.0, duration = 5000) {
+        console.log('🔊 playAudio called with src:', src, 'volume:', volume, 'duration:', duration);
+        
+        // Stop any currently playing audio
+        if (this.mediaAudio) {
+          this.mediaAudio.pause();
+          this.mediaAudio.currentTime = 0;
+        }
+        
+        // Clear any previous event handlers
+        this.mediaAudio.onloadstart = null;
+        this.mediaAudio.oncanplay = null;
+        this.mediaAudio.onplay = null;
+        this.mediaAudio.onended = null;
+        this.mediaAudio.onerror = null;
+        
+        // Set up new event handlers
+        this.mediaAudio.onloadstart = () => {
+          console.log('🔊 Audio loading started');
+          this.updateDebugInfo(`Audio loading: ${src}`);
+        };
+        
+        this.mediaAudio.oncanplay = () => {
+          console.log('🔊 Audio ready to play');
+          this.updateDebugInfo(`Audio ready: ${src}`);
+        };
+        
+        this.mediaAudio.onplay = () => {
+          console.log('🔊 Audio started playing');
+          this.updateDebugInfo(`Audio playing: ${src}`);
+        };
+        
+        this.mediaAudio.onended = () => {
+          console.log('🔊 Audio finished playing');
+          this.updateDebugInfo('Audio finished');
+        };
+        
+        this.mediaAudio.onerror = (e) => {
+          console.error('❌ Audio error:', e);
+          this.updateDebugInfo(`Audio error: ${src}`);
+        };
+        
+        // Convert local file path to file:// URL if needed
+        let audioSrc = src;
+        if (src && !src.startsWith('http') && !src.startsWith('file://')) {
+          audioSrc = 'file:///' + src.replace(/\\/g, '/');
+          console.log('🔊 Converted local path to file URL:', audioSrc);
+        }
+        
+        // Configure audio
+        this.mediaAudio.src = audioSrc;
+        this.mediaAudio.volume = Math.max(0, Math.min(1, volume));
+        this.mediaAudio.loop = false;
+        
+        // Show audio status message
+        this.showMessage(`🔊 Playing Audio...`, Math.min(duration, 3000));
+        
+        // Start playing
+        this.mediaAudio.play().then(() => {
+          console.log('✅ Audio playback started successfully');
+        }).catch(error => {
+          console.error('❌ Audio play error:', error);
+          this.updateDebugInfo(`Audio play failed: ${error.message}`);
+          this.showMessage(`❌ Audio Error: ${error.message}`, 5000);
+        });
+        
+        // Auto-hide message after duration
+        if (duration > 0) {
+          setTimeout(() => {
+            this.messageDisplay.classList.add('hidden');
+          }, Math.min(duration, 3000));
+        }
+      }
+
+      updateStats(stats) {
+        if (stats.viewerCount !== undefined) {
+          document.getElementById('overlay-viewer-count').textContent = stats.viewerCount;
+        }
+        if (stats.followerCount !== undefined) {
+          document.getElementById('overlay-follower-count').textContent = stats.followerCount;
+        }
+        if (stats.subscriberCount !== undefined) {
+          document.getElementById('overlay-subscriber-count').textContent = stats.subscriberCount;
+        }
+      }
+
+      updateActivity(activity) {
+        if (activity.latestFollower) {
+          document.getElementById('overlay-latest-follower').textContent = activity.latestFollower;
+        }
+        if (activity.latestSubscriber) {
+          document.getElementById('overlay-latest-subscriber').textContent = activity.latestSubscriber;
+        }
+      }
+
+      updateSoundStatus(sound) {
+        if (sound.currentSound) {
+          document.getElementById('overlay-current-sound').textContent = sound.currentSound;
+        }
+      }
+
+      toggleOverlay(overlayType, visible) {
+        const element = document.getElementById(overlayType);
+        if (element) {
+          if (visible) {
+            element.classList.remove('hidden');
+          } else {
+            element.classList.add('hidden');
+          }
+        }
+      }
+
+      executeMultiAction(actions) {
+        console.log('🎪 executeMultiAction called with actions:', actions);
+        
+        if (!actions || !Array.isArray(actions)) {
+          console.error('❌ Invalid actions data:', actions);
+          return;
+        }
+        
+        console.log(`🎪 Processing ${actions.length} simultaneous actions`);
+        
+        // Process each action independently
+        actions.forEach((action, index) => {
+          console.log(`Processing action ${index}:`, action);
+          this.handleAction(action);
+        });
+        
+        console.log('executeMultiAction completed successfully');
+      }
+      
+      handleAction(action) {
+        let el;
+        
+        if (action.type === 'video') {
+          console.log('Creating video element');
+          el = document.createElement('video');
+          el.autoplay = true;
+          el.playsInline = true;
+          el.muted = false;
+          el.src = action.url;
+          
+          el.addEventListener('ended', () => {
+            console.log('Video ended, removing element');
+            el.remove();
+          });
+          el.addEventListener('error', (e) => {
+            console.error('Video error:', e);
+            el.remove();
+          });
+        }
+        
+        if (action.type === 'audio') {
+          console.log('Creating audio element');
+          el = document.createElement('audio');
+          el.autoplay = true;
+          el.src = action.url;
+          
+          el.addEventListener('ended', () => {
+            console.log('Audio ended, removing element');
+            el.remove();
+          });
+          el.addEventListener('error', (e) => {
+            console.error('Audio error:', e);
+            el.remove();
+          });
+        }
+        
+        if (action.type === 'image') {
+          console.log('Creating image element');
+          el = document.createElement('img');
+          el.src = action.url;
+          
+          el.addEventListener('error', (e) => {
+            console.error('Image error:', e);
+            el.remove();
+          });
+          
+          // Auto-remove after 5 seconds (customize as needed)
+          setTimeout(() => {
+            console.log('Image timeout, removing element');
+            el.remove();
+          }, 5000);
+        }
+        
+        if (action.type === 'text') {
+          console.log('Creating text element');
+          el = document.createElement('div');
+          el.textContent = action.text || 'Text message';
+          el.style.cssText = `
+            position: absolute;
+            font-size: ${action.fontSize || 24}px;
+            font-family: ${action.fontFamily || 'Arial, sans-serif'};
+            color: ${action.textColor || '#ffffff'};
+            background-color: ${action.backgroundColor || 'rgba(0,0,0,0.8)'};
+            padding: ${action.padding || '10px 15px'};
+            border-radius: ${action.borderRadius || '5px'};
+            text-align: center;
+            z-index: 1000;
+            max-width: 80%;
+            word-wrap: break-word;
+          `;
+          
+          // Position the text based on action.position
+          const position = action.position || 'center';
+          switch (position) {
+            case 'top-left':
+              el.style.top = '20px';
+              el.style.left = '20px';
+              break;
+            case 'top-right':
+              el.style.top = '20px';
+              el.style.right = '20px';
+              break;
+            case 'bottom-left':
+              el.style.bottom = '20px';
+              el.style.left = '20px';
+              break;
+            case 'bottom-right':
+              el.style.bottom = '20px';
+              el.style.right = '20px';
+              break;
+            case 'center':
+            default:
+              el.style.top = '50%';
+              el.style.left = '50%';
+              el.style.transform = 'translate(-50%, -50%)';
+              break;
+          }
+          
+          // Auto-remove after duration or default 3 seconds
+          const duration = (action.duration || 3) * 1000;
+          setTimeout(() => {
+            console.log('Text timeout, removing element');
+            el.remove();
+          }, duration);
+        }
+        
+        if (el) {
+          el.style.position = 'absolute';
+          el.style.top = '0';
+          el.style.left = '0';
+          el.style.width = '100vw';
+          el.style.height = '100vh';
+          el.style.objectFit = 'contain';
+          el.style.zIndex = '1000';
+          
+          document.body.appendChild(el);
+          console.log('Element added to DOM');
+        }
+      }
+      
+      clearMultiActionContent() {
+        this.multiActionContainer.innerHTML = '';
+        this.multiActionContainer.classList.add('hidden');
+      }
+
+      hideAllMedia() {
+        console.log('🚫 hideAllMedia called');
+        
+        this.mediaDisplay.classList.add('hidden');
+        this.messageDisplay.classList.add('hidden');
+        
+        // Stop and clear video
+        this.mediaVideo.pause();
+        this.mediaVideo.currentTime = 0;
+        this.mediaVideo.src = '';
+        
+        // Clear image
+        this.mediaImage.src = '';
+        
+        // Stop and clear audio
+        if (this.mediaAudio) {
+          this.mediaAudio.pause();
+          this.mediaAudio.currentTime = 0;
+          this.mediaAudio.src = '';
+        }
+        
+        // Clear timeouts
+        if (this.mediaTimeout) {
+          clearTimeout(this.mediaTimeout);
+          this.mediaTimeout = null;
+        }
+
+        if (this.videoLoadTimeout) {
+          clearTimeout(this.videoLoadTimeout);
+          this.videoLoadTimeout = null;
+        }
+
+        this.currentMedia = null;
+        this.updateDebugInfo('All media hidden');
+        console.log('✅ All media hidden successfully');
+      }
+
+      updateDebugInfo(message) {
+        console.log('OBS Overlay:', message);
+        if (this.currentMediaDiv) {
+          this.currentMediaDiv.textContent = this.currentMedia ? 
+            `${this.currentMedia.type}: ${this.currentMedia.src}` : 'No media';
+        }
+      }
+
+      testMessage() {
+        console.log('🧪 Testing message display locally');
+        this.showMessage('🧪 Local Test Message!', 5000, {
+          fontSize: 24,
+          textColor: '#00ff00',
+          backgroundColor: 'rgba(0,0,0,0.8)'
+        });
+      }
+
+      testAllMedia() {
+        console.log('🧪 Testing all media types');
+        
+        // Test message first
+        this.showMessage('🧪 Starting Media Test...', 2000, {
+          fontSize: 24,
+          textColor: '#ffffff',
+          backgroundColor: 'rgba(0,150,255,0.9)'
+        });
+        
+        // Test image (try to use logo.png)
+        setTimeout(() => {
+          this.showImage('http://localhost:8080/media/' + encodeURIComponent('/public/logo.png'), 3000);
+        }, 2000);
+        
+        // Test audio message
+        setTimeout(() => {
+          this.showMessage('🔊 Audio Test (No file available)', 3000, {
+            fontSize: 24,
+            textColor: '#ffffff',
+            backgroundColor: 'rgba(255,150,0,0.9)'
+          });
+        }, 5000);
+        
+        // Test complete message
+        setTimeout(() => {
+          this.showMessage('🎬 Media Test Complete!', 3000, {
+            fontSize: 28,
+            textColor: '#ffffff',
+            backgroundColor: 'rgba(0,150,0,0.9)'
+          });
+        }, 8000);
+      }
+    }
+
+    // Initialize when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      window.obsOverlay = new OBSOverlay();
+    });
+  </script>
+</body>
+</html>

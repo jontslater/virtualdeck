@@ -9,7 +9,9 @@ const extractIcon = require('extract-file-icon');
 const { nativeImage } = require('electron');
 const tmi = require('tmi.js'); // Import tmi.js for Twitch chat
 const WebSocket = require('ws');
+const http = require('http');
 const fetch = require('node-fetch');
+const mime = require('mime-types');
 
 // Use Electron's userData directory for config and user files
 const userDataPath = app.getPath('userData');
@@ -250,6 +252,63 @@ ipcMain.on('add-media', (event, data) => {
   //console.log('Data still here?',data);
 });
 
+// Handle multi-media button creation
+ipcMain.on('add-multi-media', async (event, data) => {
+  console.log('🎵 === ADD MULTI-MEDIA BUTTON ===');
+  console.log('🎵 Data received:', JSON.stringify(data, null, 2));
+  
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  if (!Array.isArray(config.buttons)) config.buttons = [];
+
+  const newButton = {
+    label: data.label,
+    hotkey: data.hotkey || undefined,
+    media: []
+  };
+
+  // Process each media item
+  for (const mediaItem of data.media) {
+    console.log('🎵 Processing media item:', mediaItem);
+    
+    if (mediaItem.type === 'audio' || mediaItem.type === 'image' || mediaItem.type === 'video') {
+      // Handle file copying for media files
+      const ext = path.extname(mediaItem.src);
+      const safeLabel = data.label.replace(/[^a-z0-9_\-]/gi, '_');
+      const timestamp = Date.now();
+      const destFile = path.join(userSoundsDir, `${safeLabel}_${timestamp}_${mediaItem.type}${ext}`);
+      
+      console.log('🎵 Copying media file from:', mediaItem.src, 'to:', destFile);
+      
+      try {
+        // Check if source file exists
+        if (fs.existsSync(mediaItem.src)) {
+          fse.copySync(mediaItem.src, destFile);
+          mediaItem.src = path.relative(userDataPath, destFile).replace(/\\/g, '/');
+          console.log('🎵 Media file copied successfully, target path:', mediaItem.src);
+        } else {
+          console.warn('🎵 Source file does not exist:', mediaItem.src);
+          // Keep original path as fallback
+        }
+      } catch (error) {
+        console.error('🎵 Error copying media file:', error);
+        // Keep original path as fallback
+      }
+    }
+    
+    // Add the processed media item to the button
+    newButton.media.push(mediaItem);
+  }
+
+  // Generate unique ID
+  newButton.id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+  config.buttons.push(newButton);
+
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  
+  console.log('🎵 Multi-media button created successfully:', newButton.id);
+  console.log('🎵 === ADD MULTI-MEDIA COMPLETE ===');
+});
+
 ipcMain.on('delete-button', (event, index) => {
   const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
   const removed = config.buttons.splice(index, 1);
@@ -271,6 +330,36 @@ ipcMain.on('delete-button', (event, index) => {
   // Notify renderer to refresh the UI
   if (win && !win.isDestroyed()) {
     win.webContents.send('refresh-ui');
+  }
+});
+
+// Handle button updates (for editing)
+ipcMain.handle('update-button', async (event, index, updatedButton) => {
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    
+    if (index < 0 || index >= config.buttons.length) {
+      throw new Error('Invalid button index');
+    }
+    
+    // Preserve the existing ID if present
+    const existingButton = config.buttons[index];
+    if (existingButton && existingButton.id) {
+      updatedButton.id = existingButton.id;
+    } else {
+      updatedButton.id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+    }
+    
+    // Update the button
+    config.buttons[index] = updatedButton;
+    
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    
+    console.log('🎵 Button updated successfully:', updatedButton.id);
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating button:', error);
+    throw error;
   }
 });
 
@@ -1245,6 +1334,203 @@ let twitchToken = null;
 let twitchClientId = null;
 let twitchUserName = null;
 
+// WebSocket server for overlay communication
+let overlayServer = null;
+let overlayWss = null;
+const overlayClients = new Set();
+
+// Initialize HTTP and WebSocket server for overlay communication
+function startOverlayServer() {
+  if (overlayServer) {
+    console.log('Overlay server already running');
+    return;
+  }
+
+  overlayServer = http.createServer((req, res) => {
+    // Enable CORS for all requests
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
+    if (req.method === 'OPTIONS') {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+
+    // Serve overlay files
+    if (req.url === '/' || req.url === '/overlay') {
+      const overlayPath = path.join(__dirname, 'public', 'overlay-obs.html');
+      fs.readFile(overlayPath, 'utf8', (err, data) => {
+        if (err) {
+          res.writeHead(404);
+          res.end('Overlay file not found');
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(data);
+      });
+    } else if (req.url === '/overlay-unified') {
+      const overlayPath = path.join(__dirname, 'public', 'overlay-unified.html');
+      fs.readFile(overlayPath, 'utf8', (err, data) => {
+        if (err) {
+          res.writeHead(404);
+          res.end('Overlay file not found');
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(data);
+      });
+    } else if (req.url === '/test-simple-overlay') {
+      const testPath = path.join(__dirname, 'test-simple-overlay.html');
+      fs.readFile(testPath, 'utf8', (err, data) => {
+        if (err) {
+          res.writeHead(404);
+          res.end('Test file not found');
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(data);
+      });
+    } else if (req.url.startsWith('/media/')) {
+      // Serve media files with proper MIME types and security
+      try {
+        // Decode URL -> sounds/test_1/obs_video.mp4
+        const mediaPath = decodeURIComponent(req.url.replace(/^\/media\//, ''));
+
+        // Normalize & strip any leading "sounds/"
+        const safePath = path.normalize(mediaPath).replace(/^sounds[\\/]/, '');
+
+        // Resolve against base directory
+        const absPath = path.resolve(userSoundsDir, safePath);
+
+        // Security check: absPath must be inside userSoundsDir
+        if (!absPath.startsWith(userSoundsDir)) {
+          res.writeHead(403);
+          return res.end('Forbidden');
+        }
+
+        // Check if file exists
+        if (!fs.existsSync(absPath)) {
+          res.writeHead(404);
+          return res.end('Not Found');
+        }
+
+        // Guess MIME type (default to binary stream)
+        const mimeType = mime.lookup(absPath) || 'application/octet-stream';
+        res.writeHead(200, { 'Content-Type': mimeType });
+
+        // Pipe file content to response
+        fs.createReadStream(absPath).pipe(res);
+      } catch (err) {
+        console.error('Media server error:', err);
+        res.writeHead(500);
+        res.end('Internal Server Error');
+      }
+    } else {
+      res.writeHead(404);
+      res.end('Not found');
+    }
+  });
+  
+  overlayWss = new WebSocket.Server({ server: overlayServer });
+
+  overlayWss.on('connection', (ws) => {
+    console.log('🎬 === OVERLAY CLIENT CONNECTED ===');
+    console.log('🔌 New client connected!');
+    console.log(`📊 Total clients before: ${overlayClients.size}`);
+    overlayClients.add(ws);
+    console.log(`📊 Total clients after: ${overlayClients.size}`);
+    
+    // Send a welcome message to the new client
+    const welcomeMessage = {
+      type: 'connection',
+      data: { 
+        message: 'Connected to VirtualDeck overlay server', 
+        timestamp: new Date().toISOString(),
+        clientCount: overlayClients.size
+      }
+    };
+    
+    console.log('📤 Sending welcome message:', welcomeMessage);
+    ws.send(JSON.stringify(welcomeMessage));
+    console.log('✅ Welcome message sent');
+
+    ws.on('message', (message) => {
+      console.log('📨 === OVERLAY MESSAGE RECEIVED ===');
+      console.log('📨 Raw message:', message.toString());
+      try {
+        const data = JSON.parse(message);
+        console.log('📨 Parsed message:', data);
+        // Handle overlay messages here if needed
+      } catch (e) {
+        console.error('❌ Error parsing overlay message:', e);
+        console.error('❌ Raw message was:', message.toString());
+      }
+    });
+
+    ws.on('close', () => {
+      console.log('🔌 === OVERLAY CLIENT DISCONNECTED ===');
+      console.log(`📊 Clients before disconnect: ${overlayClients.size}`);
+      overlayClients.delete(ws);
+      console.log(`📊 Clients after disconnect: ${overlayClients.size}`);
+    });
+
+    ws.on('error', (error) => {
+      console.error('❌ === OVERLAY WEBSOCKET ERROR ===');
+      console.error('❌ Error details:', error);
+      console.log(`📊 Clients before error: ${overlayClients.size}`);
+      overlayClients.delete(ws);
+      console.log(`📊 Clients after error: ${overlayClients.size}`);
+    });
+  });
+
+  overlayServer.listen(8080, () => {
+    console.log('Overlay WebSocket server running on port 8080');
+  });
+}
+
+// Function to broadcast messages to all connected overlay clients
+function broadcastToOverlays(message) {
+  console.log('📡 === BROADCAST DEBUG START ===');
+  console.log(`📊 Connected overlay clients: ${overlayClients.size}`);
+  console.log('📤 Message to broadcast:', JSON.stringify(message, null, 2));
+  
+  if (overlayClients.size === 0) {
+    console.log('❌ NO OVERLAY CLIENTS CONNECTED!');
+    console.log('🔧 Troubleshooting steps:');
+    console.log('   1. Make sure OBS is running');
+    console.log('   2. Add Browser Source with URL: http://localhost:8080/overlay');
+    console.log('   3. Check if overlay shows connection status in top-right');
+    console.log('   4. Restart VirtualDeck if needed');
+    return;
+  }
+
+  const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
+  let sentCount = 0;
+  let errorCount = 0;
+  
+  overlayClients.forEach((ws, index) => {
+    console.log(`🔌 Client ${index + 1}: Ready state = ${ws.readyState}`);
+    
+    if (ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(messageStr);
+        sentCount++;
+        console.log(`✅ Successfully sent to client ${index + 1}`);
+      } catch (error) {
+        errorCount++;
+        console.error(`❌ Error sending to client ${index + 1}:`, error);
+      }
+    } else {
+      console.log(`❌ Client ${index + 1} not ready (state: ${ws.readyState})`);
+    }
+  });
+  
+  console.log(`📤 Broadcast complete: ${sentCount} sent, ${errorCount} errors, ${overlayClients.size} total clients`);
+  console.log('📡 === BROADCAST DEBUG END ===');
+}
+
 async function getUserId() {
   console.log('Fetching Twitch user ID for', twitchUserName);
   if (twitchUserId) return twitchUserId;
@@ -1902,6 +2188,293 @@ ipcMain.on('trigger-media-to-main', (event, label) => {
   }
 });
 
+// IPC handlers for overlay control (MixItUp-style)
+ipcMain.on('overlay-show-media', (event, data) => {
+  console.log('Overlay show media:', data);
+  broadcastToOverlays({
+    type: 'showMedia',
+    data: data
+  });
+});
+
+ipcMain.on('overlay-show-message', (event, data) => {
+  console.log('📤 === OVERLAY SHOW MESSAGE IPC ===');
+  console.log('📤 Received custom message data:', data);
+  console.log('📤 Broadcasting to overlays...');
+  
+  const messageToBroadcast = {
+    type: 'showMessage',
+    data: data
+  };
+  
+  console.log('📤 Message to broadcast:', JSON.stringify(messageToBroadcast, null, 2));
+  broadcastToOverlays(messageToBroadcast);
+  console.log('✅ Custom message broadcast complete');
+});
+
+ipcMain.on('overlay-hide-media', (event) => {
+  console.log('Overlay hide media');
+  broadcastToOverlays({
+    type: 'hideMedia',
+    data: {}
+  });
+});
+
+ipcMain.on('overlay-execute-multi-action', (event, data) => {
+  console.log('Overlay execute multi action:', data);
+  broadcastToOverlays({
+    type: 'executeMultiAction',
+    data: data
+  });
+});
+
+// Enhanced multi-action test with simultaneous video, image, and text
+ipcMain.on('overlay-test-simultaneous', (event) => {
+  console.log('Testing simultaneous multi-action');
+  const multiActionData = {
+    actions: [
+      {
+        type: 'message',
+        text: '🎬 SIMULTANEOUS TEST!',
+        duration: 5,
+        fontSize: 28,
+        textColor: '#ffffff',
+        backgroundColor: 'rgba(255,0,0,0.9)'
+      },
+      {
+        type: 'message',
+        text: 'Video + Image + Text',
+        duration: 5,
+        fontSize: 20,
+        textColor: '#ffffff',
+        backgroundColor: 'rgba(0,150,255,0.9)'
+      },
+      {
+        type: 'stats',
+        data: {
+          viewerCount: 1234,
+          followerCount: 5678,
+          subscriberCount: 90
+        }
+      }
+    ]
+  };
+  
+  console.log('Sending simultaneous multi-action:', multiActionData);
+  broadcastToOverlays({
+    type: 'executeMultiAction',
+    data: multiActionData
+  });
+});
+
+ipcMain.on('overlay-update-stats', (event, data) => {
+  console.log('Overlay update stats:', data);
+  broadcastToOverlays({
+    type: 'updateStats',
+    data: data
+  });
+});
+
+ipcMain.on('overlay-update-activity', (event, data) => {
+  console.log('Overlay update activity:', data);
+  broadcastToOverlays({
+    type: 'updateActivity',
+    data: data
+  });
+});
+
+ipcMain.on('overlay-update-sound-status', (event, data) => {
+  console.log('Overlay update sound status:', data);
+  broadcastToOverlays({
+    type: 'updateSoundStatus',
+    data: data
+  });
+});
+
+ipcMain.on('overlay-toggle-overlay', (event, data) => {
+  console.log('Overlay toggle overlay:', data);
+  broadcastToOverlays({
+    type: 'toggleOverlay',
+    data: data
+  });
+});
+
+// Overlay test commands
+ipcMain.on('overlay-test-message', (event) => {
+  console.log('🧪 Testing overlay message');
+  console.log('📊 Connected overlays:', overlayClients.size);
+  
+  const testMessage = {
+    type: 'showMessage',
+    data: {
+      message: '🎬 Overlay Test Message!',
+      duration: 5,
+      fontSize: 28,
+      fontFamily: 'Arial',
+      textColor: '#00ff00',
+      backgroundColor: 'rgba(0,0,0,0.9)'
+    }
+  };
+  console.log('📤 Sending test message:', testMessage);
+  broadcastToOverlays(testMessage);
+});
+
+ipcMain.on('overlay-test-stats', (event) => {
+  console.log('Testing overlay stats');
+  broadcastToOverlays({
+    type: 'updateStats',
+    data: {
+      viewerCount: Math.floor(Math.random() * 5000) + 1000,
+      followerCount: Math.floor(Math.random() * 10000) + 5000,
+      subscriberCount: Math.floor(Math.random() * 200) + 50
+    }
+  });
+  broadcastToOverlays({
+    type: 'toggleOverlay',
+    data: {
+      overlayType: 'twitch-stats-overlay',
+      visible: true
+    }
+  });
+});
+
+ipcMain.on('overlay-test-activity', (event) => {
+  console.log('Testing overlay activity');
+  const followers = ['NewFollower123', 'AwesomeViewer456', 'CoolPerson789', 'StreamFan2024'];
+  const subscribers = ['LoyalSubscriber', 'VIPMember', 'PremiumFan', 'SuperSupporter'];
+  
+  broadcastToOverlays({
+    type: 'updateActivity',
+    data: {
+      latestFollower: followers[Math.floor(Math.random() * followers.length)],
+      latestSubscriber: subscribers[Math.floor(Math.random() * subscribers.length)]
+    }
+  });
+  broadcastToOverlays({
+    type: 'toggleOverlay',
+    data: {
+      overlayType: 'recent-activity-overlay',
+      visible: true
+    }
+  });
+});
+
+ipcMain.on('overlay-hide-all', (event) => {
+  console.log('Hiding all overlays');
+  broadcastToOverlays({
+    type: 'hideMedia',
+    data: {}
+  });
+  broadcastToOverlays({
+    type: 'toggleOverlay',
+    data: {
+      overlayType: 'twitch-stats-overlay',
+      visible: false
+    }
+  });
+  broadcastToOverlays({
+    type: 'toggleOverlay',
+    data: {
+      overlayType: 'recent-activity-overlay',
+      visible: false
+    }
+  });
+  broadcastToOverlays({
+    type: 'toggleOverlay',
+    data: {
+      overlayType: 'sound-status-overlay',
+      visible: false
+    }
+  });
+});
+
+// Media test commands
+ipcMain.on('overlay-test-image', (event) => {
+  console.log('Testing overlay image');
+  const imagePath = path.join(__dirname, 'public', 'logo.png');
+  console.log('Image path:', imagePath);
+  broadcastToOverlays({
+    type: 'showMedia',
+    data: {
+      type: 'image',
+      src: imagePath,
+      duration: 5
+    }
+  });
+});
+
+ipcMain.on('overlay-test-video', (event) => {
+  console.log('Testing overlay video - using message instead');
+  // Use a message instead of video for now since we don't have test videos
+  broadcastToOverlays({
+    type: 'showMessage',
+    data: {
+      message: '🎥 Video Test (No video file available)',
+      duration: 5,
+      fontSize: 28,
+      textColor: '#ffffff',
+      backgroundColor: 'rgba(0,150,255,0.9)'
+    }
+  });
+});
+
+ipcMain.on('overlay-test-audio', (event) => {
+  console.log('Testing overlay audio - using message instead');
+  // Use a message instead of audio for now since we don't have test audio
+  broadcastToOverlays({
+    type: 'showMessage',
+    data: {
+      message: '🔊 Audio Test (No audio file available)',
+      duration: 5,
+      fontSize: 28,
+      textColor: '#ffffff',
+      backgroundColor: 'rgba(255,150,0,0.9)'
+    }
+  });
+});
+
+ipcMain.on('overlay-test-gif', (event) => {
+  console.log('Testing overlay GIF');
+  const gifPath = path.join(__dirname, 'public', 'icons', 'VD.gif');
+  console.log('GIF path:', gifPath);
+  broadcastToOverlays({
+    type: 'showMedia',
+    data: {
+      type: 'image', // GIFs are handled as images
+      src: gifPath,
+      duration: 5
+    }
+  });
+});
+
+// Simple connection test
+ipcMain.on('overlay-test-connection', (event) => {
+  console.log('🔌 Testing overlay connection');
+  console.log('📊 Connected overlays:', overlayClients.size);
+  
+  if (overlayClients.size === 0) {
+    console.log('❌ No overlay clients connected!');
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('show-notification', { 
+        type: 'error', 
+        message: 'No overlay connected! Make sure OBS is running with the overlay URL.' 
+      });
+    }
+  } else {
+    console.log('✅ Overlay clients connected');
+    broadcastToOverlays({
+      type: 'showMessage',
+      data: {
+        message: '🔌 Connection Test Successful!',
+        duration: 3,
+        fontSize: 24,
+        textColor: '#ffffff',
+        backgroundColor: 'rgba(0,255,0,0.9)'
+      }
+    });
+  }
+});
+
 function registerHotkeys() {
   globalShortcut.unregisterAll();
   const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
@@ -1926,6 +2499,7 @@ app.whenReady().then(() => {
   ensureUserData();
   createWindow();
   registerHotkeys();
+  startOverlayServer();
   
   // Build application menu: Edit contains Preferences, View & Window removed, Tools added
   const menuTemplate = [
@@ -1943,7 +2517,8 @@ app.whenReady().then(() => {
   { id: 'view_twitch_stats', label: 'Twitch Statistics', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'twitch-stats-container', checked: menuItem.checked }); } },
   { id: 'view_recent_activity', label: 'Recent Activity', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'recent-activity-container', checked: menuItem.checked }); } },
   { id: 'view_twitch_chat', label: 'Twitch Chat', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'twitch-chat-container', checked: menuItem.checked }); } },
-  { id: 'view_sound_controls', label: 'Sound Controls', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-controls', checked: menuItem.checked }); } }
+  { id: 'view_sound_controls', label: 'Sound Controls', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-controls', checked: menuItem.checked }); } },
+  // OBS Overlay Widget checkbox moved to Tools → OBS Overlay menu
     ] },
     { label: 'Tools', submenu: [
       { label: 'Developer Tools', accelerator: 'F12', click: () => { if (win && !win.isDestroyed()) win.webContents.toggleDevTools(); } },
@@ -1953,6 +2528,29 @@ app.whenReady().then(() => {
           { label: 'Twitch Event Mapping', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-twitch-mapping'); } },
         { type: 'separator' },
         { label: 'Clear Twitch Credentials', click: () => { if (win && !win.isDestroyed()) win.webContents.send('clear-twitch-creds'); } }
+      ] },
+      { type: 'separator' },
+      { label: 'OBS Overlay', submenu: [
+          { label: 'Show Overlay Widget', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'overlay-test-modal', checked: menuItem.checked }); } },
+          { label: 'Copy OBS URL', click: () => { 
+            if (win && !win.isDestroyed()) {
+              const { clipboard } = require('electron');
+              clipboard.writeText('http://localhost:8080/overlay');
+              win.webContents.send('show-notification', { type: 'success', message: 'OBS URL copied to clipboard!' });
+            }
+          } },
+          { type: 'separator' },
+          { label: 'Test Connection', click: () => { if (win && !win.isDestroyed()) win.webContents.send('overlay-test-connection'); } },
+          { label: 'Test Message', click: () => { if (win && !win.isDestroyed()) win.webContents.send('overlay-test-message'); } },
+          { label: 'Test Stats Update', click: () => { if (win && !win.isDestroyed()) win.webContents.send('overlay-test-stats'); } },
+          { label: 'Test Activity Update', click: () => { if (win && !win.isDestroyed()) win.webContents.send('overlay-test-activity'); } },
+          { type: 'separator' },
+          { label: 'Test Image', click: () => { if (win && !win.isDestroyed()) win.webContents.send('overlay-test-image'); } },
+          { label: 'Test Video', click: () => { if (win && !win.isDestroyed()) win.webContents.send('overlay-test-video'); } },
+          { label: 'Test Audio', click: () => { if (win && !win.isDestroyed()) win.webContents.send('overlay-test-audio'); } },
+          { label: 'Test GIF', click: () => { if (win && !win.isDestroyed()) win.webContents.send('overlay-test-gif'); } },
+          { type: 'separator' },
+          { label: 'Hide All Overlays', click: () => { if (win && !win.isDestroyed()) win.webContents.send('overlay-hide-all'); } }
       ] },
       { type: 'separator' },
       { label: 'Themes', submenu: [] }, // Will be populated dynamically with themes and skins
@@ -2133,6 +2731,16 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  
+  // Close overlay WebSocket server
+  if (overlayWss) {
+    overlayWss.close();
+    overlayWss = null;
+  }
+  if (overlayServer) {
+    overlayServer.close();
+    overlayServer = null;
+  }
 });
 
 // IPC: Clear stored Twitch credentials, close EventSub and chat connections, and remove created subscriptions

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Video Codec Test for OBS</title>
+  <style>
+    body {
+      margin: 0;
+      background: black;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      color: white;
+    }
+    .container {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    video {
+      max-width: 80vw;
+      max-height: 60vh;
+      object-fit: contain;
+      display: block;
+      background: black;
+    }
+    .info {
+      margin-top: 20px;
+      text-align: center;
+      background: rgba(0,0,0,0.8);
+      padding: 10px;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Video Codec Test for OBS</h2>
+    <video id="testVideo" autoplay muted playsinline controls>
+      <source src="http://localhost:8080/media/sounds/Test.mp4" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+    <div class="info">
+      <div id="status">Loading...</div>
+      <div id="details"></div>
+    </div>
+  </div>
+
+  <script>
+    const video = document.getElementById('testVideo');
+    const status = document.getElementById('status');
+    const details = document.getElementById('details');
+
+    function updateStatus(message) {
+      status.textContent = message;
+      console.log('Status:', message);
+    }
+
+    function updateDetails(message) {
+      details.innerHTML += message + '<br>';
+      console.log('Details:', message);
+    }
+
+    video.addEventListener('loadstart', () => {
+      updateStatus('Loading video...');
+    });
+
+    video.addEventListener('loadedmetadata', () => {
+      updateStatus('Video metadata loaded');
+      updateDetails(`Duration: ${video.duration}s`);
+      updateDetails(`Dimensions: ${video.videoWidth}x${video.videoHeight}`);
+    });
+
+    video.addEventListener('canplay', () => {
+      updateStatus('Video can play');
+      updateDetails(`Ready to play`);
+    });
+
+    video.addEventListener('play', () => {
+      updateStatus('Video is playing');
+    });
+
+    video.addEventListener('error', (e) => {
+      updateStatus('ERROR: Video failed to load');
+      updateDetails(`Error: ${video.error ? video.error.message : 'Unknown error'}`);
+      updateDetails(`Code: ${video.error ? video.error.code : 'N/A'}`);
+    });
+
+    video.addEventListener('loadeddata', () => {
+      updateDetails('Video data loaded');
+    });
+
+    // Try to play after a short delay
+    setTimeout(() => {
+      video.play().catch(error => {
+        updateStatus('ERROR: Video play failed');
+        updateDetails(`Play error: ${error.message}`);
+      });
+    }, 1000);
+  </script>
+</body>
+</html>

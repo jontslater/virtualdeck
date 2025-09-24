@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   addMedia: (data) => ipcRenderer.send('add-media', data),
+  addMultiMedia: (data) => ipcRenderer.send('add-multi-media', data),
   deleteButton: (index) => ipcRenderer.send('delete-button', index),
   refreshHotkeys: () => ipcRenderer.send('refresh-hotkeys'),
   disableHotkeys: () => ipcRenderer.send('disable-hotkeys'),
@@ -84,4 +85,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onRefreshMenu: (callback) => ipcRenderer.on('refresh-menu', callback),
   syncSkin: (skinName) => ipcRenderer.send('sync-skin', skinName),
   refreshMenu: () => ipcRenderer.send('refresh-menu'),
+  // Overlay APIs
+  send: (channel, ...args) => ipcRenderer.send(channel, ...args),
+  onShowNotification: (callback) => ipcRenderer.on('show-notification', (event, data) => callback(data)),
 });

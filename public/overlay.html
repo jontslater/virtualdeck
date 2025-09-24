@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VirtualDeck Overlay</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: transparent;
+      overflow: hidden;
+      color: #ffffff;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+    }
+
+    #overlay-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: transparent;
+    }
+
+    /* Media Display */
+    #media-display {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+    }
+
+    #media-video {
+      width: 100%;
+      height: 100%;
+      max-width: 90%;
+      max-height: 90%;
+      object-fit: contain;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      background: black;
+    }
+
+    #media-image {
+      max-width: 90%;
+      max-height: 90%;
+      object-fit: contain;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Message Display */
+    #message-display {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 20px 40px;
+      border-radius: 10px;
+      font-size: 24px;
+      font-weight: bold;
+      text-align: center;
+      z-index: 1001;
+      max-width: 80%;
+      word-wrap: break-word;
+    }
+
+    /* Twitch Stats Overlay */
+    #twitch-stats-overlay {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 15px;
+      border-radius: 10px;
+      z-index: 1002;
+      min-width: 200px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 15px;
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #ccc;
+      margin-bottom: 5px;
+    }
+
+    .stat-value {
+      font-size: 18px;
+      font-weight: bold;
+      color: #4CAF50;
+    }
+
+    /* Recent Activity Overlay */
+    #recent-activity-overlay {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 15px;
+      border-radius: 10px;
+      z-index: 1002;
+      min-width: 250px;
+    }
+
+    .activity-item {
+      margin-bottom: 10px;
+    }
+
+    .activity-label {
+      font-size: 12px;
+      color: #ccc;
+      margin-bottom: 5px;
+    }
+
+    .activity-value {
+      font-size: 16px;
+      font-weight: bold;
+      color: #FF9800;
+    }
+
+    /* Sound Status Overlay */
+    #sound-status-overlay {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 15px;
+      border-radius: 10px;
+      z-index: 1002;
+      min-width: 200px;
+    }
+
+    .sound-item {
+      text-align: center;
+    }
+
+    .sound-label {
+      font-size: 12px;
+      color: #ccc;
+      margin-bottom: 5px;
+    }
+
+    .sound-value {
+      font-size: 16px;
+      font-weight: bold;
+      color: #2196F3;
+    }
+
+    /* Debug Info */
+    #debug-info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 12px;
+      z-index: 1003;
+      font-family: monospace;
+      max-width: 300px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .fade-in {
+      animation: fadeIn 0.5s ease-in;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes fadeInOut {
+      0% { opacity: 0; transform: scale(0.8); }
+      5% { opacity: 1; transform: scale(1); }
+      95% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; transform: scale(0.8); }
+    }
+
+    /* Close button */
+    .close-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(255, 0, 0, 0.8);
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+      z-index: 1004;
+    }
+
+    .close-btn:hover {
+      background: rgba(255, 0, 0, 1);
+    }
+
+    /* Multi-Action Container */
+    #multi-action-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: rgba(255, 0, 255, 0.3);
+      border: 3px solid lime;
+      z-index: 1000;
+    }
+
+    .multi-action-element {
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .multi-action-image {
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: 300px;
+      max-height: 300px;
+      border: none;
+      background: transparent;
+      z-index: 1001;
+    }
+
+    .multi-action-video {
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: 400px;
+      max-height: 300px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      border: none;
+      background: transparent;
+      z-index: 1001;
+    }
+
+    .multi-action-text {
+      position: absolute;
+      bottom: 10%;
+      left: 0;
+      right: 0;
+      width: 100%;
+      text-align: center;
+      padding: 10px 15px;
+      border-radius: 5px;
+      z-index: 1002;
+    }
+  </style>
+</head>
+<body>
+  <div id="overlay-container">
+    <!-- Debug Info -->
+    <div id="debug-info">
+      <div>VirtualDeck Overlay Active</div>
+      <div id="current-media">No media</div>
+      <div id="connection-status">Disconnected</div>
+      <div id="last-message">No messages</div>
+    </div>
+
+    <!-- Media Display -->
+    <div id="media-display" class="hidden">
+      <video id="media-video" autoplay muted playsinline loop></video>
+      <img id="media-image" alt="Overlay Image" class="hidden">
+      <button id="close-media" class="close-btn">×</button>
+    </div>
+
+    <!-- Message Display -->
+    <div id="message-display" class="hidden">
+      <div id="message-content">No message</div>
+    </div>
+
+    <!-- Twitch Stats Overlay -->
+    <div id="twitch-stats-overlay" class="hidden">
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-label">Viewers</div>
+          <div class="stat-value" id="overlay-viewer-count">-</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Followers</div>
+          <div class="stat-value" id="overlay-follower-count">-</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Subscribers</div>
+          <div class="stat-value" id="overlay-subscriber-count">-</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Activity Overlay -->
+    <div id="recent-activity-overlay" class="hidden">
+      <div class="activity-item">
+        <div class="activity-label">Latest Follower:</div>
+        <div class="activity-value" id="overlay-latest-follower">-</div>
+      </div>
+      <div class="activity-item">
+        <div class="activity-label">Latest Subscriber:</div>
+        <div class="activity-value" id="overlay-latest-subscriber">-</div>
+      </div>
+    </div>
+
+    <!-- Sound Status Overlay -->
+    <div id="sound-status-overlay" class="hidden">
+      <div class="sound-item">
+        <div class="sound-label">Now Playing:</div>
+        <div class="sound-value" id="overlay-current-sound">-</div>
+      </div>
+    </div>
+
+    <!-- Multi-Action Container -->
+    <div id="multi-action-container" class="hidden">
+      <!-- Dynamic elements will be added here -->
+    </div>
+  </div>
+
+  <script>
+    class UnifiedOverlay {
+      constructor() {
+        this.currentMedia = null;
+        this.mediaTimeout = null;
+        this.videoLoadTimeout = null;
+        this.debugInfo = document.getElementById('debug-info');
+        this.currentMediaDiv = document.getElementById('current-media');
+        this.connectionStatus = document.getElementById('connection-status');
+        this.lastMessage = document.getElementById('last-message');
+        
+        this.mediaDisplay = document.getElementById('media-display');
+        this.mediaVideo = document.getElementById('media-video');
+        this.mediaImage = document.getElementById('media-image');
+        this.messageDisplay = document.getElementById('message-display');
+        this.messageContent = document.getElementById('message-content');
+        this.closeBtn = document.getElementById('close-media');
+        this.multiActionContainer = document.getElementById('multi-action-container');
+
+        this.init();
+      }
+
+      init() {
+        this.setupWebSocket();
+        this.setupEventListeners();
+        this.parseURLParameters();
+        this.updateDebugInfo('Initialized');
+        
+        // Test function availability
+        console.log('UnifiedOverlay initialized');
+        console.log('executeMultiAction available:', typeof this.executeMultiAction);
+        console.log('createAudioElement available:', typeof this.createAudioElement);
+        console.log('createImageElement available:', typeof this.createImageElement);
+        console.log('createVideoElement available:', typeof this.createVideoElement);
+        console.log('createTextElement available:', typeof this.createTextElement);
+      }
+
+      setupEventListeners() {
+        // Close media button
+        this.closeBtn.addEventListener('click', () => {
+          this.hideAllMedia();
+        });
+
+        // Video event listeners
+        this.mediaVideo.addEventListener('loadstart', () => {
+          console.log('Video load started');
+          this.updateDebugInfo('Video loading...');
+        });
+        
+        this.mediaVideo.addEventListener('canplay', () => {
+          console.log('Video can play');
+          this.updateDebugInfo('Video ready to play');
+          this.mediaVideo.play().catch(e => {
+            console.error('Video play error:', e);
+            this.updateDebugInfo('Video play error: ' + e.message);
+          });
+        });
+        
+        this.mediaVideo.addEventListener('playing', () => {
+          console.log('Video is playing');
+          this.updateDebugInfo('Video playing');
+          
+          // Unmute for audio if volume > 0
+          if (this.mediaVideo.volume > 0) {
+            this.mediaVideo.muted = false;
+            console.log('Video unmuted for audio playback');
+          }
+        });
+        
+        this.mediaVideo.addEventListener('error', (e) => {
+          console.error('Video error:', e);
+          this.updateDebugInfo('Video error: ' + e.message);
+        });
+      }
+
+      parseURLParameters() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const mediaType = urlParams.get('type');
+        const mediaSrc = urlParams.get('src');
+        const duration = urlParams.get('duration') || 5;
+        const volume = parseFloat(urlParams.get('volume')) || 1.0;
+
+        if (mediaType && mediaSrc) {
+          this.showMedia(mediaType, mediaSrc, parseInt(duration) * 1000, volume);
+        }
+      }
+
+      setupWebSocket() {
+        const wsUrl = 'ws://localhost:8080';
+        
+        this.ws = new WebSocket(wsUrl);
+        
+        this.ws.onopen = () => {
+          this.connectionStatus.textContent = 'Connected';
+          this.updateDebugInfo('WebSocket connected');
+        };
+
+        this.ws.onclose = () => {
+          this.connectionStatus.textContent = 'Disconnected';
+          this.updateDebugInfo('WebSocket disconnected');
+        };
+
+        this.ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            this.handleMessage(data);
+          } catch (e) {
+            console.error('Error parsing WebSocket message:', e);
+          }
+        };
+      }
+
+      handleMessage(data) {
+        console.log('Overlay received:', data);
+        console.log('Message type:', data.type);
+        console.log('Message data:', data.data);
+        
+        this.lastMessage.textContent = `Last: ${data.type} at ${new Date().toLocaleTimeString()}`;
+        
+        // Special logging for executeMultiAction
+        if (data.type === 'executeMultiAction') {
+          console.log('=== EXECUTE MULTI ACTION MESSAGE RECEIVED ===');
+          console.log('Data structure:', JSON.stringify(data, null, 2));
+        }
+        
+        switch (data.type) {
+          case 'showMedia':
+            // For text/message types, use the message property as src
+            const mediaSrc = data.data.type === 'message' || data.data.type === 'text' 
+              ? data.data.message 
+              : data.data.src;
+            this.showMedia(data.data.type, mediaSrc, data.data.duration * 1000, data.data.volume, {
+              fontSize: data.data.fontSize,
+              fontFamily: data.data.fontFamily,
+              textColor: data.data.textColor,
+              backgroundColor: data.data.backgroundColor
+            });
+            break;
+          case 'showMessage':
+            this.showMessage(data.data.message, data.data.duration * 1000, {
+              fontSize: data.data.fontSize || null,
+              fontFamily: data.data.fontFamily || null,
+              textColor: data.data.textColor || null,
+              backgroundColor: data.data.backgroundColor || null
+            });
+            break;
+          case 'hideMedia':
+            this.hideAllMedia();
+            break;
+          case 'updateStats':
+            this.updateStats(data.data);
+            break;
+          case 'updateActivity':
+            this.updateActivity(data.data);
+            break;
+          case 'updateSoundStatus':
+            this.updateSoundStatus(data.data);
+            break;
+          case 'toggleOverlay':
+            this.toggleOverlay(data.data.overlayType, data.data.visible);
+            break;
+          case 'executeMultiAction':
+            console.log('executeMultiAction case triggered!');
+            console.log('Full data object:', data);
+            console.log('data.data:', data.data);
+            console.log('data.data.actions:', data.data.actions);
+            console.log('typeof this.executeMultiAction:', typeof this.executeMultiAction);
+            
+            // Check if actions exist in the expected location
+            const actions = data.data && data.data.actions ? data.data.actions : null;
+            console.log('Extracted actions:', actions);
+            
+            if (!actions) {
+              console.error('No actions found in data structure');
+              return;
+            }
+            
+            if (typeof this.executeMultiAction === 'function') {
+              console.log('Calling executeMultiAction with actions:', actions);
+              try {
+                this.executeMultiAction(actions);
+                console.log('executeMultiAction completed successfully');
+              } catch (error) {
+                console.error('Error in executeMultiAction:', error);
+              }
+            } else {
+              console.error('executeMultiAction is not a function!');
+              console.log('Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(this)));
+            }
+            break;
+          default:
+            console.log('Unknown message type:', data.type);
+            break;
+        }
+      }
+
+      showMedia(type, src, duration = 5000, volume = 1.0, styling = {}) {
+        // Don't hide all media for text/message types - they can overlay
+        if (type !== 'message' && type !== 'text') {
+          this.hideAllMedia();
+        }
+        
+        this.currentMedia = { type, src, duration, volume, styling };
+        this.updateDebugInfo(`Showing ${type}: ${src}`);
+
+        switch (type) {
+          case 'video':
+            this.showVideo(src, duration, volume);
+            break;
+          case 'image':
+            this.showImage(src, duration);
+            break;
+          case 'audio':
+          case 'sound':
+            this.playAudio(src, volume, duration);
+            break;
+          case 'message':
+          case 'text':
+            // For message/text types, the text content is in the 'message' property, not 'src'
+            const messageText = data.message || src;
+            this.showMessage(messageText, duration, styling);
+            break;
+        }
+
+        // Auto-hide after duration (only for media types, not text)
+        if (duration > 0 && type !== 'message' && type !== 'text') {
+          this.mediaTimeout = setTimeout(() => {
+            this.hideAllMedia();
+          }, duration);
+        }
+      }
+
+      showVideo(src, duration, volume = 1.0) {
+        console.log('showVideo called with src:', src, 'volume:', volume);
+        
+        // Clear any previous error state and timeouts
+        this.mediaVideo.onerror = null;
+        this.mediaVideo.onloadstart = null;
+        this.mediaVideo.oncanplay = null;
+        this.mediaVideo.onplaying = null;
+        
+        if (this.videoLoadTimeout) {
+          clearTimeout(this.videoLoadTimeout);
+          this.videoLoadTimeout = null;
+        }
+        
+        this.mediaVideo.src = src;
+        this.mediaVideo.muted = true; // Start muted for autoplay
+        this.mediaVideo.autoplay = true;
+        this.mediaVideo.loop = false;
+        this.mediaVideo.playsInline = true;
+        this.mediaVideo.controls = false;
+        this.mediaVideo.volume = volume;
+        
+        this.mediaImage.classList.add('hidden');
+        this.mediaVideo.classList.remove('hidden');
+        this.mediaDisplay.classList.remove('hidden');
+        this.mediaDisplay.classList.add('fade-in');
+
+        let hasLoaded = false;
+        let hasError = false;
+
+        // Add error handling
+        this.mediaVideo.onerror = (e) => {
+          console.error('Video error:', e);
+          hasError = true;
+          
+          // Only show error if it's a real error and we haven't loaded successfully
+          if (e.target.error && e.target.error.code !== 0 && !hasLoaded) {
+            const errorMsg = e.message || 'Failed to load video';
+            this.updateDebugInfo(`Video error: ${errorMsg}`);
+            this.showMessage(`Video Error: ${errorMsg}`, 5000);
+          }
+        };
+
+        this.mediaVideo.onloadstart = () => {
+          console.log('Video loading started');
+          this.updateDebugInfo('Video loading...');
+          hasError = false;
+        };
+
+        this.mediaVideo.oncanplay = () => {
+          console.log('Video can play');
+          this.updateDebugInfo('Video ready to play');
+          hasLoaded = true;
+        };
+
+        this.mediaVideo.onplaying = () => {
+          console.log('Video is playing');
+          this.updateDebugInfo('Video playing');
+          hasLoaded = true;
+          
+          // Unmute for audio if volume > 0
+          if (this.mediaVideo.volume > 0) {
+            this.mediaVideo.muted = false;
+            console.log('Video unmuted for audio playback');
+          }
+        };
+
+        // Set a timeout to check if video loaded successfully
+        this.videoLoadTimeout = setTimeout(() => {
+          if (!hasLoaded && !hasError) {
+            console.log('Video loading timeout - this might be normal for large files');
+            this.updateDebugInfo('Video loading (large file, please wait)...');
+          }
+        }, 3000);
+
+        // Try to play immediately
+        this.mediaVideo.play().catch(e => {
+          console.error('Video play error:', e);
+          // Don't show play errors immediately, video might still be loading
+          this.updateDebugInfo('Video play error (retrying): ' + e.message);
+        });
+      }
+
+      showImage(src, duration) {
+        console.log('showImage called with src:', src, 'duration:', duration);
+        this.mediaImage.src = src;
+        this.mediaVideo.classList.add('hidden');
+        this.mediaImage.classList.remove('hidden');
+        this.mediaDisplay.classList.remove('hidden');
+        this.mediaDisplay.classList.add('fade-in');
+        console.log('Image display classes:', this.mediaDisplay.className);
+        console.log('Image element classes:', this.mediaImage.className);
+        console.log('Image computed style:', window.getComputedStyle(this.mediaImage).display);
+        console.log('Media display computed style:', window.getComputedStyle(this.mediaDisplay).display);
+      }
+
+      showMessage(message, duration, styling = {}) {
+        console.log('Overlay showMessage called with:', { message, duration, styling });
+        console.log('Message display element:', this.messageDisplay);
+        console.log('Message content element:', this.messageContent);
+        
+        if (!this.messageContent) {
+          console.error('Message content element not found!');
+          return;
+        }
+        
+        this.messageContent.textContent = message;
+        console.log('Set message content to:', message);
+        
+        // Apply custom styling if provided
+        if (styling.fontSize) {
+          this.messageContent.style.fontSize = styling.fontSize + 'px';
+          console.log('Applied font size:', styling.fontSize + 'px');
+        }
+        if (styling.fontFamily) {
+          this.messageContent.style.fontFamily = styling.fontFamily;
+          console.log('Applied font family:', styling.fontFamily);
+        }
+        if (styling.textColor) {
+          this.messageContent.style.color = styling.textColor;
+          console.log('Applied text color:', styling.textColor);
+        }
+        if (styling.backgroundColor) {
+          this.messageContent.style.backgroundColor = styling.backgroundColor;
+          this.messageContent.style.padding = '10px 15px';
+          this.messageContent.style.borderRadius = '5px';
+          console.log('Applied background color:', styling.backgroundColor);
+        }
+        
+        console.log('Removing hidden class from message display');
+        this.messageDisplay.classList.remove('hidden');
+        this.messageDisplay.classList.add('fade-in');
+        console.log('Message display classes:', this.messageDisplay.className);
+        console.log('Message display computed style:', window.getComputedStyle(this.messageDisplay).display);
+        console.log('Message display visibility:', window.getComputedStyle(this.messageDisplay).visibility);
+
+        if (duration > 0) {
+          console.log('Setting timeout to hide message after', duration, 'ms');
+          setTimeout(() => {
+            console.log('Hiding message display');
+            this.messageDisplay.classList.add('hidden');
+          }, duration);
+        }
+      }
+
+      playAudio(src, volume = 1.0, duration = 5000) {
+        console.log('Playing audio:', src, 'volume:', volume, 'duration:', duration);
+        
+        // Don't hide other media - audio can play alongside other content
+        // Only stop previous audio if it exists
+        if (this.mediaAudio) {
+          this.mediaAudio.pause();
+          this.mediaAudio.src = '';
+        }
+        
+        // Create audio element if it doesn't exist
+        if (!this.mediaAudio) {
+          this.mediaAudio = new Audio();
+          this.mediaAudio.preload = 'auto';
+        }
+        
+        // Set up audio
+        this.mediaAudio.src = src;
+        this.mediaAudio.volume = Math.max(0, Math.min(1, volume));
+        this.mediaAudio.loop = false;
+        
+        // Show message while audio plays (but don't hide other content)
+        this.showMessage(`🔊 Playing Audio...`, duration);
+        
+        // Play audio
+        this.mediaAudio.play().then(() => {
+          console.log('Audio started playing');
+          this.updateDebugInfo(`Audio playing: ${src}`);
+        }).catch(error => {
+          console.error('Audio play error:', error);
+          this.updateDebugInfo(`Audio error: ${error.message}`);
+        });
+        
+        // Auto-hide message after duration
+        if (duration > 0) {
+          setTimeout(() => {
+            this.messageDisplay.classList.add('hidden');
+          }, duration);
+        }
+      }
+
+      updateStats(stats) {
+        if (stats.viewerCount !== undefined) {
+          document.getElementById('overlay-viewer-count').textContent = stats.viewerCount;
+        }
+        if (stats.followerCount !== undefined) {
+          document.getElementById('overlay-follower-count').textContent = stats.followerCount;
+        }
+        if (stats.subscriberCount !== undefined) {
+          document.getElementById('overlay-subscriber-count').textContent = stats.subscriberCount;
+        }
+      }
+
+      updateActivity(activity) {
+        if (activity.latestFollower) {
+          document.getElementById('overlay-latest-follower').textContent = activity.latestFollower;
+        }
+        if (activity.latestSubscriber) {
+          document.getElementById('overlay-latest-subscriber').textContent = activity.latestSubscriber;
+        }
+      }
+
+      updateSoundStatus(sound) {
+        if (sound.currentSound) {
+          document.getElementById('overlay-current-sound').textContent = sound.currentSound;
+        }
+      }
+
+      toggleOverlay(overlayType, visible) {
+        const element = document.getElementById(overlayType);
+        if (element) {
+          if (visible) {
+            element.classList.remove('hidden');
+          } else {
+            element.classList.add('hidden');
+          }
+        }
+      }
+
+      executeMultiAction(actions) {
+        console.log('executeMultiAction function called!');
+        console.log('Actions received:', actions);
+        
+        // Update debug overlay
+        const debugActionCount = document.getElementById('debug-action-count');
+        const debugContainerStatus = document.getElementById('debug-container-status');
+        const debugLastAction = document.getElementById('debug-last-action');
+        
+        if (debugActionCount) debugActionCount.textContent = actions.length;
+        if (debugLastAction) debugLastAction.textContent = actions[0]?.type || 'None';
+        
+        if (!actions || !Array.isArray(actions)) {
+          console.error('Invalid actions data:', actions);
+          return;
+        }
+        
+        // Clear any existing multi-action content
+        this.clearMultiActionContent();
+        
+        // Show the container
+        this.multiActionContainer.classList.remove('hidden');
+        console.log('Container shown, classes:', this.multiActionContainer.className);
+        console.log('Container visibility:', window.getComputedStyle(this.multiActionContainer).visibility);
+        console.log('Container display:', window.getComputedStyle(this.multiActionContainer).display);
+        console.log('Container position:', window.getComputedStyle(this.multiActionContainer).position);
+        console.log('Container z-index:', window.getComputedStyle(this.multiActionContainer).zIndex);
+        
+        console.log(`Starting to process ${actions.length} actions in container`);
+        
+        // Process all actions and add them to the container
+        actions.forEach((action, index) => {
+          console.log(`=== PROCESSING ACTION ${index} ===`);
+          console.log(`Action type: ${action.type}`);
+          console.log(`Action data:`, action);
+          
+          switch (action.type) {
+            case 'audio':
+            case 'sound':
+              console.log(`Playing sound for action ${index}`);
+              // Convert file path to HTTP URL for overlay
+              const audioUrl = action.filePath ? 
+                `http://localhost:8080/media/${encodeURIComponent(action.filePath)}` : 
+                (action.url || '');
+              const audio = new Audio(audioUrl);
+              audio.play().catch(error => console.error(`Audio ${index} play error:`, error));
+              break;
+
+            case 'image':
+              console.log(`Creating image for action ${index}`);
+              console.log(`Image action data:`, action);
+              console.log(`Image action.url:`, action.url);
+              console.log(`Image action.filePath:`, action.filePath);
+              const img = document.createElement('img');
+              // Convert file path to HTTP URL for overlay
+              const imageUrl = action.url || 
+                (action.filePath ? `http://localhost:8080/media/${encodeURIComponent(action.filePath)}` : '');
+              console.log(`Image URL: ${imageUrl}`);
+              img.src = imageUrl;
+              img.className = 'multi-action-element multi-action-image';
+              img.style.animation = `fadeInOut ${(action.duration || 3) * 1000}ms ease forwards`;
+              
+              // Add error and load event listeners for debugging
+              img.onerror = (e) => {
+                console.error(`Image ${index} failed to load:`, e);
+                console.error(`Failed URL: ${imageUrl}`);
+                console.error(`Image element:`, img);
+                // Just log the error, don't show fallback elements
+              };
+              img.onload = () => {
+                console.log(`Image ${index} loaded successfully:`, imageUrl);
+                console.log(`Image dimensions: ${img.naturalWidth}x${img.naturalHeight}`);
+                console.log(`Image complete: ${img.complete}`);
+                console.log(`Image src: ${img.src}`);
+                console.log(`Image element:`, img);
+                
+                // Check if image has valid dimensions
+                if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+                  console.error(`Image ${index} has zero dimensions! This usually means:`);
+                  console.error(`1. File is corrupted or invalid`);
+                  console.error(`2. File is empty`);
+                  console.error(`3. File format is not supported`);
+                  console.error(`4. File path is wrong`);
+                  
+                  // Just log the error, don't show fallback elements
+                  
+                  // Try to fetch the image directly to see what we get
+                  fetch(imageUrl)
+                    .then(response => {
+                      console.log(`Fetch response status: ${response.status}`);
+                      console.log(`Fetch response headers:`, response.headers);
+                      return response.blob();
+                    })
+                    .then(blob => {
+                      console.log(`Image blob size: ${blob.size} bytes`);
+                      console.log(`Image blob type: ${blob.type}`);
+                    })
+                    .catch(err => {
+                      console.error(`Fetch error:`, err);
+                    });
+                }
+              };
+              
+              this.multiActionContainer.appendChild(img);
+              console.log(`Image element added to container. Container children:`, this.multiActionContainer.children.length);
+              console.log(`Image element classes:`, img.className);
+              console.log(`Image element style:`, img.style.cssText);
+              console.log(`Image element computed style:`, window.getComputedStyle(img).display);
+              setTimeout(() => img.remove(), (action.duration || 3) * 1000);
+              break;
+
+            case 'video':
+              console.log(`Creating video for action ${index}`);
+              console.log(`Video action data:`, action);
+              console.log(`Video action.url:`, action.url);
+              console.log(`Video action.filePath:`, action.filePath);
+              
+              // Update debug overlay
+              if (debugLastAction) debugLastAction.textContent = `Video: ${action.url || 'No URL'}`;
+              
+              const video = document.createElement('video');
+              // Convert file path to HTTP URL for overlay
+              const videoUrl = action.url || 
+                (action.filePath ? `http://localhost:8080/media/${encodeURIComponent(action.filePath)}` : '');
+              
+              // Set up video for OBS compatibility
+              video.className = 'multi-action-element multi-action-video';
+              video.style.animation = `fadeInOut ${(action.duration || 3) * 1000}ms ease forwards`;
+              video.autoplay = true;
+              video.muted = false;
+              video.playsInline = true;
+              video.controls = false;
+              video.loop = false;
+              
+              // Add source element for better codec handling
+              const source = document.createElement('source');
+              source.src = videoUrl;
+              source.type = 'video/mp4';
+              video.appendChild(source);
+              
+              // Add error and load event listeners for debugging
+              video.onerror = (e) => {
+                console.error(`Video ${index} failed to load:`, e);
+                console.error(`Failed URL: ${videoUrl}`);
+                console.error(`Video error details:`, video.error);
+                
+                // Just log the error, don't show fallback elements
+              };
+              
+              video.onloadstart = () => {
+                console.log(`Video ${index} load started:`, videoUrl);
+              };
+              
+              video.oncanplay = () => {
+                console.log(`Video ${index} can play:`, videoUrl);
+                console.log(`Video duration: ${video.duration}s`);
+                console.log(`Video dimensions: ${video.videoWidth}x${video.videoHeight}`);
+                console.log(`Video codec info:`, video.videoTracks);
+              };
+              
+              video.onloadedmetadata = () => {
+                console.log(`Video ${index} metadata loaded:`, videoUrl);
+                console.log(`Video dimensions: ${video.videoWidth}x${video.videoHeight}`);
+                console.log(`Video duration: ${video.duration}s`);
+              };
+              
+              // Add timeout fallback - if video doesn't load within 3 seconds, show fallback
+              const videoTimeout = setTimeout(() => {
+                if (video.videoWidth === 0 || video.videoHeight === 0) {
+                  console.log(`Video ${index} timeout - just log the issue`);
+                  video.style.display = 'none';
+                }
+              }, 3000);
+              
+              video.onloadedmetadata = () => {
+                clearTimeout(videoTimeout);
+                console.log(`Video ${index} metadata loaded:`, videoUrl);
+                console.log(`Video dimensions: ${video.videoWidth}x${video.videoHeight}`);
+                console.log(`Video duration: ${video.duration}s`);
+              };
+              
+              this.multiActionContainer.appendChild(video);
+              console.log(`Video element added to container. Container children:`, this.multiActionContainer.children.length);
+              console.log(`Video element classes:`, video.className);
+              console.log(`Video element style:`, video.style.cssText);
+              console.log(`Video element computed style:`, window.getComputedStyle(video).display);
+              
+              // Update debug overlay to show video was added
+              if (debugContainerStatus) debugContainerStatus.textContent = `Video added (${this.multiActionContainer.children.length} elements)`;
+              
+              // Try to play the video
+              video.play().catch(error => {
+                console.error(`Video ${index} play error:`, error);
+              });
+              
+              setTimeout(() => video.remove(), (action.duration || 3) * 1000);
+              break;
+
+            case 'text':
+              console.log(`Creating text for action ${index}`);
+              const div = document.createElement('div');
+              div.className = 'multi-action-element multi-action-text';
+              div.textContent = action.text;
+              
+              // Position the text based on action.position
+              const position = action.position || 'center';
+              let positionStyles = '';
+              
+              switch (position) {
+                case 'top-left':
+                  positionStyles = 'top: 20px; left: 20px; right: auto; bottom: auto;';
+                  break;
+                case 'top-right':
+                  positionStyles = 'top: 20px; right: 20px; left: auto; bottom: auto;';
+                  break;
+                case 'bottom-left':
+                  positionStyles = 'bottom: 20px; left: 20px; right: auto; top: auto;';
+                  break;
+                case 'bottom-right':
+                  positionStyles = 'bottom: 20px; right: 20px; left: auto; top: auto;';
+                  break;
+                case 'center':
+                default:
+                  positionStyles = 'top: 50%; left: 50%; transform: translate(-50%, -50%); right: auto; bottom: auto;';
+                  break;
+              }
+              
+              div.style.cssText = `
+                position: absolute;
+                ${positionStyles}
+                font-size: ${action.fontSize || 24}px;
+                font-family: ${action.fontFamily || 'Arial, sans-serif'};
+                color: ${action.textColor || '#ffffff'};
+                background-color: ${action.backgroundColor || 'rgba(0,0,0,0.8)'};
+                padding: ${action.padding || '10px 15px'};
+                border-radius: ${action.borderRadius || '5px'};
+                text-align: center;
+                z-index: 1002;
+                max-width: 80%;
+                word-wrap: break-word;
+                animation: fadeInOut ${(action.duration || 3) * 1000}ms ease forwards;
+              `;
+              this.multiActionContainer.appendChild(div);
+              console.log(`Text element added to container. Container children:`, this.multiActionContainer.children.length);
+              console.log(`Text element:`, div);
+              setTimeout(() => div.remove(), (action.duration || 3) * 1000);
+              break;
+
+            default:
+              console.warn(`Unknown action type: ${action.type} for action ${index}`);
+          }
+          
+          console.log(`=== COMPLETED ACTION ${index} ===`);
+        });
+        
+        console.log('All actions processed in container');
+        
+        // Add a test element to verify container is working (but don't cover media)
+        const testDiv = document.createElement('div');
+        testDiv.textContent = 'TEST - Container is working!';
+        testDiv.style.cssText = `
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          background: rgba(255,0,0,0.8);
+          color: white;
+          padding: 5px 10px;
+          border-radius: 5px;
+          font-size: 12px;
+          z-index: 1003;
+        `;
+        this.multiActionContainer.appendChild(testDiv);
+        setTimeout(() => testDiv.remove(), 2000);
+        
+        // Add a basic test message to verify overlay functionality
+        const basicTestDiv = document.createElement('div');
+        basicTestDiv.textContent = 'OVERLAY TEST - If you see this, the overlay is working!';
+        basicTestDiv.style.cssText = `
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: rgba(0,255,0,0.9);
+          color: black;
+          padding: 20px;
+          border-radius: 10px;
+          font-size: 18px;
+          font-weight: bold;
+          text-align: center;
+          z-index: 1004;
+          border: none;
+        `;
+        this.multiActionContainer.appendChild(basicTestDiv);
+        setTimeout(() => basicTestDiv.remove(), 3000);
+        
+        // Add a permanent debug overlay that shows what's happening
+        const debugOverlay = document.createElement('div');
+        debugOverlay.id = 'debug-overlay';
+        debugOverlay.style.cssText = `
+          position: fixed;
+          top: 10px;
+          left: 10px;
+          background: rgba(0,0,0,0.8);
+          color: white;
+          padding: 10px;
+          border-radius: 5px;
+          font-size: 12px;
+          z-index: 9999;
+          max-width: 300px;
+        `;
+        debugOverlay.innerHTML = `
+          <div>🔍 DEBUG OVERLAY</div>
+          <div>Actions: <span id="debug-action-count">0</span></div>
+          <div>Container: <span id="debug-container-status">Not created</span></div>
+          <div>Last action: <span id="debug-last-action">None</span></div>
+        `;
+        document.body.appendChild(debugOverlay);
+        
+        // Hide container after all elements are done
+        const maxDuration = Math.max(...actions.map(action => (action.duration || 3) * 1000));
+        setTimeout(() => {
+          this.multiActionContainer.classList.add('hidden');
+        }, maxDuration);
+        
+        console.log('executeMultiAction completed successfully');
+      }
+      
+      
+      clearMultiActionContent() {
+        // Clear the container
+        this.multiActionContainer.innerHTML = '';
+        this.multiActionContainer.classList.add('hidden');
+      }
+      
+
+      hideAllMedia() {
+        this.mediaDisplay.classList.add('hidden');
+        this.messageDisplay.classList.add('hidden');
+        
+        this.mediaVideo.pause();
+        this.mediaVideo.src = '';
+        this.mediaImage.src = '';
+        
+        // Stop audio if it exists
+        if (this.mediaAudio) {
+          this.mediaAudio.pause();
+          this.mediaAudio.src = '';
+        }
+        
+        if (this.mediaTimeout) {
+          clearTimeout(this.mediaTimeout);
+          this.mediaTimeout = null;
+        }
+
+        if (this.videoLoadTimeout) {
+          clearTimeout(this.videoLoadTimeout);
+          this.videoLoadTimeout = null;
+        }
+
+        this.currentMedia = null;
+        this.updateDebugInfo('All media hidden');
+      }
+
+      updateDebugInfo(message) {
+        console.log('Overlay:', message);
+        this.currentMediaDiv.textContent = this.currentMedia ? 
+          `${this.currentMedia.type}: ${this.currentMedia.src}` : 'No media';
+      }
+    }
+
+    // Initialize when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      window.unifiedOverlay = new UnifiedOverlay();
+    });
+  </script>
+</body>
+</html>

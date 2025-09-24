@@ -4,9 +4,9 @@
   "description": "A virtual deck application built with Electron",
   "main": "main.js",
   "scripts": {
-  "start": "electron .",
-  "dist": "electron-builder",
-  "build:win": "electron-builder --win"
+    "start": "electron .",
+    "dist": "electron-builder",
+    "build:win": "electron-builder --win"
   },
   "keywords": [
     "electron",
@@ -30,8 +30,8 @@
       "main.js",
       "preload.js",
       "config.json",
-  "public/**/*",
-  "TwitchConnected/**/*",
+      "public/**/*",
+      "TwitchConnected/**/*",
       "node_modules/**/*"
     ],
     "mac": {
@@ -60,6 +60,7 @@
   "dependencies": {
     "extract-file-icon": "^0.3.2",
     "fs-extra": "^11.3.0",
+    "mime-types": "^3.0.1",
     "tmi.js": "^1.8.5",
     "windows-shortcuts": "^0.1.6"
   }

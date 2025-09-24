@@ -32,6 +32,9 @@
         <input type="checkbox" id="toggle-sound-controls" checked> Sound Controls
       </label>
       <label class="visibility-item">
+        <input type="checkbox" id="toggle-overlay-widget"> OBS Overlay Widget
+      </label>
+      <label class="visibility-item">
         <!-- Move Bar removed -->
       </label>
       <div class="visibility-actions">
@@ -136,39 +139,67 @@
   </div>
 
   <div id="settings-modal" class="hidden">
-    <div class="modal-content">
-      <h2>Add New Trigger</h2>
-      <form id="settings-form">
-        <label for="label-input">Label:</label>
-        <input type="text" id="label-input" name="label" required />
-        <label>Type:
-          <select name="type" id="type-select">
-            <option value="audio">Audio</option>
-            <!-- <option value="app">App</option> -->
-          </select>
-        </label><br>
-        <label>Hotkey: 
-          <input type="text" name="hotkey" id="hotkey-input" placeholder="Press any key or combination with Ctrl, Alt, Shift | Ex: 'Ctrl + F1'" readonly />
-          <button type="button" id="record-hotkey">Record Hotkey</button>
-          <div id="hotkey-status"></div>
-          <!-- modifier checkboxes removed — recorder captures modifiers live -->
-        </label><br>
-        <div id="audio-file-section">
-          <label>File:
-            <input type="file" name="file" id="file-input" required />
-            <div id="drop-zone">or drag file here</div>
-          </label>
-          <label for="volume-input" class="volume-label">Volume: <span id="volume-value">100%</span></label>
-          <input type="range" id="volume-input" name="volume" min="0" max="100" value="100" />
-        </div>
-        <div id="app-file-section" style="display:none;">
-          <label>App File:
-            <input type="file" name="app-file" id="app-file-input" accept=".exe,.bat,.cmd,.lnk,.app,.sh,.desktop" required />
-          </label>
-        </div>
-        <button type="submit" id="save-sound">Save</button>
-        <button type="button" id="close-settings">Cancel</button>
-      </form>
+    <div class="modal-content settings-modal-content">
+      <div class="modal-header">
+        <h2>Add New Trigger</h2>
+        <button type="button" id="close-settings" class="modal-close">×</button>
+      </div>
+      
+      <div class="modal-body settings-modal-body">
+        <form id="settings-form">
+          <div class="form-section">
+            <label for="label-input">Label:</label>
+            <input type="text" id="label-input" name="label" placeholder="Enter button name..." required />
+          </div>
+          
+          <div class="form-section">
+            <label>Hotkey: 
+              <input type="text" name="hotkey" id="hotkey-input" placeholder="Press any key or combination with Ctrl, Alt, Shift | Ex: 'Ctrl + F1'" readonly />
+              <button type="button" id="record-hotkey">Record Hotkey</button>
+              <div id="hotkey-status"></div>
+            </label>
+          </div>
+
+          <!-- Multi-Action Section -->
+          <div class="actions-section">
+            <h3>Actions</h3>
+            <div id="actions-container">
+              <!-- Action items will be added here dynamically -->
+            </div>
+            <button type="button" id="add-action" class="add-action-btn">+ Add Action</button>
+          </div>
+
+          <!-- Legacy single-action support (hidden by default) -->
+          <div id="legacy-single-action" style="display:none;">
+            <div class="form-section">
+              <label>Type:
+                <select name="type" id="type-select">
+                  <option value="audio">Audio</option>
+                  <option value="app">App</option>
+                </select>
+              </label>
+            </div>
+            <div id="audio-file-section">
+              <label>File:
+                <input type="file" name="file" id="file-input" />
+                <div id="drop-zone">or drag file here</div>
+              </label>
+              <label for="volume-input" class="volume-label">Volume: <span id="volume-value">100%</span></label>
+              <input type="range" id="volume-input" name="volume" min="0" max="100" value="100" />
+            </div>
+            <div id="app-file-section" style="display:none;">
+              <label>App File:
+                <input type="file" name="app-file" id="app-file-input" accept=".exe,.bat,.cmd,.lnk,.app,.sh,.desktop" />
+              </label>
+            </div>
+          </div>
+        </form>
+      </div>
+      
+      <div class="modal-footer">
+        <button type="button" id="close-settings-cancel">Cancel</button>
+        <button type="submit" id="save-sound" form="settings-form">Save</button>
+      </div>
     </div>
   </div>
   <!-- About Modal -->
@@ -182,6 +213,80 @@
       </div>
     </div>
   </div>
+
+    <!-- Overlay Test Modal -->
+    <div id="overlay-test-modal" class="modal-overlay hidden">
+      <div class="modal-content overlay-modal-content">
+        <div class="modal-header">
+          <h3>🎬 OBS Overlay</h3>
+          <button id="overlay-modal-close" class="modal-close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="overlay-url-section">
+            <div class="url-container">
+              <input type="text" id="overlay-url" value="http://localhost:8080/overlay" readonly>
+              <button id="copy-overlay-url" class="copy-btn">Copy</button>
+            </div>
+          </div>
+          
+          <div class="overlay-test-section">
+            <div class="test-category">
+              <h4>Connection & Messages</h4>
+              <div class="test-buttons">
+                <button id="test-connection" class="test-btn">Test Connection</button>
+                <button id="test-message" class="test-btn">Test Message</button>
+                <button id="test-stats" class="test-btn">Test Stats</button>
+                <button id="test-activity" class="test-btn">Test Activity</button>
+              </div>
+            </div>
+            
+            <div class="test-category">
+              <h4>Media Tests</h4>
+              <div class="test-buttons">
+                <button id="test-image" class="test-btn">Test Image</button>
+                <button id="test-gif" class="test-btn">Test GIF</button>
+                <button id="test-video" class="test-btn">Test Video</button>
+                <button id="test-audio" class="test-btn">Test Audio</button>
+              </div>
+            </div>
+            
+            <div class="test-category">
+              <h4>Multi-Actions</h4>
+              <div class="test-buttons">
+                <button id="test-multi" class="test-btn">Multi Action</button>
+                <button id="test-simultaneous" class="test-btn">Simultaneous Test</button>
+                <button id="test-multi-media" class="test-btn">Multi-Media Button</button>
+                <button id="hide-all" class="test-btn danger">Hide All</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="overlay-custom-section">
+            <h4>Custom Message</h4>
+            <div class="custom-message-form">
+              <input type="text" id="custom-message-text" placeholder="Enter custom message..." value="Hello!">
+              <div class="message-options">
+                <label>Duration: <input type="number" id="custom-message-duration" value="5" min="1" max="30"></label>
+                <label>Size: <input type="number" id="custom-message-size" value="24" min="12" max="72"></label>
+                <label>Text: <input type="color" id="custom-text-color" value="#ffffff"></label>
+                <label>BG: <input type="color" id="custom-bg-color" value="#000000"></label>
+              </div>
+              <button id="send-custom-message" class="test-btn primary">Send Message</button>
+            </div>
+          </div>
+
+          <div class="overlay-status-section">
+            <div id="overlay-connection-status" class="status-indicator">
+              <span class="status-dot"></span>
+              <span class="status-text">Checking...</span>
+            </div>
+            <div id="overlay-clients-count" class="clients-count">
+              Connected: <span id="overlay-count">0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
   <!-- Custom Notification System -->
   <div id="notification-container" class="notification-container"></div>

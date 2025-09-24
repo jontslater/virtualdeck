@@ -1,5 +1,18 @@
 // public/script.js
 
+// Helper function to ensure color values have proper # prefix
+function formatColor(color) {
+  if (!color) return '#000000';
+  if (color.startsWith('#')) return color;
+  if (color.startsWith('rgba(')) {
+    // Convert rgba to hex
+    const values = color.replace('rgba(', '').replace(')', '').split(',').slice(0,3);
+    const hex = values.map(c => parseInt(c.trim()).toString(16).padStart(2, '0')).join('');
+    return '#' + hex;
+  }
+  return '#' + color;
+}
+
 const soundGrid = document.getElementById("sound-grid");
 const visualContainer = document.getElementById("visual-container");
 const dropZone = document.getElementById("drop-zone");
@@ -754,19 +767,7 @@ function addChatMessage(username, message, badges = {}) {
   }
 }
 
-// Setup pagination controls and visibility dropdown after DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-  // Initialize pagination controls
-  const prev = document.getElementById('page-prev');
-  const next = document.getElementById('page-next');
-  if (prev) prev.addEventListener('click', () => { goToPrevPage(); });
-  if (next) next.addEventListener('click', () => { goToNextPage(); });
-  // Ensure container has enough bottom padding to avoid fixed pagination overlap
-  updateBottomPaddingForPagination();
-  
-  // Initialize visibility dropdown
-  initializeVisibilityDropdown();
-});
+// This DOMContentLoaded listener is now handled in the consolidated one below
 
 // Adjust container bottom padding so fixed pagination doesn't overlap the grid
 function updateBottomPaddingForPagination() {
@@ -860,13 +861,18 @@ function updateChatVisibility(isConnected) {
 }
 
 async function loadButtons() {
+  console.log('🎨 === LOAD BUTTONS START ===');
+  
   if (!soundGrid) {
-    console.error('soundGrid element not found!');
+    console.error('❌ soundGrid element not found!');
     return;
   }
   
+  console.log('🎨 Sound grid element found:', !!soundGrid);
+  
   // Clear existing buttons
   soundGrid.innerHTML = '';
+  console.log('🎨 Cleared existing buttons');
 
   // Add the Add Sound card as the first card
   const addCard = document.createElement('div');
@@ -893,7 +899,8 @@ async function loadButtons() {
     const oldFileInput = document.getElementById('file-input');
     if (oldFileInput) {
       const newFileInput = oldFileInput.cloneNode(false);
-      newFileInput.required = true;
+      // Don't set required since we're using multi-action form
+      newFileInput.required = false;
       newFileInput.id = 'file-input';
       newFileInput.name = 'file';
       oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
@@ -907,8 +914,12 @@ async function loadButtons() {
       oldAppFileInput.parentNode.replaceChild(newAppFileInput, oldAppFileInput);
     }
     document.querySelector('#settings-modal h2').textContent = 'Add New Sound';
-  // Show settings modal (user-initiated) - always allow
-  document.getElementById('settings-modal').classList.remove('hidden');
+    // Reset multi-action form for new button
+    if (multiActionFormManager) {
+      multiActionFormManager.resetForm();
+    }
+    // Show settings modal (user-initiated) - always allow
+    document.getElementById('settings-modal').classList.remove('hidden');
     window.electronAPI.disableHotkeys();
   };
   
@@ -916,6 +927,10 @@ async function loadButtons() {
 
   // Load buttons from config
   const data = await window.electronAPI.getConfig();
+  console.log('🎨 === LOAD BUTTONS DEBUG ===');
+  console.log('🎨 Config data:', data);
+  console.log('🎨 Buttons array:', data.buttons);
+  console.log('🎨 Buttons count:', data.buttons ? data.buttons.length : 0);
   
   // Check for saved order
   const savedOrder = loadButtonOrder();
@@ -942,6 +957,7 @@ async function loadButtons() {
   }
   
   for (const [index, button] of orderedButtons.entries()) {
+    console.log(`🎨 Processing button ${index}:`, button);
     const card = document.createElement("div");
     card.className = "sound-card";
     card.dataset.index = index;
@@ -958,14 +974,36 @@ async function loadButtons() {
       }
       iconImg = `<img src="${iconData}" alt="App Icon" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;" />`;
     }
+    
+    // Determine button type and display text
+    let buttonType = button.type || 'Multi-Action';
+    if (button.media && Array.isArray(button.media)) {
+      // Multi-action button - show types of actions
+      const actionTypes = button.media.map(m => m.type).join(', ');
+      buttonType = `Multi (${actionTypes})`;
+    }
+    
     card.innerHTML = `
-      <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
+      <button class="edit-button">Edit</button>
       <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
       ${iconImg}
-      <div class="sound-type">${button.type}</div>
+      <div class="sound-type">${buttonType}</div>
       <div class="sound-name">${button.label}</div>
       <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
     `;
+    
+    // Add click event listener directly to the edit button for debugging
+    const editBtn = card.querySelector('.edit-button');
+    console.log('🎵 Edit button found:', editBtn);
+    if (editBtn) {
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        console.log('🎵 Edit button clicked directly!');
+        editButtonByEl(editBtn);
+      });
+    } else {
+      console.log('❌ Edit button not found in card!');
+    }
     card.addEventListener('click', (e) => {
       if (!e.target.classList.contains('edit-button') && !e.target.classList.contains('delete-x-button')) {
         // Suppress trigger if in drag mode or the card was just dragged
@@ -991,6 +1029,8 @@ async function loadButtons() {
   if (isDragMode) {
     enableDragMode();
   }
+  
+  console.log('🎨 === LOAD BUTTONS COMPLETE ===');
 }
 
 function computePagination() {
@@ -1266,6 +1306,7 @@ function getVisibilityMap() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
+    'toggle-overlay-widget': 'overlay-test-modal',
     // move-bar removed
   };
 }
@@ -1298,7 +1339,7 @@ if (window.electronAPI && typeof window.electronAPI.onViewToggle === 'function')
       // helper: resolve provided key to the component id
       let componentId = null;
       // If payload.key already looks like a component id (contains 'container' or 'sound' etc), use it
-      if (typeof target === 'string' && (target.includes('container') || target.includes('sound') || target.includes('controls') || target === 'sound-grid')) {
+      if (typeof target === 'string' && (target.includes('container') || target.includes('sound') || target.includes('controls') || target === 'sound-grid' || target === 'overlay-test-modal')) {
         componentId = target;
       }
 
@@ -1309,7 +1350,8 @@ if (window.electronAPI && typeof window.electronAPI.onViewToggle === 'function')
           'twitch-chat': 'twitch-chat-container',
           'recent-activity': 'recent-activity-container',
           'sound-controls': 'sound-controls',
-          'sound-grid': 'sound-grid'
+          'sound-grid': 'sound-grid',
+          'overlay-test-widget': 'overlay-test-modal'
         };
         componentId = shortToFull[target] || null;
       }
@@ -1547,6 +1589,7 @@ function applyVisibilityPrefs() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
+    'toggle-overlay-widget': 'overlay-test-modal',
     // move-bar removed
   };
 
@@ -2172,6 +2215,17 @@ async function handleTrigger(button) {
   // If caller passed a DOM element instead of button object, normalize
   if (button && button._vdJustDragged) return;
 
+  console.log('🎵 === SOUND BUTTON TRIGGERED ===');
+  console.log('🎵 Button data:', button);
+
+  // Check if this button has multiple media sources (new format)
+  if (button.media && Array.isArray(button.media)) {
+    console.log('🎵 Multi-media button detected:', button.media);
+    await handleMultiMediaButton(button);
+    return;
+  }
+
+  // Handle single media type buttons (legacy format)
   if (button.type === "audio") {
     const audioPath = await window.electronAPI.getSoundPath(button.src);
     const audio = new Audio(audioPath);
@@ -2187,6 +2241,113 @@ async function handleTrigger(button) {
     }
     audio.play().catch(error => {
     });
+
+    // Send audio to overlay - try to send the actual audio file
+    console.log('🎵 Sending audio to overlay:', audioPath);
+    try {
+      // Try to send the actual audio file to overlay
+      window.electronAPI.send('overlay-execute-multi-action', {
+        actions: [
+          {
+            type: 'audio',
+            src: audioPath,
+            volume: audio.volume,
+            duration: 5
+          },
+          {
+            type: 'text',
+            text: `🔊 ${button.label}`,
+            duration: 3,
+            fontSize: 20,
+            textColor: '#ffffff',
+            backgroundColor: 'rgba(0,150,255,0.8)',
+            position: 'center'
+          }
+        ]
+      });
+    } catch (error) {
+      // Fallback to just showing a message
+      window.electronAPI.send('overlay-show-message', {
+        message: `🔊 ${button.label}`,
+        duration: 3,
+        fontSize: 24,
+        textColor: '#ffffff',
+        backgroundColor: 'rgba(0,150,255,0.9)'
+      });
+    }
+
+  } else if (button.type === "image") {
+    // Handle image buttons
+    console.log('🎵 Sending image to overlay:', button.src);
+    try {
+      // Get the full path to the image file
+      const imagePath = await window.electronAPI.getSoundPath(button.src);
+      // Send image to overlay using execute-multi-action format
+      window.electronAPI.send('overlay-execute-multi-action', {
+        actions: [
+          {
+            type: 'image',
+            filePath: imagePath,
+            duration: 5
+          },
+          {
+            type: 'text',
+            text: `🖼️ ${button.label}`,
+            duration: 3,
+            fontSize: 20,
+            textColor: '#ffffff',
+            backgroundColor: 'rgba(255,150,0,0.8)',
+            position: 'center'
+          }
+        ]
+      });
+    } catch (error) {
+      // Fallback to just showing a message
+      window.electronAPI.send('overlay-show-message', {
+        message: `🖼️ ${button.label}`,
+        duration: 3,
+        fontSize: 24,
+        textColor: '#ffffff',
+        backgroundColor: 'rgba(255,150,0,0.9)'
+      });
+    }
+
+  } else if (button.type === "video") {
+    // Handle video buttons
+    console.log('🎵 Sending video to overlay:', button.src);
+    try {
+      // Get the full path to the video file
+      const videoPath = await window.electronAPI.getSoundPath(button.src);
+      // Send video to overlay using execute-multi-action format
+      window.electronAPI.send('overlay-execute-multi-action', {
+        actions: [
+          {
+            type: 'video',
+            filePath: videoPath,
+            duration: 10
+          },
+          {
+            type: 'text',
+            text: `🎥 ${button.label}`,
+            duration: 3,
+            fontSize: 20,
+            textColor: '#ffffff',
+            backgroundColor: 'rgba(150,0,255,0.8)',
+            position: 'center'
+          }
+        ]
+      });
+    } catch (error) {
+      // Fallback to just showing a message
+      window.electronAPI.send('overlay-show-message', {
+        message: `🎥 ${button.label}`,
+        duration: 3,
+        fontSize: 24,
+        textColor: '#ffffff',
+        backgroundColor: 'rgba(150,0,255,0.9)'
+      });
+    }
+
   } else if (button.type === "app") {
     // If the button has args, pass them along
     if (button.args) {
@@ -2194,24 +2355,960 @@ async function handleTrigger(button) {
     } else {
       window.electronAPI.launchApp({ path: button.src });
     }
+
+    // Send app launch message to overlay
+    console.log('🎵 Sending app launch to overlay:', button.label);
+    window.electronAPI.send('overlay-show-message', {
+      message: `🚀 ${button.label}`,
+      duration: 3,
+      fontSize: 24,
+      textColor: '#ffffff',
+      backgroundColor: 'rgba(0,255,0,0.9)'
+    });
+
+  } else {
+    // Handle unknown types or custom actions
+    console.log('🎵 Sending generic action to overlay:', button.label);
+    window.electronAPI.send('overlay-show-message', {
+      message: `⚡ ${button.label}`,
+      duration: 3,
+      fontSize: 24,
+      textColor: '#ffffff',
+      backgroundColor: 'rgba(255,255,0,0.9)'
+    });
   }
-  // Removed visual handling
+  
+  console.log('🎵 === SOUND BUTTON COMPLETE ===');
 }
+
+// New function to handle buttons with multiple media sources
+async function handleMultiMediaButton(button) {
+  console.log('🎵 === MULTI-MEDIA BUTTON HANDLER ===');
+  
+  const overlayActions = [];
+  let localAudio = null;
+
+  // Process each media item
+  for (const mediaItem of button.media) {
+    console.log('🎵 Processing media item:', mediaItem);
+
+    if (mediaItem.type === 'audio') {
+      // Handle audio locally
+      try {
+        const audioPath = await window.electronAPI.getSoundPath(mediaItem.src);
+        localAudio = new Audio(audioPath);
+        
+        // Apply volume if specified
+        if (mediaItem.volume !== undefined) {
+          localAudio.volume = Math.max(0, Math.min(1, mediaItem.volume));
+        }
+        
+        localAudio.play().catch(error => {
+          console.error('Error playing local audio:', error);
+        });
+      } catch (error) {
+        console.error('Error loading audio:', error);
+      }
+
+      // Add to overlay actions
+      overlayActions.push({
+        type: 'audio',
+        src: mediaItem.src,
+        volume: mediaItem.volume || 1.0,
+        duration: mediaItem.duration || 5
+      });
+
+    } else if (mediaItem.type === 'image') {
+      // Add image to overlay
+      try {
+        const imagePath = await window.electronAPI.getSoundPath(mediaItem.src);
+        const imageUrl = `http://localhost:8080/media/${encodeURIComponent(mediaItem.src)}`;
+        console.log('🎵 Image URL constructed:', imageUrl);
+        console.log('🎵 mediaItem.src:', mediaItem.src);
+        console.log('🎵 imagePath:', imagePath);
+        
+        overlayActions.push({
+          type: 'image',
+          filePath: imagePath,
+          url: imageUrl, // Use relative path for URL
+          src: mediaItem.src, // Keep original src for reference
+          duration: mediaItem.duration || 5
+        });
+      } catch (error) {
+        console.error('Error getting image path:', error);
+        // Fallback to src if path resolution fails
+        overlayActions.push({
+          type: 'image',
+          src: mediaItem.src,
+          url: `http://localhost:8080/media/${encodeURIComponent(mediaItem.src)}`,
+          duration: mediaItem.duration || 5
+        });
+      }
+
+    } else if (mediaItem.type === 'video') {
+      // Add video to overlay
+      try {
+        const videoPath = await window.electronAPI.getSoundPath(mediaItem.src);
+        const videoUrl = `http://localhost:8080/media/${encodeURIComponent(mediaItem.src)}`;
+        console.log('🎵 Video URL constructed:', videoUrl);
+        console.log('🎵 mediaItem.src:', mediaItem.src);
+        console.log('🎵 videoPath:', videoPath);
+        
+        overlayActions.push({
+          type: 'video',
+          filePath: videoPath,
+          url: videoUrl, // Use relative path for URL
+          src: mediaItem.src, // Keep original src for reference
+          duration: mediaItem.duration || 5
+        });
+      } catch (error) {
+        console.error('Error getting video path:', error);
+        // Fallback to src if path resolution fails
+        overlayActions.push({
+          type: 'video',
+          src: mediaItem.src,
+          url: `http://localhost:8080/media/${encodeURIComponent(mediaItem.src)}`,
+          duration: mediaItem.duration || 5
+        });
+      }
+
+    } else if (mediaItem.type === 'message' || mediaItem.type === 'text') {
+      // Add text message to overlay
+      overlayActions.push({
+        type: 'text',
+        text: mediaItem.text || button.label,
+        duration: mediaItem.duration || 3,
+        fontSize: mediaItem.fontSize || 24,
+        fontFamily: mediaItem.fontFamily || 'Arial, sans-serif',
+        textColor: mediaItem.textColor || '#ffffff',
+        backgroundColor: mediaItem.backgroundColor || 'rgba(0,0,0,0.8)',
+        padding: mediaItem.padding || '10px 15px',
+        borderRadius: mediaItem.borderRadius || '5px',
+        position: mediaItem.position || 'center' // 'center', 'top-left', 'top-right', 'bottom-left', 'bottom-right'
+      });
+
+    } else if (mediaItem.type === 'app') {
+      // Launch app locally
+      try {
+        if (mediaItem.args) {
+          window.electronAPI.launchApp({ path: mediaItem.src, args: mediaItem.args });
+        } else {
+          window.electronAPI.launchApp({ path: mediaItem.src });
+        }
+      } catch (error) {
+        console.error('Error launching app:', error);
+      }
+    }
+  }
+
+  // Send all actions to overlay simultaneously
+  if (overlayActions.length > 0) {
+    console.log('🎵 Sending multi-action to overlay:', overlayActions);
+    console.log('🎵 Number of actions:', overlayActions.length);
+    overlayActions.forEach((action, index) => {
+      console.log(`🎵 Action ${index}:`, action);
+    });
+    
+    // Also add a test action to verify the overlay is working
+    overlayActions.push({
+      type: 'text',
+      text: `🎵 Multi-Media: ${button.label}`,
+      duration: 3,
+      fontSize: 20,
+      textColor: '#ffffff',
+      backgroundColor: 'rgba(0,150,255,0.8)',
+      position: 'center'
+    });
+    
+    window.electronAPI.send('overlay-execute-multi-action', {
+      actions: overlayActions
+    });
+  }
+
+  console.log('🎵 === MULTI-MEDIA BUTTON COMPLETE ===');
+}
+
+// Multi-Action Form Manager
+class MultiActionFormManager {
+  constructor() {
+    this.actionCounter = 0;
+    this.actions = [];
+    this.initializeForm();
+  }
+
+  initializeForm() {
+    // Add event listeners
+    document.getElementById('add-action').addEventListener('click', () => {
+      this.addAction();
+    });
+
+    // Initialize with one default action
+    this.addAction();
+  }
+
+  addAction() {
+    const actionId = `action-${this.actionCounter++}`;
+    const actionItem = this.createActionElement(actionId);
+    
+    const container = document.getElementById('actions-container');
+    container.appendChild(actionItem);
+    
+    this.actions.push({
+      id: actionId,
+      type: 'audio',
+      data: {}
+    });
+
+    this.updateActionFields(actionId);
+  }
+
+  createActionElement(actionId) {
+    const actionDiv = document.createElement('div');
+    actionDiv.className = 'action-item';
+    actionDiv.id = actionId;
+    
+    actionDiv.innerHTML = `
+      <div class="action-item-header">
+        <select class="action-type-select" data-action-id="${actionId}">
+          <option value="audio">🎵 Audio</option>
+          <option value="image">🖼️ Image</option>
+          <option value="video">🎥 Video</option>
+          <option value="message">💬 Text Message</option>
+          <option value="app">🚀 App</option>
+        </select>
+        <button type="button" class="remove-action-btn" data-action-id="${actionId}">Remove</button>
+      </div>
+      <div class="action-fields" id="fields-${actionId}">
+        <!-- Fields will be populated based on action type -->
+      </div>
+    `;
+
+    // Add event listeners
+    const typeSelect = actionDiv.querySelector('.action-type-select');
+    const removeBtn = actionDiv.querySelector('.remove-action-btn');
+
+    typeSelect.addEventListener('change', (e) => {
+      this.updateActionFields(actionId);
+    });
+
+    removeBtn.addEventListener('click', (e) => {
+      this.removeAction(actionId);
+    });
+
+    return actionDiv;
+  }
+
+  updateActionFields(actionId) {
+    const actionElement = document.getElementById(actionId);
+    const typeSelect = actionElement.querySelector('.action-type-select');
+    const fieldsContainer = actionElement.querySelector('.action-fields');
+    const actionType = typeSelect.value;
+
+    // Update the action data
+    const actionIndex = this.actions.findIndex(a => a.id === actionId);
+    if (actionIndex !== -1) {
+      this.actions[actionIndex].type = actionType;
+    }
+
+    // Clear existing fields
+    fieldsContainer.innerHTML = '';
+
+    // Add fields based on action type
+    switch (actionType) {
+      case 'audio':
+        fieldsContainer.innerHTML = this.getAudioFields(actionId);
+        this.setupAudioEventListeners(actionId);
+        break;
+      case 'image':
+        fieldsContainer.innerHTML = this.getImageFields(actionId);
+        this.setupImageEventListeners(actionId);
+        break;
+      case 'video':
+        fieldsContainer.innerHTML = this.getVideoFields(actionId);
+        this.setupVideoEventListeners(actionId);
+        break;
+      case 'message':
+        fieldsContainer.innerHTML = this.getMessageFields(actionId);
+        this.setupMessageEventListeners(actionId);
+        break;
+      case 'app':
+        fieldsContainer.innerHTML = this.getAppFields(actionId);
+        this.setupAppEventListeners(actionId);
+        break;
+    }
+
+    fieldsContainer.classList.add('active');
+  }
+
+  getAudioFields(actionId) {
+    return `
+      <div class="action-field-group">
+        <label>Audio File:</label>
+        <input type="file" id="audio-file-${actionId}" accept=".mp3,.wav,.ogg,.m4a" />
+        <div class="file-drop-zone" id="audio-drop-${actionId}">or drag audio file here</div>
+      </div>
+      <div class="action-field-group">
+        <label>Volume:</label>
+        <input type="range" id="audio-volume-${actionId}" min="0" max="100" value="100" />
+        <span class="volume-display" id="audio-volume-display-${actionId}">100%</span>
+      </div>
+      <div class="action-field-group">
+        <label>Duration (seconds):</label>
+        <input type="number" id="audio-duration-${actionId}" min="1" max="30" value="5" />
+      </div>
+    `;
+  }
+
+  getImageFields(actionId) {
+    return `
+      <div class="action-field-group">
+        <label>Image File:</label>
+        <input type="file" id="image-file-${actionId}" accept=".jpg,.jpeg,.png,.gif,.svg,.webp" />
+        <div class="file-drop-zone" id="image-drop-${actionId}">or drag image file here</div>
+      </div>
+      <div class="action-field-group">
+        <label>Duration (seconds):</label>
+        <input type="number" id="image-duration-${actionId}" min="1" max="30" value="5" />
+      </div>
+    `;
+  }
+
+  getVideoFields(actionId) {
+    return `
+      <div class="action-field-group">
+        <label>Video File:</label>
+        <input type="file" id="video-file-${actionId}" accept=".mp4,.webm,.ogg,.avi,.mov" />
+        <div class="file-drop-zone" id="video-drop-${actionId}">or drag video file here</div>
+      </div>
+      <div class="action-field-group">
+        <label>Duration (seconds):</label>
+        <input type="number" id="video-duration-${actionId}" min="1" max="60" value="10" />
+      </div>
+    `;
+  }
+
+  getMessageFields(actionId) {
+    return `
+      <div class="action-field-group">
+        <label>Message Text:</label>
+        <textarea id="message-text-${actionId}" placeholder="Enter message to display..." rows="3">Hello!</textarea>
+      </div>
+      <div class="action-field-group">
+        <label>Duration (seconds):</label>
+        <input type="number" id="message-duration-${actionId}" min="1" max="30" value="3" />
+      </div>
+      <div class="action-field-group">
+        <label>Position:</label>
+        <select id="message-position-${actionId}">
+          <option value="center">Center</option>
+          <option value="top-left">Top Left</option>
+          <option value="top-right">Top Right</option>
+          <option value="bottom-left">Bottom Left</option>
+          <option value="bottom-right">Bottom Right</option>
+        </select>
+      </div>
+      <div class="text-formatting-group">
+        <div class="action-field-group">
+          <label>Font Size:</label>
+          <input type="number" id="message-fontsize-${actionId}" min="12" max="72" value="24" />
+        </div>
+        <div class="action-field-group">
+          <label>Font Family:</label>
+          <select id="message-fontfamily-${actionId}">
+            <option value="Arial, sans-serif">Arial</option>
+            <option value="Helvetica, sans-serif">Helvetica</option>
+            <option value="Georgia, serif">Georgia</option>
+            <option value="Times New Roman, serif">Times New Roman</option>
+            <option value="Courier New, monospace">Courier New</option>
+            <option value="Verdana, sans-serif">Verdana</option>
+          </select>
+        </div>
+        <div class="action-field-group">
+          <label>Text Color:</label>
+          <input type="color" id="message-textcolor-${actionId}" value="#ffffff" />
+        </div>
+        <div class="action-field-group">
+          <label>Background Color:</label>
+          <input type="color" id="message-bgcolor-${actionId}" value="#000000" />
+        </div>
+        <div class="action-field-group">
+          <label>Background Opacity:</label>
+          <input type="range" id="message-bgopacity-${actionId}" min="0" max="100" value="80" />
+          <span class="volume-display" id="message-bgopacity-display-${actionId}">80%</span>
+        </div>
+        <div class="action-field-group">
+          <label>Padding:</label>
+          <input type="text" id="message-padding-${actionId}" value="10px 15px" placeholder="e.g., 10px 15px" />
+        </div>
+        <div class="action-field-group">
+          <label>Border Radius:</label>
+          <input type="text" id="message-borderradius-${actionId}" value="5px" placeholder="e.g., 5px" />
+        </div>
+      </div>
+    `;
+  }
+
+  getAppFields(actionId) {
+    return `
+      <div class="action-field-group">
+        <label>Application File:</label>
+        <input type="file" id="app-file-${actionId}" accept=".exe,.bat,.cmd,.lnk,.app,.sh,.desktop" />
+        <div class="file-drop-zone" id="app-drop-${actionId}">or drag app file here</div>
+      </div>
+      <div class="action-field-group">
+        <label>Arguments (optional):</label>
+        <input type="text" id="app-args-${actionId}" placeholder="Command line arguments..." />
+      </div>
+    `;
+  }
+
+  getMultiMediaFields() {
+    return `
+      <div class="action-field-group">
+        <label>Media Actions:</label>
+        <div id="multi-media-actions" style="
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          padding: 10px;
+          min-height: 200px;
+          background: #f9f9f9;
+          margin-bottom: 10px;
+        ">
+          <!-- Actions will be populated here -->
+        </div>
+        <button type="button" id="add-multi-action" style="
+          padding: 8px 16px;
+          background: #007bff;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+        ">+ Add Action</button>
+      </div>
+    `;
+  }
+
+  addMultiMediaAction(action = null, index = null) {
+    const actionsContainer = document.getElementById('actions-container');
+    if (!actionsContainer) return;
+    
+    const actionIndex = index !== null ? index : actionsContainer.children.length;
+    const actionDiv = document.createElement('div');
+    actionDiv.className = 'multi-action-item';
+    actionDiv.style.cssText = `
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      margin-bottom: 10px;
+      position: relative;
+    `;
+    
+    const actionType = action ? action.type : 'audio';
+    actionDiv.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <select class="action-type-select" style="padding: 4px; margin-right: 10px;">
+          <option value="audio" ${actionType === 'audio' ? 'selected' : ''}>Audio</option>
+          <option value="image" ${actionType === 'image' ? 'selected' : ''}>Image</option>
+          <option value="video" ${actionType === 'video' ? 'selected' : ''}>Video</option>
+          <option value="text" ${actionType === 'text' || actionType === 'message' ? 'selected' : ''}>Text</option>
+        </select>
+        <button type="button" class="remove-action" style="
+          background: #dc3545;
+          color: white;
+          border: none;
+          border-radius: 3px;
+          padding: 4px 8px;
+          cursor: pointer;
+        ">Remove</button>
+      </div>
+      
+      <div class="action-fields">
+        ${multiActionFormManager.getMultiActionFields(action, actionIndex)}
+      </div>
+    `;
+    
+    actionsContainer.appendChild(actionDiv);
+    
+    // Add event listeners
+    const typeSelect = actionDiv.querySelector('.action-type-select');
+    const removeBtn = actionDiv.querySelector('.remove-action');
+    
+    typeSelect.addEventListener('change', (e) => {
+      const fieldsDiv = actionDiv.querySelector('.action-fields');
+      fieldsDiv.innerHTML = multiActionFormManager.getMultiActionFields({ type: e.target.value }, actionIndex);
+    });
+    
+    removeBtn.addEventListener('click', () => {
+      actionDiv.remove();
+    });
+  }
+
+  getMultiActionFields(action, index) {
+    const type = action ? action.type : 'audio';
+    
+    switch (type) {
+      case 'audio':
+        return `
+          <div style="margin-bottom: 10px;">
+            <label style="display: block; margin-bottom: 5px;">Audio File:</label>
+            <input type="file" class="action-file" accept=".mp3,.wav,.ogg,.m4a" />
+            ${action && action.src ? `<div style="font-size: 12px; color: #666; margin-top: 5px;">Current: ${action.src}</div>` : ''}
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <div style="flex: 1;">
+              <label style="display: block; margin-bottom: 5px;">Volume:</label>
+              <input type="range" class="action-volume" min="0" max="100" value="${action ? Math.round((action.volume || 1) * 100) : 100}" />
+              <span class="volume-display">${action ? Math.round((action.volume || 1) * 100) : 100}%</span>
+            </div>
+            <div style="flex: 1;">
+              <label style="display: block; margin-bottom: 5px;">Duration:</label>
+              <input type="number" class="action-duration" min="1" max="30" value="${action ? action.duration || 5 : 5}" />
+            </div>
+          </div>
+        `;
+        
+      case 'image':
+        return `
+          <div style="margin-bottom: 10px;">
+            <label style="display: block; margin-bottom: 5px;">Image File:</label>
+            <input type="file" class="action-file" accept=".png,.jpg,.jpeg,.gif,.webp" />
+            ${action && action.src ? `<div style="font-size: 12px; color: #666; margin-top: 5px;">Current: ${action.src}</div>` : ''}
+          </div>
+          <div>
+            <label style="display: block; margin-bottom: 5px;">Duration:</label>
+            <input type="number" class="action-duration" min="1" max="30" value="${action ? action.duration || 5 : 5}" />
+          </div>
+        `;
+        
+      case 'video':
+        return `
+          <div style="margin-bottom: 10px;">
+            <label style="display: block; margin-bottom: 5px;">Video File:</label>
+            <input type="file" class="action-file" accept=".mp4,.webm,.mov,.avi" />
+            ${action && action.src ? `<div style="font-size: 12px; color: #666; margin-top: 5px;">Current: ${action.src}</div>` : ''}
+          </div>
+          <div>
+            <label style="display: block; margin-bottom: 5px;">Duration:</label>
+            <input type="number" class="action-duration" min="1" max="60" value="${action ? action.duration || 10 : 10}" />
+          </div>
+        `;
+        
+      case 'text':
+      case 'message':
+        return `
+          <div style="margin-bottom: 10px;">
+            <label style="display: block; margin-bottom: 5px;">Text:</label>
+            <textarea class="action-text" rows="2" style="width: 100%; padding: 4px;">${action ? action.text || '' : ''}</textarea>
+          </div>
+          <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+            <div style="flex: 1;">
+              <label style="display: block; margin-bottom: 5px;">Position:</label>
+              <select class="action-position" style="width: 100%; padding: 4px;">
+                <option value="center" ${action && action.position === 'center' ? 'selected' : ''}>Center</option>
+                <option value="top-left" ${action && action.position === 'top-left' ? 'selected' : ''}>Top Left</option>
+                <option value="top-right" ${action && action.position === 'top-right' ? 'selected' : ''}>Top Right</option>
+                <option value="bottom-left" ${action && action.position === 'bottom-left' ? 'selected' : ''}>Bottom Left</option>
+                <option value="bottom-right" ${action && action.position === 'bottom-right' ? 'selected' : ''}>Bottom Right</option>
+              </select>
+            </div>
+            <div style="flex: 1;">
+              <label style="display: block; margin-bottom: 5px;">Duration:</label>
+              <input type="number" class="action-duration" min="1" max="30" value="${action ? action.duration || 3 : 3}" />
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+            <div style="flex: 1;">
+              <label style="display: block; margin-bottom: 5px;">Font Size:</label>
+              <input type="number" class="action-fontsize" min="12" max="72" value="${action ? action.fontSize || 24 : 24}" />
+            </div>
+            <div style="flex: 1;">
+              <label style="display: block; margin-bottom: 5px;">Font Family:</label>
+              <select class="action-fontfamily" style="width: 100%; padding: 4px;">
+                <option value="Arial, sans-serif" ${action && action.fontFamily === 'Arial, sans-serif' ? 'selected' : ''}>Arial</option>
+                <option value="Helvetica, sans-serif" ${action && action.fontFamily === 'Helvetica, sans-serif' ? 'selected' : ''}>Helvetica</option>
+                <option value="Georgia, serif" ${action && action.fontFamily === 'Georgia, serif' ? 'selected' : ''}>Georgia</option>
+                <option value="Times New Roman, serif" ${action && action.fontFamily === 'Times New Roman, serif' ? 'selected' : ''}>Times New Roman</option>
+                <option value="Courier New, monospace" ${action && action.fontFamily === 'Courier New, monospace' ? 'selected' : ''}>Courier New</option>
+                <option value="Verdana, sans-serif" ${action && action.fontFamily === 'Verdana, sans-serif' ? 'selected' : ''}>Verdana</option>
+              </select>
+            </div>
+            <div style="flex: 1;">
+              <label style="display: block; margin-bottom: 5px;">Text Color:</label>
+              <input type="color" class="action-textcolor" value="${formatColor(action ? action.textColor : '#ffffff')}" />
+            </div>
+            <div style="flex: 1;">
+              <label style="display: block; margin-bottom: 5px;">Background Color:</label>
+              <input type="color" class="action-bgcolor" value="${formatColor(action ? action.backgroundColor : '#000000')}" />
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <div style="flex: 1;">
+              <label style="display: block; margin-bottom: 5px;">Padding:</label>
+              <input type="text" class="action-padding" value="${action ? action.padding || '10px 15px' : '10px 15px'}" placeholder="e.g., 10px 15px" />
+            </div>
+            <div style="flex: 1;">
+              <label style="display: block; margin-bottom: 5px;">Border Radius:</label>
+              <input type="text" class="action-borderradius" value="${action ? action.borderRadius || '5px' : '5px'}" placeholder="e.g., 5px" />
+            </div>
+          </div>
+        `;
+        
+      default:
+        return '<div>Unknown action type</div>';
+    }
+  }
+
+  setupAudioEventListeners(actionId) {
+    const volumeSlider = document.getElementById(`audio-volume-${actionId}`);
+    const volumeDisplay = document.getElementById(`audio-volume-display-${actionId}`);
+    
+    volumeSlider.addEventListener('input', (e) => {
+      volumeDisplay.textContent = e.target.value + '%';
+    });
+  }
+
+  setupImageEventListeners(actionId) {
+    // Add any image-specific event listeners here
+  }
+
+  setupVideoEventListeners(actionId) {
+    // Add any video-specific event listeners here
+  }
+
+  setupMessageEventListeners(actionId) {
+    const opacitySlider = document.getElementById(`message-bgopacity-${actionId}`);
+    const opacityDisplay = document.getElementById(`message-bgopacity-display-${actionId}`);
+    
+    opacitySlider.addEventListener('input', (e) => {
+      opacityDisplay.textContent = e.target.value + '%';
+    });
+  }
+
+  setupAppEventListeners(actionId) {
+    // Add any app-specific event listeners here
+  }
+
+  setupMultiMediaEventListeners() {
+    // Add action button
+    const addBtn = document.getElementById('add-action');
+    if (addBtn) {
+      addBtn.addEventListener('click', () => {
+        this.addMultiMediaAction();
+      });
+    }
+    
+    // Volume display updates
+    document.addEventListener('input', (e) => {
+      if (e.target.classList.contains('action-volume')) {
+        const display = e.target.parentNode.querySelector('.volume-display');
+        if (display) {
+          display.textContent = e.target.value + '%';
+        }
+      }
+    });
+  }
+
+  removeAction(actionId) {
+    // Remove from DOM
+    const actionElement = document.getElementById(actionId);
+    if (actionElement) {
+      actionElement.remove();
+    }
+
+    // Remove from actions array
+    this.actions = this.actions.filter(a => a.id !== actionId);
+  }
+
+      getFormData() {
+        console.log('🎵 === GET FORM DATA ===');
+        const labelInput = document.getElementById('label-input');
+        const hotkeyInput = document.getElementById('hotkey-input');
+        
+        console.log('🎵 Label input exists:', !!labelInput);
+        console.log('🎵 Hotkey input exists:', !!hotkeyInput);
+        console.log('🎵 Actions count:', this.actions.length);
+        
+        const formData = {
+          label: labelInput ? labelInput.value.trim() : '',
+          hotkey: hotkeyInput ? hotkeyInput.value.trim() : '',
+          media: []
+        };
+
+        console.log('🎵 Base form data:', formData);
+
+        // Collect data from each action
+        this.actions.forEach((action, index) => {
+          console.log(`🎵 Processing action ${index}:`, action);
+          const actionData = this.getActionData(action.id, action.type);
+          console.log(`🎵 Action ${index} data:`, actionData);
+          if (actionData) {
+            formData.media.push(actionData);
+          }
+        });
+
+        console.log('🎵 Final form data:', formData);
+        return formData;
+      }
+
+  getActionData(actionId, actionType) {
+    switch (actionType) {
+      case 'audio':
+        return this.getAudioData(actionId);
+      case 'image':
+        return this.getImageData(actionId);
+      case 'video':
+        return this.getVideoData(actionId);
+      case 'message':
+        return this.getMessageData(actionId);
+      case 'app':
+        return this.getAppData(actionId);
+      default:
+        return null;
+    }
+  }
+
+  getAudioData(actionId) {
+    const fileInput = document.getElementById(`audio-file-${actionId}`);
+    const volume = document.getElementById(`audio-volume-${actionId}`).value;
+    const duration = document.getElementById(`audio-duration-${actionId}`).value;
+
+    if (!fileInput.files.length) return null;
+
+    return {
+      type: 'audio',
+      src: fileInput.files[0].path || fileInput.files[0].name,
+      volume: parseInt(volume) / 100,
+      duration: parseInt(duration)
+    };
+  }
+
+  getImageData(actionId) {
+    const fileInput = document.getElementById(`image-file-${actionId}`);
+    const duration = document.getElementById(`image-duration-${actionId}`).value;
+
+    if (!fileInput.files.length) return null;
+
+    const src = fileInput.files[0].path || fileInput.files[0].name;
+    console.log('🎵 Image src:', src);
+    console.log('🎵 File object:', fileInput.files[0]);
+
+    return {
+      type: 'image',
+      src: src,
+      duration: parseInt(duration)
+    };
+  }
+
+  getVideoData(actionId) {
+    const fileInput = document.getElementById(`video-file-${actionId}`);
+    const duration = document.getElementById(`video-duration-${actionId}`).value;
+
+    if (!fileInput.files.length) return null;
+
+    const src = fileInput.files[0].path || fileInput.files[0].name;
+    console.log('🎵 Video src:', src);
+    console.log('🎵 File object:', fileInput.files[0]);
+
+    return {
+      type: 'video',
+      src: src,
+      duration: parseInt(duration)
+    };
+  }
+
+  getMessageData(actionId) {
+    console.log(`🎵 Getting message data for action: ${actionId}`);
+    const textEl = document.getElementById(`message-text-${actionId}`);
+    const durationEl = document.getElementById(`message-duration-${actionId}`);
+    const positionEl = document.getElementById(`message-position-${actionId}`);
+    const fontSizeEl = document.getElementById(`message-fontsize-${actionId}`);
+    const fontFamilyEl = document.getElementById(`message-fontfamily-${actionId}`);
+    const textColorEl = document.getElementById(`message-textcolor-${actionId}`);
+    const bgColorEl = document.getElementById(`message-bgcolor-${actionId}`);
+    const bgOpacityEl = document.getElementById(`message-bgopacity-${actionId}`);
+    const paddingEl = document.getElementById(`message-padding-${actionId}`);
+    const borderRadiusEl = document.getElementById(`message-borderradius-${actionId}`);
+
+    console.log(`🎵 Message elements found:`, {
+      text: !!textEl,
+      duration: !!durationEl,
+      position: !!positionEl,
+      fontSize: !!fontSizeEl,
+      fontFamily: !!fontFamilyEl,
+      textColor: !!textColorEl,
+      bgColor: !!bgColorEl,
+      bgOpacity: !!bgOpacityEl,
+      padding: !!paddingEl,
+      borderRadius: !!borderRadiusEl
+    });
+
+    const text = textEl ? textEl.value.trim() : '';
+    const duration = durationEl ? durationEl.value : '3';
+    const position = positionEl ? positionEl.value : 'center';
+    const fontSize = fontSizeEl ? fontSizeEl.value : '24';
+    const fontFamily = fontFamilyEl ? fontFamilyEl.value : 'Arial, sans-serif';
+    const textColor = textColorEl ? textColorEl.value : '#ffffff';
+    const bgColor = bgColorEl ? bgColorEl.value : '#000000';
+    const bgOpacity = bgOpacityEl ? bgOpacityEl.value : '80';
+    const padding = paddingEl ? paddingEl.value : '10px 15px';
+    const borderRadius = borderRadiusEl ? borderRadiusEl.value : '5px';
+
+    console.log(`🎵 Message values:`, {
+      text: text,
+      duration: duration,
+      position: position,
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+      textColor: textColor,
+      bgColor: bgColor,
+      bgOpacity: bgOpacity,
+      padding: padding,
+      borderRadius: borderRadius
+    });
+
+    if (!text) {
+      console.log('❌ No text provided for message');
+      return null;
+    }
+
+    // Convert hex color to rgba with opacity
+    const bgColorRgba = this.hexToRgba(bgColor, parseInt(bgOpacity) / 100);
+
+    const result = {
+      type: 'text',
+      text: text,
+      duration: parseInt(duration),
+      position: position,
+      fontSize: parseInt(fontSize),
+      fontFamily: fontFamily,
+      textColor: textColor,
+      backgroundColor: bgColorRgba,
+      padding: padding,
+      borderRadius: borderRadius
+    };
+
+    console.log('🎵 Message data result:', result);
+    return result;
+  }
+
+  getAppData(actionId) {
+    const fileInput = document.getElementById(`app-file-${actionId}`);
+    const args = document.getElementById(`app-args-${actionId}`).value.trim();
+
+    if (!fileInput.files.length) return null;
+
+    const data = {
+      type: 'app',
+      src: fileInput.files[0].path || fileInput.files[0].name
+    };
+
+    if (args) {
+      data.args = args;
+    }
+
+    return data;
+  }
+
+  hexToRgba(hex, opacity) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+  }
+
+  resetForm() {
+    // Clear actions
+    this.actions = [];
+    this.actionCounter = 0;
+    
+    // Clear container
+    document.getElementById('actions-container').innerHTML = '';
+    
+    // Add default action
+    this.addAction();
+    
+    // Clear form fields
+    document.getElementById('label-input').value = '';
+    document.getElementById('hotkey-input').value = '';
+  }
+}
+
+// Initialize the multi-action form manager
+let multiActionFormManager;
+
+// Initialize everything when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('🎨 DOMContentLoaded - Starting initialization...');
+  
+  // Initialize theme manager FIRST (critical for UI)
+  console.log('🎨 Initializing theme manager...');
+  try {
+    themeManager = new ThemeManager();
+    notificationManager = new NotificationManager();
+    console.log('🎨 Theme and notification managers initialized successfully');
+  } catch (error) {
+    console.error('🎨 Error initializing theme/notification managers:', error);
+  }
+  
+  // Initialize pagination controls
+  console.log('🎨 Initializing pagination...');
+  const prev = document.getElementById('page-prev');
+  const next = document.getElementById('page-next');
+  if (prev) prev.addEventListener('click', () => { goToPrevPage(); });
+  if (next) next.addEventListener('click', () => { goToNextPage(); });
+  // Ensure container has enough bottom padding to avoid fixed pagination overlap
+  updateBottomPaddingForPagination();
+  
+  // Initialize visibility dropdown
+  console.log('🎨 Initializing visibility dropdown...');
+  initializeVisibilityDropdown();
+  
+  // Initialize multi-action form manager
+  console.log('🎨 Initializing multi-action form manager...');
+  multiActionFormManager = new MultiActionFormManager();
+  
+  // Initialize overlay test manager
+  console.log('🎨 Initializing overlay test manager...');
+  window.overlayTestManager = new OverlayTestManager();
+  
+  // Initialize hotkey recorder
+  console.log('🎨 Initializing hotkey recorder...');
+  initializeHotkeyRecorder();
+  
+  // Load initial buttons
+  console.log('🎨 Loading initial buttons...');
+  loadButtons();
+  
+  console.log('🎨 DOMContentLoaded initialization complete!');
+});
 
 // Replace all ipcRenderer.send and ipcRenderer.on with window.electronAPI methods
 // Add sound card functionality
-document.getElementById('close-settings').onclick = () => {
+function closeSettingsModal() {
   document.getElementById('settings-modal').classList.add('hidden');
   // Ensure hotkey recorder is stopped when closing modal
   if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
   window.electronAPI.enableHotkeys();
-};
+  // Reset multi-action form
+  if (multiActionFormManager) {
+    multiActionFormManager.resetForm();
+  }
+}
+
+// Handle both close buttons
+document.getElementById('close-settings').onclick = closeSettingsModal;
+document.getElementById('close-settings-cancel').onclick = closeSettingsModal;
 
 document.getElementById('settings-form').onsubmit = async (e) => {
+  console.log('🎵 === FORM SUBMISSION START ===');
   e.preventDefault();
   const form = e.target;
   const label = form.label.value.trim();
-  const type = form.type.value;
+  
+  console.log('🎵 Form label:', label);
+  console.log('🎵 MultiActionFormManager exists:', !!multiActionFormManager);
+  
   // Ensure we reference the hotkey input element safely
   const hotkeyInput = document.getElementById('hotkey-input');
   const hotkey = hotkeyInput && hotkeyInput.value ? hotkeyInput.value.trim() : '';
@@ -2219,9 +3316,216 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   let skipReload = false;
 
   // Get modifier checkboxes
-  if (!label) return alert("Please fill in the label field.");
+  if (!label) {
+    console.log('❌ No label provided');
+    return alert("Please fill in the label field.");
+  }
   // Use the recorded hotkey directly (accumulative recorder populates hotkeyInput.value)
   const completeHotkey = (hotkeyInput && hotkeyInput.value && hotkeyInput.value.trim()) ? hotkeyInput.value.trim() : hotkey;
+
+  // Check if we have multi-action form data
+  console.log('🎵 Checking multi-action form...');
+  console.log('🎵 MultiActionFormManager exists:', !!multiActionFormManager);
+  console.log('🎵 Actions array:', multiActionFormManager ? multiActionFormManager.actions : 'N/A');
+  console.log('🎵 Actions length:', multiActionFormManager ? multiActionFormManager.actions.length : 'N/A');
+  
+  // Check if we're editing a multi-media button OR adding a new multi-action button
+  const actionsContainer = document.getElementById('actions-container');
+  const actionItems = document.querySelectorAll('.action-item');
+  const isMultiMediaEdit = isEditing && actionsContainer && actionItems.length > 0;
+  const isMultiActionAdd = !isEditing && actionsContainer && actionItems.length > 0;
+  
+  console.log('🎵 Form detection debug:');
+  console.log('- isEditing:', isEditing);
+  console.log('- actionsContainer exists:', !!actionsContainer);
+  console.log('- actionItems.length:', actionItems.length);
+  console.log('- isMultiMediaEdit:', isMultiMediaEdit);
+  console.log('- isMultiActionAdd:', isMultiActionAdd);
+  
+  if (isMultiMediaEdit || isMultiActionAdd) {
+    console.log('🎵 === MULTI-ACTION FORM SUBMISSION ===');
+    
+    const actions = [];
+    const actionItems = document.querySelectorAll('.action-item');
+    
+    for (const item of actionItems) {
+      const actionId = item.id;
+      const type = item.querySelector('.action-type-select').value;
+      
+      let action = { type };
+      
+      if (type === 'audio') {
+        const fileInput = item.querySelector(`#audio-file-${actionId}`);
+        const duration = parseInt(item.querySelector(`#audio-duration-${actionId}`).value) || 5;
+        const volume = parseInt(item.querySelector(`#audio-volume-${actionId}`).value) / 100;
+        
+        if (fileInput && fileInput.files.length > 0) {
+          action.src = fileInput.files[0].path || fileInput.files[0].name;
+        } else {
+          // For editing, keep existing src if no new file selected
+          if (isMultiMediaEdit) {
+            const config = await window.electronAPI.getConfig();
+            const currentButton = config.buttons[parseInt(form.dataset.editingIndex)];
+            const existingAction = currentButton.media.find(a => a.type === type);
+            if (existingAction && existingAction.src) {
+              action.src = existingAction.src;
+            } else {
+              alert(`Please select a ${type} file`);
+              return;
+            }
+          } else {
+            // For new buttons, require file selection
+            alert(`Please select a ${type} file`);
+            return;
+          }
+        }
+        
+        action.duration = duration;
+        action.volume = volume;
+        
+      } else if (type === 'image') {
+        const fileInput = item.querySelector(`#image-file-${actionId}`);
+        const duration = parseInt(item.querySelector(`#image-duration-${actionId}`).value) || 5;
+        
+        if (fileInput && fileInput.files.length > 0) {
+          action.src = fileInput.files[0].path || fileInput.files[0].name;
+        } else {
+          // For editing, keep existing src if no new file selected
+          if (isMultiMediaEdit) {
+            const config = await window.electronAPI.getConfig();
+            const currentButton = config.buttons[parseInt(form.dataset.editingIndex)];
+            const existingAction = currentButton.media.find(a => a.type === type);
+            if (existingAction && existingAction.src) {
+              action.src = existingAction.src;
+            } else {
+              alert(`Please select a ${type} file`);
+              return;
+            }
+          } else {
+            // For new buttons, require file selection
+            alert(`Please select a ${type} file`);
+            return;
+          }
+        }
+        
+        action.duration = duration;
+        
+      } else if (type === 'video') {
+        const fileInput = item.querySelector(`#video-file-${actionId}`);
+        const duration = parseInt(item.querySelector(`#video-duration-${actionId}`).value) || 10;
+        
+        if (fileInput && fileInput.files.length > 0) {
+          action.src = fileInput.files[0].path || fileInput.files[0].name;
+        } else {
+          // For editing, keep existing src if no new file selected
+          if (isMultiMediaEdit) {
+            const config = await window.electronAPI.getConfig();
+            const currentButton = config.buttons[parseInt(form.dataset.editingIndex)];
+            const existingAction = currentButton.media.find(a => a.type === type);
+            if (existingAction && existingAction.src) {
+              action.src = existingAction.src;
+            } else {
+              alert(`Please select a ${type} file`);
+              return;
+            }
+          } else {
+            // For new buttons, require file selection
+            alert(`Please select a ${type} file`);
+            return;
+          }
+        }
+        
+        action.duration = duration;
+        
+      } else if (type === 'message') {
+        const text = item.querySelector(`#message-text-${actionId}`).value.trim();
+        const duration = parseInt(item.querySelector(`#message-duration-${actionId}`).value) || 3;
+        const position = item.querySelector(`#message-position-${actionId}`).value;
+        const fontSize = parseInt(item.querySelector(`#message-fontsize-${actionId}`).value) || 24;
+        const fontFamily = item.querySelector(`#message-fontfamily-${actionId}`).value || 'Arial, sans-serif';
+        const textColor = item.querySelector(`#message-textcolor-${actionId}`).value;
+        const bgColor = item.querySelector(`#message-bgcolor-${actionId}`).value;
+        const padding = item.querySelector(`#message-padding-${actionId}`).value || '10px 15px';
+        const borderRadius = item.querySelector(`#message-borderradius-${actionId}`).value || '5px';
+        
+        if (!text) {
+          alert('Please enter text content');
+          return;
+        }
+        
+        action.type = 'text'; // Convert message to text for consistency
+        action.text = text;
+        action.duration = duration;
+        action.position = position;
+        action.fontSize = fontSize;
+        action.fontFamily = fontFamily;
+        action.textColor = textColor;
+        action.backgroundColor = `rgba(${parseInt(bgColor.substr(1,2), 16)}, ${parseInt(bgColor.substr(3,2), 16)}, ${parseInt(bgColor.substr(5,2), 16)}, 0.8)`;
+        action.padding = padding;
+        action.borderRadius = borderRadius;
+      }
+      
+      actions.push(action);
+    }
+    
+    if (actions.length === 0) {
+      alert('Please add at least one action');
+      return;
+    }
+    
+    if (isMultiMediaEdit) {
+      // Update existing button
+      const config = await window.electronAPI.getConfig();
+      const currentButton = config.buttons[parseInt(form.dataset.editingIndex)];
+      const updatedButton = {
+        ...currentButton,
+        label,
+        media: actions
+      };
+      
+      try {
+        await window.electronAPI.updateButton(parseInt(form.dataset.editingIndex), updatedButton);
+        await window.electronAPI.refreshHotkeys();
+        closeSettingsModal();
+        loadButtons();
+        console.log('🎵 Multi-media button updated successfully');
+        
+        if (window.notificationManager) {
+          window.notificationManager.show('success', 'Multi-media button updated!');
+        }
+      } catch (error) {
+        console.error('Error updating multi-media button:', error);
+        alert('Error updating button: ' + error.message);
+      }
+    } else {
+      // Create new button
+      const newButton = {
+        id: 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
+        label,
+        hotkey: completeHotkey,
+        media: actions
+      };
+      
+      try {
+        await window.electronAPI.addMultiMedia(newButton);
+        await window.electronAPI.refreshHotkeys();
+        closeSettingsModal();
+        loadButtons();
+        console.log('🎵 New multi-action button created successfully');
+        
+        if (window.notificationManager) {
+          window.notificationManager.show('success', 'Multi-action button created!');
+        }
+      } catch (error) {
+        console.error('Error creating multi-action button:', error);
+        alert('Error creating button: ' + error.message);
+      }
+    }
+    return;
+  }
+
+  // Legacy single-action handling (fallback)
+  const type = form.type.value;
 
   // Get the appropriate file input based on type
   const fileInput = type === 'app' ? document.getElementById('app-file-input') : document.getElementById('file-input');
@@ -2386,67 +3690,75 @@ window.editButton = async (index) => {
   const config = await window.electronAPI.getConfig();
   const btn = config.buttons[index];
   const settingsForm = document.getElementById('settings-form');
-  // Always set editingIndex for edit, and clear resolvedPath/existingFile for safety
+  
+  console.log('🎵 Editing button:', btn);
+  
+  // Set editing index and clear previous data
   settingsForm.dataset.editingIndex = index;
-  // Store stable id for in-place updates
   if (btn && btn.id) settingsForm.dataset.editingId = btn.id;
   else delete settingsForm.dataset.editingId;
   delete settingsForm.dataset.resolvedPath;
   delete settingsForm.dataset.existingFile;
-  // Replace file inputs to clear previous file references
-  const oldFileInput = document.getElementById('file-input');
-  if (oldFileInput) {
-    const newFileInput = oldFileInput.cloneNode(false);
-    newFileInput.required = false;
-    newFileInput.id = 'file-input';
-    newFileInput.name = 'file';
-    oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
-  }
-  const oldAppFileInput = document.getElementById('app-file-input');
-  if (oldAppFileInput) {
-    const newAppFileInput = oldAppFileInput.cloneNode(false);
-    newAppFileInput.required = false;
-    newAppFileInput.id = 'app-file-input';
-    newAppFileInput.name = 'app-file';
-    oldAppFileInput.parentNode.replaceChild(newAppFileInput, oldAppFileInput);
-  }
-  // Populate form fields
+  // Reset the form
+  settingsForm.reset();
+  
+  // Populate label
   const labelInput = document.getElementById('label-input');
-  labelInput.value = btn.label;
-  labelInput.readOnly = false;
-  labelInput.disabled = false;
-  // Set the type selection
+  if (labelInput) {
+    labelInput.value = btn.label || '';
+    labelInput.readOnly = false;
+    labelInput.disabled = false;
+  }
+  
+  // Set hotkey
+  const hotkeyInput = document.getElementById('hotkey-input');
+  if (hotkeyInput) {
+    hotkeyInput.value = btn.hotkey || '';
+  }
+  
+  // Clear hotkey status
+  const hotkeyStatus = document.getElementById('hotkey-status');
+  if (hotkeyStatus) {
+    hotkeyStatus.textContent = '';
+  }
+  
+  // Check if this is a multi-media button
+  if (btn.media && Array.isArray(btn.media)) {
+    console.log('🎵 Editing multi-media button:', btn);
+    // Use existing form for multi-media editing
+    editMultiMediaButtonInForm(index, btn);
+    return;
+  }
+  
+  // For single-action buttons, use the legacy form
   const typeSelect = document.getElementById('type-select');
-  typeSelect.value = btn.type;
-  // Toggle file input sections and required states based on type
+  if (typeSelect) {
+    typeSelect.value = btn.type || 'audio';
+  }
+  
+  // Toggle file input sections based on type
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
   const fileInput = document.getElementById('file-input');
   const appFileInput = document.getElementById('app-file-input');
+  
   if (btn.type === 'audio') {
-    audioFileSection.style.display = '';
-    appFileSection.style.display = 'none';
-    fileInput.required = false; // Not required when editing
-    appFileInput.required = false;
+    if (audioFileSection) audioFileSection.style.display = '';
+    if (appFileSection) appFileSection.style.display = 'none';
+    if (fileInput) fileInput.required = false;
+    if (appFileInput) appFileInput.required = false;
   } else {
-    audioFileSection.style.display = 'none';
-    appFileSection.style.display = '';
-    fileInput.required = false;
-    appFileInput.required = false; // Not required when editing
+    if (audioFileSection) audioFileSection.style.display = 'none';
+    if (appFileSection) appFileSection.style.display = '';
+    if (fileInput) fileInput.required = false;
+    if (appFileInput) appFileInput.required = false;
   }
-  // Set hotkey and parse modifiers
-  const hotkeyInput = document.getElementById('hotkey-input');
-  if (btn.hotkey) {
-    // Place full recorded hotkey string into input (recorder uses same format)
-    hotkeyInput.value = btn.hotkey;
-  } else {
-    hotkeyInput.value = '';
+  
+  // Store existing file path for editing
+  if (btn.src) {
+    settingsForm.dataset.existingFile = btn.src;
   }
-  // Store the existing file path and args for editing
-  settingsForm.dataset.existingFile = btn.src;
-  if (btn.args) {
-    settingsForm.dataset.resolvedArgs = btn.args;
-  }
+  
   // Populate volume slider if present
   const volumeInput = document.getElementById('volume-input');
   const volumeValue = document.getElementById('volume-value');
@@ -2456,24 +3768,29 @@ window.editButton = async (index) => {
     volumeInput.value = percent;
     if (volumeValue) volumeValue.textContent = `${percent}%`;
   }
-  // Update modal title
-  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : 'App'}: ${btn.label}`;
+  
   // Show current file info
   const dropZone = document.getElementById('drop-zone');
-  if (dropZone) {
+  if (dropZone && btn.src) {
     const fileName = btn.src.split('/').pop() || btn.src.split('\\').pop();
     dropZone.innerHTML = `
-      <div style="margin-bottom: 10px; color: #4CAF50; font-weight: bold;">
-        ✓ Current file: ${fileName}
+      <div style="color: #4CAF50; font-weight: bold; margin-bottom: 8px;">
+        Current file: ${fileName}
       </div>
       <div style="color: #888; font-size: 0.9em;">
         Drag new file here to replace, or leave empty to keep current file
       </div>
     `;
   }
+  
+  // Update modal title
+  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : 'App'}: ${btn.label}`;
+  
+  // Show the modal
   document.getElementById('settings-modal').classList.remove('hidden');
   window.electronAPI.disableHotkeys();
-  // Ensure recorder is stopped when opening edit
+  
+  // Stop hotkey recording if active
   if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
 };
 
@@ -2487,32 +3804,104 @@ if (volSlider) {
   });
 }
 
+// Multi-media button editing using existing form
+async function editMultiMediaButtonInForm(index, btn) {
+  console.log('🎵 Starting multi-media button edit in existing form for:', btn);
+  
+  const settingsForm = document.getElementById('settings-form');
+  const actionsContainer = document.getElementById('actions-container');
+  
+  console.log('🎵 settingsForm:', settingsForm);
+  console.log('🎵 actionsContainer:', actionsContainer);
+  
+  if (!settingsForm) {
+    console.error('❌ settings-form not found in DOM');
+    return;
+  }
+  
+  if (!actionsContainer) {
+    console.error('❌ actions-container not found in DOM');
+    return;
+  }
+  
+  // Set editing index
+  settingsForm.dataset.editingIndex = index;
+  if (btn && btn.id) settingsForm.dataset.editingId = btn.id;
+  else delete settingsForm.dataset.editingId;
+  
+  // Populate label
+  const labelInput = document.getElementById('label-input');
+  if (labelInput) {
+    labelInput.value = btn.label || '';
+    labelInput.readOnly = false;
+    labelInput.disabled = false;
+  } else {
+    console.error('❌ label-input not found in DOM');
+  }
+  
+  // Clear existing actions and populate with multi-media actions
+  actionsContainer.innerHTML = '';
+  
+  // Add each media action to the container
+  btn.media.forEach((action, idx) => {
+    multiActionFormManager.addMultiMediaAction(action, idx);
+  });
+  
+  // Setup event listeners
+  multiActionFormManager.setupMultiMediaEventListeners();
+  
+  // Show the form
+  settingsForm.style.display = 'block';
+  
+  const addButton = document.getElementById('add-button');
+  const editButton = document.getElementById('edit-button');
+  const cancelButton = document.getElementById('cancel-button');
+  
+  if (addButton) addButton.style.display = 'none';
+  if (editButton) editButton.style.display = 'inline-block';
+  if (cancelButton) cancelButton.style.display = 'inline-block';
+}
+
 // New helper: edit by element (maps displayed card back to config index)
 window.editButtonByEl = async (btnEl) => {
   try {
+    console.log('🎵 editButtonByEl called with:', btnEl);
     const card = btnEl.closest && btnEl.closest('.sound-card');
-    if (!card) return;
+    console.log('🎵 Found card:', card);
+    if (!card) {
+      console.log('❌ No card found');
+      return;
+    }
     const config = await window.electronAPI.getConfig();
     let origIndex = -1;
     // Prefer stable id mapping if present
     const bid = card.dataset.buttonId;
+    console.log('🎵 Button ID:', bid);
     if (bid && config && Array.isArray(config.buttons)) {
       origIndex = config.buttons.findIndex(b => b.id === bid);
+      console.log('🎵 Found by ID, index:', origIndex);
     }
     if (origIndex === -1) {
       // Fallback: try matching by soundData
       const soundData = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
+      console.log('🎵 Sound data:', soundData);
       if (soundData && config && Array.isArray(config.buttons)) {
         origIndex = config.buttons.findIndex(b => b.src === soundData.src && b.label === soundData.label && b.type === soundData.type);
+        console.log('🎵 Found by soundData, index:', origIndex);
       }
     }
     if (origIndex === -1) {
       // fallback to dataset.index (this is the displayed index)
       origIndex = parseInt(card.dataset.index || '-1');
+      console.log('🎵 Using dataset index:', origIndex);
     }
+    console.log('🎵 Final origIndex:', origIndex);
     // Delegate to existing editButton handler which expects a config index
     if (typeof window.editButton === 'function') {
+      console.log('🎵 Calling editButton with index:', origIndex);
       window.editButton(origIndex);
+    } else {
+      console.log('❌ editButton function not found');
     }
   } catch (e) {
     console.error('editButtonByEl error:', e);
@@ -2590,7 +3979,9 @@ function stopHotkeyRecording() {
   }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
+function initializeHotkeyRecorder() {
+  console.log('🎨 Setting up hotkey recorder...');
+  
   // Attach Record Hotkey button handler
   const recordHotkeyBtn = document.getElementById('record-hotkey');
   const hotkeyInput = document.getElementById('hotkey-input');
@@ -2677,7 +4068,9 @@ window.addEventListener('DOMContentLoaded', () => {
       recordHotkeyBtn.classList.add('recording');
     });
   }
-});
+  
+  console.log('🎨 Hotkey recorder initialized');
+}
 
 // move-bar removed — menu bar is used instead for window controls
 
@@ -2803,7 +4196,8 @@ function setFileInForm(file, type, audioFileSection, appFileSection, fileInput, 
   if (type === 'audio') {
     audioFileSection.style.display = '';
     appFileSection.style.display = 'none';
-    fileInput.required = true;
+    // Don't set required since we're using multi-action form
+    fileInput.required = false;
     appFileInput.required = false;
     // Set file input
     const dataTransfer = new DataTransfer();
@@ -2814,8 +4208,9 @@ function setFileInForm(file, type, audioFileSection, appFileSection, fileInput, 
   } else {
     audioFileSection.style.display = 'none';
     appFileSection.style.display = '';
+    // Don't set required since we're using multi-action form
     fileInput.required = false;
-    appFileInput.required = true;
+    appFileInput.required = false;
     // Set app file input
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
@@ -2842,17 +4237,15 @@ function updateFileDisplay(fileInput, fileName) {
 
 // Add event listener to Type select to toggle required state dynamically
 const typeSelect = document.getElementById('type-select');
-typeSelect.addEventListener('change', function() {
-  const fileInput = document.getElementById('file-input');
-  const appFileInput = document.getElementById('app-file-input');
-  if (typeSelect.value === 'audio') {
-    fileInput.required = true;
-    appFileInput.required = false;
-  } else {
-    fileInput.required = false;
-    appFileInput.required = true;
-  }
-});
+if (typeSelect) {
+  typeSelect.addEventListener('change', function() {
+    const fileInput = document.getElementById('file-input');
+    const appFileInput = document.getElementById('app-file-input');
+    // Don't set required since we're using multi-action form
+    if (fileInput) fileInput.required = false;
+    if (appFileInput) appFileInput.required = false;
+  });
+}
 
 // Theme System
 class ThemeManager {
@@ -3300,10 +4693,339 @@ let notificationManager;
   }
 })();
 
-// Wait for DOM to be ready before initializing theme manager
-document.addEventListener('DOMContentLoaded', () => {
-  themeManager = new ThemeManager();
-  notificationManager = new NotificationManager();
+// Overlay Test Widget Manager
+class OverlayTestManager {
+  constructor() {
+    this.modal = document.getElementById('overlay-test-modal');
+    this.connectionStatus = document.getElementById('overlay-connection-status');
+    this.clientsCount = document.getElementById('overlay-count');
+    
+    console.log('🎬 OverlayTestManager initialized');
+    console.log('Modal element found:', !!this.modal);
+    console.log('Modal classes:', this.modal ? this.modal.className : 'N/A');
+    
+    // Ensure modal starts hidden
+    if (this.modal) {
+      this.modal.classList.add('hidden');
+      console.log('🎬 Modal set to hidden on startup');
+    }
+    
+    this.setupEventListeners();
+    this.checkConnection();
+  }
+
+  setupEventListeners() {
+    // Modal close button
+    document.getElementById('overlay-modal-close').addEventListener('click', () => {
+      this.hideModal();
+    });
+
+    // Close modal when clicking outside
+    this.modal.addEventListener('click', (e) => {
+      if (e.target === this.modal) {
+        this.hideModal();
+      }
+    });
+
+    // Copy URL button
+    document.getElementById('copy-overlay-url').addEventListener('click', () => {
+      const urlInput = document.getElementById('overlay-url');
+      urlInput.select();
+      document.execCommand('copy');
+      if (window.notificationManager) {
+        window.notificationManager.show('success', 'OBS URL copied!');
+      }
+    });
+
+    // Test buttons
+    document.getElementById('test-connection').addEventListener('click', () => {
+      console.log('🔌 Test Connection button clicked!');
+      this.sendOverlayCommand('overlay-test-connection');
+    });
+
+    document.getElementById('test-message').addEventListener('click', () => {
+      console.log('💬 Test Message button clicked!');
+      this.sendOverlayCommand('overlay-test-message');
+    });
+
+    document.getElementById('test-stats').addEventListener('click', () => {
+      this.sendOverlayCommand('overlay-test-stats');
+    });
+
+    document.getElementById('test-activity').addEventListener('click', () => {
+      this.sendOverlayCommand('overlay-test-activity');
+    });
+
+    document.getElementById('test-multi').addEventListener('click', () => {
+      console.log('🎪 Multi-Action button clicked!');
+      this.sendMultiActionTest();
+    });
+
+    // Test multi-media button (audio + image + text)
+    const testMultiMediaBtn = document.getElementById('test-multi-media');
+    if (testMultiMediaBtn) {
+      testMultiMediaBtn.addEventListener('click', () => {
+        console.log('🎪 Multi-Media button test clicked!');
+        this.testMultiMediaButton();
+      });
+    }
+
+    document.getElementById('test-simultaneous').addEventListener('click', () => {
+      this.sendOverlayCommand('overlay-test-simultaneous');
+    });
+
+    // Media test buttons
+    document.getElementById('test-image').addEventListener('click', () => {
+      this.sendOverlayCommand('overlay-test-image');
+    });
+
+    document.getElementById('test-video').addEventListener('click', () => {
+      this.sendOverlayCommand('overlay-test-video');
+    });
+
+    document.getElementById('test-audio').addEventListener('click', () => {
+      this.sendOverlayCommand('overlay-test-audio');
+    });
+
+    document.getElementById('test-gif').addEventListener('click', () => {
+      this.sendOverlayCommand('overlay-test-gif');
+    });
+
+    document.getElementById('hide-all').addEventListener('click', () => {
+      this.sendOverlayCommand('overlay-hide-all');
+    });
+
+    // Custom message
+    document.getElementById('send-custom-message').addEventListener('click', () => {
+      console.log('📤 Send Custom Message button clicked!');
+      this.sendCustomMessage();
+    });
+
+    // Close modal on escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.modal.classList.contains('hidden')) {
+        this.hideModal();
+      }
+    });
+  }
+
+  showModal() {
+    console.log('🎬 === SHOW MODAL START ===');
+    console.log('🎬 Modal element:', this.modal);
+    console.log('🎬 Modal classes before:', this.modal ? this.modal.className : 'N/A');
+    
+    if (this.modal) {
+      this.modal.classList.remove('hidden');
+      console.log('🎬 Modal classes after:', this.modal.className);
+      console.log('🎬 Modal visible:', !this.modal.classList.contains('hidden'));
+    } else {
+      console.error('❌ Modal element not found!');
+    }
+    
+    console.log('🎬 Overlay modal shown');
+    this.checkConnection();
+    console.log('🎬 === SHOW MODAL END ===');
+  }
+
+  hideModal() {
+    this.modal.classList.add('hidden');
+    console.log('🎬 Overlay modal hidden');
+  }
+
+  sendOverlayCommand(command) {
+    console.log('📤 === SEND OVERLAY COMMAND START ===');
+    console.log('📤 Command:', command);
+    console.log('📤 electronAPI exists:', !!window.electronAPI);
+    console.log('📤 electronAPI.send exists:', !!(window.electronAPI && window.electronAPI.send));
+    
+    if (window.electronAPI && window.electronAPI.send) {
+      console.log('📤 Sending command to main process:', command);
+      window.electronAPI.send(command);
+      
+      if (window.notificationManager) {
+        window.notificationManager.show('info', `Sent ${command} to overlay`);
+        console.log('📤 Notification shown');
+      }
+      console.log('✅ Command sent successfully');
+    } else {
+      console.error('❌ electronAPI not available!');
+      if (window.notificationManager) {
+        window.notificationManager.show('error', 'electronAPI not available');
+      }
+    }
+    console.log('📤 === SEND OVERLAY COMMAND END ===');
+  }
+
+  sendCustomMessage() {
+    console.log('📤 === SEND CUSTOM MESSAGE START ===');
+    
+    const text = document.getElementById('custom-message-text').value;
+    const duration = parseInt(document.getElementById('custom-message-duration').value);
+    const fontSize = parseInt(document.getElementById('custom-message-size').value);
+    const textColor = document.getElementById('custom-text-color').value;
+    const backgroundColor = document.getElementById('custom-bg-color').value;
+
+    console.log('📤 Custom message data:', {
+      text: text,
+      duration: duration,
+      fontSize: fontSize,
+      textColor: textColor,
+      backgroundColor: backgroundColor
+    });
+
+    if (!text.trim()) {
+      console.log('❌ No message text provided');
+      if (window.notificationManager) {
+        window.notificationManager.show('warning', 'Please enter a message');
+      }
+      return;
+    }
+
+    if (window.electronAPI && window.electronAPI.send) {
+      const messageData = {
+        message: text,
+        duration: duration,
+        fontSize: fontSize,
+        textColor: textColor,
+        backgroundColor: backgroundColor
+      };
+      
+      console.log('📤 Sending custom message to main process:', messageData);
+      window.electronAPI.send('overlay-show-message', messageData);
+      
+      if (window.notificationManager) {
+        window.notificationManager.show('success', 'Custom message sent to overlay');
+      }
+      console.log('✅ Custom message sent successfully');
+    } else {
+      console.error('❌ electronAPI not available!');
+      if (window.notificationManager) {
+        window.notificationManager.show('error', 'electronAPI not available');
+      }
+    }
+    console.log('📤 === SEND CUSTOM MESSAGE END ===');
+  }
+
+  sendMultiActionTest() {
+    console.log('🎪 === MULTI-ACTION TEST START ===');
+    console.log('🎪 Sending multi-action test with simultaneous actions');
+    
+    if (window.electronAPI && window.electronAPI.send) {
+      const multiActionData = {
+        actions: [
+          {
+            type: 'message',
+            text: '🎉 SIMULTANEOUS MULTI-ACTION! 🎉',
+            duration: 5,
+            fontSize: 28,
+            textColor: '#ff6b6b',
+            backgroundColor: 'rgba(255,107,107,0.9)'
+          },
+          {
+            type: 'message', 
+            text: 'Video + Image + Audio + Stats',
+            duration: 5,
+            fontSize: 20,
+            textColor: '#4ecdc4',
+            backgroundColor: 'rgba(78,205,196,0.9)'
+          },
+          {
+            type: 'stats',
+            data: {
+              viewerCount: 9999,
+              followerCount: 8888,
+              subscriberCount: 777
+            }
+          }
+        ]
+      };
+      
+      console.log('🎪 Multi-action data:', JSON.stringify(multiActionData, null, 2));
+      console.log('🎪 Sending to main process...');
+      
+      window.electronAPI.send('overlay-execute-multi-action', multiActionData);
+      
+      if (window.notificationManager) {
+        window.notificationManager.show('success', 'Simultaneous multi-action sent!');
+      }
+      console.log('✅ Multi-action sent successfully');
+    } else {
+      console.error('❌ electronAPI not available!');
+    }
+    console.log('🎪 === MULTI-ACTION TEST END ===');
+  }
+
+  testMultiMediaButton() {
+    console.log('🎪 === MULTI-MEDIA BUTTON TEST START ===');
+    console.log('🎪 Testing multi-media button functionality...');
+    
+    // Create a mock button with multiple media sources
+    const mockMultiMediaButton = {
+      label: 'Multi-Media Test',
+      media: [
+        {
+          type: 'audio',
+          src: 'test-audio.mp3', // This will fallback to message since file doesn't exist
+          volume: 0.8,
+          duration: 5
+        },
+        {
+          type: 'image',
+          src: 'logo.png', // Use existing logo
+          duration: 5
+        },
+        {
+          type: 'message',
+          text: '🎵🎨📝 Multi-Media Test!',
+          duration: 5,
+          fontSize: 24,
+          textColor: '#ffffff',
+          backgroundColor: 'rgba(150,50,200,0.9)'
+        }
+      ]
+    };
+
+    console.log('🎪 Mock button data:', JSON.stringify(mockMultiMediaButton, null, 2));
+    
+    // Call the multi-media handler
+    handleMultiMediaButton(mockMultiMediaButton);
+    
+    if (window.notificationManager) {
+      window.notificationManager.show('success', 'Multi-media button test sent!');
+    }
+    console.log('🎪 === MULTI-MEDIA BUTTON TEST END ===');
+  }
+
+  checkConnection() {
+    // Simulate connection check - in a real implementation, this would ping the WebSocket server
+    const statusDot = this.connectionStatus.querySelector('.status-dot');
+    const statusText = this.connectionStatus.querySelector('.status-text');
+    
+    // For now, assume connected if the modal is open (VirtualDeck is running)
+    statusDot.className = 'status-dot connected';
+    statusText.textContent = 'Connected to overlay server';
+    
+    // Simulate client count
+    this.clientsCount.textContent = '1'; // Would be updated from WebSocket server
+  }
+
+  updateConnectionStatus(connected, clientCount = 0) {
+    const statusDot = this.connectionStatus.querySelector('.status-dot');
+    const statusText = this.connectionStatus.querySelector('.status-text');
+    
+    if (connected) {
+      statusDot.className = 'status-dot connected';
+      statusText.textContent = 'Connected to overlay server';
+    } else {
+      statusDot.className = 'status-dot disconnected';
+      statusText.textContent = 'Disconnected from overlay server';
+    }
+    
+    this.clientsCount.textContent = clientCount;
+  }
+}
+
+// Theme manager initialization moved to consolidated DOMContentLoaded listener above
   
   // Add hotkey to cycle through themes (Ctrl+Shift+T)
   document.addEventListener('keydown', (e) => {
@@ -3318,6 +5040,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Export for potential use by other parts of the app
   window.themeManager = themeManager;
   window.notificationManager = notificationManager;
+  // overlayTestManager is already assigned to window in DOMContentLoaded
   
   // Watch for any changes to the document element's data-theme attribute
   const observer = new MutationObserver((mutations) => {
@@ -3344,4 +5067,66 @@ document.addEventListener('DOMContentLoaded', () => {
       themeManager.applyTheme(themeManager.getCurrentTheme());
     }, 1000);
   });
-});
+
+  // IPC listeners for overlay test widget
+  if (window.electronAPI) {
+    // open-overlay-test IPC handler removed - now using view-toggle checkbox
+
+    // Show notification
+    window.electronAPI.on('show-notification', (data) => {
+      if (window.notificationManager && data) {
+        window.notificationManager.show(data.type, data.message);
+      }
+    });
+
+    // View toggle handler
+    window.electronAPI.on('view-toggle', (data) => {
+      console.log('🎬 === VIEW TOGGLE IPC RECEIVED ===');
+      console.log('🎬 Data:', data);
+      console.log('🎬 Key:', data.key);
+      console.log('🎬 Checked:', data.checked);
+      
+      const element = document.getElementById(data.key);
+      console.log('🎬 Element found:', !!element);
+      
+      if (element) {
+        if (data.checked) {
+          element.classList.remove('hidden');
+          console.log('🎬 Element shown');
+          
+          // Special handling for overlay modal
+          if (data.key === 'overlay-test-modal' && window.overlayTestManager) {
+            console.log('🎬 Calling showModal() from view-toggle...');
+            window.overlayTestManager.showModal();
+          }
+        } else {
+          element.classList.add('hidden');
+          console.log('🎬 Element hidden');
+          
+          // Special handling for overlay modal
+          if (data.key === 'overlay-test-modal' && window.overlayTestManager) {
+            console.log('🎬 Calling hideModal() from view-toggle...');
+            window.overlayTestManager.hideModal();
+          }
+        }
+      }
+    });
+
+    // Show all views
+    window.electronAPI.on('view-show-all', () => {
+      const elements = ['sound-grid', 'twitch-stats-container', 'recent-activity-container', 'twitch-chat-container', 'sound-controls', 'overlay-test-modal'];
+      elements.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.classList.remove('hidden');
+      });
+    });
+
+    // Hide all views
+    window.electronAPI.on('view-hide-all', () => {
+      const elements = ['twitch-stats-container', 'recent-activity-container', 'twitch-chat-container', 'overlay-test-modal'];
+      elements.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.classList.add('hidden');
+      });
+    });
+  }

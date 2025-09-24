@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Overlay Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            font-family: Arial, sans-serif;
+        }
+        
+        .test-container {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 9999;
+        }
+        
+        .test-image {
+            width: 200px;
+            height: 200px;
+            border: 5px solid yellow;
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h2>Simple Overlay Test</h2>
+        <p>If you see this, the overlay is working!</p>
+        <img id="test-image" class="test-image" style="display: none;">
+        <div id="status">Waiting for test...</div>
+    </div>
+    
+    <script>
+        console.log('Simple overlay loaded');
+        
+        // Test image loading
+        const testImage = document.getElementById('test-image');
+        const status = document.getElementById('status');
+        
+        // Try to load a test image
+        const imageUrl = 'http://localhost:8080/media/test_1758741615300_image.png';
+        console.log('Testing image URL:', imageUrl);
+        
+        testImage.onload = function() {
+            console.log('Image loaded successfully!');
+            status.textContent = 'Image loaded successfully!';
+            testImage.style.display = 'block';
+        };
+        
+        testImage.onerror = function(e) {
+            console.error('Image failed to load:', e);
+            status.textContent = 'Image failed to load: ' + e.message;
+        };
+        
+        testImage.src = imageUrl;
+        
+        // Test WebSocket connection
+        const ws = new WebSocket('ws://localhost:8080');
+        ws.onopen = function() {
+            console.log('WebSocket connected');
+        };
+        ws.onmessage = function(event) {
+            console.log('WebSocket message:', event.data);
+        };
+        ws.onerror = function(error) {
+            console.error('WebSocket error:', error);
+        };
+    </script>
+</body>
+</html>
