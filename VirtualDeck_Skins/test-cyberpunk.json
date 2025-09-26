@@ -18,7 +18,7 @@
     "--warning-color": "#ffff00",
     "--error-color": "#ff0040"
   },
-  "css": "/* Cyberpunk glow effects */\n.sound-button {\n  box-shadow: 0 0 10px var(--accent-primary);\n  border: 1px solid var(--accent-primary);\n}\n\n.sound-button:hover {\n  box-shadow: 0 0 20px var(--accent-primary), 0 0 30px var(--accent-primary);\n  transform: scale(1.05);\n}\n\n/* Neon text effects */\nh1, h2, h3 {\n  text-shadow: 0 0 5px var(--text-primary);\n}\n\n/* Grid glow */\n#sound-grid {\n  background: radial-gradient(circle at center, var(--bg-secondary) 0%, var(--bg-primary) 100%);\n  border: 2px solid var(--accent-secondary);\n  box-shadow: 0 0 20px var(--accent-secondary);\n}",
+  "css": "/* Cyberpunk glow effects */\n.sound-button {\n  box-shadow: 0 0 10px var(--accent-primary);\n  border: 1px solid var(--accent-primary);\n}\n\n.sound-button:hover {\n  box-shadow: 0 0 20px var(--accent-primary), 0 0 30px var(--accent-primary);\n  transform: scale(1.05);\n}\n\n/* Neon text effects */\nh1, h2, h3 {\n  text-shadow: 0 0 5px var(--text-primary);\n}\n\n/* Grid glow */\n#sound-grid {\n  background: radial-gradient(circle at center, var(--bg-secondary) 0%, var(--bg-primary) 100%);\n  border: 2px solid var(--accent-secondary);\n  box-shadow: 0 0 20px var(--accent-secondary);\n  padding-top: 12px;\n}",
   "components": {
     ".chat-message": {
       "background": "linear-gradient(90deg, rgba(0, 255, 65, 0.1) 0%, rgba(0, 0, 0, 0.8) 100%)",

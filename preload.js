@@ -84,6 +84,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAvailableSkins: async () => ipcRenderer.invoke('get-available-skins'),
   loadSkin: async (skinId) => ipcRenderer.invoke('load-skin', skinId),
   importSkin: async (filePath) => ipcRenderer.invoke('import-skin', filePath),
+  // Request that the main process (and any other windows) apply a theme.
+  // The main process will broadcast back a 'theme-change' event which the renderer listens for.
+  applyTheme: (themeName) => ipcRenderer.send('request-apply-theme', themeName),
   showImportSkinDialog: async () => ipcRenderer.invoke('show-import-skin-dialog'),
   showDeleteSkinDialog: async () => ipcRenderer.invoke('show-delete-skin-dialog'),
   onSkinChange: (callback) => ipcRenderer.on('skin-change', (event, skinName) => callback(skinName)),
@@ -92,4 +95,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onRefreshMenu: (callback) => ipcRenderer.on('refresh-menu', callback),
   syncSkin: (skinName) => ipcRenderer.send('sync-skin', skinName),
   refreshMenu: () => ipcRenderer.send('refresh-menu'),
+  // Toggle DevTools from renderer
+  toggleDevTools: () => ipcRenderer.send('toggle-devtools'),
 });

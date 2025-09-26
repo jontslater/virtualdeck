@@ -2,7 +2,8 @@
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: sans-serif;
+  /* Use Roboto for UI text (loaded from Google Fonts) */
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   margin: 0;
   padding: 0;
   display: flex;
@@ -88,6 +89,53 @@ body {
   margin: 6px 0;
 }
 
+/* Small button variations used in the tools menu */
+.menu-dropdown-item.small {
+  padding: 6px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+/* Danger style for destructive actions */
+.menu-dropdown-item.danger {
+  color: var(--error-color);
+}
+
+/* Active theme indicator */
+.theme-item.active {
+  font-weight: 700;
+  border-left: 3px solid var(--accent-primary);
+  padding-left: 10px;
+}
+
+/* Theme radio row styling */
+.theme-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+}
+
+.theme-radio-input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-primary);
+}
+
+/* Make label clickable and look like menu item */
+.theme-row .menu-dropdown-item.theme-item {
+  cursor: pointer;
+  display: inline-block;
+  padding: 4px 8px;
+}
+
+/* Style checked label visually via the radio state */
+input.theme-radio-input:checked + label.menu-dropdown-item.theme-item {
+  font-weight: 700;
+  border-left: 3px solid var(--accent-primary);
+  padding-left: 6px;
+}
+
 
   --card-gap: 12px;   /* gap between cards */
   
@@ -160,6 +208,23 @@ body {
   --warning-color: #ff9800;
   --error-color: #f44336;
   --info-color: #2196F3;
+}
+
+/* Invert or brighten the app logo in light theme so it remains visible against a light background */
+[data-theme="light"] .app-menu-logo,
+[data-theme="light"] .app-logo {
+  /* soften the inversion so the logo isn't harsh on bright backgrounds */
+  filter: invert(0.85) brightness(0.95) contrast(0.95) saturate(0.95);
+  opacity: 0.92;
+  transition: filter 180ms ease, opacity 180ms ease;
+}
+
+/* Also invert/soften the logo when the Minimal White skin is applied */
+[data-theme="minimal-white"] .app-menu-logo,
+[data-theme="minimal-white"] .app-logo {
+  filter: invert(0.85) brightness(0.95) contrast(0.95) saturate(0.95);
+  opacity: 0.92;
+  transition: filter 180ms ease, opacity 180ms ease;
 }
 
 /* Red Theme */
@@ -448,6 +513,13 @@ html[data-theme], body[data-theme] {
   text-align: center;
 }
 
+/* Material icon sizing for pagination buttons */
+.page-btn .material-icons {
+  font-size: 18px;
+  vertical-align: middle;
+  line-height: 1;
+}
+
 /* When pagination is placed at the bottom of the main content, center it and add spacing */
 .bottom-pagination {
   position: fixed;
@@ -547,6 +619,29 @@ html[data-theme], body[data-theme] {
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
   -webkit-app-region: no-drag !important;
   pointer-events: none !important;
+}
+
+/* When dragging is active, reduce expensive effects from skins (box-shadow, filters, transitions) */
+body.vd-dragging .sound-card,
+body.vd-dragging .sound-card.draggable,
+body.vd-dragging .sound-card.drag-over,
+body.vd-dragging #sound-grid,
+body.vd-dragging .twitch-chat-container,
+body.vd-dragging .twitch-stats-container,
+body.vd-dragging .recent-activity-container {
+  transition: none !important;
+  box-shadow: none !important;
+  transform: none !important;
+  filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Reduce hover/active transitions during drag */
+body.vd-dragging .sound-card:hover,
+body.vd-dragging .sound-card.draggable:hover {
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 .sound-card.drag-over {
@@ -1774,7 +1869,8 @@ body.resizing-chat * {
   font-size: 13px;
   line-height: 1.6;
   text-align: left;
-  font-family: 'Courier New', monospace;
+  /* Use Roboto Mono for chat-like monospace content */
+  font-family: 'Roboto Mono', 'Courier New', monospace;
   background: var(--bg-secondary);
   min-height: 0;
   max-height: 360px;
@@ -1811,16 +1907,24 @@ body.resizing-chat * {
 }
 
 .chat-messages::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  /* Make the track transparent so no harsh vertical bar appears */
+  background: transparent;
 }
 
 .chat-messages::-webkit-scrollbar-thumb {
-  background: #444;
+  /* Subtle thumb that matches theme accent but stays unobtrusive */
+  background: rgba(0,0,0,0.25);
   border-radius: 3px;
+  border: 1px solid rgba(255,255,255,0.02);
 }
 
 .chat-messages::-webkit-scrollbar-thumb:hover {
-  background: #666;
+  background: rgba(0,0,0,0.35);
+}
+
+/* Firefox scrollbar fallback: make it unobtrusive */
+.chat-messages {
+  scrollbar-color: rgba(0,0,0,0.25) transparent; /* thumb, track */
 }
 
 /* Responsive design for smaller screens */
