@@ -16,14 +16,8 @@
 
   <!-- Left aligned app menu (File -> Quit) -->
   <nav id="app-menu-left" class="app-menu-left" role="menubar" aria-label="Application Menu">
-    <!-- Inline SVG logo so skins can color it via CSS variables -->
-    <svg class="app-logo app-menu-logo" width="48" height="16" viewBox="0 0 240 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-      <rect width="240" height="80" fill="none" />
-      <g fill="currentColor">
-        <text x="8" y="54" font-family="Roboto, sans-serif" font-size="36" font-weight="700">Virtual</text>
-        <text x="140" y="54" font-family="Roboto, sans-serif" font-size="36" font-weight="700" fill-opacity="0.85">Deck</text>
-      </g>
-    </svg>
+  <!-- Logo image (replaces inline SVG). Keep height at or below 80px so it fits the menu bar. -->
+  <img src="logo.png" alt="VirtualDeck" class="app-logo app-menu-logo" aria-hidden="true" focusable="false" />
     <div class="menu-item" id="menu-file" aria-haspopup="true">
       <button id="menu-file-btn" class="menu-button" aria-expanded="false" aria-controls="menu-file-dropdown">File</button>
       <div id="menu-file-dropdown" class="menu-dropdown hidden" role="menu" aria-label="File menu">

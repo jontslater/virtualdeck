@@ -542,7 +542,8 @@ html[data-theme], body[data-theme] {
 
 /* App logo for the left app menu (keeps aspect ratio) */
 .app-menu-logo {
-  height: 5px; /* smaller logo to fit the menu */
+  height: auto; /* preserve natural height */
+  max-height: 80px; /* cap the height so it fits the menu bar */
   width: auto; /* preserve aspect ratio */
   margin-right: 8px;
   display: inline-block;
