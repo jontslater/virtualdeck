@@ -2121,11 +2121,34 @@ app.whenReady().then(() => {
     }
   });
 
+  // Allow renderer to request applying a theme which will be broadcast back to renderer(s)
+  ipcMain.on('request-apply-theme', (event, themeName) => {
+    try {
+      if (win && !win.isDestroyed()) {
+        // Broadcast theme-change to the renderer processes
+        win.webContents.send('theme-change', themeName);
+      }
+      // Also sync the native menu radio states
+      ipcMain.emit('sync-theme', event, themeName);
+    } catch (e) {
+      console.warn('request-apply-theme failed', e);
+    }
+  });
+
   // Note: Skin functionality is now integrated into the theme system
 
   // Listen for menu refresh requests
   ipcMain.on('refresh-menu', () => {
     rebuildMenu().catch(console.error);
+  });
+
+  // Allow renderer to request toggling DevTools (used by renderer Tools menu)
+  ipcMain.on('toggle-devtools', () => {
+    try {
+      if (win && !win.isDestroyed()) win.webContents.toggleDevTools();
+    } catch (e) {
+      console.warn('toggle-devtools failed', e);
+    }
   });
 
   // Window control IPC handlers from renderer app toolbar

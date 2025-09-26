@@ -8,13 +8,22 @@
   <link rel="stylesheet" href="styles.css" />
   <!-- Google Material Icons -->
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <!-- Google Fonts: Roboto (UI) + Roboto Mono (monospace) -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <div id="global-drop-zone" class="hidden">Drop files here</div>
 
   <!-- Left aligned app menu (File -> Quit) -->
   <nav id="app-menu-left" class="app-menu-left" role="menubar" aria-label="Application Menu">
-    <img src="logo.png" alt="Virtual Deck Logo" class="app-logo app-menu-logo" />
+    <!-- Inline SVG logo so skins can color it via CSS variables -->
+    <svg class="app-logo app-menu-logo" width="48" height="16" viewBox="0 0 240 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+      <rect width="240" height="80" fill="none" />
+      <g fill="currentColor">
+        <text x="8" y="54" font-family="Roboto, sans-serif" font-size="36" font-weight="700">Virtual</text>
+        <text x="140" y="54" font-family="Roboto, sans-serif" font-size="36" font-weight="700" fill-opacity="0.85">Deck</text>
+      </g>
+    </svg>
     <div class="menu-item" id="menu-file" aria-haspopup="true">
       <button id="menu-file-btn" class="menu-button" aria-expanded="false" aria-controls="menu-file-dropdown">File</button>
       <div id="menu-file-dropdown" class="menu-dropdown hidden" role="menu" aria-label="File menu">
@@ -38,6 +47,28 @@
         <button data-toggle="toggle-recent-activity" class="menu-dropdown-item" role="menuitem">Recent Activity</button>
         <button data-toggle="toggle-twitch-chat" class="menu-dropdown-item" role="menuitem">Twitch Chat</button>
         <button data-toggle="toggle-sound-controls" class="menu-dropdown-item" role="menuitem">Sound Controls</button>
+      </div>
+    </div>
+    <div class="menu-item" id="menu-tools" aria-haspopup="true">
+      <button id="menu-tools-btn" class="menu-button" aria-expanded="false" aria-controls="menu-tools-dropdown">Tools</button>
+      <div id="menu-tools-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Tools menu">
+        <button id="menu-tools-devtools" class="menu-dropdown-item" role="menuitem">Developer Tools</button>
+        <button id="menu-tools-reload" class="menu-dropdown-item" role="menuitem">Reload Application</button>
+        <div class="menu-item" id="menu-tools-twitch-sub" aria-haspopup="true">
+          <button id="menu-tools-twitch-btn" class="menu-dropdown-item" aria-expanded="false" aria-controls="menu-tools-twitch-dropdown">Twitch Setup ▸</button>
+          <div id="menu-tools-twitch-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Twitch Setup submenu" style="left:100%; top:0;">
+            <button id="menu-tools-twitch-activity" class="menu-dropdown-item" role="menuitem">View Twitch Events / Test Events</button>
+            <button id="menu-tools-twitch-eventsub" class="menu-dropdown-item" role="menuitem">EventSub Subscriptions (Select)</button>
+            <button id="menu-tools-twitch-mapping" class="menu-dropdown-item" role="menuitem">Twitch Event Mapping</button>
+            <div class="menu-divider"></div>
+            <button id="menu-tools-twitch-clear" class="menu-dropdown-item" role="menuitem">Clear Twitch Credentials</button>
+          </div>
+        </div>
+        <div class="menu-divider"></div>
+        <div id="menu-tools-themes" class="menu-dropdown-section">
+          <!-- Themes will be populated dynamically -->
+          <div id="menu-tools-themes-container"></div>
+        </div>
       </div>
     </div>
     <div class="menu-item" id="menu-help" aria-haspopup="true">
@@ -171,7 +202,9 @@
           <div id="chat-status-indicator" class="status-indicator" title="Checking connection..."></div>
         </div>
         <div class="chat-controls">
-          <button id="toggle-chat" class="toggle-chat-btn">−</button>
+            <button id="toggle-chat" class="toggle-chat-btn" aria-label="Toggle chat">
+              <span class="material-icons">remove</span>
+            </button>
         </div>
         </div>
         <div id="twitch-chat-messages" class="chat-messages"></div>
@@ -179,9 +212,13 @@
     </div>
     <!-- Pagination controls moved below the main content so they appear under the grid -->
     <div id="pagination-controls" class="pagination-controls bottom-pagination">
-      <button id="page-prev" class="page-btn" title="Previous page"><<</button>
+      <button id="page-prev" class="page-btn" title="Previous page" aria-label="Previous page">
+        <span class="material-icons">arrow_back</span>
+      </button>
       <span id="pagination-indicator" class="pagination-indicator">1 / 1</span>
-      <button id="page-next" class="page-btn" title="Next page">>></button>
+      <button id="page-next" class="page-btn" title="Next page" aria-label="Next page">
+        <span class="material-icons">arrow_forward</span>
+      </button>
     </div>
   </div>
 
