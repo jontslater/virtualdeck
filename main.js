@@ -116,10 +116,10 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1280,
     height: 820,
-    minWidth: 900,
+    minWidth: 901,
     minHeight: 660,
     //alwaysOnTop: true,
-    //frame: false,
+    frame: false,
     movable: true,
     resizable: true,
     webPreferences: {
@@ -139,6 +139,11 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
     try {
       win.webContents.send('renderer-ready');
+      // Inform renderer of current maximize state so the toolbar icon can initialize correctly
+      try {
+        if (win.isMaximized && win.isMaximized()) win.webContents.send('window-maximized');
+        else win.webContents.send('window-unmaximized');
+      } catch (e) {}
     } catch (e) { console.warn('Failed to send renderer-ready:', e); }
   });
   // Create context menu
@@ -2116,12 +2121,64 @@ app.whenReady().then(() => {
     }
   });
 
+  // Allow renderer to request applying a theme which will be broadcast back to renderer(s)
+  ipcMain.on('request-apply-theme', (event, themeName) => {
+    try {
+      if (win && !win.isDestroyed()) {
+        // Broadcast theme-change to the renderer processes
+        win.webContents.send('theme-change', themeName);
+      }
+      // Also sync the native menu radio states
+      ipcMain.emit('sync-theme', event, themeName);
+    } catch (e) {
+      console.warn('request-apply-theme failed', e);
+    }
+  });
+
   // Note: Skin functionality is now integrated into the theme system
 
   // Listen for menu refresh requests
   ipcMain.on('refresh-menu', () => {
     rebuildMenu().catch(console.error);
   });
+
+  // Allow renderer to request toggling DevTools (used by renderer Tools menu)
+  ipcMain.on('toggle-devtools', () => {
+    try {
+      if (win && !win.isDestroyed()) win.webContents.toggleDevTools();
+    } catch (e) {
+      console.warn('toggle-devtools failed', e);
+    }
+  });
+
+  // Window control IPC handlers from renderer app toolbar
+  ipcMain.on('window-minimize', () => {
+    try { if (win && !win.isDestroyed()) win.minimize(); } catch (e) { console.warn('window-minimize failed', e); }
+  });
+  ipcMain.on('window-toggle-maximize', () => {
+    try {
+      if (!win || win.isDestroyed()) return;
+      if (win.isMaximized()) win.unmaximize(); else win.maximize();
+    } catch (e) { console.warn('window-toggle-maximize failed', e); }
+  });
+  ipcMain.on('window-close', () => {
+    try { if (win && !win.isDestroyed()) win.close(); } catch (e) { console.warn('window-close failed', e); }
+  });
+
+  // Allow renderer to request the Preferences view (forward to renderer)
+  ipcMain.on('open-preferences', () => {
+    try { if (win && !win.isDestroyed()) win.webContents.send('open-preferences'); } catch (e) { console.warn('open-preferences failed', e); }
+  });
+
+  // Propagate maximize/unmaximize events to renderer so UI can update
+  if (win) {
+    win.on('maximize', () => {
+      try { win.webContents.send('window-maximized'); } catch (e) {}
+    });
+    win.on('unmaximize', () => {
+      try { win.webContents.send('window-unmaximized'); } catch (e) {}
+    });
+  }
 
   // Register DevTools shortcut
   globalShortcut.register('F12', () => {

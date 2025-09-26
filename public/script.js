@@ -262,6 +262,9 @@ function startPointerDrag(e, card) {
   e.preventDefault();
   card.setPointerCapture && card.setPointerCapture(e.pointerId);
 
+  // Temporarily mark the document as in-drag to allow CSS to reduce expensive effects
+  try { document.body.classList.add('vd-dragging'); } catch (err) {}
+
   vdDragState.draggingCard = card;
   vdDragState.fromIndex = parseInt(card.dataset.index || '-1');
   vdDragState.startX = e.clientX;
@@ -413,6 +416,9 @@ function cleanupDrag() {
 
   // Reset state
   vdDragState = { draggingCard: null, ghost: null, fromIndex: -1, activeSlot: null, startX: 0, startY: 0, moved: false };
+
+  // Remove temporary dragging marker
+  try { document.body.classList.remove('vd-dragging'); } catch (err) {}
 }
 
 function handleDragStart() {
@@ -3055,6 +3061,13 @@ class ThemeManager {
 
     // Add custom CSS rules
     if (skinData.css && typeof skinData.css === 'string') {
+      // Warn if skin CSS appears to contain SCSS-style nesting (e.g., '&::after') which browsers won't parse
+      if (/&\s*[:.{\[]?/m.test(skinData.css)) {
+        console.warn('Skin CSS contains SCSS-style nesting (&). This may not be valid CSS when injected. Consider using flat selectors.');
+        try {
+          if (window.notificationManager) window.notificationManager.show('Imported skin contains nested/SCSS syntax which may not apply correctly.', 'warning', 5000);
+        } catch (e) {}
+      }
       cssContent += skinData.css;
     }
 
@@ -3064,12 +3077,42 @@ class ThemeManager {
         if (typeof styles === 'object') {
           cssContent += `${selector} {\n`;
           for (const [property, value] of Object.entries(styles)) {
-            cssContent += `  ${property}: ${value};\n`;
+            // Normalize font-family values for injected skins
+            if (property.toLowerCase() === 'font-family' && typeof value === 'string') {
+              const forceRoboto = localStorage.getItem('forceRobotoUI') === 'true';
+              let newVal = value;
+              if (forceRoboto) {
+                newVal = "'Roboto', sans-serif";
+              } else {
+                // Prefer Roboto Mono for monospace fallbacks
+                if (/Courier New|Courier|monospace/i.test(value)) {
+                  newVal = "'Roboto Mono', 'Courier New', monospace";
+                }
+              }
+              cssContent += `  ${property}: ${newVal};\n`;
+            } else {
+              cssContent += `  ${property}: ${value};\n`;
+            }
           }
           cssContent += '}\n';
         }
       }
     }
+
+    // Post-process raw CSS block for font-family declarations inside skinData.css
+    // This handles cases where skins include raw CSS strings with font-family rules.
+    (function normalizeCssString() {
+      const forceRoboto = localStorage.getItem('forceRobotoUI') === 'true';
+      if (!skinData.css || typeof skinData.css !== 'string') return;
+      // Replace font-family: ...; occurrences
+      cssContent = cssContent.replace(/font-family\s*:\s*([^;]+);/gi, (match, p1) => {
+        if (forceRoboto) return "font-family: 'Roboto', sans-serif;";
+        // If the original contains monospace or Courier, swap to Roboto Mono
+        if (/Courier New|Courier|monospace/i.test(p1)) return "font-family: 'Roboto Mono', 'Courier New', monospace;";
+        // Otherwise leave as-is
+        return `font-family: ${p1};`;
+      });
+    })();
 
     skinStyle.textContent = cssContent;
     document.head.appendChild(skinStyle);
@@ -3299,6 +3342,572 @@ let notificationManager;
     }, 100);
   }
 })();
+
+// --- App toolbar wiring ---
+function setupAppToolbar() {
+  const btnMin = document.getElementById('btn-minimize');
+  const btnMax = document.getElementById('btn-maximize');
+  const btnClose = document.getElementById('btn-close');
+  const maxIcon = document.getElementById('max-icon');
+
+  if (btnMin) btnMin.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (window.electronAPI && typeof window.electronAPI.minimizeWindow === 'function') window.electronAPI.minimizeWindow();
+  });
+  if (btnMax) btnMax.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (window.electronAPI && typeof window.electronAPI.toggleMaximizeWindow === 'function') window.electronAPI.toggleMaximizeWindow();
+  });
+  if (btnClose) btnClose.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (window.electronAPI && typeof window.electronAPI.closeWindow === 'function') window.electronAPI.closeWindow();
+  });
+
+  // Update maximize icon state
+  function showMaximizedState(isMax) {
+    if (!maxIcon) return;
+    // Use Material Icons names: 'open_in_full' for maximize, 'fullscreen_exit' for restore
+    maxIcon.textContent = isMax ? 'fullscreen_exit' : 'open_in_full';
+    // update title attribute
+    if (btnMax) btnMax.title = isMax ? 'Restore' : 'Maximize';
+    // ensure the material-icons class is present
+    if (!maxIcon.classList.contains('material-icons')) maxIcon.classList.add('material-icons');
+  }
+
+  // Listen for window maximize/unmaximize events from main
+  if (window.electronAPI && typeof window.electronAPI.onWindowMaximized === 'function') {
+    window.electronAPI.onWindowMaximized(() => showMaximizedState(true));
+  }
+  if (window.electronAPI && typeof window.electronAPI.onWindowUnmaximized === 'function') {
+    window.electronAPI.onWindowUnmaximized(() => showMaximizedState(false));
+  }
+
+  // Initial guess: not maximized
+  showMaximizedState(false);
+}
+
+// Initialize toolbar after DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  setupAppToolbar();
+  // initialize left app menu
+  if (typeof setupLeftAppMenu === 'function') setupLeftAppMenu();
+});
+
+// Left app menu wiring: toggles File dropdown and wires Quit
+function setupLeftAppMenu() {
+  const menuBtn = document.getElementById('menu-file-btn');
+  const menuDropdown = document.getElementById('menu-file-dropdown');
+  const quitBtn = document.getElementById('menu-file-quit');
+
+  if (!menuBtn || !menuDropdown) return;
+
+  function closeMenu() {
+    menuDropdown.classList.add('hidden');
+    menuBtn.setAttribute('aria-expanded', 'false');
+  }
+  // Helper to close other menus (so only one menu is open at a time)
+  function closeOtherMenus(exceptDropdown) {
+    const allDropdowns = [menuDropdown, viewDropdown, helpDropdown, editDropdown].filter(Boolean);
+    const allBtns = [menuBtn, viewBtn, helpBtn, editBtn].filter(Boolean);
+    allDropdowns.forEach(dd => {
+      if (dd !== exceptDropdown) dd.classList.add('hidden');
+    });
+    allBtns.forEach(b => {
+      try {
+        const ctrlId = b.getAttribute && b.getAttribute('aria-controls');
+        const ctrlEl = ctrlId ? document.getElementById(ctrlId) : null;
+        if (ctrlEl !== exceptDropdown) b.setAttribute('aria-expanded', 'false');
+      } catch (e) { /* ignore */ }
+    });
+  }
+
+  menuBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    // close any other open menus, but keep this one visible when toggling
+    closeOtherMenus(menuDropdown);
+    const isOpen = !menuDropdown.classList.contains('hidden');
+    if (isOpen) closeMenu(); else {
+      menuDropdown.classList.remove('hidden');
+      menuBtn.setAttribute('aria-expanded', 'true');
+    }
+  });
+
+  // Central outside-click handler: close all menus when clicking outside the menu area
+  document.addEventListener('click', (e) => {
+    const anyMenuContains = [menuBtn, menuDropdown, /* view/edit/help refs may be undefined yet */].some(el => el && el.contains(e.target));
+    // If any of the known elements contain the click, do nothing (individual handlers stopPropagation where needed)
+    if (!anyMenuContains) closeOtherMenus(null);
+  });
+
+  if (quitBtn) {
+    quitBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (window.electronAPI && typeof window.electronAPI.closeWindow === 'function') {
+        window.electronAPI.closeWindow();
+      } else {
+        // fallback: send ipc if available
+        try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('window-close'); } catch (e) {}
+      }
+    });
+  }
+
+  // View menu wiring (left app menu)
+  const viewBtn = document.getElementById('menu-view-btn');
+  const viewDropdown = document.getElementById('menu-view-dropdown');
+  const viewShowAll = document.getElementById('menu-view-showall');
+  const viewHideAll = document.getElementById('menu-view-hideall');
+
+  function closeViewMenu() {
+    if (viewDropdown) viewDropdown.classList.add('hidden');
+    if (viewBtn) viewBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  if (viewBtn && viewDropdown) {
+    viewBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // close other menus first so only this one is visible
+      closeOtherMenus(viewDropdown);
+      const open = !viewDropdown.classList.contains('hidden');
+      if (open) { viewDropdown.classList.add('hidden'); viewBtn.setAttribute('aria-expanded', 'false'); }
+      else { viewDropdown.classList.remove('hidden'); viewBtn.setAttribute('aria-expanded', 'true'); }
+    });
+    document.addEventListener('click', (e) => {
+      if (!viewBtn.contains(e.target) && !viewDropdown.contains(e.target)) { viewDropdown.classList.add('hidden'); viewBtn.setAttribute('aria-expanded', 'false'); }
+    });
+  }
+
+  // Map view menu button data-toggle attributes to checkbox ids used in visibility prefs
+  const viewButtonToggles = viewDropdown ? Array.from(viewDropdown.querySelectorAll('[data-toggle]')) : [];
+  viewButtonToggles.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const toggleId = btn.getAttribute('data-toggle');
+      const checkbox = document.getElementById(toggleId);
+      if (checkbox) {
+        checkbox.checked = !checkbox.checked;
+        checkbox.dispatchEvent(new Event('change'));
+      }
+      // Close the menu after selection
+      if (viewDropdown) viewDropdown.classList.add('hidden');
+      if (viewBtn) viewBtn.setAttribute('aria-expanded', 'false');
+    });
+  });
+
+  if (viewShowAll) {
+    viewShowAll.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const showBtn = document.getElementById('show-all-components');
+      if (showBtn) showBtn.click();
+      if (viewDropdown) viewDropdown.classList.add('hidden');
+      if (viewBtn) viewBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  if (viewHideAll) {
+    viewHideAll.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const hideBtn = document.getElementById('hide-all-components');
+      if (hideBtn) hideBtn.click();
+      if (viewDropdown) viewDropdown.classList.add('hidden');
+      if (viewBtn) viewBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  // Help menu wiring
+  const helpBtn = document.getElementById('menu-help-btn');
+  const helpDropdown = document.getElementById('menu-help-dropdown');
+  const helpAbout = document.getElementById('menu-help-about');
+  if (helpBtn && helpDropdown) {
+    helpBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // close other menus before opening help
+      closeOtherMenus(helpDropdown);
+      const open = !helpDropdown.classList.contains('hidden');
+      if (open) { helpDropdown.classList.add('hidden'); helpBtn.setAttribute('aria-expanded', 'false'); }
+      else { helpDropdown.classList.remove('hidden'); helpBtn.setAttribute('aria-expanded', 'true'); }
+    });
+    document.addEventListener('click', (e) => {
+      if (!helpBtn.contains(e.target) && !helpDropdown.contains(e.target)) { helpDropdown.classList.add('hidden'); helpBtn.setAttribute('aria-expanded', 'false'); }
+    });
+  }
+  if (helpAbout) {
+    helpAbout.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Trigger the same action as the main menu: send or open about modal
+      if (window.electronAPI && typeof window.electronAPI.send === 'function') {
+        try { window.electronAPI.send('show-about'); } catch (err) { /* ignore */ }
+      }
+      // Fallback: call local helper directly
+      try { openAboutModal(); } catch (err) {}
+      if (helpDropdown) helpDropdown.classList.add('hidden');
+      if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  // Edit menu wiring
+  const editBtn = document.getElementById('menu-edit-btn');
+  const editDropdown = document.getElementById('menu-edit-dropdown');
+  const prefBtn = document.getElementById('menu-edit-preferences');
+  if (editBtn && editDropdown) {
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // close other open menus first
+      closeOtherMenus(editDropdown);
+      const open = !editDropdown.classList.contains('hidden');
+      if (open) { editDropdown.classList.add('hidden'); editBtn.setAttribute('aria-expanded', 'false'); }
+      else { editDropdown.classList.remove('hidden'); editBtn.setAttribute('aria-expanded', 'true'); }
+    });
+    document.addEventListener('click', (e) => {
+      if (!editBtn.contains(e.target) && !editDropdown.contains(e.target)) { editDropdown.classList.add('hidden'); editBtn.setAttribute('aria-expanded', 'false'); }
+    });
+  }
+  // Tools menu wiring (new)
+  const toolsBtn = document.getElementById('menu-tools-btn');
+  const toolsDropdown = document.getElementById('menu-tools-dropdown');
+  const toolsDevtools = document.getElementById('menu-tools-devtools');
+  const toolsTwitchBtn = document.getElementById('menu-tools-twitch-btn');
+  const toolsTwitchDropdown = document.getElementById('menu-tools-twitch-dropdown');
+  const toolsTwitchActivity = document.getElementById('menu-tools-twitch-activity');
+  const toolsTwitchEventsub = document.getElementById('menu-tools-twitch-eventsub');
+  const toolsTwitchMapping = document.getElementById('menu-tools-twitch-mapping');
+  const toolsTwitchClear = document.getElementById('menu-tools-twitch-clear');
+  const toolsThemesContainer = document.getElementById('menu-tools-themes-container');
+  const toolsReload = document.getElementById('menu-tools-reload');
+
+  function closeToolsSubmenus(except) {
+    try { if (toolsTwitchDropdown && toolsTwitchDropdown !== except) toolsTwitchDropdown.classList.add('hidden'); } catch (e) {}
+  }
+
+  if (toolsBtn && toolsDropdown) {
+    toolsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeOtherMenus(toolsDropdown);
+      const open = !toolsDropdown.classList.contains('hidden');
+      if (open) { toolsDropdown.classList.add('hidden'); toolsBtn.setAttribute('aria-expanded', 'false'); }
+      else { toolsDropdown.classList.remove('hidden'); toolsBtn.setAttribute('aria-expanded', 'true'); }
+    });
+    document.addEventListener('click', (e) => {
+      if (!toolsBtn.contains(e.target) && !toolsDropdown.contains(e.target)) { toolsDropdown.classList.add('hidden'); toolsBtn.setAttribute('aria-expanded', 'false'); }
+    });
+  }
+
+  // Developer Tools
+  if (toolsDevtools) {
+    toolsDevtools.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (window.electronAPI && typeof window.electronAPI.toggleDevTools === 'function') {
+        window.electronAPI.toggleDevTools();
+      } else {
+        try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('toggle-devtools'); } catch (err) {}
+      }
+      if (toolsDropdown) toolsDropdown.classList.add('hidden');
+      if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  // Twitch nested submenu toggle
+  if (toolsTwitchBtn && toolsTwitchDropdown) {
+    toolsTwitchBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // ensure only this nested menu is open
+      closeToolsSubmenus();
+      const open = !toolsTwitchDropdown.classList.contains('hidden');
+      if (open) { toolsTwitchDropdown.classList.add('hidden'); toolsTwitchBtn.setAttribute('aria-expanded', 'false'); }
+      else { toolsTwitchDropdown.classList.remove('hidden'); toolsTwitchBtn.setAttribute('aria-expanded', 'true'); }
+    });
+    document.addEventListener('click', (e) => {
+      if (!toolsTwitchBtn.contains(e.target) && !toolsTwitchDropdown.contains(e.target)) { toolsTwitchDropdown.classList.add('hidden'); toolsTwitchBtn.setAttribute('aria-expanded', 'false'); }
+    });
+  }
+
+  if (toolsTwitchActivity) {
+    toolsTwitchActivity.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Prefer calling the renderer modal directly (defined in TwitchConnected/tc.js)
+      try {
+        if (typeof showTwitchActivityModal === 'function') {
+          showTwitchActivityModal();
+        } else {
+          // Fallback: try to ask main to forward the event (historic behavior)
+          try { window.electronAPI && window.electronAPI.send && window.electronAPI.send('open-twitch-activity'); } catch (err) {}
+          try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('open-twitch-activity'); } catch (err) {}
+        }
+      } catch (err) {
+        console.warn('Failed to open Twitch Activity modal directly:', err);
+      }
+      if (toolsDropdown) toolsDropdown.classList.add('hidden');
+    });
+  }
+  if (toolsTwitchEventsub) {
+    toolsTwitchEventsub.addEventListener('click', (e) => {
+      e.stopPropagation();
+      try {
+        if (typeof showTwitchSubscriptionsModal === 'function') {
+          showTwitchSubscriptionsModal();
+        } else {
+          try { window.electronAPI && window.electronAPI.send && window.electronAPI.send('open-eventsub-subscriptions'); } catch (err) { try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('open-eventsub-subscriptions'); } catch(e){} }
+        }
+      } catch (err) {
+        console.warn('Failed to open EventSub Subscriptions modal directly:', err);
+      }
+      if (toolsDropdown) toolsDropdown.classList.add('hidden');
+    });
+  }
+  if (toolsTwitchMapping) {
+    toolsTwitchMapping.addEventListener('click', (e) => {
+      e.stopPropagation();
+      try {
+        if (typeof showTwitchConnectedMenu === 'function') {
+          // Show connected menu and scroll to mappings section like the native menu does
+          try { showTwitchConnectedMenu(); } catch (e) {}
+          setTimeout(() => {
+            try {
+              const list = document.getElementById('twitch-connected-menu') && document.getElementById('twitch-connected-menu').querySelector('#mappings-list');
+              if (list && list.scrollIntoView) list.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } catch (e) {}
+          }, 80);
+        } else {
+          try { window.electronAPI && window.electronAPI.send && window.electronAPI.send('open-twitch-mapping'); } catch (err) { try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('open-twitch-mapping'); } catch(e){} }
+        }
+      } catch (err) {
+        console.warn('Failed to open Twitch Mapping UI directly:', err);
+      }
+      if (toolsDropdown) toolsDropdown.classList.add('hidden');
+    });
+  }
+  if (toolsTwitchClear) {
+    toolsTwitchClear.addEventListener('click', (e) => {
+      e.stopPropagation();
+      try { window.electronAPI && window.electronAPI.clearTwitchCreds && window.electronAPI.clearTwitchCreds(); } catch (err) { try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('twitch-clear-creds'); } catch(e){} }
+      if (toolsDropdown) toolsDropdown.classList.add('hidden');
+    });
+  }
+
+  // Reload action
+  if (toolsReload) {
+    toolsReload.addEventListener('click', (e) => {
+      e.stopPropagation();
+      try { window.location.reload(); } catch (err) {}
+    });
+  }
+  
+  // Themes population: built-in + dynamic skins
+  async function renderToolsThemes() {
+    // Prevent concurrent renders which can append duplicate menus
+    if (window.__vdThemesRendering) {
+      window.__vdThemesNeedsRerender = true;
+      return;
+    }
+    window.__vdThemesRendering = true;
+    window.__vdThemesNeedsRerender = false;
+    try {
+      if (!toolsThemesContainer) return;
+      toolsThemesContainer.innerHTML = '';
+
+      // Built-in themes list (must match main.js ids)
+      const builtIns = [
+        { id: 'dark', label: '🌙 Dark' },
+        { id: 'light', label: '☀️ Light' },
+        { id: 'red', label: '❤️ Red' },
+        { id: 'purple', label: '💜 Purple' },
+        { id: 'blue', label: '💙 Blue' },
+        { id: 'darkpop', label: '🎵 Dark Pop' }
+      ];
+
+      const builtList = document.createElement('div');
+      builtList.className = 'tools-themes-builtins';
+      builtIns.forEach(t => {
+        const row = document.createElement('div');
+        row.className = 'theme-row';
+
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'vd-theme';
+        radio.value = t.id;
+        radio.id = `theme-radio-${t.id}`;
+        radio.className = 'theme-radio-input';
+        try {
+          const current = (window.themeManager && typeof window.themeManager.getCurrentTheme === 'function') ? window.themeManager.getCurrentTheme() : null;
+          if (current && current === t.id) radio.checked = true;
+        } catch (e) {}
+
+        radio.onchange = async (ev) => {
+          ev.stopPropagation();
+          if (!radio.checked) return;
+          try {
+            if (window.electronAPI && window.electronAPI.applyTheme) {
+              window.electronAPI.applyTheme(t.id);
+            } else {
+              try { window.electronAPI && window.electronAPI.syncTheme && window.electronAPI.syncTheme(t.id); } catch (e) {}
+              try { window.electronAPI && window.electronAPI.send && window.electronAPI.send('theme-change', t.id); } catch (e) {}
+            }
+          } catch (err) { console.warn('Theme apply failed', err); }
+          if (toolsDropdown) toolsDropdown.classList.add('hidden');
+        };
+
+        const label = document.createElement('label');
+        label.className = 'menu-dropdown-item theme-item';
+        label.htmlFor = radio.id;
+        label.textContent = t.label;
+
+        row.appendChild(radio);
+        row.appendChild(label);
+        builtList.appendChild(row);
+      });
+      toolsThemesContainer.appendChild(builtList);
+
+      // Separator
+      const sep = document.createElement('div'); sep.className = 'menu-divider'; toolsThemesContainer.appendChild(sep);
+
+      // Dynamic skins from preload/main
+      let skins = [];
+      try {
+        if (window.electronAPI && window.electronAPI.getAvailableSkins) skins = await window.electronAPI.getAvailableSkins();
+      } catch (e) { console.warn('Failed to fetch skins:', e); }
+
+      const skinList = document.createElement('div');
+      skinList.className = 'tools-themes-skins';
+      if (!skins || skins.length === 0) {
+        const none = document.createElement('div'); none.className = 'menu-dropdown-item'; none.textContent = 'No themes/skins installed'; skinList.appendChild(none);
+      } else {
+        skins.forEach(s => {
+          const row = document.createElement('div');
+          row.className = 'theme-row';
+          row.style.justifyContent = 'space-between';
+
+          const radioWrap = document.createElement('div');
+          radioWrap.style.display = 'flex';
+          radioWrap.style.alignItems = 'center';
+          radioWrap.style.gap = '8px';
+
+          const radio = document.createElement('input');
+          radio.type = 'radio';
+          radio.name = 'vd-theme';
+          radio.value = s.id;
+          radio.id = `theme-radio-${s.id}`;
+          radio.className = 'theme-radio-input';
+          try {
+            const currentSkin = (window.themeManager && typeof window.themeManager.getCurrentTheme === 'function') ? window.themeManager.getCurrentTheme() : null;
+            if (currentSkin && currentSkin === s.id) radio.checked = true;
+          } catch (e) {}
+          radio.onchange = (ev) => {
+            ev.stopPropagation();
+            if (!radio.checked) return;
+            try {
+              if (window.electronAPI && window.electronAPI.applyTheme) window.electronAPI.applyTheme(s.id);
+              else {
+                try { window.electronAPI && window.electronAPI.syncTheme && window.electronAPI.syncTheme(s.id); } catch (e) {}
+                try { window.electronAPI && window.electronAPI.send && window.electronAPI.send('theme-change', s.id); } catch (e) {}
+              }
+            } catch (err) { console.warn('Failed to apply skin', err); }
+            if (toolsDropdown) toolsDropdown.classList.add('hidden');
+          };
+
+          const label = document.createElement('label');
+          label.className = 'menu-dropdown-item theme-item';
+          label.htmlFor = radio.id;
+          label.textContent = `🎨 ${s.name}`;
+
+          radioWrap.appendChild(radio);
+          radioWrap.appendChild(label);
+
+          row.appendChild(radioWrap);
+          skinList.appendChild(row);
+        });
+      }
+      toolsThemesContainer.appendChild(skinList);
+
+      // Management row: Import / Delete / Refresh
+      const mgr = document.createElement('div'); mgr.style.display='flex'; mgr.style.gap='8px'; mgr.style.marginTop='8px';
+      const importAll = document.createElement('button'); importAll.className='menu-dropdown-item'; importAll.textContent='Import Theme...'; importAll.onclick = async (ev)=>{ 
+        ev.stopPropagation(); 
+        try {
+          if (window.electronAPI && window.electronAPI.showImportSkinDialog) {
+            const result = await window.electronAPI.showImportSkinDialog();
+            // If a skin was imported, refresh ThemeManager and the menu so it's immediately usable
+            if (result && result.id) {
+              try { if (themeManager && typeof themeManager.loadAvailableSkins === 'function') await themeManager.loadAvailableSkins(); } catch(e){}
+              try { if (themeManager && typeof themeManager.setTheme === 'function') themeManager.setTheme(result.id); } catch(e){}
+              try { window.electronAPI && window.electronAPI.refreshMenu && window.electronAPI.refreshMenu(); } catch(e){}
+              try { await renderToolsThemes(); } catch(e){}
+            }
+          } else {
+            try { window.electronAPI && window.electronAPI.send && window.electronAPI.send('import-skin-dialog'); } catch(e){}
+          }
+        } catch(e){}
+      };
+      const deleteAny = document.createElement('button'); deleteAny.className='menu-dropdown-item'; deleteAny.textContent='Delete Theme...'; deleteAny.onclick = async (ev)=>{ 
+        ev.stopPropagation(); 
+        try {
+          if (window.electronAPI && window.electronAPI.showDeleteSkinDialog) {
+            const result = await window.electronAPI.showDeleteSkinDialog();
+            if (result && result.deleted) {
+              try { if (themeManager && typeof themeManager.loadAvailableSkins === 'function') await themeManager.loadAvailableSkins(); } catch(e){}
+              // If the deleted skin was active, ensure ThemeManager picks a safe default
+              try {
+                if (themeManager && typeof themeManager.getCurrentTheme === 'function' && themeManager.getCurrentTheme()) {
+                  const ct = themeManager.getCurrentTheme();
+                  const stillExists = themeManager.availableSkins && themeManager.availableSkins.some(s => s.id === ct);
+                  if (!stillExists && themeManager && typeof themeManager.setTheme === 'function') themeManager.setTheme('dark');
+                }
+              } catch(e){}
+              try { window.electronAPI && window.electronAPI.refreshMenu && window.electronAPI.refreshMenu(); } catch(e){}
+              try { await renderToolsThemes(); } catch(e){}
+            }
+          } else {
+            try { window.electronAPI && window.electronAPI.send && window.electronAPI.send('delete-skin-dialog'); } catch(e){}
+          }
+        } catch(e){}
+      };
+      const refresh = document.createElement('button'); refresh.className='menu-dropdown-item'; refresh.textContent='Refresh Themes'; refresh.onclick = async (ev)=>{ ev.stopPropagation(); try { if (window.electronAPI && window.electronAPI.refreshMenu) window.electronAPI.refreshMenu(); else try { window.electronAPI && window.electronAPI.send && window.electronAPI.send('refresh-menu'); } catch(e){}; await renderToolsThemes(); } catch(e){} };
+      mgr.appendChild(importAll); mgr.appendChild(deleteAny); mgr.appendChild(refresh);
+      toolsThemesContainer.appendChild(mgr);
+    } catch (err) {
+      console.warn('Error rendering tools themes:', err);
+    } finally {
+      window.__vdThemesRendering = false;
+      if (window.__vdThemesNeedsRerender) {
+        window.__vdThemesNeedsRerender = false;
+        try { await renderToolsThemes(); } catch (e) {}
+      }
+    }
+  }
+
+  // Render themes when tools menu opens and on startup
+  if (toolsBtn) {
+    toolsBtn.addEventListener('click', () => { setTimeout(() => { renderToolsThemes(); }, 40); });
+  }
+
+  // Also call once on load so themes are present even if Tools never opened yet
+  try { renderToolsThemes(); } catch (e) {}
+  // Update active theme indicators when the theme changes from any source
+  if (window.electronAPI && window.electronAPI.onThemeChange) {
+    window.electronAPI.onThemeChange((themeName) => {
+      // Re-render themes to update active marks
+      try { renderToolsThemes(); } catch (e) {}
+      // Also update theme manager state if present
+      if (themeManager) {
+        if (themeManager.getCurrentTheme() !== themeName) {
+          themeManager.setTheme(themeName);
+        }
+      }
+    });
+  }
+  // Listen for refresh-menu broadcasts from main so themes update when main requests a rebuild
+  if (window.electronAPI && window.electronAPI.onRefreshMenu) {
+    window.electronAPI.onRefreshMenu(() => {
+      try { renderToolsThemes(); } catch (e) {}
+    });
+  }
+  if (prefBtn) {
+    prefBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (window.electronAPI && typeof window.electronAPI.openPreferences === 'function') {
+        window.electronAPI.openPreferences();
+      } else {
+        try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('open-preferences'); } catch (e) {}
+      }
+    });
+  }
+}
 
 // Wait for DOM to be ready before initializing theme manager
 document.addEventListener('DOMContentLoaded', () => {
