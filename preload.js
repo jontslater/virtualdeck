@@ -62,6 +62,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onClearTwitchCreds: (callback) => ipcRenderer.on('clear-twitch-creds', callback),
   onOpenTwitchMapping: (callback) => ipcRenderer.on('open-twitch-mapping', callback),
   onRendererReady: (callback) => ipcRenderer.on('renderer-ready', callback),
+  // Allow renderer to request opening Preferences in main
+  openPreferences: () => ipcRenderer.send('open-preferences'),
   // Persist UI button order (array of ids) to main process
   saveButtonOrder: (orderedIds) => ipcRenderer.send('save-button-order', orderedIds),
   onShowAbout: (callback) => ipcRenderer.on('show-about', callback),
@@ -72,6 +74,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   syncViewPrefs: (prefs) => ipcRenderer.send('sync-view-prefs', prefs),
   onThemeChange: (callback) => ipcRenderer.on('theme-change', (event, themeName) => callback(themeName)),
   syncTheme: (themeName) => ipcRenderer.send('sync-theme', themeName),
+  // Window controls exposed to renderer
+  minimizeWindow: () => ipcRenderer.send('window-minimize'),
+  toggleMaximizeWindow: () => ipcRenderer.send('window-toggle-maximize'),
+  closeWindow: () => ipcRenderer.send('window-close'),
+  onWindowMaximized: (callback) => ipcRenderer.on('window-maximized', () => callback()),
+  onWindowUnmaximized: (callback) => ipcRenderer.on('window-unmaximized', () => callback()),
   // Skin System APIs
   getAvailableSkins: async () => ipcRenderer.invoke('get-available-skins'),
   loadSkin: async (skinId) => ipcRenderer.invoke('load-skin', skinId),
