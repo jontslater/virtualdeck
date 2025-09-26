@@ -51,7 +51,7 @@ function showTwitchConfigModal() {
       <div style="margin-bottom:18px;">
         <strong>Instructions:</strong>
         <ul style="margin-bottom:12px;">
-          <li>Go to <a href='https://twitchtokengenerator.com' target='_blank'>twitchtokengenerator.com</a>.</li>
+          <li>Go to https://twitchtokengenerator.com</li>
           <li><strong>Important:</strong> Choose <b>Custom Token</b> and scroll down to bottom of the 'Available Token Scopes' and select <b>all token permissions</b> when generating your token.</li>
           <li>When you click <b>Generate Token!</b> you will be asked to log in with your Twitch account.</li>
           <li>Generate and copy your <b>ACCESS TOKEN</b>, <b>CLIENT_ID</b>, and <b>TWITCH_USER_NAME</b> from the site.</li>

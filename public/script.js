@@ -3300,6 +3300,234 @@ let notificationManager;
   }
 })();
 
+// --- App toolbar wiring ---
+function setupAppToolbar() {
+  const btnMin = document.getElementById('btn-minimize');
+  const btnMax = document.getElementById('btn-maximize');
+  const btnClose = document.getElementById('btn-close');
+  const maxIcon = document.getElementById('max-icon');
+
+  if (btnMin) btnMin.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (window.electronAPI && typeof window.electronAPI.minimizeWindow === 'function') window.electronAPI.minimizeWindow();
+  });
+  if (btnMax) btnMax.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (window.electronAPI && typeof window.electronAPI.toggleMaximizeWindow === 'function') window.electronAPI.toggleMaximizeWindow();
+  });
+  if (btnClose) btnClose.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (window.electronAPI && typeof window.electronAPI.closeWindow === 'function') window.electronAPI.closeWindow();
+  });
+
+  // Update maximize icon state
+  function showMaximizedState(isMax) {
+    if (!maxIcon) return;
+    // Use Material Icons names: 'open_in_full' for maximize, 'fullscreen_exit' for restore
+    maxIcon.textContent = isMax ? 'fullscreen_exit' : 'open_in_full';
+    // update title attribute
+    if (btnMax) btnMax.title = isMax ? 'Restore' : 'Maximize';
+    // ensure the material-icons class is present
+    if (!maxIcon.classList.contains('material-icons')) maxIcon.classList.add('material-icons');
+  }
+
+  // Listen for window maximize/unmaximize events from main
+  if (window.electronAPI && typeof window.electronAPI.onWindowMaximized === 'function') {
+    window.electronAPI.onWindowMaximized(() => showMaximizedState(true));
+  }
+  if (window.electronAPI && typeof window.electronAPI.onWindowUnmaximized === 'function') {
+    window.electronAPI.onWindowUnmaximized(() => showMaximizedState(false));
+  }
+
+  // Initial guess: not maximized
+  showMaximizedState(false);
+}
+
+// Initialize toolbar after DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  setupAppToolbar();
+  // initialize left app menu
+  if (typeof setupLeftAppMenu === 'function') setupLeftAppMenu();
+});
+
+// Left app menu wiring: toggles File dropdown and wires Quit
+function setupLeftAppMenu() {
+  const menuBtn = document.getElementById('menu-file-btn');
+  const menuDropdown = document.getElementById('menu-file-dropdown');
+  const quitBtn = document.getElementById('menu-file-quit');
+
+  if (!menuBtn || !menuDropdown) return;
+
+  function closeMenu() {
+    menuDropdown.classList.add('hidden');
+    menuBtn.setAttribute('aria-expanded', 'false');
+  }
+  // Helper to close other menus (so only one menu is open at a time)
+  function closeOtherMenus(exceptDropdown) {
+    const allDropdowns = [menuDropdown, viewDropdown, helpDropdown, editDropdown].filter(Boolean);
+    const allBtns = [menuBtn, viewBtn, helpBtn, editBtn].filter(Boolean);
+    allDropdowns.forEach(dd => {
+      if (dd !== exceptDropdown) dd.classList.add('hidden');
+    });
+    allBtns.forEach(b => {
+      try {
+        const ctrlId = b.getAttribute && b.getAttribute('aria-controls');
+        const ctrlEl = ctrlId ? document.getElementById(ctrlId) : null;
+        if (ctrlEl !== exceptDropdown) b.setAttribute('aria-expanded', 'false');
+      } catch (e) { /* ignore */ }
+    });
+  }
+
+  menuBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    // close any other open menus, but keep this one visible when toggling
+    closeOtherMenus(menuDropdown);
+    const isOpen = !menuDropdown.classList.contains('hidden');
+    if (isOpen) closeMenu(); else {
+      menuDropdown.classList.remove('hidden');
+      menuBtn.setAttribute('aria-expanded', 'true');
+    }
+  });
+
+  // Central outside-click handler: close all menus when clicking outside the menu area
+  document.addEventListener('click', (e) => {
+    const anyMenuContains = [menuBtn, menuDropdown, /* view/edit/help refs may be undefined yet */].some(el => el && el.contains(e.target));
+    // If any of the known elements contain the click, do nothing (individual handlers stopPropagation where needed)
+    if (!anyMenuContains) closeOtherMenus(null);
+  });
+
+  if (quitBtn) {
+    quitBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (window.electronAPI && typeof window.electronAPI.closeWindow === 'function') {
+        window.electronAPI.closeWindow();
+      } else {
+        // fallback: send ipc if available
+        try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('window-close'); } catch (e) {}
+      }
+    });
+  }
+
+  // View menu wiring (left app menu)
+  const viewBtn = document.getElementById('menu-view-btn');
+  const viewDropdown = document.getElementById('menu-view-dropdown');
+  const viewShowAll = document.getElementById('menu-view-showall');
+  const viewHideAll = document.getElementById('menu-view-hideall');
+
+  function closeViewMenu() {
+    if (viewDropdown) viewDropdown.classList.add('hidden');
+    if (viewBtn) viewBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  if (viewBtn && viewDropdown) {
+    viewBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // close other menus first so only this one is visible
+      closeOtherMenus(viewDropdown);
+      const open = !viewDropdown.classList.contains('hidden');
+      if (open) { viewDropdown.classList.add('hidden'); viewBtn.setAttribute('aria-expanded', 'false'); }
+      else { viewDropdown.classList.remove('hidden'); viewBtn.setAttribute('aria-expanded', 'true'); }
+    });
+    document.addEventListener('click', (e) => {
+      if (!viewBtn.contains(e.target) && !viewDropdown.contains(e.target)) { viewDropdown.classList.add('hidden'); viewBtn.setAttribute('aria-expanded', 'false'); }
+    });
+  }
+
+  // Map view menu button data-toggle attributes to checkbox ids used in visibility prefs
+  const viewButtonToggles = viewDropdown ? Array.from(viewDropdown.querySelectorAll('[data-toggle]')) : [];
+  viewButtonToggles.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const toggleId = btn.getAttribute('data-toggle');
+      const checkbox = document.getElementById(toggleId);
+      if (checkbox) {
+        checkbox.checked = !checkbox.checked;
+        checkbox.dispatchEvent(new Event('change'));
+      }
+      // Close the menu after selection
+      if (viewDropdown) viewDropdown.classList.add('hidden');
+      if (viewBtn) viewBtn.setAttribute('aria-expanded', 'false');
+    });
+  });
+
+  if (viewShowAll) {
+    viewShowAll.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const showBtn = document.getElementById('show-all-components');
+      if (showBtn) showBtn.click();
+      if (viewDropdown) viewDropdown.classList.add('hidden');
+      if (viewBtn) viewBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  if (viewHideAll) {
+    viewHideAll.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const hideBtn = document.getElementById('hide-all-components');
+      if (hideBtn) hideBtn.click();
+      if (viewDropdown) viewDropdown.classList.add('hidden');
+      if (viewBtn) viewBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  // Help menu wiring
+  const helpBtn = document.getElementById('menu-help-btn');
+  const helpDropdown = document.getElementById('menu-help-dropdown');
+  const helpAbout = document.getElementById('menu-help-about');
+  if (helpBtn && helpDropdown) {
+    helpBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // close other menus before opening help
+      closeOtherMenus(helpDropdown);
+      const open = !helpDropdown.classList.contains('hidden');
+      if (open) { helpDropdown.classList.add('hidden'); helpBtn.setAttribute('aria-expanded', 'false'); }
+      else { helpDropdown.classList.remove('hidden'); helpBtn.setAttribute('aria-expanded', 'true'); }
+    });
+    document.addEventListener('click', (e) => {
+      if (!helpBtn.contains(e.target) && !helpDropdown.contains(e.target)) { helpDropdown.classList.add('hidden'); helpBtn.setAttribute('aria-expanded', 'false'); }
+    });
+  }
+  if (helpAbout) {
+    helpAbout.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Trigger the same action as the main menu: send or open about modal
+      if (window.electronAPI && typeof window.electronAPI.send === 'function') {
+        try { window.electronAPI.send('show-about'); } catch (err) { /* ignore */ }
+      }
+      // Fallback: call local helper directly
+      try { openAboutModal(); } catch (err) {}
+      if (helpDropdown) helpDropdown.classList.add('hidden');
+      if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  // Edit menu wiring
+  const editBtn = document.getElementById('menu-edit-btn');
+  const editDropdown = document.getElementById('menu-edit-dropdown');
+  const prefBtn = document.getElementById('menu-edit-preferences');
+  if (editBtn && editDropdown) {
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // close other open menus first
+      closeOtherMenus(editDropdown);
+      const open = !editDropdown.classList.contains('hidden');
+      if (open) { editDropdown.classList.add('hidden'); editBtn.setAttribute('aria-expanded', 'false'); }
+      else { editDropdown.classList.remove('hidden'); editBtn.setAttribute('aria-expanded', 'true'); }
+    });
+    document.addEventListener('click', (e) => {
+      if (!editBtn.contains(e.target) && !editDropdown.contains(e.target)) { editDropdown.classList.add('hidden'); editBtn.setAttribute('aria-expanded', 'false'); }
+    });
+  }
+  if (prefBtn) {
+    prefBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (window.electronAPI && typeof window.electronAPI.openPreferences === 'function') {
+        window.electronAPI.openPreferences();
+      } else {
+        try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('open-preferences'); } catch (e) {}
+      }
+    });
+  }
+}
+
 // Wait for DOM to be ready before initializing theme manager
 document.addEventListener('DOMContentLoaded', () => {
   themeManager = new ThemeManager();

@@ -16,6 +16,79 @@ body {
 
 :root {
   --card-size: 110px; /* width and height of each sound card */
+#app-file-section {
+  display: none;
+}
+
+/* Left app menu (renderer-drawn) */
+#app-menu-left {
+  position: fixed;
+  left: 10px;
+  top: 6px;
+  z-index: 10010;
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag; /* menu items must be clickable */
+}
+.app-menu-left .menu-button {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.app-menu-left .menu-item {
+  position: relative; /* ensure dropdowns position under each menu item */
+}
+.app-menu-left .menu-button:focus {
+  outline: 2px solid rgba(0,0,0,0.2);
+}
+
+/* hover and active affordance for the File menu button */
+.app-menu-left .menu-button:hover,
+.app-menu-left .menu-button[aria-expanded="true"] {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+  border-radius: 6px;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.app-menu-left .menu-button:active {
+  background: var(--active-bg);
+}
+.menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px); /* place dropdown directly below its parent menu item */
+  left: 0;
+  min-width: 140px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+  padding: 6px 0;
+  border-radius: 4px;
+}
+.menu-dropdown.hidden { display: none; }
+.menu-dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 8px 12px;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+.menu-dropdown-item:hover { background: var(--hover-bg); }
+
+.menu-dropdown-item:active { background: var(--active-bg); }
+
+.menu-divider {
+  height: 1px;
+  background: var(--border-primary);
+  margin: 6px 0;
+}
+
+
   --card-gap: 12px;   /* gap between cards */
   
   /* Theme Variables - Default Dark Theme */
@@ -395,18 +468,19 @@ html[data-theme], body[data-theme] {
   padding-top: calc(64px + 8px);
 }
 
-/* App logo fixed to the center top of the viewport */
-.app-logo {
-  position: fixed;
-  top: 4px;
-  left: 50%;
-  transform: translateX(-50%);
-  height: 64px;
-  z-index: 900;
-  display: block;
+/* App logo for the left app menu (keeps aspect ratio) */
+.app-menu-logo {
+  height: 5px; /* smaller logo to fit the menu */
+  width: auto; /* preserve aspect ratio */
+  margin-right: 8px;
+  display: inline-block;
+  vertical-align: middle;
   pointer-events: none; /* don't intercept clicks */
-  /* Keep original logo color - no tint */
-  filter: none;
+}
+
+/* Remove old centered logo positioning if present */
+.app-logo.centered {
+  display: none;
 }
 
 /* Hide cards not on current page */
@@ -860,6 +934,42 @@ html[data-theme], body[data-theme] {
   transition: background 0.2s, opacity 0.2s;
   -webkit-app-region: no-drag;
 }
+
+/* App toolbar (custom window controls) */
+#app-toolbar {
+  position: fixed;
+  top: 8px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  z-index: 1200;
+  -webkit-app-region: no-drag; /* buttons must be clickable */
+}
+.window-btn {
+  width: 36px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.12s ease, color 0.12s ease;
+  -webkit-app-region: no-drag;
+}
+.window-btn:hover { background: rgba(255,255,255,0.04); }
+.window-btn:active { transform: translateY(1px); }
+.window-btn-close { background: transparent; color: var(--text-primary); }
+.window-btn-close:hover { background: #ff4444; color: #fff; }
+.window-btn-min:hover { background: rgba(255,255,255,0.02); }
+.window-btn-max:hover { background: rgba(255,255,255,0.02); }
+
+/* Small icons fallback styling */
+#app-toolbar button { font-weight: 600; }
+
 .move-app-btn:active {
   background: #222;
   opacity: 1;
@@ -1152,7 +1262,7 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
 }
 
 .app-logo {
-  max-width: 200px;
+  max-width: 80px;
   height: auto;
   margin-bottom: 10px;
 }
