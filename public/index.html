@@ -6,9 +6,85 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Virtual Deck</title>
   <link rel="stylesheet" href="styles.css" />
+  <!-- Google Material Icons -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <!-- Google Fonts: Roboto (UI) + Roboto Mono (monospace) -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <div id="global-drop-zone" class="hidden">Drop files here</div>
+
+  <!-- Left aligned app menu (File -> Quit) -->
+  <nav id="app-menu-left" class="app-menu-left" role="menubar" aria-label="Application Menu">
+  <!-- Logo image (replaces inline SVG). Keep height at or below 80px so it fits the menu bar. -->
+  <img src="logo.png" alt="VirtualDeck" class="app-logo app-menu-logo" aria-hidden="true" focusable="false" />
+    <div class="menu-item" id="menu-file" aria-haspopup="true">
+      <button id="menu-file-btn" class="menu-button" aria-expanded="false" aria-controls="menu-file-dropdown">File</button>
+      <div id="menu-file-dropdown" class="menu-dropdown hidden" role="menu" aria-label="File menu">
+        <button id="menu-file-quit" class="menu-dropdown-item" role="menuitem">Quit</button>
+      </div>
+    </div>
+    <div class="menu-item" id="menu-edit" aria-haspopup="true">
+      <button id="menu-edit-btn" class="menu-button" aria-expanded="false" aria-controls="menu-edit-dropdown">Edit</button>
+      <div id="menu-edit-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Edit menu">
+        <button id="menu-edit-preferences" class="menu-dropdown-item" role="menuitem">Preferences</button>
+      </div>
+    </div>
+    <div class="menu-item" id="menu-view" aria-haspopup="true">
+      <button id="menu-view-btn" class="menu-button" aria-expanded="false" aria-controls="menu-view-dropdown">View</button>
+      <div id="menu-view-dropdown" class="menu-dropdown hidden" role="menu" aria-label="View menu">
+        <button id="menu-view-showall" class="menu-dropdown-item" role="menuitem">Show All</button>
+        <button id="menu-view-hideall" class="menu-dropdown-item" role="menuitem">Hide All</button>
+  <div class="menu-divider"></div>
+        <button data-toggle="toggle-sound-grid" class="menu-dropdown-item" role="menuitem">Sound Grid</button>
+        <button data-toggle="toggle-twitch-stats" class="menu-dropdown-item" role="menuitem">Twitch Statistics</button>
+        <button data-toggle="toggle-recent-activity" class="menu-dropdown-item" role="menuitem">Recent Activity</button>
+        <button data-toggle="toggle-twitch-chat" class="menu-dropdown-item" role="menuitem">Twitch Chat</button>
+        <button data-toggle="toggle-sound-controls" class="menu-dropdown-item" role="menuitem">Sound Controls</button>
+      </div>
+    </div>
+    <div class="menu-item" id="menu-tools" aria-haspopup="true">
+      <button id="menu-tools-btn" class="menu-button" aria-expanded="false" aria-controls="menu-tools-dropdown">Tools</button>
+      <div id="menu-tools-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Tools menu">
+        <button id="menu-tools-devtools" class="menu-dropdown-item" role="menuitem">Developer Tools</button>
+        <button id="menu-tools-reload" class="menu-dropdown-item" role="menuitem">Reload Application</button>
+        <div class="menu-item" id="menu-tools-twitch-sub" aria-haspopup="true">
+          <button id="menu-tools-twitch-btn" class="menu-dropdown-item" aria-expanded="false" aria-controls="menu-tools-twitch-dropdown">Twitch Setup ▸</button>
+          <div id="menu-tools-twitch-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Twitch Setup submenu" style="left:100%; top:0;">
+            <button id="menu-tools-twitch-activity" class="menu-dropdown-item" role="menuitem">View Twitch Events / Test Events</button>
+            <button id="menu-tools-twitch-eventsub" class="menu-dropdown-item" role="menuitem">EventSub Subscriptions (Select)</button>
+            <button id="menu-tools-twitch-mapping" class="menu-dropdown-item" role="menuitem">Twitch Event Mapping</button>
+            <div class="menu-divider"></div>
+            <button id="menu-tools-twitch-clear" class="menu-dropdown-item" role="menuitem">Clear Twitch Credentials</button>
+          </div>
+        </div>
+        <div class="menu-divider"></div>
+        <div id="menu-tools-themes" class="menu-dropdown-section">
+          <!-- Themes will be populated dynamically -->
+          <div id="menu-tools-themes-container"></div>
+        </div>
+      </div>
+    </div>
+    <div class="menu-item" id="menu-help" aria-haspopup="true">
+      <button id="menu-help-btn" class="menu-button" aria-expanded="false" aria-controls="menu-help-dropdown">Help</button>
+      <div id="menu-help-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Help menu">
+        <button id="menu-help-about" class="menu-dropdown-item" role="menuitem">About</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- App toolbar (custom window controls) -->
+  <div id="app-toolbar" class="app-toolbar" role="toolbar" aria-label="Window Controls">
+    <button id="btn-minimize" class="window-btn window-btn-min" title="Minimize" aria-label="Minimize">
+      <span class="material-icons">minimize</span>
+    </button>
+    <button id="btn-maximize" class="window-btn window-btn-max" title="Maximize" aria-label="Maximize">
+      <span id="max-icon" class="material-icons">crop_square</span>
+    </button>
+    <button id="btn-close" class="window-btn window-btn-close" title="Close" aria-label="Close">
+      <span class="material-icons">close</span>
+    </button>
+  </div>
   
 
   <!-- Component Visibility Dropdown -->
@@ -46,7 +122,6 @@
   </div>
   
   <div class="container">
-    <img src="logo.png" alt="Virtual Deck Logo" class="app-logo" />
     <div class="hotkey-info">
       <strong>Numpad Currently Not supported</strong>
       <div class="hotkey-help">
@@ -121,7 +196,9 @@
           <div id="chat-status-indicator" class="status-indicator" title="Checking connection..."></div>
         </div>
         <div class="chat-controls">
-          <button id="toggle-chat" class="toggle-chat-btn">−</button>
+            <button id="toggle-chat" class="toggle-chat-btn" aria-label="Toggle chat">
+              <span class="material-icons">remove</span>
+            </button>
         </div>
         </div>
         <div id="twitch-chat-messages" class="chat-messages"></div>
@@ -129,9 +206,13 @@
     </div>
     <!-- Pagination controls moved below the main content so they appear under the grid -->
     <div id="pagination-controls" class="pagination-controls bottom-pagination">
-      <button id="page-prev" class="page-btn" title="Previous page"><<</button>
+      <button id="page-prev" class="page-btn" title="Previous page" aria-label="Previous page">
+        <span class="material-icons">arrow_back</span>
+      </button>
       <span id="pagination-indicator" class="pagination-indicator">1 / 1</span>
-      <button id="page-next" class="page-btn" title="Next page">>></button>
+      <button id="page-next" class="page-btn" title="Next page" aria-label="Next page">
+        <span class="material-icons">arrow_forward</span>
+      </button>
     </div>
   </div>
 
@@ -161,7 +242,7 @@
           <label for="volume-input" class="volume-label">Volume: <span id="volume-value">100%</span></label>
           <input type="range" id="volume-input" name="volume" min="0" max="100" value="100" />
         </div>
-        <div id="app-file-section" style="display:none;">
+  <div id="app-file-section">
           <label>App File:
             <input type="file" name="app-file" id="app-file-input" accept=".exe,.bat,.cmd,.lnk,.app,.sh,.desktop" required />
           </label>
