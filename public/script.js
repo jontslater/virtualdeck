@@ -3502,26 +3502,42 @@ function setupOverlayWidget() {
     });
   }
   
-  // Text box test buttons
-  testBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const position = parseInt(btn.dataset.position);
-      const targetId = positionMap[position];
-      const testText = `Test - ${btn.textContent}`;
-      console.log(`Testing text box ${position} (${targetId}): ${testText}`);
-      
-      if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-        window.electronAPI.sendOverlayMessage({
-          type: 'update-text',
-          targetId: targetId,
-          text: testText,
-          classes: ['text-slot', 'text-green']
+        // Text box test buttons
+        testBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const position = parseInt(btn.dataset.position);
+                const targetId = positionMap[position];
+                const testText = `Test - ${btn.textContent}`;
+                console.log(`Testing text box ${position} (${targetId}): ${testText}`);
+
+                if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
+                    // Send new buttonTrigger format
+                    const payload = {
+                        type: 'buttonTrigger',
+                        options: {
+                            clearPrevious: false
+                        },
+                        slots: {
+                            [targetId]: {
+                                text: testText,
+                                style: {
+                                    fontFamily: 'Arial, sans-serif',
+                                    fontSize: '18px',
+                                    color: '#00ff00',
+                                    fontWeight: 'bold',
+                                    textAlign: 'center',
+                                    zIndex: '1'
+                                }
+                            }
+                        }
+                    };
+                    
+                    window.electronAPI.sendOverlayMessage(payload);
+                } else {
+                    console.log('sendOverlayMessage not available');
+                }
+            });
         });
-      } else {
-        console.log('sendOverlayMessage not available');
-      }
-    });
-  });
   
   // Media test buttons
   mediaBtns.forEach(btn => {
@@ -3529,32 +3545,48 @@ function setupOverlayWidget() {
       const type = btn.dataset.type;
       const position = parseInt(btn.dataset.position);
       const targetId = positionMap[position];
-      
+
       console.log(`Testing ${type} in position ${position} (${targetId})`);
-      
+
       if (type === 'image') {
         if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-          window.electronAPI.sendOverlayMessage({
-            type: 'update-media',
-            targetId: targetId,
-            mediaType: 'image',
-            mediaUrl: 'https://via.placeholder.com/300x200/00ff00/000000?text=Test+Image+Connected'
-          });
+          const payload = {
+            type: 'buttonTrigger',
+            options: {
+              clearPrevious: false
+            },
+            centerMedia: [{
+              type: 'image',
+              src: 'https://via.placeholder.com/300x200/00ff00/000000?text=Test+Image+Connected',
+              alt: 'Test Image Connected'
+            }]
+          };
+          window.electronAPI.sendOverlayMessage(payload);
         }
       } else if (type === 'video') {
         if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-          window.electronAPI.sendOverlayMessage({
-            type: 'update-media',
-            targetId: targetId,
-            mediaType: 'video',
-            mediaUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4'
-          });
+          const payload = {
+            type: 'buttonTrigger',
+            options: {
+              clearPrevious: false
+            },
+            centerMedia: [{
+              type: 'video',
+              src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+              loop: true
+            }]
+          };
+          window.electronAPI.sendOverlayMessage(payload);
         }
       } else if (type === 'clear') {
         if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-          window.electronAPI.sendOverlayMessage({
-            type: 'clear-all'
-          });
+          const payload = {
+            type: 'buttonTrigger',
+            options: {
+              clearPrevious: true
+            }
+          };
+          window.electronAPI.sendOverlayMessage(payload);
         }
       }
     });
@@ -3571,12 +3603,26 @@ function setupOverlayWidget() {
         console.log(`Sending custom text to position ${position} (${targetId}): ${text}`);
         
         if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-          window.electronAPI.sendOverlayMessage({
-            type: 'update-text',
-            targetId: targetId,
-            text: text,
-            classes: ['text-slot']
-          });
+          const payload = {
+            type: 'buttonTrigger',
+            options: {
+              clearPrevious: false
+            },
+            slots: {
+              [targetId]: {
+                text: text,
+                style: {
+                  fontFamily: 'Arial, sans-serif',
+                  fontSize: '16px',
+                  color: '#ffffff',
+                  fontWeight: 'normal',
+                  textAlign: 'center',
+                  zIndex: '1'
+                }
+              }
+            }
+          };
+          window.electronAPI.sendOverlayMessage(payload);
           
           // Clear the input
           customTextInput.value = '';
@@ -3611,6 +3657,161 @@ function setupOverlayWidget() {
         }).catch(err => {
           console.log('Failed to copy to clipboard:', err);
         });
+      }
+    });
+  }
+  
+  // Multi-source test buttons
+  const testMultiSourceBtn = document.getElementById('test-multi-source');
+  const testAllPositionsBtn = document.getElementById('test-all-positions');
+  
+  if (testMultiSourceBtn) {
+    testMultiSourceBtn.addEventListener('click', () => {
+      console.log('Testing multi-source capability...');
+      
+      const payload = {
+        type: 'buttonTrigger',
+        options: {
+          clearPrevious: true
+        },
+        slots: {
+          'text-top-left': {
+            text: '🎮 GAME START',
+            style: {
+              fontFamily: 'Arial, sans-serif',
+              fontSize: '28px',
+              color: '#00ff00',
+              fontWeight: 'bold',
+              textAlign: 'center',
+              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+              zIndex: '10'
+            }
+          },
+          'text-top-right': {
+            text: 'SCORE: 9999',
+            style: {
+              fontFamily: 'Courier, monospace',
+              fontSize: '24px',
+              color: '#ffff00',
+              fontWeight: 'bold',
+              textAlign: 'right',
+              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+              zIndex: '10'
+            }
+          },
+          'text-bottom-center': {
+            text: 'PRESS SPACE TO CONTINUE',
+            style: {
+              fontFamily: 'Arial, sans-serif',
+              fontSize: '20px',
+              color: '#ffffff',
+              fontWeight: 'bold',
+              textAlign: 'center',
+              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+              animationName: 'pulse',
+              animationDuration: '1s',
+              animationIterationCount: 'infinite',
+              zIndex: '10'
+            }
+          },
+          'text-mid-left': {
+            text: 'LIVES: 3',
+            style: {
+              fontFamily: 'Arial, sans-serif',
+              fontSize: '18px',
+              color: '#ff6b6b',
+              fontWeight: 'bold',
+              textAlign: 'left',
+              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+              zIndex: '10'
+            }
+          },
+          'text-mid-right': {
+            text: 'LEVEL: 5',
+            style: {
+              fontFamily: 'Arial, sans-serif',
+              fontSize: '18px',
+              color: '#4ecdc4',
+              fontWeight: 'bold',
+              textAlign: 'right',
+              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+              zIndex: '10'
+            }
+          }
+        },
+        centerMedia: [
+          {
+            type: 'image',
+            src: 'https://via.placeholder.com/600x400/000000/ffffff?text=GAME+SCREEN',
+            alt: 'Game Screen'
+          },
+          {
+            type: 'video',
+            src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+            loop: true
+          }
+        ]
+      };
+      
+      if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
+        window.electronAPI.sendOverlayMessage(payload);
+        console.log('Sent multi-source test payload');
+      } else {
+        console.log('sendOverlayMessage not available');
+      }
+    });
+  }
+  
+  if (testAllPositionsBtn) {
+    testAllPositionsBtn.addEventListener('click', () => {
+      console.log('Testing all positions simultaneously...');
+      
+      const positions = [
+        { id: 'text-top-left', text: 'Test - Top Left' },
+        { id: 'text-top-center', text: 'Test - Top Center' },
+        { id: 'text-top-right', text: 'Test - Top Right' },
+        { id: 'text-mid-left', text: 'Test - Mid Left' },
+        { id: 'text-mid-right', text: 'Test - Mid Right' },
+        { id: 'text-bottom-left', text: 'Test - Bottom Left' },
+        { id: 'text-bottom-center', text: 'Test - Bottom Center' },
+        { id: 'text-bottom-right', text: 'Test - Bottom Right' }
+      ];
+      
+      // Create a single payload with all text slots
+      const payload = {
+        type: 'buttonTrigger',
+        options: {
+          clearPrevious: true
+        },
+        slots: {}
+      };
+      
+      positions.forEach((pos, index) => {
+        payload.slots[pos.id] = {
+          text: pos.text,
+          style: {
+            fontFamily: 'Arial, sans-serif',
+            fontSize: '18px',
+            color: '#00ff00',
+            fontWeight: 'bold',
+            textAlign: 'center',
+            zIndex: (index + 1).toString()
+          }
+        };
+      });
+      
+      // Add center media test
+      payload.centerMedia = [{
+        type: 'image',
+        src: 'https://via.placeholder.com/400x300/ff00ff/ffffff?text=Test+Center+Media',
+        alt: 'Test Center Media'
+      }];
+      
+      if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
+        window.electronAPI.sendOverlayMessage(payload);
+        console.log('Sent comprehensive test payload with all positions');
+      } else {
+        console.log('sendOverlayMessage not available');
       }
     });
   }
@@ -4230,26 +4431,46 @@ document.addEventListener('DOMContentLoaded', () => {
       { id: 'text-top-center', text: 'Test - Top Center' },
       { id: 'text-top-right', text: 'Test - Top Right' },
       { id: 'text-mid-left', text: 'Test - Mid Left' },
-      { id: 'center-media', text: 'Test - Center Media' },
       { id: 'text-mid-right', text: 'Test - Mid Right' },
       { id: 'text-bottom-left', text: 'Test - Bottom Left' },
       { id: 'text-bottom-center', text: 'Test - Bottom Center' },
       { id: 'text-bottom-right', text: 'Test - Bottom Right' }
     ];
     
+    // Create a single payload with all text slots
+    const payload = {
+      type: 'buttonTrigger',
+      options: {
+        clearPrevious: true
+      },
+      slots: {}
+    };
+    
     positions.forEach((pos, index) => {
-      setTimeout(() => {
-        if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-          window.electronAPI.sendOverlayMessage({
-            type: 'update-text',
-            targetId: pos.id,
-            text: pos.text,
-            classes: ['text-slot', 'text-green']
-          });
-          console.log(`Sent test to ${pos.id}: ${pos.text}`);
+      payload.slots[pos.id] = {
+        text: pos.text,
+        style: {
+          fontFamily: 'Arial, sans-serif',
+          fontSize: '18px',
+          color: '#00ff00',
+          fontWeight: 'bold',
+          textAlign: 'center',
+          zIndex: (index + 1).toString()
         }
-      }, index * 200); // Stagger the messages by 200ms each
+      };
     });
+    
+    // Add center media test
+    payload.centerMedia = [{
+      type: 'image',
+      src: 'https://via.placeholder.com/400x300/ff00ff/ffffff?text=Test+Center+Media',
+      alt: 'Test Center Media'
+    }];
+    
+    if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
+      window.electronAPI.sendOverlayMessage(payload);
+      console.log('Sent comprehensive test payload with all positions');
+    }
   };
 
   console.log('Overlay test functions available:');
