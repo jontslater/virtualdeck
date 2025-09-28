@@ -111,6 +111,7 @@ function saveTcConfig(cfg) {
 }
 
 let win;
+let overlayWindow;
 
 function createWindow() {
   win = new BrowserWindow({
@@ -167,6 +168,41 @@ function createWindow() {
   // Set context menu
   win.webContents.on('context-menu', (e, params) => {
     contextMenu.popup({ window: win });
+  });
+}
+
+function createOverlayWindow() {
+  overlayWindow = new BrowserWindow({
+    width: 1920,
+    height: 1080,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  overlayWindow.loadFile(path.join(__dirname, 'public/overlay-obs.html'));
+  
+  // Show overlay window
+  overlayWindow.once('ready-to-show', () => {
+    try { 
+      overlayWindow.show(); 
+      console.log('Overlay window created and shown');
+    } catch (e) { 
+      console.warn('Failed to show overlay window:', e); 
+    }
+  });
+
+  // Handle overlay window close
+  overlayWindow.on('closed', () => {
+    overlayWindow = null;
+    console.log('Overlay window closed');
   });
 }
 
@@ -2168,6 +2204,110 @@ app.whenReady().then(() => {
   // Allow renderer to request the Preferences view (forward to renderer)
   ipcMain.on('open-preferences', () => {
     try { if (win && !win.isDestroyed()) win.webContents.send('open-preferences'); } catch (e) { console.warn('open-preferences failed', e); }
+  });
+
+  // Overlay communication handlers
+  ipcMain.on('overlay-message', (event, message) => {
+    try {
+      console.log('Overlay message received:', message);
+      // Forward the message to any open overlay windows
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.webContents.send('overlay-message', message);
+      }
+    } catch (e) { 
+      console.warn('overlay-message failed', e); 
+    }
+  });
+
+  ipcMain.on('overlay-clear-all', (event) => {
+    try {
+      console.log('Overlay clear all requested');
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.webContents.send('overlay-message', { type: 'overlay-clear-all' });
+      }
+    } catch (e) { 
+      console.warn('overlay-clear-all failed', e); 
+    }
+  });
+
+  ipcMain.on('overlay-text', (event, data) => {
+    try {
+      console.log('Overlay text message:', data);
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.webContents.send('overlay-message', { 
+          type: 'overlay-text', 
+          position: data.position, 
+          text: data.text 
+        });
+      }
+    } catch (e) { 
+      console.warn('overlay-text failed', e); 
+    }
+  });
+
+  ipcMain.on('overlay-image', (event, data) => {
+    try {
+      console.log('Overlay image message:', data);
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.webContents.send('overlay-message', { 
+          type: 'overlay-image', 
+          position: data.position, 
+          imageUrl: data.imageUrl 
+        });
+      }
+    } catch (e) { 
+      console.warn('overlay-image failed', e); 
+    }
+  });
+
+  ipcMain.on('overlay-video', (event, data) => {
+    try {
+      console.log('Overlay video message:', data);
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.webContents.send('overlay-message', { 
+          type: 'overlay-video', 
+          position: data.position, 
+          videoUrl: data.videoUrl 
+        });
+      }
+    } catch (e) { 
+      console.warn('overlay-video failed', e); 
+    }
+  });
+
+  // Overlay window management
+  ipcMain.on('create-overlay', () => {
+    try {
+      if (!overlayWindow || overlayWindow.isDestroyed()) {
+        createOverlayWindow();
+      } else {
+        console.log('Overlay window already exists');
+      }
+    } catch (e) { 
+      console.warn('create-overlay failed', e); 
+    }
+  });
+
+  ipcMain.on('close-overlay', () => {
+    try {
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.close();
+      }
+    } catch (e) { 
+      console.warn('close-overlay failed', e); 
+    }
+  });
+
+  ipcMain.on('toggle-overlay', () => {
+    try {
+      if (!overlayWindow || overlayWindow.isDestroyed()) {
+        createOverlayWindow();
+      } else {
+        overlayWindow.close();
+      }
+    } catch (e) { 
+      console.warn('toggle-overlay failed', e); 
+    }
   });
 
   // Propagate maximize/unmaximize events to renderer so UI can update
