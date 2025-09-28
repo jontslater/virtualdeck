@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Virtual Deck Overlay</title>
     <style>
+        :root {
+            --overlay-width: 1920px;
+            --overlay-height: 1080px;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -15,8 +20,10 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: transparent;
             overflow: hidden;
-            width: 100vw;
-            height: 100vh;
+            width: var(--overlay-width);
+            height: var(--overlay-height);
+            margin: 0;
+            padding: 0;
         }
 
         .overlay-container {
@@ -103,6 +110,11 @@
             grid-row: 2;
         }
 
+        #text-center {
+            grid-column: 2;
+            grid-row: 2;
+            z-index: 5; /* Above center media */
+        }
 
         #text-mid-right {
             grid-column: 3;
@@ -162,6 +174,7 @@
         <div id="text-top-center" class="text-slot">Top Center</div>
         <div id="text-top-right" class="text-slot">Top Right</div>
         <div id="text-mid-left" class="text-slot">Mid Left</div>
+        <div id="text-center" class="text-slot">Center</div>
         <div id="text-mid-right" class="text-slot">Mid Right</div>
         <div id="text-bottom-left" class="text-slot">Bottom Left</div>
         <div id="text-bottom-center" class="text-slot">Bottom Center</div>
@@ -209,35 +222,95 @@
             }
         }
         
+        // Map new schema slot names to overlay element IDs
+        function mapSlotNameToElementId(slotName) {
+            const mapping = {
+                'topLeft': 'text-top-left',
+                'topCenter': 'text-top-center',
+                'topRight': 'text-top-right',
+                'midLeft': 'text-mid-left',
+                'center': 'text-center',
+                'midRight': 'text-mid-right',
+                'bottomLeft': 'text-bottom-left',
+                'bottomCenter': 'text-bottom-center',
+                'bottomRight': 'text-bottom-right'
+            };
+            return mapping[slotName] || slotName; // Return original if no mapping found
+        }
+
+        // Global timer for overlay reset
+        let overlayResetTimer = null;
+        
         // Handle button trigger payload
         function handleButtonTrigger(payload) {
-            console.log('Processing button trigger payload:', payload);
+            console.log('🎯 Processing button trigger payload:', payload);
+            console.log('🎯 Payload type:', payload.type);
+            console.log('🎯 Payload options:', payload.options);
+            console.log('🎯 Payload slots:', payload.slots);
+            console.log('🎯 Payload centerMedia:', payload.centerMedia);
+            
+            // Clear any existing reset timer
+            if (overlayResetTimer) {
+                clearTimeout(overlayResetTimer);
+                overlayResetTimer = null;
+            }
             
             // Clear previous content if requested
             if (payload.options && payload.options.clearPrevious === true) {
+                console.log('🎯 Clearing previous content');
                 clearSlots();
             }
             
             // Update text slots
             if (payload.slots) {
+                console.log('🎯 Processing slots:', Object.keys(payload.slots));
                 Object.keys(payload.slots).forEach(slotName => {
                     const slotData = payload.slots[slotName];
-                    const element = document.getElementById(slotName);
+                    const elementId = mapSlotNameToElementId(slotName);
+                    const element = document.getElementById(elementId);
+                    
+                    console.log(`🎯 Processing slot ${slotName}:`, slotData);
+                    console.log(`🎯 Mapped to element ID: ${elementId}`);
+                    console.log(`🎯 Element found:`, element ? 'Yes' : 'No');
                     
                     if (element) {
                         // Set text content
-                        element.textContent = slotData.text || '';
+                        const textContent = slotData.text || '';
+                        element.textContent = textContent;
+                        console.log(`🎯 Set text content: "${textContent}"`);
                         
-                        // Apply inline styles
+                        // Apply inline styles with proper CSS property mapping
                         if (slotData.style) {
-                            Object.keys(slotData.style).forEach(styleProp => {
-                                element.style[styleProp] = slotData.style[styleProp];
-                            });
+                            // Map schema style properties to CSS properties
+                            if (slotData.style.fontFamily) {
+                                element.style.fontFamily = slotData.style.fontFamily;
+                            }
+                            if (slotData.style.fontSize) {
+                                element.style.fontSize = typeof slotData.style.fontSize === 'number' 
+                                    ? slotData.style.fontSize + 'px' 
+                                    : slotData.style.fontSize;
+                            }
+                            if (slotData.style.color) {
+                                element.style.color = slotData.style.color;
+                            }
+                            if (slotData.style.bold !== undefined) {
+                                element.style.fontWeight = slotData.style.bold ? 'bold' : 'normal';
+                            }
+                            if (slotData.style.italic !== undefined) {
+                                element.style.fontStyle = slotData.style.italic ? 'italic' : 'normal';
+                            }
+                            if (slotData.style.align) {
+                                element.style.textAlign = slotData.style.align;
+                            }
+                            if (slotData.style.animation) {
+                                element.style.animationName = slotData.style.animation;
+                                element.style.animationDuration = '1s';
+                            }
                         }
                         
-                        console.log(`Updated slot ${slotName}: ${slotData.text}`);
+                        console.log(`Updated slot ${elementId}: ${slotData.text}`);
                     } else {
-                        console.error(`Element not found: ${slotName}`);
+                        console.error(`Element not found: ${elementId} (mapped from ${slotName})`);
                     }
                 });
             }
@@ -274,47 +347,102 @@
                     
                     console.log(`Added image: ${item.src}`);
                     
-                } else if (item.type === 'video') {
-                    const video = document.createElement('video');
-                    video.src = item.src;
-                    video.autoplay = true;
-                    video.muted = false;
-                    video.playsInline = true;
-                    video.loop = item.loop || false;
-                    video.style.maxWidth = '100%';
-                    video.style.maxHeight = '100%';
-                    video.style.objectFit = 'contain';
-                    video.style.display = 'block';
-                    
-                    // Add error handling
-                    video.onerror = function() {
-                        console.error(`Failed to load video: ${item.src}`);
-                    };
-                    
-                    centerMedia.appendChild(video);
-                    videoElements.push(video);
-                    
-                    console.log(`Added video: ${item.src}`);
-                }
+                        } else if (item.type === 'video') {
+                            const video = document.createElement('video');
+                            video.src = item.src;
+                            video.autoplay = true;
+                            video.muted = true; // Muted for autoplay to work
+                            video.loop = item.loop || false;
+                            video.playsInline = true;
+                            video.controls = false;
+                            video.preload = 'auto'; // Preload the video
+                            video.setAttribute('webkit-playsinline', 'true'); // iOS compatibility
+                            video.setAttribute('playsinline', 'true'); // iOS compatibility
+                            video.style.maxWidth = '100%';
+                            video.style.maxHeight = '100%';
+                            video.style.objectFit = 'contain';
+                            video.style.display = 'block';
+                            
+                            // Add error handling
+                            video.onerror = function() {
+                                console.error(`Failed to load video: ${item.src}`);
+                            };
+                            
+                            // Force play when video can play
+                            video.oncanplay = function() {
+                                console.log(`Video can play: ${item.src}`);
+                                video.play().catch(err => {
+                                    console.warn(`Force play failed: ${err}`);
+                                });
+                            };
+                            
+                            // Also try to play when loaded
+                            video.onloadeddata = function() {
+                                console.log(`Video loaded: ${item.src}`);
+                                video.play().catch(err => {
+                                    console.warn(`Loaded data play failed: ${err}`);
+                                });
+                            };
+                            
+                            centerMedia.appendChild(video);
+                            videoElements.push(video);
+                            
+                            console.log(`Added video: ${item.src}`);
+                        }
             }
             
-            // Play all videos concurrently
+            // Try to play all videos with multiple attempts
             if (videoElements.length > 0) {
-                try {
-                    const playPromises = videoElements.map(video => {
-                        return video.play().catch(error => {
-                            console.warn(`Video autoplay failed for ${video.src}:`, error);
-                            // Show play button overlay for autoplay-blocked videos
-                            showPlayOverlay(video);
-                        });
+                videoElements.forEach(video => {
+                    // Try immediate play
+                    video.play().catch(error => {
+                        console.warn(`Immediate play failed for ${video.src}:`, error);
+                        
+                        // Try again after a short delay
+                        setTimeout(() => {
+                            video.play().catch(error2 => {
+                                console.warn(`Delayed play failed for ${video.src}:`, error2);
+                                
+                                // Try one more time after video is ready
+                                video.addEventListener('canplay', () => {
+                                    video.play().catch(error3 => {
+                                        console.warn(`Final play attempt failed for ${video.src}:`, error3);
+                                        showPlayOverlay(video);
+                                    });
+                                }, { once: true });
+                            });
+                        }, 100);
                     });
-                    
-                    await Promise.all(playPromises);
-                    console.log('All videos started playing');
-                } catch (error) {
-                    console.error('Error playing videos:', error);
-                }
+                });
+                console.log('Attempted to play all videos with multiple retries');
             }
+            
+            // Set up reset timer
+            setupResetTimer(payload);
+            
+            console.log('🎯 Button trigger processing completed');
+        }
+        
+        // Set up reset timer based on payload options or default
+        function setupResetTimer(payload) {
+            let resetDelay = 60000; // Default 1 minute (60 seconds)
+            
+            // Check for custom duration in options
+            if (payload.options && payload.options.durationMs) {
+                resetDelay = payload.options.durationMs;
+                console.log('🔄 Using custom duration:', resetDelay, 'ms');
+            } else {
+                console.log('🔄 Using default duration:', resetDelay, 'ms');
+            }
+            
+            // Set the reset timer
+            overlayResetTimer = setTimeout(() => {
+                console.log('🔄 Auto-resetting overlay after', resetDelay, 'ms');
+                clearSlots();
+                overlayResetTimer = null;
+            }, resetDelay);
+            
+            console.log('🔄 Reset timer set for', resetDelay, 'ms');
         }
         
         // Show play overlay for autoplay-blocked videos
@@ -346,6 +474,12 @@
         
         // Clear all slots helper
         function clearSlots() {
+            // Clear any existing reset timer
+            if (overlayResetTimer) {
+                clearTimeout(overlayResetTimer);
+                overlayResetTimer = null;
+            }
+            
             // Clear text slots
             const textSlots = document.querySelectorAll('.text-slot');
             textSlots.forEach(slot => {
@@ -357,8 +491,36 @@
             const centerMedia = document.getElementById('center-media');
             centerMedia.innerHTML = '<span>Center Media</span>';
             
-            console.log('All slots cleared');
+            console.log('🔄 All slots cleared');
         }
+        
+        // Manual reset function (can be called from console or external)
+        window.resetOverlay = function() {
+            console.log('🔄 Manual overlay reset triggered');
+            clearSlots();
+        };
+
+        // Global function to change overlay resolution
+        window.setOverlayResolution = function(width, height) {
+            document.documentElement.style.setProperty('--overlay-width', width + 'px');
+            document.documentElement.style.setProperty('--overlay-height', height + 'px');
+            console.log(`📐 Overlay resolution changed to ${width}x${height}`);
+        };
+
+        // Standard resolution presets
+        window.overlayResolutions = {
+            '1920x1080': { width: 1920, height: 1080 },
+            '1280x720': { width: 1280, height: 720 },
+            '1366x768': { width: 1366, height: 768 },
+            '1600x900': { width: 1600, height: 900 },
+            '2560x1440': { width: 2560, height: 1440 },
+            '3840x2160': { width: 3840, height: 2160 },
+            '1024x768': { width: 1024, height: 768 },
+            '1280x1024': { width: 1280, height: 1024 }
+        };
+        
+        // Expose clearSlots globally for external access
+        window.clearSlots = clearSlots;
         
         // Legacy clear function for backward compatibility
         function clearAllSlots() {
@@ -516,11 +678,23 @@
         
         // Listen for messages from parent window (OBS Browser Source)
         window.addEventListener('message', function(event) {
-            console.log('Received message:', event);
+            console.log('🔔 Overlay received message:', event);
+            console.log('🔔 Event data:', event.data);
+            console.log('🔔 Event data type:', typeof event.data);
+            console.log('🔔 Event data keys:', event.data ? Object.keys(event.data) : 'No data');
             
-            // Forward to renderPayload function
-            if (event.data) {
+            // Handle the message structure: { type: 'buttonTrigger', payload: overlayPayload }
+            if (event.data && event.data.type === 'buttonTrigger' && event.data.payload) {
+                console.log('🔔 Processing wrapped payload:', event.data.payload);
+                renderPayload(event.data.payload);
+            } else if (event.data && event.data.type === 'buttonTrigger') {
+                console.log('🔔 Processing direct payload:', event.data);
                 renderPayload(event.data);
+            } else if (event.data) {
+                console.log('🔔 Processing fallback payload:', event.data);
+                renderPayload(event.data);
+            } else {
+                console.log('🔔 No valid data in message');
             }
         });
 

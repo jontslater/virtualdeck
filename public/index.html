@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Virtual Deck</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="AddEditButtonForm.css" />
   <!-- Google Material Icons -->
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   <!-- Google Fonts: Roboto (UI) + Roboto Mono (monospace) -->
@@ -221,18 +222,36 @@
     </div>
   </div>
 
+  <!-- Button Type Selection Modal -->
+  <div id="button-type-modal" class="hidden">
+    <div class="modal-content selection-modal">
+      <h2>What would you like to add?</h2>
+      <div class="selection-options">
+        <button class="selection-option" data-type="audio">
+          <div class="option-icon">🎵</div>
+          <div class="option-content">
+            <div class="option-title">Audio Button</div>
+            <div class="option-description">Play sound effects or music</div>
+          </div>
+        </button>
+        <button class="selection-option" data-type="multi-media">
+          <div class="option-icon">🎨</div>
+          <div class="option-content">
+            <div class="option-title">Multi-Media Button</div>
+            <div class="option-description">Text, images, videos, and audio combined</div>
+          </div>
+        </button>
+      </div>
+      <button class="cancel-selection">Cancel</button>
+    </div>
+  </div>
+
   <div id="settings-modal" class="hidden">
     <div class="modal-content">
-      <h2>Add New Trigger</h2>
+      <h2 id="settings-modal-title">Add New Trigger</h2>
       <form id="settings-form">
         <label for="label-input">Label:</label>
         <input type="text" id="label-input" name="label" required />
-        <label>Type:
-          <select name="type" id="type-select">
-            <option value="audio">Audio</option>
-            <!-- <option value="app">App</option> -->
-          </select>
-        </label><br>
         <label>Hotkey: 
           <input type="text" name="hotkey" id="hotkey-input" placeholder="Press any key or combination with Ctrl, Alt, Shift | Ex: 'Ctrl + F1'" readonly />
           <button type="button" id="record-hotkey">Record Hotkey</button>
@@ -247,10 +266,14 @@
           <label for="volume-input" class="volume-label">Volume: <span id="volume-value">100%</span></label>
           <input type="range" id="volume-input" name="volume" min="0" max="100" value="100" />
         </div>
-  <div id="app-file-section">
+        <div id="app-file-section">
           <label>App File:
             <input type="file" name="app-file" id="app-file-input" accept=".exe,.bat,.cmd,.lnk,.app,.sh,.desktop" required />
           </label>
+        </div>
+        <!-- Multi-Media Form Button -->
+        <div id="multi-media-form-trigger" class="hidden">
+          <button type="button" id="open-multi-media-form" class="multi-media-btn">Configure Multi-Media</button>
         </div>
         <button type="submit" id="save-sound">Save</button>
         <button type="button" id="close-settings">Cancel</button>
@@ -267,6 +290,141 @@
         <p id="about-desc" class="about-desc">Loading description...</p>
       </div>
     </div>
+  </div>
+
+  <!-- Multi-Media Form Modal -->
+  <div id="multi-media-modal" class="hidden">
+    <div class="modal-content multi-media-modal-content">
+      <div class="modal-header">
+        <h2 id="multi-media-modal-title">Create Multi-Media Button</h2>
+        <button id="multi-media-modal-close" class="modal-close">✕</button>
+      </div>
+      <div class="add-edit-button-form">
+        <form id="multi-media-form">
+          <!-- Button Name -->
+          <div class="form-section">
+            <label for="multi-media-button-name">Button Name:</label>
+            <input type="text" id="multi-media-button-name" name="name" required placeholder="Enter button name..." />
+          </div>
+
+          <!-- Hotkey -->
+          <div class="form-section">
+            <label for="multi-media-hotkey-input">Hotkey: 
+              <input type="text" name="hotkey" id="multi-media-hotkey-input" placeholder="Press any key or combination with Ctrl, Alt, Shift | Ex: 'Ctrl + F1'" readonly />
+              <button type="button" id="multi-media-record-hotkey">Record Hotkey</button>
+              <div id="multi-media-hotkey-status"></div>
+            </label>
+          </div>
+
+          <!-- Duration -->
+          <div class="form-section">
+            <label for="multi-media-duration-input">Display Duration (seconds): 
+              <input type="number" id="multi-media-duration-input" min="5" max="300" value="60" placeholder="60" />
+              <small>How long the overlay content should be displayed before auto-resetting (5-300 seconds)</small>
+            </label>
+          </div>
+
+          <!-- Media Sources Tabs -->
+          <div class="form-section">
+            <h3>Media Sources</h3>
+            <div class="media-tabs">
+              <button type="button" class="tab-btn active" data-tab="text">Text Slots</button>
+              <button type="button" class="tab-btn" data-tab="images">Images</button>
+              <button type="button" class="tab-btn" data-tab="videos">Videos</button>
+              <button type="button" class="tab-btn" data-tab="audio">Audio</button>
+            </div>
+            
+            <!-- Text Slots Tab -->
+            <div id="tab-text" class="tab-content active">
+              <div class="text-slots-grid">
+                <!-- Text slots will be added here dynamically -->
+              </div>
+            </div>
+            
+            <!-- Images Tab -->
+            <div id="tab-images" class="tab-content">
+              <div class="media-upload-area">
+                <input type="file" id="image-file-input" accept="image/*" multiple style="display: none;">
+                <div class="upload-zone" id="image-upload-zone">
+                  <div class="upload-icon">📁</div>
+                  <div class="upload-text">Click to select images or drag & drop</div>
+                  <div class="upload-subtext">Supports JPG, PNG, GIF, WebP</div>
+                </div>
+                <div class="url-input-group">
+                  <input type="url" id="image-url-input" placeholder="Or enter image URL...">
+                  <button type="button" id="add-image-url" class="add-url-btn">Add URL</button>
+                </div>
+              </div>
+              <div id="images-list" class="media-list">
+                <!-- Image items will be added here dynamically -->
+              </div>
+            </div>
+            
+            <!-- Videos Tab -->
+            <div id="tab-videos" class="tab-content">
+              <div class="media-upload-area">
+                <input type="file" id="video-file-input" accept="video/*" multiple style="display: none;">
+                <div class="upload-zone" id="video-upload-zone">
+                  <div class="upload-icon">🎬</div>
+                  <div class="upload-text">Click to select videos or drag & drop</div>
+                  <div class="upload-subtext">Supports MP4, WebM, MOV, AVI</div>
+                </div>
+                <div class="url-input-group">
+                  <input type="url" id="video-url-input" placeholder="Or enter video URL...">
+                  <button type="button" id="add-video-url" class="add-url-btn">Add URL</button>
+                </div>
+              </div>
+              <div id="videos-list" class="media-list">
+                <!-- Video items will be added here dynamically -->
+              </div>
+            </div>
+            
+            <!-- Audio Tab -->
+            <div id="tab-audio" class="tab-content">
+              <div class="media-upload-area">
+                <input type="file" id="audio-file-input" accept="audio/*" multiple style="display: none;">
+                <div class="upload-zone" id="audio-upload-zone">
+                  <div class="upload-icon">🎵</div>
+                  <div class="upload-text">Click to select audio files or drag & drop</div>
+                  <div class="upload-subtext">Supports MP3, WAV, OGG, M4A</div>
+                </div>
+                <div class="url-input-group">
+                  <input type="url" id="audio-url-input" placeholder="Or enter audio URL...">
+                  <button type="button" id="add-audio-url" class="add-url-btn">Add URL</button>
+                </div>
+              </div>
+              <div id="audio-list" class="media-list">
+                <!-- Audio items will be added here dynamically -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Preview Section -->
+          <div class="form-section">
+            <h3>Preview</h3>
+            <div id="button-preview" class="button-preview">
+              <!-- Preview will be rendered here -->
+            </div>
+            <button type="button" id="preview-in-overlay" class="preview-btn">Preview in Overlay</button>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="form-actions">
+            <button type="submit" id="save-multi-media-button">Save Button</button>
+            <button type="button" id="cancel-multi-media-button">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overlay Preview Iframe -->
+  <div id="overlay-preview" class="overlay-preview hidden">
+    <div class="overlay-preview-header">
+      <h3>Overlay Preview</h3>
+      <button id="close-overlay-preview" class="close-preview-btn" title="Close Overlay Preview">×</button>
+    </div>
+    <iframe id="overlay-iframe" src="overlay.html" width="800" height="450" frameborder="0"></iframe>
   </div>
 
   <!-- Overlay Widget -->
@@ -329,6 +487,23 @@
       </div>
       
       <div class="overlay-section">
+        <h4>Overlay Resolution</h4>
+        <div class="resolution-controls">
+          <select id="overlay-resolution" class="custom-select">
+            <option value="1920x1080" selected>1920x1080 (Full HD)</option>
+            <option value="1280x720">1280x720 (HD)</option>
+            <option value="1366x768">1366x768 (HD)</option>
+            <option value="1600x900">1600x900 (HD+)</option>
+            <option value="2560x1440">2560x1440 (2K)</option>
+            <option value="3840x2160">3840x2160 (4K)</option>
+            <option value="1024x768">1024x768 (XGA)</option>
+            <option value="1280x1024">1280x1024 (SXGA)</option>
+          </select>
+          <button id="apply-resolution" class="overlay-action-btn">Apply Resolution</button>
+        </div>
+      </div>
+      
+      <div class="overlay-section">
         <h4>Overlay URL</h4>
         <div class="url-display">
           <code>http://localhost:8080/overlay</code>
@@ -340,6 +515,7 @@
 
   <!-- Custom Notification System -->
   <div id="notification-container" class="notification-container"></div>
+  <script src="AddEditButtonForm.js"></script>
   <script src="script.js"></script>
   <script src="../TwitchConnected/tc.js"></script>
 </body>

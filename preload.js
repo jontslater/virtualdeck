@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onTriggerMedia: (callback) => ipcRenderer.on('trigger-media', (event, mediaId) => callback(mediaId)),
   onRefreshUI: (callback) => ipcRenderer.on('refresh-ui', (event) => callback()),
   getConfig: async () => ipcRenderer.invoke('get-config'),
+  saveConfig: async (config) => ipcRenderer.invoke('save-config', config),
   updateConfig: async (configUpdate) => ipcRenderer.invoke('update-config', configUpdate),
   // Return persisted Twitch Client config (tc_config.json in userData)
   getTwitchConfig: async () => ipcRenderer.invoke('get-tc-config'),

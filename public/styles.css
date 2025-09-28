@@ -139,7 +139,7 @@ input.theme-radio-input:checked + label.menu-dropdown-item.theme-item {
 }
 
 
-  --card-gap: 12px;   /* gap between cards */
+  --card-gap: 16px;   /* gap between cards - balanced for drag functionality */
   
   /* Theme Variables - Default Dark Theme */
   --bg-primary: #111;
@@ -879,6 +879,108 @@ body.vd-dragging .sound-card.draggable:hover {
   color: #ddd;
 }
 
+/* Button Type Selection Modal */
+#button-type-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+}
+
+#button-type-modal.hidden {
+  display: none;
+}
+
+.selection-modal {
+  width: 90%;
+  max-width: 500px;
+  background: var(--bg-primary, #1a1a1a);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  padding: 30px;
+  text-align: center;
+}
+
+.selection-modal h2 {
+  margin: 0 0 30px 0;
+  color: var(--text-primary, #fff);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.selection-options {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
+.selection-option {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 20px;
+  border: 2px solid var(--border-color, #333);
+  border-radius: 12px;
+  background: var(--bg-secondary, #2a2a2a);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.selection-option:hover {
+  border-color: var(--accent-color, #007acc);
+  background: var(--bg-tertiary, #1a1a1a);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 122, 204, 0.2);
+}
+
+.option-icon {
+  font-size: 32px;
+  flex-shrink: 0;
+}
+
+.option-content {
+  flex: 1;
+}
+
+.option-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  margin-bottom: 5px;
+}
+
+.option-description {
+  font-size: 14px;
+  color: var(--text-secondary, #ccc);
+  line-height: 1.4;
+}
+
+.cancel-selection {
+  background: #666;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.cancel-selection:hover {
+  background: #555;
+}
+
 #volume-input {
   width: calc(100% - 24px); /* slightly narrower than full width */
   margin: 0 12px 10px 12px; /* spacing on left and right to keep it breathing room */
@@ -1238,6 +1340,73 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   display: none !important;
 }
 
+/* Overlay Preview */
+.overlay-preview {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 900px;
+  height: 80%;
+  max-height: 600px;
+  background: var(--bg-primary, #1a1a1a);
+  border: 2px solid var(--border-color, #333);
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
+
+.overlay-preview.hidden {
+  display: none;
+}
+
+.overlay-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--border-color, #333);
+  background: var(--bg-secondary, #2a2a2a);
+  border-radius: 12px 12px 0 0;
+}
+
+.overlay-preview-header h3 {
+  margin: 0;
+  color: var(--text-primary, #fff);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.close-preview-btn {
+  background: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.close-preview-btn:hover {
+  background: #ff6666;
+}
+
+#overlay-iframe {
+  flex: 1;
+  border: none;
+  border-radius: 0 0 12px 12px;
+  background: #000;
+}
+
 /* Overlay Widget */
 .overlay-widget {
   position: fixed;
@@ -1371,6 +1540,13 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
 }
 
 .custom-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.resolution-controls {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -2170,7 +2346,7 @@ body.resizing-chat * {
   
   #sound-grid {
     grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
-    gap: 8px;
+    gap: var(--card-gap);
   }
   
   #twitch-chat-container {
@@ -2193,7 +2369,7 @@ body.resizing-chat * {
   
   #sound-grid {
     grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
-    gap: 6px;
+    gap: var(--card-gap);
   }
   
   .sound-card {

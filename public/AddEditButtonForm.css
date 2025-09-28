@@ -1,0 +1,554 @@
+/* AddEditButtonForm - Scoped styles for multi-source button creation */
+
+/* Multi-Media Modal Styling */
+#multi-media-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+#multi-media-modal.hidden {
+  display: none;
+}
+
+.multi-media-modal-content {
+  width: 90%;
+  max-width: 1000px;
+  max-height: 85vh;
+  background: var(--bg-primary, #1a1a1a);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--border-color, #333);
+  background: var(--bg-secondary, #2a2a2a);
+}
+
+.modal-header h2 {
+  margin: 0;
+  color: var(--text-primary, #fff);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #ccc);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+  background: var(--bg-tertiary, #333);
+  color: var(--text-primary, #fff);
+}
+
+/* Multi-Media Button in main form */
+.multi-media-btn {
+  background: linear-gradient(45deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin: 10px 0;
+  width: 100%;
+}
+
+.multi-media-btn:hover {
+  background: linear-gradient(45deg, #5a6fd8, #6a4190);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.add-edit-button-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.add-edit-button-form .form-section {
+  border: 1px solid var(--border-color, #333);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--bg-secondary, #2a2a2a);
+}
+
+.add-edit-button-form .form-section h3 {
+  margin: 0 0 15px 0;
+  color: var(--text-primary, #fff);
+  font-size: 16px;
+  font-weight: bold;
+}
+
+/* Tab Interface */
+.media-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 15px;
+  border-bottom: 1px solid var(--border-color, #333);
+}
+
+.tab-btn {
+  background: var(--bg-tertiary, #1a1a1a);
+  border: 1px solid var(--border-color, #333);
+  border-bottom: none;
+  color: var(--text-secondary, #ccc);
+  padding: 8px 16px;
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  background: var(--bg-secondary, #2a2a2a);
+  color: var(--text-primary, #fff);
+}
+
+.tab-btn.active {
+  background: var(--accent-color, #007acc);
+  color: white;
+  border-color: var(--accent-color, #007acc);
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* File Upload Areas */
+.media-upload-area {
+  margin-bottom: 15px;
+}
+
+.upload-zone {
+  border: 2px dashed var(--border-color, #333);
+  border-radius: 8px;
+  padding: 30px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--bg-tertiary, #1a1a1a);
+  margin-bottom: 10px;
+}
+
+.upload-zone:hover {
+  border-color: var(--accent-color, #007acc);
+  background: var(--bg-secondary, #2a2a2a);
+}
+
+.upload-zone.dragover {
+  border-color: var(--accent-color, #007acc);
+  background: var(--accent-color, #007acc);
+  background: rgba(0, 122, 204, 0.1);
+}
+
+.upload-icon {
+  font-size: 32px;
+  margin-bottom: 10px;
+}
+
+.upload-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  margin-bottom: 5px;
+}
+
+.upload-subtext {
+  font-size: 12px;
+  color: var(--text-secondary, #ccc);
+}
+
+.url-input-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.url-input-group input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 4px;
+  background: var(--bg-primary, #000);
+  color: var(--text-primary, #fff);
+  font-size: 14px;
+}
+
+.add-url-btn {
+  background: var(--accent-color, #007acc);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.add-url-btn:hover {
+  background: var(--accent-hover, #005a9e);
+}
+
+.add-edit-button-form .text-slots-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.add-edit-button-form .text-slot-editor {
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--bg-tertiary, #1a1a1a);
+}
+
+.add-edit-button-form .text-slot-editor label {
+  display: block;
+  font-size: 12px;
+  font-weight: bold;
+  margin-bottom: 5px;
+  color: var(--text-secondary, #ccc);
+}
+
+.add-edit-button-form .slot-text-input {
+  width: 100%;
+  padding: 6px;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 4px;
+  background: var(--bg-primary, #000);
+  color: var(--text-primary, #fff);
+  font-size: 14px;
+  margin-bottom: 8px;
+  box-sizing: border-box;
+}
+
+.add-edit-button-form .style-btn {
+  width: 100%;
+  padding: 6px;
+  background: var(--accent-color, #007acc);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.add-edit-button-form .style-btn:hover {
+  background: var(--accent-hover, #005a9e);
+}
+
+.add-edit-button-form .style-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--bg-primary, #000);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 4px;
+}
+
+.add-edit-button-form .style-panel.hidden {
+  display: none;
+}
+
+.add-edit-button-form .style-panel select,
+.add-edit-button-form .style-panel input {
+  padding: 4px;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 3px;
+  background: var(--bg-secondary, #2a2a2a);
+  color: var(--text-primary, #fff);
+  font-size: 12px;
+}
+
+.add-edit-button-form .style-toggles {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+}
+
+.add-edit-button-form .style-toggles label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  margin: 0;
+}
+
+.add-edit-button-form .media-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.add-edit-button-form .media-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px;
+  background: var(--bg-tertiary, #1a1a1a);
+}
+
+.add-edit-button-form .media-preview {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--bg-primary, #000);
+}
+
+.add-edit-button-form .media-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.add-edit-button-form .media-url {
+  width: 100%;
+  padding: 4px;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 3px;
+  background: var(--bg-primary, #000);
+  color: var(--text-primary, #fff);
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.add-edit-button-form .media-controls {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.add-edit-button-form .media-controls select,
+.add-edit-button-form .media-controls input {
+  padding: 2px 4px;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 3px;
+  background: var(--bg-secondary, #2a2a2a);
+  color: var(--text-primary, #fff);
+  font-size: 11px;
+}
+
+.add-edit-button-form .remove-media {
+  background: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.add-edit-button-form .remove-media:hover {
+  background: #cc0000;
+}
+
+.add-edit-button-form .add-media-btn {
+  background: var(--accent-color, #007acc);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  width: fit-content;
+}
+
+.add-edit-button-form .add-media-btn:hover {
+  background: var(--accent-hover, #005a9e);
+}
+
+.add-edit-button-form .button-preview {
+  width: 250px;
+  height: 150px;
+  border: 2px solid var(--border-color, #333);
+  border-radius: 8px;
+  background: var(--bg-primary, #000);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.add-edit-button-form .preview-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  grid-template-rows: 1fr 2fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+}
+
+.add-edit-button-form .preview-text-slot {
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid #00ff00;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: white;
+  text-align: center;
+  padding: 3px;
+  word-wrap: break-word;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.add-edit-button-form .preview-center-media {
+  grid-column: 2;
+  grid-row: 2;
+  background: rgba(0, 0, 0, 0.9);
+  border: 2px solid #ff6600;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: white;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.add-edit-button-form .preview-media-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-edit-button-form .preview-btn {
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.add-edit-button-form .preview-btn:hover {
+  background: #45a049;
+}
+
+.add-edit-button-form .form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-color, #333);
+}
+
+.add-edit-button-form .form-actions button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.add-edit-button-form .form-actions #save-button {
+  background: var(--accent-color, #007acc);
+  color: white;
+}
+
+.add-edit-button-form .form-actions #save-button:hover {
+  background: var(--accent-hover, #005a9e);
+}
+
+.add-edit-button-form .form-actions #close-settings {
+  background: #666;
+  color: white;
+}
+
+.add-edit-button-form .form-actions #close-settings:hover {
+  background: #555;
+}
+
+/* Multi-media hotkey recording button */
+#multi-media-record-hotkey {
+  background: #007acc;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  margin-left: 8px;
+}
+
+#multi-media-record-hotkey:hover {
+  background: #005a9e;
+}
+
+#multi-media-record-hotkey.recording {
+  background: #ff4444;
+  animation: pulse 1s infinite;
+}
+
+#multi-media-record-hotkey.clicked {
+  transform: scale(0.95);
+}
+
+#multi-media-hotkey-status {
+  margin-top: 5px;
+  font-size: 12px;
+  color: #ccc;
+  min-height: 16px;
+}
