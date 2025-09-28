@@ -3345,23 +3345,65 @@ let notificationManager;
 
 // --- App toolbar wiring ---
 function setupAppToolbar() {
+  console.log('🔧 setupAppToolbar() called');
   const btnMin = document.getElementById('btn-minimize');
   const btnMax = document.getElementById('btn-maximize');
   const btnClose = document.getElementById('btn-close');
   const maxIcon = document.getElementById('max-icon');
 
-  if (btnMin) btnMin.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (window.electronAPI && typeof window.electronAPI.minimizeWindow === 'function') window.electronAPI.minimizeWindow();
+  console.log('🔧 Toolbar elements found:', {
+    btnMin: !!btnMin,
+    btnMax: !!btnMax,
+    btnClose: !!btnClose,
+    maxIcon: !!maxIcon
   });
-  if (btnMax) btnMax.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (window.electronAPI && typeof window.electronAPI.toggleMaximizeWindow === 'function') window.electronAPI.toggleMaximizeWindow();
+
+  console.log('🔧 Electron API available:', {
+    electronAPI: !!window.electronAPI,
+    minimizeWindow: !!(window.electronAPI && window.electronAPI.minimizeWindow),
+    toggleMaximizeWindow: !!(window.electronAPI && window.electronAPI.toggleMaximizeWindow),
+    closeWindow: !!(window.electronAPI && window.electronAPI.closeWindow)
   });
-  if (btnClose) btnClose.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (window.electronAPI && typeof window.electronAPI.closeWindow === 'function') window.electronAPI.closeWindow();
-  });
+
+  if (btnMin) {
+    console.log('🔧 Setting up minimize button');
+    btnMin.addEventListener('click', (e) => {
+      console.log('🔧 MINIMIZE BUTTON CLICKED!');
+      e.stopPropagation();
+      if (window.electronAPI && typeof window.electronAPI.minimizeWindow === 'function') {
+        console.log('🔧 Calling minimizeWindow()');
+        window.electronAPI.minimizeWindow();
+      } else {
+        console.log('🔧 minimizeWindow not available');
+      }
+    });
+  }
+  if (btnMax) {
+    console.log('🔧 Setting up maximize button');
+    btnMax.addEventListener('click', (e) => {
+      console.log('🔧 MAXIMIZE BUTTON CLICKED!');
+      e.stopPropagation();
+      if (window.electronAPI && typeof window.electronAPI.toggleMaximizeWindow === 'function') {
+        console.log('🔧 Calling toggleMaximizeWindow()');
+        window.electronAPI.toggleMaximizeWindow();
+      } else {
+        console.log('🔧 toggleMaximizeWindow not available');
+      }
+    });
+  }
+  if (btnClose) {
+    console.log('🔧 Setting up close button');
+    btnClose.addEventListener('click', (e) => {
+      console.log('🔧 CLOSE BUTTON CLICKED!');
+      e.stopPropagation();
+      if (window.electronAPI && typeof window.electronAPI.closeWindow === 'function') {
+        console.log('🔧 Calling closeWindow()');
+        window.electronAPI.closeWindow();
+      } else {
+        console.log('🔧 closeWindow not available');
+      }
+    });
+  }
 
   // Update maximize icon state
   function showMaximizedState(isMax) {
@@ -3388,10 +3430,39 @@ function setupAppToolbar() {
 
 // Initialize toolbar after DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('🔧 DOMContentLoaded fired - initializing toolbar');
   setupAppToolbar();
+  setupOverlayControls();
   // initialize left app menu
-  if (typeof setupLeftAppMenu === 'function') setupLeftAppMenu();
+  if (typeof setupLeftAppMenu === 'function') {
+    console.log('🔧 Setting up left app menu');
+    setupLeftAppMenu();
+  } else {
+    console.log('🔧 setupLeftAppMenu function not found');
+  }
 });
+
+// Overlay controls setup
+function setupOverlayControls() {
+  console.log('🔧 Setting up overlay controls');
+  const overlayToggleBtn = document.getElementById('toggle-overlay');
+  
+  if (overlayToggleBtn) {
+    console.log('🔧 Overlay toggle button found');
+    overlayToggleBtn.addEventListener('click', () => {
+      console.log('🔧 Overlay toggle button clicked');
+      if (window.electronAPI && typeof window.electronAPI.toggleOverlay === 'function') {
+        window.electronAPI.toggleOverlay();
+        // Toggle button state
+        overlayToggleBtn.classList.toggle('active');
+      } else {
+        console.log('🔧 toggleOverlay not available');
+      }
+    });
+  } else {
+    console.log('🔧 Overlay toggle button not found');
+  }
+}
 
 // Left app menu wiring: toggles File dropdown and wires Quit
 function setupLeftAppMenu() {
@@ -3927,6 +3998,55 @@ document.addEventListener('DOMContentLoaded', () => {
   // Export for potential use by other parts of the app
   window.themeManager = themeManager;
   window.notificationManager = notificationManager;
+  
+  // Overlay test functions
+  window.testOverlayText = function() {
+    console.log('Testing overlay text...');
+    if (window.electronAPI && typeof window.electronAPI.sendOverlayText === 'function') {
+      window.electronAPI.sendOverlayText({ position: 5, text: 'Test Text from Dashboard!' });
+    } else {
+      console.log('sendOverlayText not available');
+    }
+  };
+  
+  window.testOverlayImage = function() {
+    console.log('Testing overlay image...');
+    if (window.electronAPI && typeof window.electronAPI.sendOverlayImage === 'function') {
+      window.electronAPI.sendOverlayImage({ 
+        position: 1, 
+        imageUrl: 'https://via.placeholder.com/200x100/00ff00/000000?text=Test+Image' 
+      });
+    } else {
+      console.log('sendOverlayImage not available');
+    }
+  };
+  
+  window.testOverlayVideo = function() {
+    console.log('Testing overlay video...');
+    if (window.electronAPI && typeof window.electronAPI.sendOverlayVideo === 'function') {
+      window.electronAPI.sendOverlayVideo({ 
+        position: 3, 
+        videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4' 
+      });
+    } else {
+      console.log('sendOverlayVideo not available');
+    }
+  };
+  
+  window.clearOverlay = function() {
+    console.log('Clearing overlay...');
+    if (window.electronAPI && typeof window.electronAPI.sendOverlayClearAll === 'function') {
+      window.electronAPI.sendOverlayClearAll();
+    } else {
+      console.log('sendOverlayClearAll not available');
+    }
+  };
+  
+  console.log('Overlay test functions available:');
+  console.log('- testOverlayText() - Send test text to center box');
+  console.log('- testOverlayImage() - Send test image to top left box');
+  console.log('- testOverlayVideo() - Send test video to top right box');
+  console.log('- clearOverlay() - Clear all overlay content');
   
   // Watch for any changes to the document element's data-theme attribute
   const observer = new MutationObserver((mutations) => {
