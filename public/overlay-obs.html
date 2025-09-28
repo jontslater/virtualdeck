@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Deck Overlay</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: transparent;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .overlay-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .text-box {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            border: 2px solid #00ff00;
+            min-width: 100px;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            word-wrap: break-word;
+            transition: all 0.3s ease;
+        }
+
+        .text-box:hover {
+            background: rgba(0, 0, 0, 0.9);
+            border-color: #00cc00;
+        }
+
+        /* Position the text boxes */
+        .text-box:nth-child(1) { /* Top Left */
+            top: 20px;
+            left: 20px;
+        }
+
+        .text-box:nth-child(2) { /* Top Middle */
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .text-box:nth-child(3) { /* Top Right */
+            top: 20px;
+            right: 20px;
+        }
+
+        .text-box:nth-child(4) { /* Left Middle */
+            top: 50%;
+            left: 20px;
+            transform: translateY(-50%);
+        }
+
+        .text-box:nth-child(5) { /* Center */
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .text-box:nth-child(6) { /* Right Middle */
+            top: 50%;
+            right: 20px;
+            transform: translateY(-50%);
+        }
+
+        .text-box:nth-child(7) { /* Bottom Left */
+            bottom: 20px;
+            left: 20px;
+        }
+
+        .text-box:nth-child(8) { /* Bottom Middle */
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .text-box:nth-child(9) { /* Bottom Right */
+            bottom: 20px;
+            right: 20px;
+        }
+
+        /* Media container for multiple items */
+        .media-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            padding: 8px;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        .media-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border: 2px dashed rgba(0, 255, 0, 0.3);
+            border-radius: 8px;
+            pointer-events: none;
+        }
+
+        .media-text {
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+            word-wrap: break-word;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.2s ease;
+        }
+
+        .media-text:hover {
+            background: rgba(0, 0, 0, 0.9);
+            transform: translateY(-1px);
+        }
+
+        .media-image {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.2s ease;
+        }
+
+        .media-image:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        .media-video {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.2s ease;
+        }
+
+        .media-video:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Debug info */
+        .debug-info {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 1000;
+            max-width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <div class="overlay-container">
+        <!-- 9 text boxes positioned around the screen -->
+        <div class="text-box" id="text-box-1">
+            <div class="media-container">
+                <div class="media-text">Top Left<br>Ready for content</div>
+            </div>
+        </div>
+        
+        <div class="text-box" id="text-box-2">
+            <div class="media-container">
+                <div class="media-text">Top Middle<br>Ready for content</div>
+            </div>
+        </div>
+        
+        <div class="text-box" id="text-box-3">
+            <div class="media-container">
+                <div class="media-text">Top Right<br>Ready for content</div>
+            </div>
+        </div>
+        
+        <div class="text-box" id="text-box-4">
+            <div class="media-container">
+                <div class="media-text">Left Middle<br>Ready for content</div>
+            </div>
+        </div>
+        
+        <div class="text-box" id="text-box-5">
+            <div class="media-container">
+                <div class="media-text">Center<br>Ready for content</div>
+            </div>
+        </div>
+        
+        <div class="text-box" id="text-box-6">
+            <div class="media-container">
+                <div class="media-container">
+                    <div class="media-text">Right Middle<br>Ready for content</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="text-box" id="text-box-7">
+            <div class="media-container">
+                <div class="media-text">Bottom Left<br>Ready for content</div>
+            </div>
+        </div>
+        
+        <div class="text-box" id="text-box-8">
+            <div class="media-container">
+                <div class="media-text">Bottom Middle<br>Ready for content</div>
+            </div>
+        </div>
+        
+        <div class="text-box" id="text-box-9">
+            <div class="media-container">
+                <div class="media-text">Bottom Right<br>Ready for content</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="debug-info" id="debug-info">
+        <div>Overlay Status: <span id="status">Connected</span></div>
+        <div>Last Update: <span id="last-update">Never</span></div>
+        <div>Messages Received: <span id="message-count">0</span></div>
+    </div>
+
+    <script>
+        // Global variables
+        let messageCount = 0;
+        let lastUpdate = 'Never';
+
+        // Update debug info
+        function updateDebugInfo() {
+            document.getElementById('status').textContent = 'Connected';
+            document.getElementById('last-update').textContent = lastUpdate;
+            document.getElementById('message-count').textContent = messageCount;
+        }
+
+        // Get or create media container for a text box
+        function getOrCreateMediaContainer(textBoxId) {
+            let textBox = document.getElementById(textBoxId);
+            if (!textBox) return null;
+
+            let container = textBox.querySelector('.media-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'media-container';
+                textBox.appendChild(container);
+            }
+            return container;
+        }
+
+        // Calculate stacking position for media items
+        function calculateStackPosition(container, mediaType) {
+            const existingItems = container.querySelectorAll(`.media-${mediaType}`);
+            const count = existingItems.length;
+            
+            return {
+                zIndex: 1000 + count,
+                order: count,
+                offsetX: count * 2,
+                offsetY: count * 2
+            };
+        }
+
+        // Add text media to a container
+        function addTextMedia(container, text) {
+            const position = calculateStackPosition(container, 'text');
+            const textElement = document.createElement('div');
+            textElement.className = 'media-text';
+            textElement.textContent = text;
+            textElement.style.zIndex = position.zIndex;
+            textElement.style.order = position.order;
+            textElement.style.transform = `translate(${position.offsetX}px, ${position.offsetY}px)`;
+            container.appendChild(textElement);
+        }
+
+        // Add image media to a container
+        function addImageMedia(container, imageUrl) {
+            const position = calculateStackPosition(container, 'image');
+            const imageElement = document.createElement('img');
+            imageElement.className = 'media-image';
+            imageElement.src = imageUrl;
+            imageElement.style.zIndex = position.zIndex;
+            imageElement.style.order = position.order;
+            imageElement.style.transform = `translate(${position.offsetX}px, ${position.offsetY}px)`;
+            
+            imageElement.onerror = function() {
+                console.error('Failed to load image:', imageUrl);
+                this.style.display = 'none';
+            };
+            
+            container.appendChild(imageElement);
+        }
+
+        // Add video media to a container
+        function addVideoMedia(container, videoUrl) {
+            const position = calculateStackPosition(container, 'video');
+            const videoElement = document.createElement('video');
+            videoElement.className = 'media-video';
+            videoElement.src = videoUrl;
+            videoElement.autoplay = true;
+            videoElement.loop = true;
+            videoElement.muted = true;
+            videoElement.controls = false;
+            videoElement.style.zIndex = position.zIndex;
+            videoElement.style.order = position.order;
+            videoElement.style.transform = `translate(${position.offsetX}px, ${position.offsetY}px)`;
+            
+            videoElement.onerror = function() {
+                console.error('Failed to load video:', videoUrl);
+                this.style.display = 'none';
+            };
+            
+            container.appendChild(videoElement);
+        }
+
+        // Handle messages from the main app
+        function handleMessage(message) {
+            messageCount++;
+            lastUpdate = new Date().toLocaleTimeString();
+            updateDebugInfo();
+
+            console.log('Overlay received message:', message);
+
+            switch (message.type) {
+                case 'overlay-clear-all':
+                    // Clear all text boxes
+                    for (let i = 1; i <= 9; i++) {
+                        const container = getOrCreateMediaContainer(`text-box-${i}`);
+                        if (container) {
+                            container.innerHTML = '';
+                        }
+                    }
+                    break;
+
+                case 'overlay-text':
+                    const textBoxId = `text-box-${message.position || 1}`;
+                    const textContainer = getOrCreateMediaContainer(textBoxId);
+                    if (textContainer) {
+                        addTextMedia(textContainer, message.text);
+                    }
+                    break;
+
+                case 'overlay-image':
+                    const imageBoxId = `text-box-${message.position || 1}`;
+                    const imageContainer = getOrCreateMediaContainer(imageBoxId);
+                    if (imageContainer) {
+                        addImageMedia(imageContainer, message.imageUrl);
+                    }
+                    break;
+
+                case 'overlay-video':
+                    const videoBoxId = `text-box-${message.position || 1}`;
+                    const videoContainer = getOrCreateMediaContainer(videoBoxId);
+                    if (videoContainer) {
+                        addVideoMedia(videoContainer, message.videoUrl);
+                    }
+                    break;
+
+                default:
+                    console.log('Unknown message type:', message.type);
+            }
+        }
+
+        // Listen for messages from the main app
+        if (window.electronAPI) {
+            window.electronAPI.onOverlayMessage(handleMessage);
+        } else {
+            // For testing in browser
+            console.log('Electron API not available - running in test mode');
+            
+            // Test the overlay functionality
+            setTimeout(() => {
+                console.log('Testing overlay functionality...');
+                
+                // Test text
+                handleMessage({
+                    type: 'overlay-text',
+                    position: 1,
+                    text: 'Test Text from Browser'
+                });
+                
+                // Test image
+                handleMessage({
+                    type: 'overlay-image',
+                    position: 2,
+                    imageUrl: 'https://via.placeholder.com/200x100/00ff00/000000?text=Test+Image'
+                });
+                
+                // Test video
+                handleMessage({
+                    type: 'overlay-video',
+                    position: 3,
+                    videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4'
+                });
+            }, 2000);
+        }
+
+        // Initialize debug info
+        updateDebugInfo();
+
+        // Global functions for console testing
+        window.testOverlay = function() {
+            handleMessage({
+                type: 'overlay-text',
+                position: 5,
+                text: 'Console Test Message'
+            });
+        };
+
+        window.clearOverlay = function() {
+            handleMessage({ type: 'overlay-clear-all' });
+        };
+
+        window.showImageInBox = function(boxNumber, imageUrl) {
+            handleMessage({
+                type: 'overlay-image',
+                position: boxNumber,
+                imageUrl: imageUrl
+            });
+        };
+
+        window.showVideoInBox = function(boxNumber, videoUrl) {
+            handleMessage({
+                type: 'overlay-video',
+                position: boxNumber,
+                videoUrl: videoUrl
+            });
+        };
+
+        console.log('Overlay loaded successfully!');
+        console.log('Available test functions:');
+        console.log('- testOverlay() - Test text in center box');
+        console.log('- clearOverlay() - Clear all boxes');
+        console.log('- showImageInBox(boxNumber, imageUrl) - Show image in specific box');
+        console.log('- showVideoInBox(boxNumber, videoUrl) - Show video in specific box');
+    </script>
+</body>
+</html>
