@@ -3445,22 +3445,26 @@ document.addEventListener('DOMContentLoaded', () => {
 // Overlay controls setup
 function setupOverlayControls() {
   console.log('🔧 Setting up overlay controls');
-  const overlayToggleBtn = document.getElementById('toggle-overlay');
+  const overlayUrlBtn = document.getElementById('show-overlay-url');
   
-  if (overlayToggleBtn) {
-    console.log('🔧 Overlay toggle button found');
-    overlayToggleBtn.addEventListener('click', () => {
-      console.log('🔧 Overlay toggle button clicked');
-      if (window.electronAPI && typeof window.electronAPI.toggleOverlay === 'function') {
-        window.electronAPI.toggleOverlay();
-        // Toggle button state
-        overlayToggleBtn.classList.toggle('active');
-      } else {
-        console.log('🔧 toggleOverlay not available');
+  if (overlayUrlBtn) {
+    console.log('🔧 Overlay URL button found');
+    overlayUrlBtn.addEventListener('click', () => {
+      console.log('🔧 Overlay URL button clicked');
+      const overlayUrl = 'http://localhost:8080/overlay';
+      alert(`Overlay URL for OBS Browser Source:\n\n${overlayUrl}\n\nCopy this URL and paste it into OBS Browser Source.`);
+      
+      // Copy to clipboard if possible
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(overlayUrl).then(() => {
+          console.log('Overlay URL copied to clipboard');
+        }).catch(err => {
+          console.log('Failed to copy to clipboard:', err);
+        });
       }
     });
   } else {
-    console.log('🔧 Overlay toggle button not found');
+    console.log('🔧 Overlay URL button not found');
   }
 }
 

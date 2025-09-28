@@ -260,7 +260,8 @@
 
         // Update debug info
         function updateDebugInfo() {
-            document.getElementById('status').textContent = 'Connected';
+            const status = overlayWS && overlayWS.readyState === WebSocket.OPEN ? 'Connected' : 'Disconnected';
+            document.getElementById('status').textContent = status;
             document.getElementById('last-update').textContent = lastUpdate;
             document.getElementById('message-count').textContent = messageCount;
         }
@@ -392,39 +393,53 @@
             }
         }
 
-        // Listen for messages from the main app
-        if (window.electronAPI) {
-            window.electronAPI.onOverlayMessage(handleMessage);
-        } else {
-            // For testing in browser
-            console.log('Electron API not available - running in test mode');
-            
-            // Test the overlay functionality
-            setTimeout(() => {
-                console.log('Testing overlay functionality...');
+        // WebSocket connection for real-time communication
+        let overlayWS = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+
+        function connectWebSocket() {
+            try {
+                overlayWS = new WebSocket('ws://localhost:8080');
                 
-                // Test text
-                handleMessage({
-                    type: 'overlay-text',
-                    position: 1,
-                    text: 'Test Text from Browser'
-                });
+                overlayWS.onopen = function() {
+                    console.log('Overlay WebSocket connected');
+                    reconnectAttempts = 0;
+                    updateDebugInfo();
+                };
                 
-                // Test image
-                handleMessage({
-                    type: 'overlay-image',
-                    position: 2,
-                    imageUrl: 'https://via.placeholder.com/200x100/00ff00/000000?text=Test+Image'
-                });
+                overlayWS.onmessage = function(event) {
+                    try {
+                        const message = JSON.parse(event.data);
+                        handleMessage(message);
+                    } catch (e) {
+                        console.error('Error parsing WebSocket message:', e);
+                    }
+                };
                 
-                // Test video
-                handleMessage({
-                    type: 'overlay-video',
-                    position: 3,
-                    videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4'
-                });
-            }, 2000);
+                overlayWS.onclose = function() {
+                    console.log('Overlay WebSocket disconnected');
+                    overlayWS = null;
+                    updateDebugInfo();
+                    
+                    // Attempt to reconnect
+                    if (reconnectAttempts < maxReconnectAttempts) {
+                        reconnectAttempts++;
+                        console.log(`Attempting to reconnect... (${reconnectAttempts}/${maxReconnectAttempts})`);
+                        setTimeout(connectWebSocket, 2000);
+                    }
+                };
+                
+                overlayWS.onerror = function(error) {
+                    console.error('Overlay WebSocket error:', error);
+                };
+            } catch (e) {
+                console.error('Failed to create WebSocket connection:', e);
+            }
         }
+
+        // Connect to WebSocket when page loads
+        connectWebSocket();
 
         // Initialize debug info
         updateDebugInfo();

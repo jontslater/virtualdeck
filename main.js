@@ -10,6 +10,7 @@ const { nativeImage } = require('electron');
 const tmi = require('tmi.js'); // Import tmi.js for Twitch chat
 const WebSocket = require('ws');
 const fetch = require('node-fetch');
+const http = require('http');
 
 // Use Electron's userData directory for config and user files
 const userDataPath = app.getPath('userData');
@@ -112,6 +113,9 @@ function saveTcConfig(cfg) {
 
 let win;
 let overlayWindow;
+let overlayServer;
+let overlayWSS;
+let overlayClients = new Set();
 
 function createWindow() {
   win = new BrowserWindow({
@@ -171,38 +175,61 @@ function createWindow() {
   });
 }
 
-function createOverlayWindow() {
-  overlayWindow = new BrowserWindow({
-    width: 1920,
-    height: 1080,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false
-    }
-  });
-
-  overlayWindow.loadFile(path.join(__dirname, 'public/overlay-obs.html'));
+// Overlay server for browser source
+function startOverlayServer() {
+  const port = 8080;
   
-  // Show overlay window
-  overlayWindow.once('ready-to-show', () => {
-    try { 
-      overlayWindow.show(); 
-      console.log('Overlay window created and shown');
-    } catch (e) { 
-      console.warn('Failed to show overlay window:', e); 
+  // Create HTTP server to serve overlay HTML
+  overlayServer = http.createServer((req, res) => {
+    if (req.url === '/overlay' || req.url === '/') {
+      // Serve the overlay HTML file
+      const overlayPath = path.join(__dirname, 'public/overlay-obs.html');
+      fs.readFile(overlayPath, (err, data) => {
+        if (err) {
+          res.writeHead(500);
+          res.end('Error loading overlay');
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(data);
+      });
+    } else {
+      res.writeHead(404);
+      res.end('Not found');
     }
   });
 
-  // Handle overlay window close
-  overlayWindow.on('closed', () => {
-    overlayWindow = null;
-    console.log('Overlay window closed');
+  // Create WebSocket server for real-time communication
+  overlayWSS = new WebSocket.Server({ server: overlayServer });
+  
+  overlayWSS.on('connection', (ws) => {
+    console.log('Overlay client connected');
+    overlayClients.add(ws);
+    
+    ws.on('close', () => {
+      console.log('Overlay client disconnected');
+      overlayClients.delete(ws);
+    });
+    
+    ws.on('error', (error) => {
+      console.log('Overlay WebSocket error:', error);
+      overlayClients.delete(ws);
+    });
+  });
+
+  overlayServer.listen(port, () => {
+    console.log(`Overlay server running at http://localhost:${port}/overlay`);
+    console.log(`Use this URL in OBS Browser Source: http://localhost:${port}/overlay`);
+  });
+}
+
+// Function to broadcast messages to all overlay clients
+function broadcastToOverlay(message) {
+  const messageStr = JSON.stringify(message);
+  overlayClients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(messageStr);
+    }
   });
 }
 
@@ -1967,6 +1994,7 @@ app.whenReady().then(() => {
   ensureUserData();
   createWindow();
   registerHotkeys();
+  startOverlayServer();
   
   // Build application menu: Edit contains Preferences, View & Window removed, Tools added
   const menuTemplate = [
@@ -2206,14 +2234,11 @@ app.whenReady().then(() => {
     try { if (win && !win.isDestroyed()) win.webContents.send('open-preferences'); } catch (e) { console.warn('open-preferences failed', e); }
   });
 
-  // Overlay communication handlers
+  // Overlay communication handlers - now using WebSocket broadcast
   ipcMain.on('overlay-message', (event, message) => {
     try {
       console.log('Overlay message received:', message);
-      // Forward the message to any open overlay windows
-      if (overlayWindow && !overlayWindow.isDestroyed()) {
-        overlayWindow.webContents.send('overlay-message', message);
-      }
+      broadcastToOverlay(message);
     } catch (e) { 
       console.warn('overlay-message failed', e); 
     }
@@ -2222,9 +2247,7 @@ app.whenReady().then(() => {
   ipcMain.on('overlay-clear-all', (event) => {
     try {
       console.log('Overlay clear all requested');
-      if (overlayWindow && !overlayWindow.isDestroyed()) {
-        overlayWindow.webContents.send('overlay-message', { type: 'overlay-clear-all' });
-      }
+      broadcastToOverlay({ type: 'overlay-clear-all' });
     } catch (e) { 
       console.warn('overlay-clear-all failed', e); 
     }
@@ -2233,13 +2256,11 @@ app.whenReady().then(() => {
   ipcMain.on('overlay-text', (event, data) => {
     try {
       console.log('Overlay text message:', data);
-      if (overlayWindow && !overlayWindow.isDestroyed()) {
-        overlayWindow.webContents.send('overlay-message', { 
-          type: 'overlay-text', 
-          position: data.position, 
-          text: data.text 
-        });
-      }
+      broadcastToOverlay({ 
+        type: 'overlay-text', 
+        position: data.position, 
+        text: data.text 
+      });
     } catch (e) { 
       console.warn('overlay-text failed', e); 
     }
@@ -2248,13 +2269,11 @@ app.whenReady().then(() => {
   ipcMain.on('overlay-image', (event, data) => {
     try {
       console.log('Overlay image message:', data);
-      if (overlayWindow && !overlayWindow.isDestroyed()) {
-        overlayWindow.webContents.send('overlay-message', { 
-          type: 'overlay-image', 
-          position: data.position, 
-          imageUrl: data.imageUrl 
-        });
-      }
+      broadcastToOverlay({ 
+        type: 'overlay-image', 
+        position: data.position, 
+        imageUrl: data.imageUrl 
+      });
     } catch (e) { 
       console.warn('overlay-image failed', e); 
     }
@@ -2263,52 +2282,17 @@ app.whenReady().then(() => {
   ipcMain.on('overlay-video', (event, data) => {
     try {
       console.log('Overlay video message:', data);
-      if (overlayWindow && !overlayWindow.isDestroyed()) {
-        overlayWindow.webContents.send('overlay-message', { 
-          type: 'overlay-video', 
-          position: data.position, 
-          videoUrl: data.videoUrl 
-        });
-      }
+      broadcastToOverlay({ 
+        type: 'overlay-video', 
+        position: data.position, 
+        videoUrl: data.videoUrl 
+      });
     } catch (e) { 
       console.warn('overlay-video failed', e); 
     }
   });
 
-  // Overlay window management
-  ipcMain.on('create-overlay', () => {
-    try {
-      if (!overlayWindow || overlayWindow.isDestroyed()) {
-        createOverlayWindow();
-      } else {
-        console.log('Overlay window already exists');
-      }
-    } catch (e) { 
-      console.warn('create-overlay failed', e); 
-    }
-  });
-
-  ipcMain.on('close-overlay', () => {
-    try {
-      if (overlayWindow && !overlayWindow.isDestroyed()) {
-        overlayWindow.close();
-      }
-    } catch (e) { 
-      console.warn('close-overlay failed', e); 
-    }
-  });
-
-  ipcMain.on('toggle-overlay', () => {
-    try {
-      if (!overlayWindow || overlayWindow.isDestroyed()) {
-        createOverlayWindow();
-      } else {
-        overlayWindow.close();
-      }
-    } catch (e) { 
-      console.warn('toggle-overlay failed', e); 
-    }
-  });
+  // Overlay is now a browser source - no window management needed
 
   // Propagate maximize/unmaximize events to renderer so UI can update
   if (win) {
