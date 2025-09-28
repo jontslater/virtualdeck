@@ -183,7 +183,7 @@ function startOverlayServer() {
   overlayServer = http.createServer((req, res) => {
     if (req.url === '/overlay' || req.url === '/') {
       // Serve the overlay HTML file
-      const overlayPath = path.join(__dirname, 'public/overlay-obs.html');
+      const overlayPath = path.join(__dirname, 'public/overlay.html');
       fs.readFile(overlayPath, (err, data) => {
         if (err) {
           res.writeHead(500);

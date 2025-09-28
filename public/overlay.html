@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Deck Overlay</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: transparent;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .overlay-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr;
+            grid-template-rows: 1fr 2fr 1fr;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        /* Text slot styling - can be overridden per slot */
+        .text-slot {
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #00ff00;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            word-wrap: break-word;
+            transition: all 0.3s ease;
+            min-height: 80px;
+        }
+
+        .text-slot:hover {
+            background: rgba(0, 0, 0, 0.9);
+            border-color: #00cc00;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        /* Center media container */
+        #center-media {
+            background: rgba(0, 0, 0, 0.8);
+            border: 3px solid #ff6600;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 300px;
+            position: relative;
+            overflow: hidden;
+            grid-column: 2;
+            grid-row: 2;
+            z-index: 10;
+        }
+
+        #center-media img,
+        #center-media video {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        /* Text slot positions */
+        #text-top-left {
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        #text-top-center {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        #text-top-right {
+            grid-column: 3;
+            grid-row: 1;
+        }
+
+        #text-mid-left {
+            grid-column: 1;
+            grid-row: 2;
+        }
+
+
+        #text-mid-right {
+            grid-column: 3;
+            grid-row: 2;
+        }
+
+        #text-bottom-left {
+            grid-column: 1;
+            grid-row: 3;
+        }
+
+        #text-bottom-center {
+            grid-column: 2;
+            grid-row: 3;
+        }
+
+        #text-bottom-right {
+            grid-column: 3;
+            grid-row: 3;
+        }
+
+        /* Debug info */
+        .debug-info {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 1000;
+            max-width: 300px;
+        }
+
+        /* Utility classes for text styling overrides */
+        .text-large { font-size: 24px; }
+        .text-small { font-size: 12px; }
+        .text-bold { font-weight: bold; }
+        .text-normal { font-weight: normal; }
+        .text-red { color: #ff4444; }
+        .text-green { color: #44ff44; }
+        .text-blue { color: #4444ff; }
+        .text-yellow { color: #ffff44; }
+        .text-white { color: white; }
+        .bg-red { background: rgba(255, 68, 68, 0.8); }
+        .bg-green { background: rgba(68, 255, 68, 0.8); }
+        .bg-blue { background: rgba(68, 68, 255, 0.8); }
+        .bg-yellow { background: rgba(255, 255, 68, 0.8); }
+    </style>
+</head>
+<body>
+    <div class="overlay-container">
+        <!-- 9 text slots with specific IDs -->
+        <div id="text-top-left" class="text-slot">Top Left</div>
+        <div id="text-top-center" class="text-slot">Top Center</div>
+        <div id="text-top-right" class="text-slot">Top Right</div>
+        <div id="text-mid-left" class="text-slot">Mid Left</div>
+        <div id="text-mid-right" class="text-slot">Mid Right</div>
+        <div id="text-bottom-left" class="text-slot">Bottom Left</div>
+        <div id="text-bottom-center" class="text-slot">Bottom Center</div>
+        <div id="text-bottom-right" class="text-slot">Bottom Right</div>
+        
+        <!-- Center media container -->
+        <div id="center-media">
+            <span>Center Media</span>
+        </div>
+    </div>
+
+    <div class="debug-info" id="debug-info">
+        <div>Overlay Status: <span id="status">Ready</span></div>
+        <div>Last Message: <span id="last-message">None</span></div>
+        <div>Message Count: <span id="message-count">0</span></div>
+    </div>
+
+    <script>
+        let messageCount = 0;
+
+        // Update debug info
+        function updateDebugInfo(message = null) {
+            document.getElementById('status').textContent = 'Connected';
+            document.getElementById('message-count').textContent = messageCount;
+            if (message) {
+                document.getElementById('last-message').textContent = new Date().toLocaleTimeString();
+            }
+        }
+
+        // Render payload function
+        function renderPayload(payload) {
+            console.log('Received payload:', payload);
+            messageCount++;
+            updateDebugInfo(payload);
+            
+            if (!payload.type) {
+                console.log('No payload type specified');
+                return;
+            }
+            
+            if (payload.type === 'buttonTrigger') {
+                handleButtonTrigger(payload);
+            } else {
+                console.log(`Unknown payload type: ${payload.type}`);
+            }
+        }
+        
+        // Handle button trigger payload
+        function handleButtonTrigger(payload) {
+            console.log('Processing button trigger payload:', payload);
+            
+            // Clear previous content if requested
+            if (payload.options && payload.options.clearPrevious === true) {
+                clearSlots();
+            }
+            
+            // Update text slots
+            if (payload.slots) {
+                Object.keys(payload.slots).forEach(slotName => {
+                    const slotData = payload.slots[slotName];
+                    const element = document.getElementById(slotName);
+                    
+                    if (element) {
+                        // Set text content
+                        element.textContent = slotData.text || '';
+                        
+                        // Apply inline styles
+                        if (slotData.style) {
+                            Object.keys(slotData.style).forEach(styleProp => {
+                                element.style[styleProp] = slotData.style[styleProp];
+                            });
+                        }
+                        
+                        console.log(`Updated slot ${slotName}: ${slotData.text}`);
+                    } else {
+                        console.error(`Element not found: ${slotName}`);
+                    }
+                });
+            }
+            
+            // Update center media
+            if (payload.centerMedia && Array.isArray(payload.centerMedia)) {
+                updateCenterMedia(payload.centerMedia);
+            }
+        }
+        
+        // Update center media with multiple items
+        async function updateCenterMedia(mediaItems) {
+            const centerMedia = document.getElementById('center-media');
+            if (!centerMedia) {
+                console.error('Center media element not found');
+                return;
+            }
+            
+            // Clear existing content
+            centerMedia.innerHTML = '';
+            
+            const videoElements = [];
+            
+            for (const item of mediaItems) {
+                if (item.type === 'image' || item.type === 'gif') {
+                    const img = document.createElement('img');
+                    img.src = item.src;
+                    img.alt = item.alt || 'Media';
+                    img.style.maxWidth = '100%';
+                    img.style.maxHeight = '100%';
+                    img.style.objectFit = 'contain';
+                    img.style.display = 'block';
+                    centerMedia.appendChild(img);
+                    
+                    console.log(`Added image: ${item.src}`);
+                    
+                } else if (item.type === 'video') {
+                    const video = document.createElement('video');
+                    video.src = item.src;
+                    video.autoplay = true;
+                    video.muted = false;
+                    video.playsInline = true;
+                    video.loop = item.loop || false;
+                    video.style.maxWidth = '100%';
+                    video.style.maxHeight = '100%';
+                    video.style.objectFit = 'contain';
+                    video.style.display = 'block';
+                    
+                    // Add error handling
+                    video.onerror = function() {
+                        console.error(`Failed to load video: ${item.src}`);
+                    };
+                    
+                    centerMedia.appendChild(video);
+                    videoElements.push(video);
+                    
+                    console.log(`Added video: ${item.src}`);
+                }
+            }
+            
+            // Play all videos concurrently
+            if (videoElements.length > 0) {
+                try {
+                    const playPromises = videoElements.map(video => {
+                        return video.play().catch(error => {
+                            console.warn(`Video autoplay failed for ${video.src}:`, error);
+                            // Show play button overlay for autoplay-blocked videos
+                            showPlayOverlay(video);
+                        });
+                    });
+                    
+                    await Promise.all(playPromises);
+                    console.log('All videos started playing');
+                } catch (error) {
+                    console.error('Error playing videos:', error);
+                }
+            }
+        }
+        
+        // Show play overlay for autoplay-blocked videos
+        function showPlayOverlay(video) {
+            const overlay = document.createElement('div');
+            overlay.style.position = 'absolute';
+            overlay.style.top = '50%';
+            overlay.style.left = '50%';
+            overlay.style.transform = 'translate(-50%, -50%)';
+            overlay.style.background = 'rgba(0, 0, 0, 0.7)';
+            overlay.style.color = 'white';
+            overlay.style.padding = '10px 20px';
+            overlay.style.borderRadius = '5px';
+            overlay.style.cursor = 'pointer';
+            overlay.style.zIndex = '10';
+            overlay.innerHTML = '▶️ Click to Play';
+            
+            overlay.addEventListener('click', () => {
+                video.play().then(() => {
+                    overlay.remove();
+                }).catch(error => {
+                    console.error('Manual play failed:', error);
+                });
+            });
+            
+            video.parentElement.style.position = 'relative';
+            video.parentElement.appendChild(overlay);
+        }
+        
+        // Clear all slots helper
+        function clearSlots() {
+            // Clear text slots
+            const textSlots = document.querySelectorAll('.text-slot');
+            textSlots.forEach(slot => {
+                slot.textContent = slot.id.replace('text-', '').replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                slot.style.cssText = ''; // Clear inline styles
+            });
+            
+            // Clear center media
+            const centerMedia = document.getElementById('center-media');
+            centerMedia.innerHTML = '<span>Center Media</span>';
+            
+            console.log('All slots cleared');
+        }
+        
+        // Legacy clear function for backward compatibility
+        function clearAllSlots() {
+            clearSlots();
+        }
+
+        // Global test function for console testing
+        window.testRender = function(payload) {
+            console.log('Testing render with payload:', payload);
+            renderPayload(payload);
+        };
+        
+        // Sample test payload for quick testing
+        window.testSamplePayload = {
+            type: 'buttonTrigger',
+            options: {
+                clearPrevious: true
+            },
+            slots: {
+                'text-top-left': {
+                    text: 'Top Left Text',
+                    style: {
+                        fontFamily: 'Arial, sans-serif',
+                        fontSize: '24px',
+                        color: '#ff0000',
+                        fontWeight: 'bold',
+                        textAlign: 'left',
+                        zIndex: '1'
+                    }
+                },
+                'text-top-center': {
+                    text: 'Top Center Text',
+                    style: {
+                        fontFamily: 'Georgia, serif',
+                        fontSize: '20px',
+                        color: '#00ff00',
+                        fontWeight: 'normal',
+                        textAlign: 'center',
+                        zIndex: '2'
+                    }
+                },
+                'text-top-right': {
+                    text: 'Top Right Text',
+                    style: {
+                        fontFamily: 'Courier, monospace',
+                        fontSize: '18px',
+                        color: '#0000ff',
+                        fontWeight: 'italic',
+                        textAlign: 'right',
+                        zIndex: '3'
+                    }
+                },
+                'text-bottom-left': {
+                    text: 'Bottom Left Text',
+                    style: {
+                        fontFamily: 'Verdana, sans-serif',
+                        fontSize: '16px',
+                        color: '#ffff00',
+                        fontWeight: 'bold',
+                        textAlign: 'left',
+                        zIndex: '4'
+                    }
+                },
+                'text-bottom-right': {
+                    text: 'Bottom Right Text',
+                    style: {
+                        fontFamily: 'Times, serif',
+                        fontSize: '14px',
+                        color: '#ff00ff',
+                        fontWeight: 'normal',
+                        textAlign: 'right',
+                        zIndex: '5'
+                    }
+                }
+            },
+            centerMedia: [
+                {
+                    type: 'image',
+                    src: 'https://via.placeholder.com/400x300/ff00ff/ffffff?text=Test+Image',
+                    alt: 'Test Image'
+                },
+                {
+                    type: 'video',
+                    src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+                    loop: true
+                }
+            ]
+        };
+        
+        // Multi-source test function
+        window.testMultiSource = function() {
+            console.log('Testing multi-source capability...');
+            const payload = {
+                type: 'buttonTrigger',
+                options: {
+                    clearPrevious: true
+                },
+                slots: {
+                    'text-top-left': {
+                        text: '🎮 GAME START',
+                        style: {
+                            fontFamily: 'Arial, sans-serif',
+                            fontSize: '28px',
+                            color: '#00ff00',
+                            fontWeight: 'bold',
+                            textAlign: 'center',
+                            textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+                            zIndex: '10'
+                        }
+                    },
+                    'text-top-right': {
+                        text: 'SCORE: 9999',
+                        style: {
+                            fontFamily: 'Courier, monospace',
+                            fontSize: '24px',
+                            color: '#ffff00',
+                            fontWeight: 'bold',
+                            textAlign: 'right',
+                            textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+                            zIndex: '10'
+                        }
+                    },
+                    'text-bottom-center': {
+                        text: 'PRESS SPACE TO CONTINUE',
+                        style: {
+                            fontFamily: 'Arial, sans-serif',
+                            fontSize: '20px',
+                            color: '#ffffff',
+                            fontWeight: 'bold',
+                            textAlign: 'center',
+                            textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+                            animationName: 'pulse',
+                            animationDuration: '1s',
+                            animationIterationCount: 'infinite',
+                            zIndex: '10'
+                        }
+                    }
+                },
+                centerMedia: [
+                    {
+                        type: 'image',
+                        src: 'https://via.placeholder.com/600x400/000000/ffffff?text=GAME+SCREEN',
+                        alt: 'Game Screen'
+                    },
+                    {
+                        type: 'video',
+                        src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+                        loop: true
+                    }
+                ]
+            };
+            
+            renderPayload(payload);
+        };
+        
+        // Listen for messages from parent window (OBS Browser Source)
+        window.addEventListener('message', function(event) {
+            console.log('Received message:', event);
+            
+            // Forward to renderPayload function
+            if (event.data) {
+                renderPayload(event.data);
+            }
+        });
+
+        // Also listen for WebSocket messages (for our current implementation)
+        let overlayWS = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+
+        function connectWebSocket() {
+            try {
+                overlayWS = new WebSocket('ws://localhost:8080');
+                
+                overlayWS.onopen = function() {
+                    console.log('Overlay WebSocket connected');
+                    reconnectAttempts = 0;
+                    updateDebugInfo();
+                };
+                
+                overlayWS.onmessage = function(event) {
+                    try {
+                        const message = JSON.parse(event.data);
+                        renderPayload(message);
+                    } catch (e) {
+                        console.error('Error parsing WebSocket message:', e);
+                    }
+                };
+                
+                overlayWS.onclose = function() {
+                    console.log('Overlay WebSocket disconnected');
+                    overlayWS = null;
+                    updateDebugInfo();
+                    
+                    // Attempt to reconnect
+                    if (reconnectAttempts < maxReconnectAttempts) {
+                        reconnectAttempts++;
+                        console.log(`Attempting to reconnect... (${reconnectAttempts}/${maxReconnectAttempts})`);
+                        setTimeout(connectWebSocket, 2000);
+                    }
+                };
+                
+                overlayWS.onerror = function(error) {
+                    console.error('Overlay WebSocket error:', error);
+                };
+            } catch (e) {
+                console.error('Failed to create WebSocket connection:', e);
+            }
+        }
+
+        // Connect to WebSocket when page loads
+        connectWebSocket();
+
+        // Initialize debug info
+        updateDebugInfo();
+
+        // Global functions for testing
+        window.testOverlay = function() {
+            renderPayload({
+                type: 'test',
+                data: { message: 'Test from console' }
+            });
+        };
+
+        window.clearOverlay = function() {
+            // Clear all text slots
+            const textSlots = document.querySelectorAll('.text-slot');
+            textSlots.forEach(slot => {
+                slot.textContent = slot.id.replace('text-', '').replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
+            });
+            
+            // Clear center media
+            const centerMedia = document.getElementById('center-media');
+            centerMedia.innerHTML = '<span>Center Media</span>';
+            
+            console.log('Overlay cleared');
+        };
+
+        console.log('Overlay loaded successfully!');
+        console.log('Available test functions:');
+        console.log('- testOverlay() - Test the overlay');
+        console.log('- clearOverlay() - Clear all content');
+    </script>
+</body>
+</html>
