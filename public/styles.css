@@ -472,7 +472,7 @@ html[data-theme], body[data-theme] {
   font-weight: 500;
 }
 
-.overlay-toggle-btn {
+.overlay-url-btn {
   background: var(--bg-quinary);
   color: var(--text-primary);
   border: 1px solid var(--border-tertiary);
@@ -484,20 +484,9 @@ html[data-theme], body[data-theme] {
   -webkit-app-region: no-drag;
 }
 
-.overlay-toggle-btn:hover {
+.overlay-url-btn:hover {
   background: var(--hover-bg);
   border-color: var(--border-quaternary);
-}
-
-.overlay-toggle-btn.active {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
-  color: white;
-}
-
-.overlay-toggle-btn.active:hover {
-  background: var(--accent-secondary);
-  border-color: var(--accent-secondary);
 }
 
 #sound-grid {

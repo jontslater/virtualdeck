@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser Source Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #1a1a1a;
+            color: white;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #2a2a2a;
+        }
+        .test-button {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .test-button:hover {
+            background: #005a9e;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+            background: #333;
+        }
+        .success { background: #2d5a2d; }
+        .error { background: #5a2d2d; }
+        .warning { background: #5a4d2d; }
+        .url-display {
+            background: #333;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Browser Source Test Page</h1>
+        
+        <div class="test-section">
+            <h2>Overlay URL for OBS</h2>
+            <div class="url-display">http://localhost:8080/overlay</div>
+            <p>Copy this URL and paste it into OBS Browser Source settings.</p>
+            <button class="test-button" onclick="copyUrl()">Copy URL</button>
+            <button class="test-button" onclick="openOverlay()">Open Overlay in Browser</button>
+            <div id="url-status" class="status warning">Ready to copy URL</div>
+        </div>
+
+        <div class="test-section">
+            <h2>Test Overlay Communication</h2>
+            <p>These buttons will send messages to the overlay via WebSocket:</p>
+            <button class="test-button" onclick="testText()">Test Text</button>
+            <button class="test-button" onclick="testImage()">Test Image</button>
+            <button class="test-button" onclick="testVideo()">Test Video</button>
+            <button class="test-button" onclick="clearOverlay()">Clear All</button>
+            <div id="test-status" class="status warning">Ready to test</div>
+        </div>
+
+        <div class="test-section">
+            <h2>OBS Browser Source Setup</h2>
+            <ol>
+                <li>Open OBS Studio</li>
+                <li>Add a new "Browser Source"</li>
+                <li>Set the URL to: <code>http://localhost:8080/overlay</code></li>
+                <li>Set width to: <code>1920</code></li>
+                <li>Set height to: <code>1080</code></li>
+                <li>Check "Shutdown source when not visible"</li>
+                <li>Check "Refresh browser when scene becomes active"</li>
+            </ol>
+        </div>
+
+        <div class="test-section">
+            <h2>Instructions</h2>
+            <ol>
+                <li>Start the Virtual Deck application</li>
+                <li>Copy the overlay URL above</li>
+                <li>Add it as a Browser Source in OBS</li>
+                <li>Use the test buttons to send content to the overlay</li>
+                <li>Check the browser console for detailed logs</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        const overlayUrl = 'http://localhost:8080/overlay';
+        
+        function updateStatus(elementId, message, type = 'warning') {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `status ${type}`;
+        }
+
+        function copyUrl() {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(overlayUrl).then(() => {
+                    updateStatus('url-status', 'URL copied to clipboard!', 'success');
+                }).catch(err => {
+                    updateStatus('url-status', 'Failed to copy to clipboard', 'error');
+                });
+            } else {
+                updateStatus('url-status', 'Clipboard not available', 'error');
+            }
+        }
+
+        function openOverlay() {
+            window.open(overlayUrl, '_blank');
+            updateStatus('url-status', 'Overlay opened in new tab', 'success');
+        }
+
+        // Test functions (these would normally be called from the main app)
+        function testText() {
+            // Simulate sending text to overlay
+            updateStatus('test-status', 'Text test sent (simulated)', 'success');
+            console.log('Would send text to overlay via WebSocket');
+        }
+
+        function testImage() {
+            updateStatus('test-status', 'Image test sent (simulated)', 'success');
+            console.log('Would send image to overlay via WebSocket');
+        }
+
+        function testVideo() {
+            updateStatus('test-status', 'Video test sent (simulated)', 'success');
+            console.log('Would send video to overlay via WebSocket');
+        }
+
+        function clearOverlay() {
+            updateStatus('test-status', 'Clear command sent (simulated)', 'success');
+            console.log('Would clear overlay via WebSocket');
+        }
+
+        // Initialize
+        updateStatus('url-status', 'Ready to copy overlay URL', 'success');
+    </script>
+</body>
+</html>

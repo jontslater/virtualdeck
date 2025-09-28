@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Overlay Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #1a1a1a;
+            color: white;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #2a2a2a;
+        }
+        .test-button {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .test-button:hover {
+            background: #005a9e;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+            background: #333;
+        }
+        .success { background: #2d5a2d; }
+        .error { background: #5a2d2d; }
+        .warning { background: #5a4d2d; }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Overlay Test Page</h1>
+        
+        <div class="test-section">
+            <h2>Overlay Window Controls</h2>
+            <button class="test-button" onclick="createOverlay()">Create Overlay</button>
+            <button class="test-button" onclick="toggleOverlay()">Toggle Overlay</button>
+            <button class="test-button" onclick="closeOverlay()">Close Overlay</button>
+            <div id="overlay-status" class="status warning">Overlay status unknown</div>
+        </div>
+
+        <div class="test-section">
+            <h2>Overlay Content Tests</h2>
+            <button class="test-button" onclick="testText()">Test Text</button>
+            <button class="test-button" onclick="testImage()">Test Image</button>
+            <button class="test-button" onclick="testVideo()">Test Video</button>
+            <button class="test-button" onclick="clearOverlay()">Clear All</button>
+            <div id="content-status" class="status warning">Ready to test content</div>
+        </div>
+
+        <div class="test-section">
+            <h2>Position Tests</h2>
+            <p>Test different positions (1-9):</p>
+            <button class="test-button" onclick="testPosition(1)">Position 1 (Top Left)</button>
+            <button class="test-button" onclick="testPosition(5)">Position 5 (Center)</button>
+            <button class="test-button" onclick="testPosition(9)">Position 9 (Bottom Right)</button>
+            <div id="position-status" class="status warning">Select a position to test</div>
+        </div>
+
+        <div class="test-section">
+            <h2>Instructions</h2>
+            <ol>
+                <li>Click "Create Overlay" to open the overlay window</li>
+                <li>Use the content test buttons to send different media types</li>
+                <li>Test different positions to see content in different boxes</li>
+                <li>Use "Clear All" to reset the overlay</li>
+                <li>Check the browser console for detailed logs</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        // Check if we're in Electron
+        const isElectron = typeof window.electronAPI !== 'undefined';
+        
+        function updateStatus(elementId, message, type = 'warning') {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `status ${type}`;
+        }
+
+        function createOverlay() {
+            if (isElectron && window.electronAPI.createOverlay) {
+                window.electronAPI.createOverlay();
+                updateStatus('overlay-status', 'Overlay creation requested', 'success');
+            } else {
+                updateStatus('overlay-status', 'Not in Electron environment', 'error');
+            }
+        }
+
+        function toggleOverlay() {
+            if (isElectron && window.electronAPI.toggleOverlay) {
+                window.electronAPI.toggleOverlay();
+                updateStatus('overlay-status', 'Overlay toggle requested', 'success');
+            } else {
+                updateStatus('overlay-status', 'Not in Electron environment', 'error');
+            }
+        }
+
+        function closeOverlay() {
+            if (isElectron && window.electronAPI.closeOverlay) {
+                window.electronAPI.closeOverlay();
+                updateStatus('overlay-status', 'Overlay close requested', 'success');
+            } else {
+                updateStatus('overlay-status', 'Not in Electron environment', 'error');
+            }
+        }
+
+        function testText() {
+            if (isElectron && window.electronAPI.sendOverlayText) {
+                window.electronAPI.sendOverlayText({
+                    position: 5,
+                    text: 'Test Text from Test Page!'
+                });
+                updateStatus('content-status', 'Text sent to overlay', 'success');
+            } else {
+                updateStatus('content-status', 'Text API not available', 'error');
+            }
+        }
+
+        function testImage() {
+            if (isElectron && window.electronAPI.sendOverlayImage) {
+                window.electronAPI.sendOverlayImage({
+                    position: 1,
+                    imageUrl: 'https://via.placeholder.com/200x100/00ff00/000000?text=Test+Image'
+                });
+                updateStatus('content-status', 'Image sent to overlay', 'success');
+            } else {
+                updateStatus('content-status', 'Image API not available', 'error');
+            }
+        }
+
+        function testVideo() {
+            if (isElectron && window.electronAPI.sendOverlayVideo) {
+                window.electronAPI.sendOverlayVideo({
+                    position: 3,
+                    videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4'
+                });
+                updateStatus('content-status', 'Video sent to overlay', 'success');
+            } else {
+                updateStatus('content-status', 'Video API not available', 'error');
+            }
+        }
+
+        function clearOverlay() {
+            if (isElectron && window.electronAPI.sendOverlayClearAll) {
+                window.electronAPI.sendOverlayClearAll();
+                updateStatus('content-status', 'Overlay cleared', 'success');
+            } else {
+                updateStatus('content-status', 'Clear API not available', 'error');
+            }
+        }
+
+        function testPosition(position) {
+            if (isElectron && window.electronAPI.sendOverlayText) {
+                window.electronAPI.sendOverlayText({
+                    position: position,
+                    text: `Test text in position ${position}`
+                });
+                updateStatus('position-status', `Text sent to position ${position}`, 'success');
+            } else {
+                updateStatus('position-status', 'Text API not available', 'error');
+            }
+        }
+
+        // Initialize
+        if (isElectron) {
+            updateStatus('overlay-status', 'Electron environment detected - ready to test', 'success');
+        } else {
+            updateStatus('overlay-status', 'Not in Electron - open in main app to test', 'warning');
+        }
+    </script>
+</body>
+</html>
+

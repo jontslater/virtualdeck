@@ -97,14 +97,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   refreshMenu: () => ipcRenderer.send('refresh-menu'),
   // Toggle DevTools from renderer
   toggleDevTools: () => ipcRenderer.send('toggle-devtools'),
-  // Overlay communication
-  createOverlay: () => ipcRenderer.send('create-overlay'),
-  closeOverlay: () => ipcRenderer.send('close-overlay'),
-  toggleOverlay: () => ipcRenderer.send('toggle-overlay'),
+  // Overlay communication (browser source)
   sendOverlayMessage: (message) => ipcRenderer.send('overlay-message', message),
   sendOverlayClearAll: () => ipcRenderer.send('overlay-clear-all'),
   sendOverlayText: (data) => ipcRenderer.send('overlay-text', data),
   sendOverlayImage: (data) => ipcRenderer.send('overlay-image', data),
   sendOverlayVideo: (data) => ipcRenderer.send('overlay-video', data),
-  onOverlayMessage: (callback) => ipcRenderer.on('overlay-message', (event, message) => callback(message)),
 });
