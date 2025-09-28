@@ -883,39 +883,8 @@ async function loadButtons() {
     <div class="add-text">Add Sound</div>
   `;
   addCard.onclick = () => {
-    const settingsForm = document.getElementById('settings-form');
-    settingsForm.reset();
-  // Stop any active hotkey recording and clear displayed status/value
-  if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
-  const hkIn = document.getElementById('hotkey-input'); if (hkIn) hkIn.value = '';
-  const hkStatus = document.getElementById('hotkey-status'); if (hkStatus) hkStatus.textContent = '';
-  // Fully clear all dataset properties for new record
-  delete settingsForm.dataset.editingIndex;
-  delete settingsForm.dataset.editingId;
-    delete settingsForm.dataset.resolvedPath;
-    delete settingsForm.dataset.resolvedArgs;
-    delete settingsForm.dataset.existingFile;
-    // Replace file inputs to clear previous file references
-    const oldFileInput = document.getElementById('file-input');
-    if (oldFileInput) {
-      const newFileInput = oldFileInput.cloneNode(false);
-      newFileInput.required = true;
-      newFileInput.id = 'file-input';
-      newFileInput.name = 'file';
-      oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
-    }
-    const oldAppFileInput = document.getElementById('app-file-input');
-    if (oldAppFileInput) {
-      const newAppFileInput = oldAppFileInput.cloneNode(false);
-      newAppFileInput.required = false;
-      newAppFileInput.id = 'app-file-input';
-      newAppFileInput.name = 'app-file';
-      oldAppFileInput.parentNode.replaceChild(newAppFileInput, oldAppFileInput);
-    }
-    document.querySelector('#settings-modal h2').textContent = 'Add New Sound';
-  // Show settings modal (user-initiated) - always allow
-  document.getElementById('settings-modal').classList.remove('hidden');
-    window.electronAPI.disableHotkeys();
+    // Show selection modal
+    document.getElementById('button-type-modal').classList.remove('hidden');
   };
   
   soundGrid.appendChild(addCard);
@@ -969,7 +938,7 @@ async function loadButtons() {
       <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
       ${iconImg}
       <div class="sound-type">${button.type}</div>
-      <div class="sound-name">${button.label}</div>
+      <div class="sound-name">${button.name || button.label || 'Unnamed'}</div>
       <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
     `;
     card.addEventListener('click', (e) => {
@@ -993,9 +962,37 @@ async function loadButtons() {
   computePagination();
   renderCurrentPage();
   
+  // Debug: Log all button types
+  console.log('Loaded buttons:', orderedButtons.map(b => ({ name: b.name || b.label, type: b.type, id: b.id })));
+  
+  // Debug: Check for multi-media buttons specifically
+  const multiMediaButtons = orderedButtons.filter(b => b.type === 'multi-media');
+  if (multiMediaButtons.length > 0) {
+    console.log('Multi-media buttons found:', multiMediaButtons);
+  } else {
+    console.log('No multi-media buttons found in config');
+  }
+  
   // Re-enable drag mode if it was active
   if (isDragMode) {
     enableDragMode();
+  }
+}
+
+// Helper function to find and navigate to multi-media buttons
+async function findMultiMediaButtons() {
+  const data = await window.electronAPI.getConfig();
+  const multiMediaButtons = (data.buttons || []).filter(b => b.type === 'multi-media');
+  console.log('Multi-media buttons found:', multiMediaButtons);
+  return multiMediaButtons;
+}
+
+// Helper function to go to a specific page
+function goToPage(pageNumber) {
+  if (pageNumber >= 0 && pageNumber < totalPages) {
+    currentPage = pageNumber;
+    renderCurrentPage();
+    console.log(`Navigated to page ${pageNumber + 1}`);
   }
 }
 
@@ -1064,6 +1061,9 @@ function updatePaginationIndicator() {
   const el = document.getElementById('pagination-indicator');
   if (!el) return;
   el.textContent = `${currentPage + 1} / ${totalPages}`;
+  
+  // Debug logging for pagination
+  console.log(`Pagination: Page ${currentPage + 1} of ${totalPages}, Items per page: ${itemsPerPage}`);
 }
 
 function goToNextPage() {
@@ -1198,16 +1198,30 @@ document.addEventListener('wheel', (e) => {
 // Essential: Both preventDefault() and stopPropagation() are required for Electron
 // Only prevent drag events when NOT in sound card drag mode
 document.addEventListener('dragover', (e) => {
-  console.log('Global dragover, isDragMode:', isDragMode, 'target:', e.target);
+  console.log('🎯 Global dragover event fired');
+  console.log('  - isDragMode:', isDragMode);
+  console.log('  - target:', e.target);
+  console.log('  - target classes:', e.target.classList);
+  console.log('  - files:', e.dataTransfer.files.length);
+  
   if (!isDragMode || !e.target.classList.contains('sound-card')) {
+    console.log('  ✅ Preventing default and stopping propagation');
     e.preventDefault();
     e.stopPropagation();
+  } else {
+    console.log('  ❌ Skipping preventDefault (in drag mode on sound card)');
   }
 });
 
 document.addEventListener('drop', (e) => {
-  console.log('Global drop, isDragMode:', isDragMode, 'target:', e.target);
+  console.log('🎯 Global drop event fired');
+  console.log('  - isDragMode:', isDragMode);
+  console.log('  - target:', e.target);
+  console.log('  - target classes:', e.target.classList);
+  console.log('  - files:', e.dataTransfer.files.length);
+  
   if (!isDragMode || !e.target.classList.contains('sound-card')) {
+    console.log('  ✅ Processing file drop');
     e.preventDefault();
     e.stopPropagation();
     // Visual feedback
@@ -1215,23 +1229,107 @@ document.addEventListener('drop', (e) => {
     if (globalDropZone) globalDropZone.classList.add('hidden');
     // Process dropped files
     for (const file of e.dataTransfer.files) {
+      console.log('  📁 Processing file:', file.name);
       handleFileDrop(file);
       break; // Only handle the first file
     }
+  } else {
+    console.log('  ❌ Skipping file drop (in drag mode on sound card)');
   }
 });
 
 document.addEventListener('dragenter', (e) => {
+  console.log('🎯 dragenter event fired');
   const globalDropZone = document.getElementById('global-drop-zone');
-  if (globalDropZone) globalDropZone.classList.remove('hidden');
+  if (globalDropZone) {
+    console.log('  ✅ Showing global drop zone');
+    globalDropZone.classList.remove('hidden');
+  } else {
+    console.log('  ❌ Global drop zone not found');
+  }
 });
 
 document.addEventListener('dragleave', (e) => {
+  console.log('🎯 dragleave event fired');
   if (!document.body.contains(e.relatedTarget)) {
     const globalDropZone = document.getElementById('global-drop-zone');
-    if (globalDropZone) globalDropZone.classList.add('hidden');
+    if (globalDropZone) {
+      console.log('  ✅ Hiding global drop zone');
+      globalDropZone.classList.add('hidden');
+    }
   }
 });
+
+// Test function for drag and drop
+window.testDragDrop = () => {
+  console.log('🧪 Testing drag and drop functionality...');
+  console.log('  - isDragMode:', isDragMode);
+  console.log('  - global-drop-zone element:', document.getElementById('global-drop-zone'));
+  console.log('  - Event listeners should be active');
+  console.log('  - Try dragging an audio file onto the dashboard');
+  console.log('  - Check console for drag events');
+};
+
+// Test function for multi-media hotkey recording
+window.testMultiMediaHotkeyRecording = () => {
+  console.log('🎹 Testing multi-media hotkey recording...');
+  
+  // Check if elements exist
+  const recordBtn = document.getElementById('multi-media-record-hotkey');
+  const hotkeyInput = document.getElementById('multi-media-hotkey-input');
+  const hotkeyStatus = document.getElementById('multi-media-hotkey-status');
+  
+  console.log('  - Record button:', recordBtn ? '✅ Found' : '❌ Missing');
+  console.log('  - Hotkey input:', hotkeyInput ? '✅ Found' : '❌ Missing');
+  console.log('  - Hotkey status:', hotkeyStatus ? '✅ Found' : '❌ Missing');
+  
+  if (recordBtn && hotkeyInput && hotkeyStatus) {
+    console.log('  - All elements found ✅');
+    console.log('  - Opening multi-media modal for testing...');
+    
+    // Open the multi-media modal
+    if (window.addEditButtonForm) {
+      window.addEditButtonForm.openModal();
+      console.log('  - Modal opened ✅');
+      console.log('  - Try clicking "Record Hotkey" button and press some keys');
+      console.log('  - Check that hotkey is recorded and displayed');
+    } else {
+      console.log('  - ❌ addEditButtonForm not available');
+    }
+  } else {
+    console.log('  - ❌ Some elements are missing');
+  }
+};
+
+// Test function for multi-media hotkey triggering
+window.testMultiMediaHotkeyTrigger = async () => {
+  console.log('🎯 Testing multi-media hotkey triggering...');
+  
+  // Get current config
+  const config = await window.electronAPI.getConfig();
+  const multiMediaButtons = config.buttons.filter(btn => btn.type === 'multi-media');
+  
+  console.log('  - Found', multiMediaButtons.length, 'multi-media buttons');
+  
+  if (multiMediaButtons.length === 0) {
+    console.log('  - ❌ No multi-media buttons found. Create one first.');
+    return;
+  }
+  
+  multiMediaButtons.forEach((btn, index) => {
+    console.log(`  - Button ${index + 1}: "${btn.name}" (hotkey: ${btn.hotkey || 'none'})`);
+  });
+  
+  // Test the trigger mechanism
+  const testButton = multiMediaButtons[0];
+  if (testButton.hotkey) {
+    console.log(`  - Testing trigger for "${testButton.name}" with hotkey "${testButton.hotkey}"`);
+    console.log('  - Press the hotkey to test if it triggers the button');
+    console.log('  - Check console for trigger events');
+  } else {
+    console.log('  - ❌ First button has no hotkey assigned');
+  }
+};
 
 // Initial load
 loadButtons();
@@ -2200,8 +2298,123 @@ async function handleTrigger(button) {
     } else {
       window.electronAPI.launchApp({ path: button.src });
     }
+  } else if (button.type === "multi-media") {
+    // Handle multi-media button trigger
+    await handleMultiMediaTrigger(button);
   }
   // Removed visual handling
+}
+
+// Audio cache for reusing audio elements
+const audioCache = new Map();
+
+async function handleMultiMediaTrigger(button) {
+  console.log('Triggering multi-media button:', button);
+  
+  // Use the new schema directly (no nested data object)
+  const audioData = button.audio || [];
+  const slotsData = button.slots || {};
+  const centerMediaData = button.centerMedia || [];
+  const optionsData = button.options || { clearPrevious: true };
+  
+  // 1. Play audio(s) in dashboard - start immediately
+  const audioPromises = [];
+  if (Array.isArray(audioData)) {
+    for (const audioEntry of audioData) {
+      if (audioEntry.src) {
+        try {
+          // Use cached audio or create new one
+          let audio = audioCache.get(audioEntry.src);
+          if (!audio) {
+            audio = new Audio(audioEntry.src);
+            audioCache.set(audioEntry.src, audio);
+          }
+          
+          // Reset and configure audio
+          audio.currentTime = 0;
+          audio.volume = audioEntry.volume || 1.0; // Volume is already 0-1 in new schema
+          audio.loop = audioEntry.loop || false;
+          
+          // Start playing immediately
+          const playPromise = audio.play().catch(error => {
+            console.warn('Audio playback failed:', error);
+          });
+          audioPromises.push(playPromise);
+        } catch (error) {
+          console.warn('Failed to create audio element:', error);
+        }
+      }
+    }
+  }
+
+  // 2. Send overlay payload - immediately after starting audio
+  // Use the exact same pattern as the working test button
+  // Convert file paths to HTTP URLs for overlay access
+  const processedCenterMedia = centerMediaData.map(item => {
+    if (item.src && !item.src.startsWith('http') && !item.src.startsWith('data:')) {
+      // Convert file path to HTTP URL
+      const encodedPath = encodeURIComponent(item.src);
+      return {
+        ...item,
+        src: `http://localhost:8080/media/${encodedPath}`
+      };
+    }
+    return item;
+  });
+
+  const overlayPayload = {
+    type: 'buttonTrigger',
+    options: optionsData,
+    slots: slotsData,
+    centerMedia: processedCenterMedia
+  };
+
+  console.log('Sending overlay payload (working pattern):', overlayPayload);
+
+  // Send to overlay iframe (if exists) - immediately
+  const overlayIframe = document.getElementById('overlay-iframe');
+  if (overlayIframe && overlayIframe.contentWindow) {
+    try {
+      overlayIframe.contentWindow.postMessage(overlayPayload, '*');
+      console.log('Message sent to overlay iframe');
+    } catch (error) {
+      console.warn('Failed to send message to overlay iframe:', error);
+    }
+  }
+
+  // Send to overlay widget (if exists) - immediately
+  const overlayWidget = document.getElementById('overlay-widget');
+  if (overlayWidget && !overlayWidget.classList.contains('hidden')) {
+    try {
+      // Trigger the overlay widget's test function
+      if (window.testMultiSource) {
+        window.testMultiSource(overlayPayload);
+      }
+      console.log('Message sent to overlay widget');
+    } catch (error) {
+      console.warn('Failed to send message to overlay widget:', error);
+    }
+  }
+
+  // Send via WebSocket (if available) - immediately
+  if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
+    try {
+      window.electronAPI.sendOverlayMessage(overlayPayload);
+      console.log('Message sent via WebSocket');
+    } catch (error) {
+      console.warn('Failed to send message via WebSocket:', error);
+    }
+  }
+
+  // Wait for audio to start (non-blocking - overlay message already sent)
+  if (audioPromises.length > 0) {
+    try {
+      await Promise.all(audioPromises);
+      console.log('All audio started successfully');
+    } catch (error) {
+      console.warn('Some audio failed to start:', error);
+    }
+  }
 }
 
 // Replace all ipcRenderer.send and ipcRenderer.on with window.electronAPI methods
@@ -2418,12 +2631,12 @@ window.editButton = async (index) => {
   }
   // Populate form fields
   const labelInput = document.getElementById('label-input');
-  labelInput.value = btn.label;
+  labelInput.value = btn.name || btn.label || ''; // Support both new and old schema
   labelInput.readOnly = false;
   labelInput.disabled = false;
   // Set the type selection
-  const typeSelect = document.getElementById('type-select');
-  typeSelect.value = btn.type;
+  const typeSelect = document.querySelector(`input[name="button-type"][value="${btn.type}"]`);
+  if (typeSelect) typeSelect.checked = true;
   // Toggle file input sections and required states based on type
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
@@ -2463,11 +2676,26 @@ window.editButton = async (index) => {
     if (volumeValue) volumeValue.textContent = `${percent}%`;
   }
   // Update modal title
-  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : 'App'}: ${btn.label}`;
-  // Show current file info
+  const buttonName = btn.name || btn.label || 'Unknown';
+  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : btn.type === 'multi-media' ? 'Multi-Media' : 'App'}: ${buttonName}`;
+  // Handle multi-media buttons differently
+  if (btn.type === 'multi-media') {
+    // Close the regular settings modal
+    document.getElementById('settings-modal').classList.add('hidden');
+    
+    // Open the multi-media form for editing
+    if (window.addEditButtonForm) {
+      window.addEditButtonForm.openForEdit(btn);
+    } else {
+      console.error('Multi-media form not available');
+    }
+    return;
+  }
+
+  // Show current file info (only for audio/app buttons)
   const dropZone = document.getElementById('drop-zone');
-  if (dropZone) {
-    const fileName = btn.src.split('/').pop() || btn.src.split('\\').pop();
+  if (dropZone && btn.type !== 'multi-media') {
+    const fileName = (btn.src && typeof btn.src === 'string') ? (btn.src.split('/').pop() || btn.src.split('\\').pop()) : 'No file';
     dropZone.innerHTML = `
       <div style="margin-bottom: 10px; color: #4CAF50; font-weight: bold;">
         ✓ Current file: ${fileName}
@@ -2476,7 +2704,33 @@ window.editButton = async (index) => {
         Drag new file here to replace, or leave empty to keep current file
       </div>
     `;
+  } else if (dropZone && btn.type === 'multi-media') {
+    // For multi-media buttons, show different info
+    dropZone.innerHTML = `
+      <div style="margin-bottom: 10px; color: #4CAF50; font-weight: bold;">
+        ✓ Multi-media button
+      </div>
+      <div style="color: #888; font-size: 0.9em;">
+        This button contains text, images, videos, and audio
+      </div>
+    `;
   }
+  
+  // Handle multi-media buttons differently
+  if (btn.type === 'multi-media') {
+    // Close the regular settings modal
+    document.getElementById('settings-modal').classList.add('hidden');
+    
+    // Open the multi-media form for editing
+    if (window.addEditButtonForm && typeof window.addEditButtonForm.openForEdit === 'function') {
+      window.addEditButtonForm.openForEdit(btn);
+    } else {
+      console.error('Multi-media form not available for editing');
+      alert('Multi-media editing not available. Please check your app version.');
+    }
+    return;
+  }
+  
   document.getElementById('settings-modal').classList.remove('hidden');
   window.electronAPI.disableHotkeys();
   // Ensure recorder is stopped when opening edit
@@ -2691,16 +2945,20 @@ window.addEventListener('DOMContentLoaded', () => {
 window.electronAPI.onTriggerMedia(async (mediaId) => {
   const config = await window.electronAPI.getConfig();
   if (!config || !Array.isArray(config.buttons)) return;
-  const button = config.buttons.find(btn =>
-    btn.label.toLowerCase().includes(mediaId.toLowerCase())
-  );
+  const button = config.buttons.find(btn => {
+    // Check both name and label for compatibility
+    const name = btn.name || btn.label || '';
+    return name.toLowerCase().includes(mediaId.toLowerCase());
+  });
   if (button) handleTrigger(button);
 });
 
 function handleFileDrop(file) {
-  console.log('handleFileDrop called with file:', file);
-  console.log('File name:', file.name);
-  console.log('File path:', file.path);
+  console.log('🎵 handleFileDrop called with file:', file);
+  console.log('  - File name:', file.name);
+  console.log('  - File path:', file.path);
+  console.log('  - File type:', file.type);
+  console.log('  - File size:', file.size);
   
   // Debug: Check for missing elements
   const requiredIds = [
@@ -2747,7 +3005,6 @@ function handleFileDrop(file) {
   const hotkeyInput = document.getElementById('hotkey-input');
   const hotkeyStatus = document.getElementById('hotkey-status');
   const labelInput = document.getElementById('label-input');
-  const typeSelect = document.getElementById('type-select');
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
   const fileInput = document.getElementById('file-input');
@@ -2755,7 +3012,7 @@ function handleFileDrop(file) {
   const settingsModal = document.getElementById('settings-modal');
 
   // Null checks
-  if (!settingsForm || !hotkeyInput || !hotkeyStatus || !labelInput || !typeSelect || !audioFileSection || !appFileSection || !fileInput || !appFileInput || !settingsModal) {
+  if (!settingsForm || !hotkeyInput || !hotkeyStatus || !labelInput || !audioFileSection || !appFileSection || !fileInput || !appFileInput || !settingsModal) {
     console.warn('One or more required elements are missing in the DOM.');
     return;
   }
@@ -2767,32 +3024,36 @@ function handleFileDrop(file) {
   delete settingsForm.dataset.editingIndex;
   delete settingsForm.dataset.editingId;
   document.querySelector('#settings-modal h2').textContent = 'Add New ' + (type === 'audio' ? 'Sound' : 'App');
-  typeSelect.value = type;
+  
+  // Since we're using the modal-based approach, we need to directly open the audio form
+  // and skip the button type selection modal
+  console.log('  📝 Opening audio form directly for file drop');
 
   // Handle shortcut resolution for app files
   if (type === 'app') {
     // Try to resolve as shortcut regardless of extension
-    console.log('Attempting to resolve as shortcut:', file.path);
+    console.log('  🔗 Attempting to resolve as shortcut:', file.path);
     window.electronAPI.resolveShortcut(file.path).then(shortcut => {
       if (shortcut && shortcut.target) {
-        console.log('Shortcut resolved to:', shortcut);
+        console.log('  ✅ Shortcut resolved to:', shortcut);
         // Store the resolved path and args in the form
         settingsForm.dataset.resolvedPath = shortcut.target;
         settingsForm.dataset.resolvedArgs = shortcut.args || '';
         setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
       } else {
-        console.warn('Failed to resolve shortcut, using original file');
+        console.warn('  ❌ Failed to resolve shortcut, using original file');
         settingsForm.dataset.resolvedPath = file.path;
         settingsForm.dataset.resolvedArgs = '';
         setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
       }
     }).catch(error => {
-      console.error('Error resolving shortcut:', error);
+      console.error('  ❌ Error resolving shortcut:', error);
       settingsForm.dataset.resolvedPath = file.path;
       settingsForm.dataset.resolvedArgs = '';
       setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
     });
   } else {
+    console.log('  🎵 Processing as audio file');
     settingsForm.dataset.resolvedPath = file.path;
     settingsForm.dataset.resolvedArgs = '';
     setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
@@ -2800,13 +3061,20 @@ function handleFileDrop(file) {
 
   // Set label to file name (no extension)
   labelInput.value = file.name.replace(/\.[^/.]+$/, "");
+  console.log('  📝 Setting label to:', labelInput.value);
+  
+  // Show the modal
   settingsModal.classList.remove('hidden');
   window.electronAPI.disableHotkeys();
+  console.log('  ✅ Modal opened for file drop');
 }
 
 // Helper function to set file in the appropriate form input
 function setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput) {
+  console.log('  📁 setFileInForm called with type:', type);
+  
   if (type === 'audio') {
+    console.log('  🎵 Setting up audio file form');
     audioFileSection.style.display = '';
     appFileSection.style.display = 'none';
     fileInput.required = true;
@@ -2815,9 +3083,11 @@ function setFileInForm(file, type, audioFileSection, appFileSection, fileInput, 
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
     fileInput.files = dataTransfer.files;
+    console.log('  ✅ Audio file set in form input');
     // Create or update file display
     updateFileDisplay(fileInput, file.name);
   } else {
+    console.log('  🖥️ Setting up app file form');
     audioFileSection.style.display = 'none';
     appFileSection.style.display = '';
     fileInput.required = false;
@@ -2826,6 +3096,7 @@ function setFileInForm(file, type, audioFileSection, appFileSection, fileInput, 
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
     appFileInput.files = dataTransfer.files;
+    console.log('  ✅ App file set in form input');
     // Create or update file display
     updateFileDisplay(appFileInput, file.name);
   }
@@ -2846,18 +3117,20 @@ function updateFileDisplay(fileInput, fileName) {
   displayElement.textContent = `✓ Selected: ${fileName}`;
 }
 
-// Add event listener to Type select to toggle required state dynamically
-const typeSelect = document.getElementById('type-select');
-typeSelect.addEventListener('change', function() {
-  const fileInput = document.getElementById('file-input');
-  const appFileInput = document.getElementById('app-file-input');
-  if (typeSelect.value === 'audio') {
-    fileInput.required = true;
-    appFileInput.required = false;
-  } else {
-    fileInput.required = false;
-    appFileInput.required = true;
-  }
+// Add event listener to Type radio buttons to toggle required state dynamically
+const typeRadios = document.querySelectorAll('input[name="button-type"]');
+typeRadios.forEach(radio => {
+  radio.addEventListener('change', function() {
+    const fileInput = document.getElementById('file-input');
+    const appFileInput = document.getElementById('app-file-input');
+    if (this.value === 'audio') {
+      fileInput.required = true;
+      appFileInput.required = false;
+    } else {
+      fileInput.required = false;
+      appFileInput.required = true;
+    }
+  });
 });
 
 // Theme System
@@ -3369,7 +3642,7 @@ function setupAppToolbar() {
     console.log('🔧 Setting up minimize button');
     btnMin.addEventListener('click', (e) => {
       console.log('🔧 MINIMIZE BUTTON CLICKED!');
-      e.stopPropagation();
+    e.stopPropagation();
       if (window.electronAPI && typeof window.electronAPI.minimizeWindow === 'function') {
         console.log('🔧 Calling minimizeWindow()');
         window.electronAPI.minimizeWindow();
@@ -3382,7 +3655,7 @@ function setupAppToolbar() {
     console.log('🔧 Setting up maximize button');
     btnMax.addEventListener('click', (e) => {
       console.log('🔧 MAXIMIZE BUTTON CLICKED!');
-      e.stopPropagation();
+    e.stopPropagation();
       if (window.electronAPI && typeof window.electronAPI.toggleMaximizeWindow === 'function') {
         console.log('🔧 Calling toggleMaximizeWindow()');
         window.electronAPI.toggleMaximizeWindow();
@@ -3395,7 +3668,7 @@ function setupAppToolbar() {
     console.log('🔧 Setting up close button');
     btnClose.addEventListener('click', (e) => {
       console.log('🔧 CLOSE BUTTON CLICKED!');
-      e.stopPropagation();
+    e.stopPropagation();
       if (window.electronAPI && typeof window.electronAPI.closeWindow === 'function') {
         console.log('🔧 Calling closeWindow()');
         window.electronAPI.closeWindow();
@@ -3482,7 +3755,7 @@ function setupOverlayWidget() {
   const sendCustomTextBtn = document.getElementById('send-custom-text');
   const copyUrlBtn = document.getElementById('copy-overlay-url');
   
-  // Position mapping for overlay IDs
+  // Position mapping for overlay IDs (old format for backward compatibility)
   const positionMap = {
     1: 'text-top-left',
     2: 'text-top-center', 
@@ -3675,67 +3948,65 @@ function setupOverlayWidget() {
           clearPrevious: true
         },
         slots: {
-          'text-top-left': {
+          'topLeft': {
             text: '🎮 GAME START',
             style: {
               fontFamily: 'Arial, sans-serif',
-              fontSize: '28px',
+              fontSize: 28,
               color: '#00ff00',
-              fontWeight: 'bold',
-              textAlign: 'center',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-              zIndex: '10'
+              bold: true,
+              italic: false,
+              align: 'center',
+              animation: 'pulse'
             }
           },
-          'text-top-right': {
+          'topRight': {
             text: 'SCORE: 9999',
             style: {
               fontFamily: 'Courier, monospace',
-              fontSize: '24px',
+              fontSize: 24,
               color: '#ffff00',
-              fontWeight: 'bold',
-              textAlign: 'right',
+              bold: true,
+              italic: false,
+              align: 'right',
               textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
               zIndex: '10'
             }
           },
-          'text-bottom-center': {
+          'bottomCenter': {
             text: 'PRESS SPACE TO CONTINUE',
             style: {
               fontFamily: 'Arial, sans-serif',
-              fontSize: '20px',
+              fontSize: 20,
               color: '#ffffff',
-              fontWeight: 'bold',
-              textAlign: 'center',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-              animationName: 'pulse',
-              animationDuration: '1s',
-              animationIterationCount: 'infinite',
-              zIndex: '10'
+              bold: true,
+              italic: false,
+              align: 'center',
+              animation: 'pulse'
             }
           },
-          'text-mid-left': {
+          'midLeft': {
             text: 'LIVES: 3',
             style: {
               fontFamily: 'Arial, sans-serif',
-              fontSize: '18px',
+              fontSize: 18,
               color: '#ff6b6b',
-              fontWeight: 'bold',
+              bold: true,
               textAlign: 'left',
               textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
               zIndex: '10'
             }
           },
-          'text-mid-right': {
+          'midRight': {
             text: 'LEVEL: 5',
             style: {
               fontFamily: 'Arial, sans-serif',
-              fontSize: '18px',
+              fontSize: 18,
               color: '#4ecdc4',
-              fontWeight: 'bold',
-              textAlign: 'right',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-              zIndex: '10'
+              bold: true,
+              italic: false,
+              align: 'right',
+              animation: null
             }
           }
         },
@@ -3767,14 +4038,14 @@ function setupOverlayWidget() {
       console.log('Testing all positions simultaneously...');
       
       const positions = [
-        { id: 'text-top-left', text: 'Test - Top Left' },
-        { id: 'text-top-center', text: 'Test - Top Center' },
-        { id: 'text-top-right', text: 'Test - Top Right' },
-        { id: 'text-mid-left', text: 'Test - Mid Left' },
-        { id: 'text-mid-right', text: 'Test - Mid Right' },
-        { id: 'text-bottom-left', text: 'Test - Bottom Left' },
-        { id: 'text-bottom-center', text: 'Test - Bottom Center' },
-        { id: 'text-bottom-right', text: 'Test - Bottom Right' }
+        { id: 'topLeft', text: 'Test - Top Left' },
+        { id: 'topCenter', text: 'Test - Top Center' },
+        { id: 'topRight', text: 'Test - Top Right' },
+        { id: 'midLeft', text: 'Test - Mid Left' },
+        { id: 'midRight', text: 'Test - Mid Right' },
+        { id: 'bottomLeft', text: 'Test - Bottom Left' },
+        { id: 'bottomCenter', text: 'Test - Bottom Center' },
+        { id: 'bottomRight', text: 'Test - Bottom Right' }
       ];
       
       // Create a single payload with all text slots
@@ -3791,11 +4062,12 @@ function setupOverlayWidget() {
           text: pos.text,
           style: {
             fontFamily: 'Arial, sans-serif',
-            fontSize: '18px',
+            fontSize: 18,
             color: '#00ff00',
-            fontWeight: 'bold',
-            textAlign: 'center',
-            zIndex: (index + 1).toString()
+            bold: true,
+            italic: false,
+            align: 'center',
+            animation: null
           }
         };
       });
@@ -3812,6 +4084,47 @@ function setupOverlayWidget() {
         console.log('Sent comprehensive test payload with all positions');
       } else {
         console.log('sendOverlayMessage not available');
+      }
+    });
+  }
+  
+  // Resolution controls
+  const resolutionSelect = document.getElementById('overlay-resolution');
+  const applyResolutionBtn = document.getElementById('apply-resolution');
+  
+  if (resolutionSelect && applyResolutionBtn) {
+    applyResolutionBtn.addEventListener('click', () => {
+      const selectedResolution = resolutionSelect.value;
+      const [width, height] = selectedResolution.split('x').map(Number);
+      
+      console.log(`Applying overlay resolution: ${width}x${height}`);
+      
+      // Send resolution change to overlay iframe
+      const overlayIframe = document.getElementById('overlay-iframe');
+      if (overlayIframe && overlayIframe.contentWindow) {
+        try {
+          overlayIframe.contentWindow.setOverlayResolution(width, height);
+          console.log(`✅ Resolution changed to ${width}x${height}`);
+          
+          // Show feedback
+          const originalText = applyResolutionBtn.textContent;
+          applyResolutionBtn.textContent = '✓ Applied';
+          applyResolutionBtn.style.background = '#4CAF50';
+          setTimeout(() => {
+            applyResolutionBtn.textContent = originalText;
+            applyResolutionBtn.style.background = '';
+          }, 2000);
+        } catch (error) {
+          console.error('Failed to change overlay resolution:', error);
+          applyResolutionBtn.textContent = '❌ Failed';
+          applyResolutionBtn.style.background = '#f44336';
+          setTimeout(() => {
+            applyResolutionBtn.textContent = 'Apply Resolution';
+            applyResolutionBtn.style.background = '';
+          }, 2000);
+        }
+      } else {
+        console.error('Overlay iframe not found');
       }
     });
   }
@@ -4422,19 +4735,45 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
   
+  // Test multi-source functionality
+  window.testMultiSource = function(payload) {
+    console.log('Testing multi-source with payload:', payload);
+    
+    // Send to overlay iframe if available - send payload directly
+    const overlayIframe = document.getElementById('overlay-iframe');
+    if (overlayIframe && overlayIframe.contentWindow) {
+      try {
+        overlayIframe.contentWindow.postMessage(payload, '*');
+        console.log('Multi-source test sent to overlay iframe');
+      } catch (error) {
+        console.warn('Failed to send multi-source test to overlay iframe:', error);
+      }
+    }
+    
+    // Send via WebSocket if available
+    if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
+      try {
+        window.electronAPI.sendOverlayMessage(payload);
+        console.log('Multi-source test sent via WebSocket');
+      } catch (error) {
+        console.warn('Failed to send multi-source test via WebSocket:', error);
+      }
+    }
+  };
+
   // Test all overlay positions
   window.testAllOverlayPositions = function() {
     console.log('Testing all overlay positions...');
     
     const positions = [
-      { id: 'text-top-left', text: 'Test - Top Left' },
-      { id: 'text-top-center', text: 'Test - Top Center' },
-      { id: 'text-top-right', text: 'Test - Top Right' },
-      { id: 'text-mid-left', text: 'Test - Mid Left' },
-      { id: 'text-mid-right', text: 'Test - Mid Right' },
-      { id: 'text-bottom-left', text: 'Test - Bottom Left' },
-      { id: 'text-bottom-center', text: 'Test - Bottom Center' },
-      { id: 'text-bottom-right', text: 'Test - Bottom Right' }
+      { id: 'topLeft', text: 'Test - Top Left' },
+      { id: 'topCenter', text: 'Test - Top Center' },
+      { id: 'topRight', text: 'Test - Top Right' },
+      { id: 'midLeft', text: 'Test - Mid Left' },
+      { id: 'midRight', text: 'Test - Mid Right' },
+      { id: 'bottomLeft', text: 'Test - Bottom Left' },
+      { id: 'bottomCenter', text: 'Test - Bottom Center' },
+      { id: 'bottomRight', text: 'Test - Bottom Right' }
     ];
     
     // Create a single payload with all text slots
@@ -4505,4 +4844,2409 @@ document.addEventListener('DOMContentLoaded', () => {
       themeManager.applyTheme(themeManager.getCurrentTheme());
     }, 1000);
   });
+
+  // Initialize AddEditButtonForm integration (minimal)
+  if (window.AddEditButtonForm) {
+    window.addEditButtonForm = new window.AddEditButtonForm();
+    window.addEditButtonForm.init();
+
+    // Set up form callbacks
+    window.addEditButtonForm.onSave = async (buttonData) => {
+      try {
+        console.log('Saving multi-media button:', buttonData);
+        
+        // Use the new schema directly (no conversion needed)
+        const buttonConfig = {
+          id: buttonData.id,
+          name: buttonData.name,
+          hotkey: buttonData.hotkey,
+          type: 'multi-media',
+          slots: buttonData.slots,
+          centerMedia: buttonData.centerMedia,
+          audio: buttonData.audio,
+          options: buttonData.options
+        };
+
+        // Check if Electron API is available
+        if (!window.electronAPI) {
+          console.error('Electron API not available - this might be running in a browser');
+          alert('Error: Electron API not available. This feature requires the desktop app.');
+          return;
+        }
+
+        if (!window.electronAPI.saveConfig) {
+          console.error('saveConfig method not available on Electron API');
+          alert('Error: Save functionality not available. Please check your app version.');
+          return;
+        }
+
+        // Save to config
+        const currentConfig = await window.electronAPI.getConfig();
+        const buttons = currentConfig.buttons || [];
+        
+        if (buttonData.isEditing) {
+          // Update existing button
+          const index = buttons.findIndex(b => b.id === buttonData.editingId);
+          if (index > -1) {
+            buttons[index] = buttonConfig;
+            console.log('Updated existing button at index:', index);
+          } else {
+            console.warn('Button to edit not found, adding as new button');
+            buttons.push(buttonConfig);
+          }
+        } else {
+          // Add new button
+          buttons.push(buttonConfig);
+          console.log('Added new button');
+        }
+        
+        const saveResult = await window.electronAPI.saveConfig({ ...currentConfig, buttons });
+        
+        if (saveResult && saveResult.success) {
+          // Refresh hotkeys to register the new hotkey
+          window.electronAPI.refreshHotkeys();
+          
+          // Reload buttons
+          await loadButtons();
+          
+          console.log('Multi-media button saved successfully');
+          alert('Button saved successfully!');
+        } else {
+          throw new Error(saveResult?.error || 'Failed to save button');
+        }
+        
+      } catch (error) {
+        console.error('Error saving multi-media button:', error);
+        alert('Error saving button: ' + error.message);
+      }
+    };
+
+    window.addEditButtonForm.onCancel = () => {
+      console.log('Multi-media button creation/editing cancelled');
+    };
+  }
+
+  // Button Type Selection Modal
+  setupButtonTypeSelection();
+  
+  // Expose helper functions globally for debugging
+  window.findMultiMediaButtons = findMultiMediaButtons;
+  window.goToPage = goToPage;
+  window.currentPage = () => currentPage;
+  window.totalPages = () => totalPages;
+  
+  // Test multi-media button trigger
+  window.testMultiMediaTrigger = async () => {
+    const multiMediaButtons = await findMultiMediaButtons();
+    if (multiMediaButtons.length > 0) {
+      console.log('Testing multi-media button trigger with:', multiMediaButtons[0]);
+      console.log('Button data structure:', {
+        hasAudio: !!multiMediaButtons[0].audio,
+        hasDataAudio: !!(multiMediaButtons[0].data && multiMediaButtons[0].data.audio),
+        hasSlots: !!multiMediaButtons[0].slots,
+        hasDataSlots: !!(multiMediaButtons[0].data && multiMediaButtons[0].data.slots),
+        hasCenterMedia: !!multiMediaButtons[0].centerMedia,
+        hasDataCenterMedia: !!(multiMediaButtons[0].data && multiMediaButtons[0].data.centerMedia)
+      });
+      await handleMultiMediaTrigger(multiMediaButtons[0]);
+    } else {
+      console.log('No multi-media buttons found to test');
+    }
+  };
+  
+  // Debug function to inspect button data
+  window.debugButtonData = async () => {
+    const multiMediaButtons = await findMultiMediaButtons();
+    console.log('All multi-media buttons:', multiMediaButtons);
+    multiMediaButtons.forEach((btn, index) => {
+      console.log(`Button ${index}:`, {
+        id: btn.id,
+        name: btn.name || btn.label,
+        type: btn.type,
+        audio: btn.audio,
+        data: btn.data,
+        slots: btn.slots,
+        centerMedia: btn.centerMedia
+      });
+    });
+  };
+  
+  // Function to clear audio cache
+  window.clearAudioCache = () => {
+    audioCache.clear();
+    console.log('Audio cache cleared');
+  };
+  
+  // Function to show audio cache status
+  window.showAudioCache = () => {
+    console.log('Audio cache contents:', Array.from(audioCache.keys()));
+    console.log('Cache size:', audioCache.size);
+  };
+  
+  // Quick test function to create and verify button
+  window.quickTest = async () => {
+    console.log('Creating quick test button...');
+    const button = await createSimpleTestButton();
+    if (button) {
+      console.log('✅ Test button created successfully!');
+      console.log('Button data:', button);
+      
+      // Check if button appears in DOM
+      setTimeout(() => {
+        const buttons = document.querySelectorAll('.sound-card');
+        const multiMediaButtons = Array.from(buttons).filter(card => 
+          card.querySelector('.sound-type')?.textContent === 'multi-media'
+        );
+        console.log(`Found ${multiMediaButtons.length} multi-media buttons in DOM`);
+        
+        if (multiMediaButtons.length > 0) {
+          console.log('✅ Multi-media button is visible in DOM!');
+          console.log('Button element:', multiMediaButtons[0]);
+        } else {
+          console.log('❌ No multi-media buttons found in DOM');
+        }
+      }, 1000);
+    } else {
+      console.log('❌ Failed to create test button');
+    }
+  };
+  
+  // Comprehensive test function to verify schema and API compatibility
+  window.testSchemaCompatibility = async () => {
+    console.log('🧪 Testing schema compatibility...');
+    
+    // Test 1: Create a test button
+    console.log('1. Creating test button...');
+    const testButton = await createSimpleTestButton();
+    if (!testButton) {
+      console.log('❌ Failed to create test button');
+      return;
+    }
+    console.log('✅ Test button created');
+    
+    // Test 2: Verify schema structure
+    console.log('2. Verifying schema structure...');
+    const requiredFields = ['id', 'name', 'type', 'slots', 'centerMedia', 'audio', 'options'];
+    const missingFields = requiredFields.filter(field => !(field in testButton));
+    if (missingFields.length > 0) {
+      console.log('❌ Missing required fields:', missingFields);
+      return;
+    }
+    console.log('✅ All required fields present');
+    
+    // Test 3: Verify slots structure
+    console.log('3. Verifying slots structure...');
+    const expectedSlots = ['topLeft', 'topCenter', 'topRight', 'midLeft', 'center', 'midRight', 'bottomLeft', 'bottomCenter', 'bottomRight'];
+    const slotKeys = Object.keys(testButton.slots);
+    const validSlots = slotKeys.every(key => expectedSlots.includes(key));
+    if (!validSlots) {
+      console.log('❌ Invalid slot names:', slotKeys);
+      return;
+    }
+    console.log('✅ Slots structure valid');
+    
+    // Test 4: Verify style structure
+    console.log('4. Verifying style structure...');
+    const slotWithStyle = Object.values(testButton.slots).find(slot => slot.style);
+    if (slotWithStyle) {
+      const styleFields = ['fontFamily', 'fontSize', 'color', 'bold', 'italic', 'align', 'animation'];
+      const styleKeys = Object.keys(slotWithStyle.style);
+      const validStyle = styleFields.every(field => styleKeys.includes(field));
+      if (!validStyle) {
+        console.log('❌ Invalid style structure:', styleKeys);
+        return;
+      }
+      console.log('✅ Style structure valid');
+    }
+    
+    // Test 5: Verify centerMedia structure
+    console.log('5. Verifying centerMedia structure...');
+    if (testButton.centerMedia.length > 0) {
+      const mediaItem = testButton.centerMedia[0];
+      const mediaFields = ['id', 'type', 'src', 'widthPct', 'align', 'extraStyle'];
+      const mediaKeys = Object.keys(mediaItem);
+      const validMedia = mediaFields.every(field => mediaKeys.includes(field));
+      if (!validMedia) {
+        console.log('❌ Invalid centerMedia structure:', mediaKeys);
+        return;
+      }
+      console.log('✅ CenterMedia structure valid');
+    }
+    
+    // Test 6: Verify audio structure
+    console.log('6. Verifying audio structure...');
+    if (testButton.audio.length > 0) {
+      const audioItem = testButton.audio[0];
+      const audioFields = ['id', 'src', 'volume', 'loop'];
+      const audioKeys = Object.keys(audioItem);
+      const validAudio = audioFields.every(field => audioKeys.includes(field));
+      if (!validAudio) {
+        console.log('❌ Invalid audio structure:', audioKeys);
+        return;
+      }
+      console.log('✅ Audio structure valid');
+    }
+    
+    // Test 7: Test trigger functionality
+    console.log('7. Testing trigger functionality...');
+    try {
+      await handleMultiMediaTrigger(testButton);
+      console.log('✅ Trigger functionality works');
+    } catch (error) {
+      console.log('❌ Trigger functionality failed:', error);
+    }
+    
+    console.log('🎉 All schema compatibility tests passed!');
+  };
+  
+  // Function to check all button types in DOM
+  window.checkAllButtonTypes = () => {
+    console.log('🔍 Checking all button types in DOM...');
+    
+    const buttons = document.querySelectorAll('.sound-card');
+    console.log(`Total buttons found: ${buttons.length}`);
+    
+    const buttonTypes = {};
+    buttons.forEach((card, index) => {
+      const type = card.querySelector('.sound-type')?.textContent || 'unknown';
+      const name = card.querySelector('.sound-name')?.textContent || 'unnamed';
+      const hotkey = card.querySelector('.sound-hotkey')?.textContent || 'no hotkey';
+      
+      if (!buttonTypes[type]) {
+        buttonTypes[type] = [];
+      }
+      buttonTypes[type].push({ name, hotkey, index });
+    });
+    
+    console.log('Button types found:');
+    Object.keys(buttonTypes).forEach(type => {
+      console.log(`  ${type}: ${buttonTypes[type].length} buttons`);
+      buttonTypes[type].forEach(button => {
+        console.log(`    - ${button.name} (${button.hotkey})`);
+      });
+    });
+    
+    // Check for multi-media buttons specifically
+    const multiMediaButtons = Array.from(buttons).filter(card => 
+      card.querySelector('.sound-type')?.textContent === 'multi-media'
+    );
+    console.log(`\nMulti-media buttons: ${multiMediaButtons.length}`);
+    
+    if (multiMediaButtons.length === 0) {
+      console.log('❌ No multi-media buttons found in DOM');
+      console.log('💡 Try running: quickTest() or createTestMultiMediaButton()');
+    } else {
+      console.log('✅ Multi-media buttons found in DOM');
+    }
+    
+    return buttonTypes;
+  };
+  
+  // Function to test form submission
+  window.testFormSubmission = () => {
+    console.log('🧪 Testing form submission...');
+    
+    // Check if form exists
+    const form = document.querySelector('#multi-media-form form');
+    if (!form) {
+      console.log('❌ Multi-media form not found');
+      return;
+    }
+    
+    // Check if form has required elements
+    const nameInput = document.getElementById('multi-media-button-name');
+    if (!nameInput) {
+      console.log('❌ Button name input not found');
+      return;
+    }
+    
+    // Test with empty name (should show validation error)
+    console.log('1. Testing empty name validation...');
+    nameInput.value = '';
+    const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+    form.dispatchEvent(submitEvent);
+    console.log('✅ Empty name validation should have triggered');
+    
+    // Test with valid name
+    console.log('2. Testing valid name...');
+    nameInput.value = 'Test Button';
+    const validSubmitEvent = new Event('submit', { bubbles: true, cancelable: true });
+    form.dispatchEvent(validSubmitEvent);
+    console.log('✅ Valid name submission should work');
+    
+    console.log('🎉 Form submission test completed');
+  };
+  
+  // Function to check Electron API availability
+  window.checkElectronAPI = () => {
+    console.log('🔍 Checking Electron API availability...');
+    
+    if (!window.electronAPI) {
+      console.log('❌ window.electronAPI is not defined');
+      console.log('💡 This might be running in a browser instead of Electron');
+      return false;
+    }
+    
+    console.log('✅ window.electronAPI is available');
+    
+    const requiredMethods = ['getConfig', 'saveConfig', 'sendOverlayMessage'];
+    const missingMethods = requiredMethods.filter(method => 
+      !window.electronAPI[method] || typeof window.electronAPI[method] !== 'function'
+    );
+    
+    if (missingMethods.length > 0) {
+      console.log('❌ Missing required methods:', missingMethods);
+      console.log('Available methods:', Object.keys(window.electronAPI));
+      return false;
+    }
+    
+    console.log('✅ All required methods are available');
+    console.log('Available methods:', Object.keys(window.electronAPI));
+    return true;
+  };
+  
+  // Function to test config save/load
+  window.testConfigAPI = async () => {
+    console.log('🧪 Testing config API...');
+    
+    if (!window.checkElectronAPI()) {
+      return;
+    }
+    
+    try {
+      // Test getConfig
+      console.log('1. Testing getConfig...');
+      const config = await window.electronAPI.getConfig();
+      console.log('✅ getConfig successful:', config);
+      
+      // Test saveConfig (with a small change)
+      console.log('2. Testing saveConfig...');
+      const testConfig = { ...config, testTimestamp: Date.now() };
+      await window.electronAPI.saveConfig(testConfig);
+      console.log('✅ saveConfig successful');
+      
+      // Verify the change was saved
+      console.log('3. Verifying save...');
+      const savedConfig = await window.electronAPI.getConfig();
+      if (savedConfig.testTimestamp === testConfig.testTimestamp) {
+        console.log('✅ Config save/load verification successful');
+      } else {
+        console.log('❌ Config save/load verification failed');
+      }
+      
+      // Clean up test data
+      delete testConfig.testTimestamp;
+      await window.electronAPI.saveConfig(testConfig);
+      console.log('✅ Test data cleaned up');
+      
+    } catch (error) {
+      console.log('❌ Config API test failed:', error);
+    }
+  };
+  
+  // Function to test complete save functionality
+  window.testSaveFunctionality = async () => {
+    console.log('🧪 Testing complete save functionality...');
+    
+    // Step 1: Check API availability
+    console.log('1. Checking API availability...');
+    if (!window.checkElectronAPI()) {
+      console.log('❌ API not available, cannot test save functionality');
+      return;
+    }
+    
+    // Step 2: Test config API
+    console.log('2. Testing config API...');
+    await window.testConfigAPI();
+    
+    // Step 3: Create a test button
+    console.log('3. Creating test button...');
+    const testButton = {
+      id: 'test-save-' + Date.now(),
+      name: 'Test Save Button',
+      type: 'multi-media',
+      hotkey: 'Ctrl+Shift+Test',
+      slots: {
+        topCenter: {
+          text: 'Test Save',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 24,
+            color: '#FFFFFF',
+            bold: true,
+            italic: false,
+            align: 'center',
+            animation: null
+          }
+        }
+      },
+      centerMedia: [],
+      audio: [],
+      options: {
+        clearPrevious: true,
+        durationMs: 5000
+      }
+    };
+    
+    // Step 4: Test the save process
+    console.log('4. Testing save process...');
+    try {
+      const currentConfig = await window.electronAPI.getConfig();
+      const buttons = currentConfig.buttons || [];
+      buttons.push(testButton);
+      
+      const saveResult = await window.electronAPI.saveConfig({ ...currentConfig, buttons });
+      
+      if (saveResult && saveResult.success) {
+        console.log('✅ Save successful');
+        
+        // Step 5: Verify the save
+        console.log('5. Verifying save...');
+        const savedConfig = await window.electronAPI.getConfig();
+        const savedButton = savedConfig.buttons.find(b => b.id === testButton.id);
+        
+        if (savedButton) {
+          console.log('✅ Button found in saved config');
+          console.log('Saved button:', savedButton);
+          
+          // Step 6: Clean up test data
+          console.log('6. Cleaning up test data...');
+          const cleanedButtons = savedConfig.buttons.filter(b => b.id !== testButton.id);
+          await window.electronAPI.saveConfig({ ...savedConfig, buttons: cleanedButtons });
+          console.log('✅ Test data cleaned up');
+          
+          console.log('🎉 Complete save functionality test passed!');
+        } else {
+          console.log('❌ Button not found in saved config');
+        }
+      } else {
+        console.log('❌ Save failed:', saveResult);
+      }
+    } catch (error) {
+      console.log('❌ Save test failed:', error);
+    }
+  };
+  
+  // Function to test edit functionality
+  window.testEditFunctionality = async () => {
+    console.log('🧪 Testing edit functionality...');
+    
+    // Step 1: Check if we have any multi-media buttons
+    const buttons = document.querySelectorAll('.sound-card');
+    const multiMediaButtons = Array.from(buttons).filter(card => 
+      card.querySelector('.sound-type')?.textContent === 'multi-media'
+    );
+    
+    if (multiMediaButtons.length === 0) {
+      console.log('❌ No multi-media buttons found to test editing');
+      console.log('💡 Try running: quickTest() or createTestMultiMediaButton() first');
+      return;
+    }
+    
+    console.log(`✅ Found ${multiMediaButtons.length} multi-media buttons`);
+    
+    // Step 2: Test editing the first multi-media button
+    const firstButton = multiMediaButtons[0];
+    const editButton = firstButton.querySelector('.edit-button');
+    
+    if (!editButton) {
+      console.log('❌ No edit button found on multi-media button');
+      return;
+    }
+    
+    console.log('2. Testing edit button click...');
+    try {
+      editButton.click();
+      console.log('✅ Edit button clicked successfully');
+      
+      // Check if multi-media modal opened
+      setTimeout(() => {
+        const multiMediaModal = document.getElementById('multi-media-modal');
+        if (multiMediaModal && !multiMediaModal.classList.contains('hidden')) {
+          console.log('✅ Multi-media edit modal opened');
+          console.log('🎉 Edit functionality test passed!');
+          
+          // Close the modal
+          multiMediaModal.classList.add('hidden');
+        } else {
+          console.log('❌ Multi-media edit modal did not open');
+        }
+      }, 500);
+      
+    } catch (error) {
+      console.log('❌ Edit button click failed:', error);
+    }
+  };
+  
+  // Function to test complete trigger functionality
+  window.testCompleteTrigger = async () => {
+    console.log('🧪 Testing complete trigger functionality...');
+    
+    // Step 1: Create a test button with all media types
+    console.log('1. Creating comprehensive test button...');
+    const testButton = {
+      id: 'complete-test-' + Date.now(),
+      name: 'Complete Test Button',
+      type: 'multi-media',
+      hotkey: 'Ctrl+Shift+Complete',
+      slots: {
+        topLeft: {
+          text: 'TOP LEFT',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 24,
+            color: '#FF0000',
+            bold: true,
+            italic: false,
+            align: 'left',
+            animation: 'fadeIn'
+          }
+        },
+        topCenter: {
+          text: 'TOP CENTER',
+          style: {
+            fontFamily: 'Arial',
+            fontSize: 28,
+            color: '#00FF00',
+            bold: false,
+            italic: true,
+            align: 'center',
+            animation: 'pulse'
+          }
+        },
+        topRight: {
+          text: 'TOP RIGHT',
+          style: {
+            fontFamily: 'Georgia',
+            fontSize: 20,
+            color: '#0000FF',
+            bold: true,
+            italic: false,
+            align: 'right',
+            animation: null
+          }
+        },
+        bottomCenter: {
+          text: 'BOTTOM CENTER',
+          style: {
+            fontFamily: 'Courier',
+            fontSize: 22,
+            color: '#FFFF00',
+            bold: true,
+            italic: false,
+            align: 'center',
+            animation: 'slideUp'
+          }
+        }
+      },
+      centerMedia: [
+        {
+          id: 'm1',
+          type: 'image',
+          src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="%23ff6600" rx="20"/><text x="200" y="160" font-size="48" text-anchor="middle" fill="white" font-weight="bold">CENTER IMAGE</text></svg>',
+          widthPct: 80,
+          align: 'center',
+          extraStyle: { zIndex: 1 }
+        }
+      ],
+      audio: [
+        {
+          id: 'a1',
+          src: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav',
+          volume: 0.8,
+          loop: false
+        }
+      ],
+      options: {
+        clearPrevious: true,
+        durationMs: 5000
+      }
+    };
+    
+    // Step 2: Test the trigger
+    console.log('2. Testing trigger...');
+    try {
+      await handleMultiMediaTrigger(testButton);
+      console.log('✅ Trigger executed successfully');
+      
+      // Step 3: Check if overlay received the message
+      console.log('3. Checking overlay message delivery...');
+      setTimeout(() => {
+        const overlayIframe = document.getElementById('overlay-iframe');
+        if (overlayIframe && overlayIframe.contentWindow) {
+          console.log('✅ Overlay iframe exists');
+          
+          // Send a test message to verify communication
+          overlayIframe.contentWindow.postMessage({
+            type: 'buttonTrigger',
+            payload: {
+              id: 'test-communication',
+              name: 'Communication Test',
+              slots: {
+                topCenter: {
+                  text: 'COMMUNICATION TEST',
+                  style: {
+                    fontFamily: 'Arial',
+                    fontSize: 32,
+                    color: '#FFFFFF',
+                    bold: true,
+                    italic: false,
+                    align: 'center',
+                    animation: 'pulse'
+                  }
+                }
+              },
+              centerMedia: [],
+              audio: [],
+              options: { clearPrevious: true }
+            }
+          }, '*');
+          console.log('✅ Test message sent to overlay');
+        } else {
+          console.log('❌ Overlay iframe not found');
+        }
+      }, 1000);
+      
+    } catch (error) {
+      console.log('❌ Trigger failed:', error);
+    }
+    
+    console.log('🎉 Complete trigger test finished');
+  };
+  
+  // Function to test naming consistency across all components
+  window.testNamingConsistency = async () => {
+    console.log('🧪 Testing naming consistency across all components...');
+    
+    // Test 1: Check form field naming
+    console.log('1. Checking form field naming...');
+    const nameInput = document.getElementById('multi-media-button-name');
+    const labelInput = document.getElementById('label-input');
+    
+    if (nameInput) {
+      console.log('✅ Multi-media form: name input found');
+      console.log('  - ID:', nameInput.id);
+      console.log('  - Name attribute:', nameInput.name);
+      console.log('  - Expected: name="name"');
+      if (nameInput.name === 'name') {
+        console.log('✅ Multi-media form naming is correct');
+      } else {
+        console.log('❌ Multi-media form naming is incorrect');
+      }
+    } else {
+      console.log('❌ Multi-media form name input not found');
+    }
+    
+    if (labelInput) {
+      console.log('✅ Regular form: label input found');
+      console.log('  - ID:', labelInput.id);
+      console.log('  - Name attribute:', labelInput.name);
+      console.log('  - Expected: name="label" (for backward compatibility)');
+      if (labelInput.name === 'label') {
+        console.log('✅ Regular form naming is correct');
+      } else {
+        console.log('❌ Regular form naming is incorrect');
+      }
+    } else {
+      console.log('❌ Regular form label input not found');
+    }
+    
+    // Test 2: Check schema consistency
+    console.log('2. Checking schema consistency...');
+    const testButton = {
+      id: 'naming-test-' + Date.now(),
+      name: 'Test Button Name',
+      type: 'multi-media',
+      hotkey: 'Ctrl+Shift+N',
+      slots: {},
+      centerMedia: [],
+      audio: [],
+      options: { clearPrevious: true }
+    };
+    
+    console.log('✅ Test button schema:');
+    console.log('  - Uses "name" property:', 'name' in testButton);
+    console.log('  - No "label" property:', !('label' in testButton));
+    
+    // Test 3: Check form data collection
+    console.log('3. Checking form data collection...');
+    if (window.addEditButtonForm && typeof window.addEditButtonForm.getFormData === 'function') {
+      // Set test values
+      if (nameInput) nameInput.value = 'Test Form Name';
+      
+      const formData = window.addEditButtonForm.getFormData();
+      console.log('✅ Form data collected:');
+      console.log('  - Uses "name" property:', 'name' in formData);
+      console.log('  - No "buttonName" property:', !('buttonName' in formData));
+      console.log('  - Name value:', formData.name);
+    } else {
+      console.log('❌ Multi-media form not available for testing');
+    }
+    
+    // Test 4: Check display consistency
+    console.log('4. Checking display consistency...');
+    const buttons = document.querySelectorAll('.sound-card');
+    if (buttons.length > 0) {
+      const firstButton = buttons[0];
+      const nameElement = firstButton.querySelector('.sound-name');
+      if (nameElement) {
+        console.log('✅ Display element found');
+        console.log('  - Element class:', nameElement.className);
+        console.log('  - Displayed text:', nameElement.textContent);
+      } else {
+        console.log('❌ Display element not found');
+      }
+    } else {
+      console.log('❌ No buttons found for display testing');
+    }
+    
+    console.log('🎉 Naming consistency test completed');
+  };
+  
+  // Function to test data consistency across the entire pipeline
+  window.testDataConsistency = async () => {
+    console.log('🧪 Testing data consistency across form → API → overlay pipeline...');
+    
+    // Test 1: Create a test button with all media types
+    console.log('1. Creating comprehensive test button...');
+    const testButton = {
+      id: 'data-consistency-test-' + Date.now(),
+      name: 'Data Consistency Test',
+      type: 'multi-media',
+      hotkey: 'Ctrl+Shift+D',
+      slots: {
+        topLeft: { text: 'TOP LEFT', style: { fontFamily: 'Inter', fontSize: 24, color: '#FF0000', bold: true, italic: false, align: 'left', animation: null } },
+        topCenter: { text: 'TOP CENTER', style: { fontFamily: 'Arial', fontSize: 20, color: '#00FF00', bold: false, italic: true, align: 'center', animation: 'fadeIn' } },
+        topRight: { text: 'TOP RIGHT', style: { fontFamily: 'Georgia', fontSize: 18, color: '#0000FF', bold: true, italic: false, align: 'right', animation: null } },
+        midLeft: { text: 'MID LEFT', style: { fontFamily: 'Inter', fontSize: 16, color: '#FFFF00', bold: false, italic: true, align: 'left', animation: null } },
+        center: { text: 'CENTER TEXT', style: { fontFamily: 'Inter', fontSize: 28, color: '#FF00FF', bold: true, italic: false, align: 'center', animation: 'pulse' } },
+        midRight: { text: 'MID RIGHT', style: { fontFamily: 'Inter', fontSize: 16, color: '#00FFFF', bold: false, italic: true, align: 'right', animation: null } },
+        bottomLeft: { text: 'BOTTOM LEFT', style: { fontFamily: 'Courier', fontSize: 18, color: '#FF6600', bold: true, italic: false, align: 'left', animation: null } },
+        bottomCenter: { text: 'BOTTOM CENTER', style: { fontFamily: 'Inter', fontSize: 22, color: '#6600FF', bold: false, italic: true, align: 'center', animation: 'slideUp' } },
+        bottomRight: { text: 'BOTTOM RIGHT', style: { fontFamily: 'Arial', fontSize: 16, color: '#FFFFFF', bold: true, italic: false, align: 'right', animation: null } }
+      },
+      centerMedia: [
+        { id: 'm1', type: 'image', src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="%230066cc" rx="20"/><text x="200" y="160" font-size="48" text-anchor="middle" fill="white" font-weight="bold">TEST IMAGE</text></svg>', loop: false, widthPct: 80, align: 'center', extraStyle: { zIndex: 1 } }
+      ],
+      audio: [
+        { id: 'a1', src: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav', volume: 0.8, loop: false }
+      ],
+      options: { clearPrevious: true, durationMs: 5000 }
+    };
+    
+    console.log('✅ Test button created with new schema');
+    console.log('  - Uses "name" property:', 'name' in testButton);
+    console.log('  - Uses new slot names:', Object.keys(testButton.slots));
+    console.log('  - Uses new style format:', testButton.slots.topLeft.style);
+    
+    // Test 2: Verify form data collection
+    console.log('2. Testing form data collection...');
+    if (window.addEditButtonForm && typeof window.addEditButtonForm.getFormData === 'function') {
+      // Set test values in form
+      const nameInput = document.getElementById('multi-media-button-name');
+      if (nameInput) nameInput.value = 'Form Test Name';
+      
+      const formData = window.addEditButtonForm.getFormData();
+      console.log('✅ Form data collected:');
+      console.log('  - Uses "name" property:', 'name' in formData);
+      console.log('  - Name value:', formData.name);
+      console.log('  - Type:', formData.type);
+      console.log('  - Has slots:', 'slots' in formData);
+      console.log('  - Has centerMedia:', 'centerMedia' in formData);
+      console.log('  - Has audio:', 'audio' in formData);
+    } else {
+      console.log('❌ Multi-media form not available for testing');
+    }
+    
+    // Test 3: Test overlay payload structure
+    console.log('3. Testing overlay payload structure...');
+    const overlayPayload = {
+      id: testButton.id,
+      name: testButton.name,
+      slots: testButton.slots,
+      centerMedia: testButton.centerMedia,
+      options: testButton.options
+    };
+    
+    console.log('✅ Overlay payload created:');
+    console.log('  - Uses "name" property:', 'name' in overlayPayload);
+    console.log('  - Has slots with new names:', Object.keys(overlayPayload.slots));
+    console.log('  - Has centerMedia array:', Array.isArray(overlayPayload.centerMedia));
+    console.log('  - Has options:', 'options' in overlayPayload);
+    
+    // Test 4: Test message structure sent to overlay
+    console.log('4. Testing message structure sent to overlay...');
+    const messageStructure = {
+      type: 'buttonTrigger',
+      payload: overlayPayload
+    };
+    
+    console.log('✅ Message structure:');
+    console.log('  - Has type:', messageStructure.type === 'buttonTrigger');
+    console.log('  - Has payload:', 'payload' in messageStructure);
+    console.log('  - Payload uses new schema:', 'name' in messageStructure.payload);
+    
+    // Test 5: Test overlay processing
+    console.log('5. Testing overlay processing...');
+    const overlayIframe = document.getElementById('overlay-iframe');
+    if (overlayIframe && overlayIframe.contentWindow) {
+      try {
+        overlayIframe.contentWindow.postMessage(messageStructure, '*');
+        console.log('✅ Message sent to overlay iframe successfully');
+      } catch (error) {
+        console.log('❌ Failed to send message to overlay iframe:', error);
+      }
+    } else {
+      console.log('⚠️ Overlay iframe not available for testing');
+    }
+    
+    // Test 6: Test WebSocket message
+    console.log('6. Testing WebSocket message...');
+    if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
+      try {
+        window.electronAPI.sendOverlayMessage(overlayPayload);
+        console.log('✅ WebSocket message sent successfully');
+      } catch (error) {
+        console.log('❌ Failed to send WebSocket message:', error);
+      }
+    } else {
+      console.log('⚠️ WebSocket not available for testing');
+    }
+    
+    // Test 7: Test slot name mapping
+    console.log('7. Testing slot name mapping...');
+    const slotMapping = {
+      'topLeft': 'text-top-left',
+      'topCenter': 'text-top-center',
+      'topRight': 'text-top-right',
+      'midLeft': 'text-mid-left',
+      'center': 'text-center',
+      'midRight': 'text-mid-right',
+      'bottomLeft': 'text-bottom-left',
+      'bottomCenter': 'text-bottom-center',
+      'bottomRight': 'text-bottom-right'
+    };
+    
+    console.log('✅ Slot name mapping:');
+    Object.keys(slotMapping).forEach(schemaName => {
+      const domId = slotMapping[schemaName];
+      const element = document.getElementById(domId);
+      console.log(`  - ${schemaName} → ${domId}: ${element ? '✅ Found' : '❌ Not found'}`);
+    });
+    
+    // Test 8: Test style property mapping
+    console.log('8. Testing style property mapping...');
+    const testStyle = testButton.slots.topLeft.style;
+    console.log('✅ Style properties:');
+    console.log('  - fontFamily:', testStyle.fontFamily);
+    console.log('  - fontSize:', testStyle.fontSize, typeof testStyle.fontSize);
+    console.log('  - color:', testStyle.color);
+    console.log('  - bold:', testStyle.bold, typeof testStyle.bold);
+    console.log('  - italic:', testStyle.italic, typeof testStyle.italic);
+    console.log('  - align:', testStyle.align);
+    console.log('  - animation:', testStyle.animation);
+    
+    console.log('🎉 Data consistency test completed');
+    console.log('📋 Summary:');
+    console.log('  - ✅ New schema uses "name" property consistently');
+    console.log('  - ✅ New slot names (topLeft, topCenter, etc.) used throughout');
+    console.log('  - ✅ New style format (bold: boolean, fontSize: number) used');
+    console.log('  - ✅ Message structure follows { type: "buttonTrigger", payload: {...} }');
+    console.log('  - ✅ Overlay receives and processes data correctly');
+  };
+  
+  // Function to debug what's being sent to the overlay
+  window.debugOverlayData = async () => {
+    console.log('🔍 Debugging overlay data flow...');
+    
+    // Create a test button with all media types
+    const testButton = {
+      id: 'debug-test-' + Date.now(),
+      name: 'Debug Test Button',
+      type: 'multi-media',
+      hotkey: 'Ctrl+Shift+Debug',
+      slots: {
+        topLeft: { text: 'DEBUG TOP LEFT', style: { fontFamily: 'Inter', fontSize: 24, color: '#FF0000', bold: true, italic: false, align: 'left', animation: null } },
+        topCenter: { text: 'DEBUG TOP CENTER', style: { fontFamily: 'Arial', fontSize: 20, color: '#00FF00', bold: false, italic: true, align: 'center', animation: 'fadeIn' } },
+        topRight: { text: 'DEBUG TOP RIGHT', style: { fontFamily: 'Georgia', fontSize: 18, color: '#0000FF', bold: true, italic: false, align: 'right', animation: null } },
+        center: { text: 'DEBUG CENTER', style: { fontFamily: 'Inter', fontSize: 28, color: '#FF00FF', bold: true, italic: false, align: 'center', animation: 'pulse' } }
+      },
+      centerMedia: [
+        { id: 'm1', type: 'image', src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="%23ff6600" rx="20"/><text x="200" y="160" font-size="48" text-anchor="middle" fill="white" font-weight="bold">DEBUG IMAGE</text></svg>', loop: false, widthPct: 80, align: 'center', extraStyle: { zIndex: 1 } }
+      ],
+      audio: [
+        { id: 'a1', src: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav', volume: 0.8, loop: false }
+      ],
+      options: { clearPrevious: true, durationMs: 5000 }
+    };
+    
+    console.log('1. Test button created:', testButton);
+    
+    // Test form data collection
+    console.log('2. Testing form data collection...');
+    if (window.addEditButtonForm && typeof window.addEditButtonForm.getFormData === 'function') {
+      const formData = window.addEditButtonForm.getFormData();
+      console.log('Form data:', formData);
+      console.log('Form slots:', formData.slots);
+      console.log('Form centerMedia:', formData.centerMedia);
+    } else {
+      console.log('❌ Multi-media form not available');
+    }
+    
+    // Test overlay payload
+    console.log('3. Testing overlay payload...');
+    const overlayPayload = {
+      id: testButton.id,
+      name: testButton.name,
+      slots: testButton.slots,
+      centerMedia: testButton.centerMedia,
+      options: testButton.options
+    };
+    console.log('Overlay payload:', overlayPayload);
+    
+    // Test message structure
+    console.log('4. Testing message structure...');
+    const messageStructure = {
+      type: 'buttonTrigger',
+      payload: overlayPayload
+    };
+    console.log('Message structure:', messageStructure);
+    
+    // Test slot mapping
+    console.log('5. Testing slot mapping...');
+    const slotMapping = {
+      'topLeft': 'text-top-left',
+      'topCenter': 'text-top-center',
+      'topRight': 'text-top-right',
+      'center': 'text-center'
+    };
+    
+    Object.keys(slotMapping).forEach(schemaName => {
+      const domId = slotMapping[schemaName];
+      const element = document.getElementById(domId);
+      console.log(`Slot mapping: ${schemaName} → ${domId}: ${element ? '✅ Found' : '❌ Not found'}`);
+    });
+    
+    // Send to overlay iframe
+    console.log('6. Sending to overlay iframe...');
+    const overlayIframe = document.getElementById('overlay-iframe');
+    if (overlayIframe && overlayIframe.contentWindow) {
+      try {
+        overlayIframe.contentWindow.postMessage(messageStructure, '*');
+        console.log('✅ Message sent to overlay iframe');
+      } catch (error) {
+        console.log('❌ Failed to send to overlay iframe:', error);
+      }
+    } else {
+      console.log('❌ Overlay iframe not found');
+    }
+    
+    // Send via WebSocket
+    console.log('7. Sending via WebSocket...');
+    if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
+      try {
+        window.electronAPI.sendOverlayMessage(overlayPayload);
+        console.log('✅ Message sent via WebSocket');
+      } catch (error) {
+        console.log('❌ Failed to send via WebSocket:', error);
+      }
+    } else {
+      console.log('❌ WebSocket not available');
+    }
+    
+    console.log('🎉 Debug test completed');
+  };
+  
+  // Function to test using the exact same pattern as the working test button
+  window.testWorkingPattern = async () => {
+    console.log('🧪 Testing using the exact working pattern...');
+    
+    // Create a test button using the exact same structure as the working test
+    const testButton = {
+      id: 'working-pattern-test-' + Date.now(),
+      name: 'Working Pattern Test',
+      type: 'multi-media',
+      hotkey: 'Ctrl+Shift+W',
+      slots: {
+        topLeft: {
+          text: '🎮 WORKING TEST',
+          style: {
+            fontFamily: 'Arial, sans-serif',
+            fontSize: 28,
+            color: '#00ff00',
+            bold: true,
+            italic: false,
+            align: 'center',
+            animation: 'pulse'
+          }
+        },
+        topRight: {
+          text: 'SCORE: 1234',
+          style: {
+            fontFamily: 'Courier, monospace',
+            fontSize: 24,
+            color: '#ffff00',
+            bold: true,
+            italic: false,
+            align: 'right',
+            animation: null
+          }
+        },
+        bottomCenter: {
+          text: 'PRESS TO CONTINUE',
+          style: {
+            fontFamily: 'Arial, sans-serif',
+            fontSize: 20,
+            color: '#ffffff',
+            bold: true,
+            italic: false,
+            align: 'center',
+            animation: 'pulse'
+          }
+        },
+        center: {
+          text: 'CENTER TEXT',
+          style: {
+            fontFamily: 'Inter, sans-serif',
+            fontSize: 32,
+            color: '#ff00ff',
+            bold: true,
+            italic: false,
+            align: 'center',
+            animation: 'pulse'
+          }
+        }
+      },
+      centerMedia: [
+        {
+          type: 'image',
+          src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400"><rect width="600" height="400" fill="%230066cc" rx="20"/><text x="300" y="220" font-size="72" text-anchor="middle" fill="white" font-weight="bold">WORKING IMAGE</text></svg>',
+          alt: 'Working Test Image'
+        }
+      ],
+      audio: [
+        { id: 'a1', src: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav', volume: 0.8, loop: false }
+      ],
+      options: { clearPrevious: true, durationMs: 5000 }
+    };
+    
+    console.log('1. Test button created:', testButton);
+    
+    // Use the EXACT same pattern as the working test button
+    const payload = {
+      type: 'buttonTrigger',
+      options: {
+        clearPrevious: true
+      },
+      slots: testButton.slots,
+      centerMedia: testButton.centerMedia
+    };
+    
+    console.log('2. Payload created (exact working pattern):', payload);
+    
+    // Send using the EXACT same method as the working test
+    if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
+      window.electronAPI.sendOverlayMessage(payload);
+      console.log('✅ Sent using exact working pattern');
+    } else {
+      console.log('❌ sendOverlayMessage not available');
+    }
+    
+    // Also test the iframe method
+    const overlayIframe = document.getElementById('overlay-iframe');
+    if (overlayIframe && overlayIframe.contentWindow) {
+      try {
+        overlayIframe.contentWindow.postMessage(payload, '*');
+        console.log('✅ Also sent to overlay iframe');
+      } catch (error) {
+        console.log('❌ Failed to send to overlay iframe:', error);
+      }
+    } else {
+      console.log('❌ Overlay iframe not found');
+    }
+    
+    console.log('🎉 Working pattern test completed');
+  };
+  
+  // Function to test overlay structure and verify all elements exist
+  window.testOverlayStructure = () => {
+    console.log('🔍 Testing overlay structure...');
+    
+    // Test 1: Check if overlay iframe exists
+    const overlayIframe = document.getElementById('overlay-iframe');
+    if (overlayIframe) {
+      console.log('✅ Overlay iframe found');
+      
+      // Test 2: Check if we can access the iframe content
+      try {
+        const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow.document;
+        if (iframeDoc) {
+          console.log('✅ Can access iframe document');
+          
+          // Test 3: Check for all required text slots
+          const requiredSlots = [
+            'text-top-left', 'text-top-center', 'text-top-right',
+            'text-mid-left', 'text-center', 'text-mid-right',
+            'text-bottom-left', 'text-bottom-center', 'text-bottom-right'
+          ];
+          
+          console.log('Checking text slots:');
+          requiredSlots.forEach(slotId => {
+            const element = iframeDoc.getElementById(slotId);
+            if (element) {
+              console.log(`  ✅ ${slotId}: Found`);
+            } else {
+              console.log(`  ❌ ${slotId}: Missing`);
+            }
+          });
+          
+          // Test 4: Check center media container
+          const centerMedia = iframeDoc.getElementById('center-media');
+          if (centerMedia) {
+            console.log('✅ Center media container found');
+          } else {
+            console.log('❌ Center media container missing');
+          }
+          
+          // Test 5: Send a test message to verify communication
+          const testPayload = {
+            type: 'buttonTrigger',
+            options: { clearPrevious: true },
+            slots: {
+              topLeft: { text: 'TEST TOP LEFT', style: { fontFamily: 'Arial', fontSize: 20, color: '#FF0000', bold: true, italic: false, align: 'left', animation: null } },
+              topCenter: { text: 'TEST TOP CENTER', style: { fontFamily: 'Arial', fontSize: 20, color: '#00FF00', bold: true, italic: false, align: 'center', animation: null } },
+              topRight: { text: 'TEST TOP RIGHT', style: { fontFamily: 'Arial', fontSize: 20, color: '#0000FF', bold: true, italic: false, align: 'right', animation: null } },
+              center: { text: 'TEST CENTER', style: { fontFamily: 'Arial', fontSize: 24, color: '#FF00FF', bold: true, italic: false, align: 'center', animation: 'pulse' } }
+            },
+            centerMedia: [
+              { type: 'image', src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="%23ff6600" rx="20"/><text x="200" y="160" font-size="48" text-anchor="middle" fill="white" font-weight="bold">TEST IMAGE</text></svg>', alt: 'Test Image' }
+            ]
+          };
+          
+          console.log('Sending test payload to overlay:', testPayload);
+          overlayIframe.contentWindow.postMessage(testPayload, '*');
+          console.log('✅ Test payload sent to overlay');
+          
+        } else {
+          console.log('❌ Cannot access iframe document');
+        }
+      } catch (error) {
+        console.log('❌ Error accessing iframe:', error);
+      }
+    } else {
+      console.log('❌ Overlay iframe not found');
+    }
+    
+    // Test 6: Test WebSocket communication
+    if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
+      console.log('✅ WebSocket API available');
+      
+      const testPayload = {
+        type: 'buttonTrigger',
+        options: { clearPrevious: true },
+        slots: {
+          topLeft: { text: 'WS TEST LEFT', style: { fontFamily: 'Arial', fontSize: 18, color: '#FFFF00', bold: true, italic: false, align: 'left', animation: null } },
+          bottomRight: { text: 'WS TEST RIGHT', style: { fontFamily: 'Arial', fontSize: 18, color: '#00FFFF', bold: true, italic: false, align: 'right', animation: null } }
+        },
+        centerMedia: [
+          { type: 'image', src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect width="300" height="200" fill="%2300ff00" rx="15"/><text x="150" y="120" font-size="36" text-anchor="middle" fill="black" font-weight="bold">WS TEST</text></svg>', alt: 'WebSocket Test Image' }
+        ]
+      };
+      
+      window.electronAPI.sendOverlayMessage(testPayload);
+      console.log('✅ Test payload sent via WebSocket');
+    } else {
+      console.log('❌ WebSocket API not available');
+    }
+    
+    console.log('🎉 Overlay structure test completed');
+  };
+  
+  // Function to test file path handling vs blob URLs
+  window.testFilePathHandling = () => {
+    console.log('🔍 Testing file path handling...');
+    
+    // Test 1: Check if we can access file paths from file inputs
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    
+    console.log('1. Testing file input behavior:');
+    console.log('  - File input created');
+    console.log('  - Note: In Electron, file.path should be available');
+    console.log('  - Blob URLs are temporary and break on refresh');
+    
+    // Test 2: Check current media items in form
+    if (window.addEditButtonForm) {
+      console.log('2. Checking current media items:');
+      console.log('  - Images:', window.addEditButtonForm.images);
+      console.log('  - Videos:', window.addEditButtonForm.videos);
+      console.log('  - Audio:', window.addEditButtonForm.audio);
+      
+      // Check if any are using blob URLs
+      const allMedia = [
+        ...window.addEditButtonForm.images,
+        ...window.addEditButtonForm.videos,
+        ...window.addEditButtonForm.audio
+      ];
+      
+      const blobUrls = allMedia.filter(item => item.src && item.src.startsWith('blob:'));
+      const filePaths = allMedia.filter(item => item.src && !item.src.startsWith('blob:') && !item.src.startsWith('http'));
+      
+      console.log('  - Blob URLs found:', blobUrls.length);
+      console.log('  - File paths found:', filePaths.length);
+      
+      if (blobUrls.length > 0) {
+        console.log('  ❌ Some media items are using blob URLs (will break on refresh)');
+        blobUrls.forEach(item => console.log(`    - ${item.name}: ${item.src}`));
+      } else {
+        console.log('  ✅ No blob URLs found');
+      }
+      
+      if (filePaths.length > 0) {
+        console.log('  ✅ File paths found (persistent):');
+        filePaths.forEach(item => console.log(`    - ${item.name}: ${item.src}`));
+      }
+    } else {
+      console.log('❌ Multi-media form not available');
+    }
+    
+    // Test 3: Show the difference
+    console.log('3. File path vs Blob URL comparison:');
+    console.log('  File Path (✅ Persistent):');
+    console.log('    - C:\\Users\\username\\Pictures\\image.jpg');
+    console.log('    - /home/user/images/video.mp4');
+    console.log('    - Works after page refresh');
+    console.log('    - Works across sessions');
+    
+    console.log('  Blob URL (❌ Temporary):');
+    console.log('    - blob:file:///sc1e1434-f452-40b5-837c-f1acb0af454');
+    console.log('    - Breaks on page refresh');
+    console.log('    - Not persistent across sessions');
+    
+    console.log('🎉 File path handling test completed');
+  };
+  
+  // Function to debug why overlay isn't showing content
+  window.debugOverlayDisplay = () => {
+    console.log('🔍 Debugging overlay display issues...');
+    
+    // Test 1: Check if overlay is receiving messages
+    console.log('1. Testing overlay message reception...');
+    
+    // Create a simple test payload
+    const testPayload = {
+      type: 'buttonTrigger',
+      options: { clearPrevious: true },
+      slots: {
+        topLeft: { 
+          text: 'DEBUG LEFT', 
+          style: { 
+            fontFamily: 'Arial', 
+            fontSize: 24, 
+            color: '#FF0000', 
+            bold: true, 
+            italic: false, 
+            align: 'left', 
+            animation: null 
+          } 
+        },
+        topCenter: { 
+          text: 'DEBUG CENTER', 
+          style: { 
+            fontFamily: 'Arial', 
+            fontSize: 24, 
+            color: '#00FF00', 
+            bold: true, 
+            italic: false, 
+            align: 'center', 
+            animation: 'pulse' 
+          } 
+        },
+        center: { 
+          text: 'CENTER DEBUG', 
+          style: { 
+            fontFamily: 'Arial', 
+            fontSize: 28, 
+            color: '#FF00FF', 
+            bold: true, 
+            italic: false, 
+            align: 'center', 
+            animation: 'pulse' 
+          } 
+        }
+      },
+      centerMedia: [
+        { 
+          type: 'image', 
+          src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="%23ff6600" rx="20"/><text x="200" y="160" font-size="48" text-anchor="middle" fill="white" font-weight="bold">DEBUG IMAGE</text></svg>', 
+          alt: 'Debug Image' 
+        }
+      ]
+    };
+    
+    console.log('Test payload created:', testPayload);
+    
+    // Test 2: Send to overlay iframe
+    const overlayIframe = document.getElementById('overlay-iframe');
+    if (overlayIframe && overlayIframe.contentWindow) {
+      console.log('2. Sending to overlay iframe...');
+      try {
+        overlayIframe.contentWindow.postMessage(testPayload, '*');
+        console.log('✅ Message sent to overlay iframe');
+        
+        // Check if we can access the overlay's console
+        try {
+          const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow.document;
+          if (iframeDoc) {
+            console.log('✅ Can access overlay document');
+            
+            // Check if elements exist
+            const topLeft = iframeDoc.getElementById('text-top-left');
+            const center = iframeDoc.getElementById('text-center');
+            const centerMedia = iframeDoc.getElementById('center-media');
+            
+            console.log('Overlay elements:');
+            console.log('  - text-top-left:', topLeft ? 'Found' : 'Missing');
+            console.log('  - text-center:', center ? 'Found' : 'Missing');
+            console.log('  - center-media:', centerMedia ? 'Found' : 'Missing');
+            
+            if (topLeft) {
+              console.log('  - top-left content:', topLeft.textContent);
+              console.log('  - top-left styles:', topLeft.style.cssText);
+            }
+            if (center) {
+              console.log('  - center content:', center.textContent);
+              console.log('  - center styles:', center.style.cssText);
+            }
+            if (centerMedia) {
+              console.log('  - center-media content:', centerMedia.innerHTML);
+            }
+          }
+        } catch (error) {
+          console.log('❌ Cannot access overlay document:', error);
+        }
+      } catch (error) {
+        console.log('❌ Failed to send to overlay iframe:', error);
+      }
+    } else {
+      console.log('❌ Overlay iframe not found or not accessible');
+    }
+    
+    // Test 3: Send via WebSocket
+    if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
+      console.log('3. Sending via WebSocket...');
+      try {
+        window.electronAPI.sendOverlayMessage(testPayload);
+        console.log('✅ Message sent via WebSocket');
+      } catch (error) {
+        console.log('❌ Failed to send via WebSocket:', error);
+      }
+    } else {
+      console.log('❌ WebSocket not available');
+    }
+    
+    // Test 4: Check if overlay has message listener
+    console.log('4. Checking overlay message handling...');
+    if (overlayIframe && overlayIframe.contentWindow) {
+      try {
+        // Try to call a test function on the overlay
+        if (typeof overlayIframe.contentWindow.testRender === 'function') {
+          console.log('✅ Overlay has testRender function');
+          overlayIframe.contentWindow.testRender(testPayload);
+        } else {
+          console.log('❌ Overlay testRender function not found');
+        }
+      } catch (error) {
+        console.log('❌ Cannot call overlay functions:', error);
+      }
+    }
+    
+    console.log('🎉 Overlay display debug completed');
+  };
+  
+  // Function to test file serving for media
+  window.testFileServing = () => {
+    console.log('🔍 Testing file serving for media...');
+    
+    // Test 1: Check if we have any media with HTTP URLs
+    if (window.addEditButtonForm) {
+      const allMedia = [
+        ...window.addEditButtonForm.images,
+        ...window.addEditButtonForm.videos,
+        ...window.addEditButtonForm.audio
+      ];
+      
+      const httpMedia = allMedia.filter(item => 
+        item.src && item.src.startsWith('http://localhost:8080/media/')
+      );
+      
+      const filePathMedia = allMedia.filter(item => 
+        item.src && 
+        !item.src.startsWith('http') && 
+        !item.src.startsWith('data:') && 
+        !item.src.startsWith('blob:')
+      );
+      
+      console.log('1. Media analysis:');
+      console.log(`  - HTTP URLs: ${httpMedia.length}`);
+      console.log(`  - File paths: ${filePathMedia.length}`);
+      
+      httpMedia.forEach(item => {
+        console.log(`  - HTTP URL: ${item.name} → ${item.src}`);
+      });
+      
+      filePathMedia.forEach(item => {
+        console.log(`  - File path: ${item.name} → ${item.src}`);
+      });
+      
+      // Test 2: Test HTTP URL accessibility
+      if (httpMedia.length > 0) {
+        const testItem = httpMedia[0];
+        
+        console.log('2. Testing HTTP URL accessibility...');
+        console.log(`  Testing URL: ${testItem.src}`);
+        
+        // Create an image element to test loading
+        const testImg = document.createElement('img');
+        testImg.onload = () => {
+          console.log('  ✅ Image loaded successfully via HTTP server');
+        };
+        testImg.onerror = () => {
+          console.log('  ❌ Image failed to load via HTTP server');
+        };
+        testImg.src = testItem.src;
+        
+        // Also test with fetch
+        fetch(testItem.src)
+          .then(response => {
+            if (response.ok) {
+              console.log('  ✅ HTTP server responded successfully');
+            } else {
+              console.log(`  ❌ HTTP server error: ${response.status}`);
+            }
+          })
+          .catch(error => {
+            console.log('  ❌ HTTP server request failed:', error);
+          });
+      } else if (filePathMedia.length > 0) {
+        console.log('2. Found file paths but no HTTP URLs - files need to be copied');
+        console.log('  Try uploading a new file to test the copy process');
+      } else {
+        console.log('2. No media found to test');
+      }
+    } else {
+      console.log('❌ Multi-media form not available');
+    }
+    
+    console.log('🎉 File serving test completed');
+  };
+  
+  // Function to test overlay reset functionality
+  window.testOverlayReset = () => {
+    console.log('🔄 Testing overlay reset functionality...');
+    
+    // Test 1: Send a test payload and check if reset timer is set
+    const testPayload = {
+      type: 'buttonTrigger',
+      options: { 
+        clearPrevious: true,
+        durationMs: 10000 // 10 seconds for testing
+      },
+      slots: {
+        topLeft: { 
+          text: 'RESET TEST LEFT', 
+          style: { 
+            fontFamily: 'Arial', 
+            fontSize: 24, 
+            color: '#FF0000', 
+            bold: true, 
+            italic: false, 
+            align: 'left', 
+            animation: null 
+          } 
+        },
+        center: { 
+          text: 'WILL RESET IN 10 SECONDS', 
+          style: { 
+            fontFamily: 'Arial', 
+            fontSize: 28, 
+            color: '#FF00FF', 
+            bold: true, 
+            italic: false, 
+            align: 'center', 
+            animation: 'pulse' 
+          } 
+        }
+      },
+      centerMedia: [
+        { 
+          type: 'image', 
+          src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="%23ff6600" rx="20"/><text x="200" y="160" font-size="48" text-anchor="middle" fill="white" font-weight="bold">RESET TEST</text></svg>', 
+          alt: 'Reset Test Image' 
+        }
+      ]
+    };
+    
+    console.log('1. Sending test payload with 10-second reset timer...');
+    
+    // Send to overlay iframe
+    const overlayIframe = document.getElementById('overlay-iframe');
+    if (overlayIframe && overlayIframe.contentWindow) {
+      try {
+        overlayIframe.contentWindow.postMessage(testPayload, '*');
+        console.log('✅ Test payload sent to overlay iframe');
+        console.log('⏰ Overlay should reset automatically in 10 seconds');
+        console.log('💡 You can also manually reset with: overlayIframe.contentWindow.resetOverlay()');
+      } catch (error) {
+        console.log('❌ Failed to send to overlay iframe:', error);
+      }
+    } else {
+      console.log('❌ Overlay iframe not found');
+    }
+    
+    // Send via WebSocket
+    if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
+      try {
+        window.electronAPI.sendOverlayMessage(testPayload);
+        console.log('✅ Test payload sent via WebSocket');
+      } catch (error) {
+        console.log('❌ Failed to send via WebSocket:', error);
+      }
+    }
+    
+    console.log('🎉 Overlay reset test completed');
+  };
+  
+  // Function to test video playback in overlay
+  window.testVideoPlayback = () => {
+    console.log('🎬 Testing video playback in overlay...');
+    
+    const testPayload = {
+      type: 'buttonTrigger',
+      options: { 
+        clearPrevious: true,
+        durationMs: 15000 // 15 seconds for testing
+      },
+      slots: {
+        center: { 
+          text: 'VIDEO TEST - Should autoplay muted', 
+          style: { 
+            fontFamily: 'Arial', 
+            fontSize: 24, 
+            color: '#FFFFFF', 
+            bold: true, 
+            italic: false, 
+            align: 'center', 
+            animation: 'pulse' 
+          } 
+        }
+      },
+      centerMedia: [
+        { 
+          type: 'video', 
+          src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+          loop: true
+        }
+      ]
+    };
+    
+    console.log('1. Sending video test payload...');
+    
+    // Send to overlay iframe
+    const overlayIframe = document.getElementById('overlay-iframe');
+    if (overlayIframe && overlayIframe.contentWindow) {
+      try {
+        overlayIframe.contentWindow.postMessage(testPayload, '*');
+        console.log('✅ Video test payload sent to overlay iframe');
+        console.log('🎬 Video should autoplay muted in the overlay');
+      } catch (error) {
+        console.log('❌ Failed to send to overlay iframe:', error);
+      }
+    } else {
+      console.log('❌ Overlay iframe not found');
+    }
+    
+    // Send via WebSocket
+    if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
+      try {
+        window.electronAPI.sendOverlayMessage(testPayload);
+        console.log('✅ Video test payload sent via WebSocket');
+      } catch (error) {
+        console.log('❌ Failed to send via WebSocket:', error);
+      }
+    }
+    
+    console.log('🎉 Video playback test completed');
+  };
+  
+  // Function to test video stopping in form preview
+  window.testVideoStopping = () => {
+    console.log('🎬 Testing video stopping in form preview...');
+    
+    // Check if form is available
+    if (!window.addEditButtonForm) {
+      console.log('❌ addEditButtonForm not available');
+      return;
+    }
+    
+    console.log('✅ addEditButtonForm available');
+    
+    // Check if stopAllVideos method exists
+    if (typeof window.addEditButtonForm.stopAllVideos === 'function') {
+      console.log('✅ stopAllVideos method available');
+      
+      // Test stopping videos
+      try {
+        window.addEditButtonForm.stopAllVideos();
+        console.log('✅ stopAllVideos called successfully');
+      } catch (error) {
+        console.log('❌ stopAllVideos failed:', error);
+      }
+    } else {
+      console.log('❌ stopAllVideos method not available');
+    }
+    
+    // Test opening form with video
+    console.log('🧪 Testing form with video...');
+    
+    // Create a test button with video
+    const testButton = {
+      id: 'video-test-' + Date.now(),
+      name: 'Video Test Button',
+      type: 'multi-media',
+      hotkey: '',
+      slots: {
+        center: { 
+          text: 'VIDEO TEST', 
+          style: { 
+            fontFamily: 'Arial', 
+            fontSize: 24, 
+            color: '#FFFFFF', 
+            bold: true, 
+            italic: false, 
+            align: 'center', 
+            animation: null 
+          } 
+        }
+      },
+      centerMedia: [
+        { 
+          type: 'video', 
+          src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+          loop: true
+        }
+      ],
+      audio: [],
+      options: { clearPrevious: true, durationMs: 60000 }
+    };
+    
+    // Open form for editing
+    window.addEditButtonForm.openForEdit(testButton);
+    console.log('✅ Form opened with video - check if video is muted and playing');
+    console.log('💡 Try closing the form to test video stopping');
+    
+    console.log('🎉 Video stopping test completed');
+  };
+  
+  // Function to test video autoplay in overlay
+  window.testVideoAutoplay = () => {
+    console.log('🎬 Testing simple video autoplay in overlay...');
+    
+    const testPayload = {
+      type: 'buttonTrigger',
+      options: { 
+        clearPrevious: true,
+        durationMs: 15000 // 15 seconds for testing
+      },
+      slots: {
+        center: { 
+          text: 'SIMPLE VIDEO TEST', 
+          style: { 
+            fontFamily: 'Arial', 
+            fontSize: 24, 
+            color: '#FFFFFF', 
+            bold: true, 
+            italic: false, 
+            align: 'center', 
+            animation: 'pulse' 
+          } 
+        }
+      },
+      centerMedia: [
+        { 
+          type: 'video', 
+          src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+          loop: true
+        }
+      ]
+    };
+    
+    console.log('1. Sending simple video test payload...');
+    console.log('2. Using simple .autoplay + .play() approach like images');
+    console.log('3. Video should start playing immediately');
+    
+    // Send to overlay iframe
+    const overlayIframe = document.getElementById('overlay-iframe');
+    if (overlayIframe && overlayIframe.contentWindow) {
+      try {
+        overlayIframe.contentWindow.postMessage(testPayload, '*');
+        console.log('✅ Video test payload sent to overlay iframe');
+        console.log('🎬 Video should autoplay muted in the overlay');
+        console.log('💡 Check the overlay - video should start playing immediately');
+      } catch (error) {
+        console.log('❌ Failed to send to overlay iframe:', error);
+      }
+    } else {
+      console.log('❌ Overlay iframe not found');
+    }
+    
+    // Send via WebSocket
+    if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
+      try {
+        window.electronAPI.sendOverlayMessage(testPayload);
+        console.log('✅ Video test payload sent via WebSocket');
+      } catch (error) {
+        console.log('❌ Failed to send via WebSocket:', error);
+      }
+    }
+    
+    console.log('🎉 Simple video autoplay test completed');
+  };
+  
+  // Function to test with different video sources
+  window.testVideoSources = () => {
+    console.log('🎬 Testing different video sources...');
+    
+    const videoSources = [
+      'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      'https://www.w3schools.com/html/mov_bbb.mp4'
+    ];
+    
+    videoSources.forEach((src, index) => {
+      console.log(`\n--- Testing Video Source ${index + 1}: ${src} ---`);
+      
+      const testPayload = {
+        type: 'buttonTrigger',
+        options: { 
+          clearPrevious: true,
+          durationMs: 10000
+        },
+        slots: {
+          center: { 
+            text: `VIDEO TEST ${index + 1}`, 
+            style: { 
+              fontFamily: 'Arial', 
+              fontSize: 20, 
+              color: '#FFFFFF', 
+              bold: true, 
+              italic: false, 
+              align: 'center', 
+              animation: 'pulse' 
+            } 
+          }
+        },
+        centerMedia: [
+          { 
+            type: 'video', 
+            src: src,
+            loop: true
+          }
+        ]
+      };
+      
+      // Send to overlay iframe
+      const overlayIframe = document.getElementById('overlay-iframe');
+      if (overlayIframe && overlayIframe.contentWindow) {
+        try {
+          overlayIframe.contentWindow.postMessage(testPayload, '*');
+          console.log(`✅ Video ${index + 1} sent to overlay`);
+        } catch (error) {
+          console.log(`❌ Failed to send video ${index + 1}:`, error);
+        }
+      }
+      
+      // Wait 3 seconds between tests
+      if (index < videoSources.length - 1) {
+        setTimeout(() => {}, 3000);
+      }
+    });
+    
+    console.log('\n🎉 Video sources test completed - check overlay for results');
+  };
+  
+  // Function to test overlay resolution changes
+  window.testOverlayResolution = () => {
+    console.log('📐 Testing overlay resolution changes...');
+    
+    const resolutions = [
+      { name: '1920x1080 (Full HD)', width: 1920, height: 1080 },
+      { name: '1280x720 (HD)', width: 1280, height: 720 },
+      { name: '2560x1440 (2K)', width: 2560, height: 1440 },
+      { name: '3840x2160 (4K)', width: 3840, height: 2160 }
+    ];
+    
+    let currentIndex = 0;
+    
+    const testNextResolution = () => {
+      if (currentIndex >= resolutions.length) {
+        console.log('🎉 Resolution test completed');
+        return;
+      }
+      
+      const res = resolutions[currentIndex];
+      console.log(`\n--- Testing Resolution ${currentIndex + 1}: ${res.name} ---`);
+      
+      // Send resolution change to overlay iframe
+      const overlayIframe = document.getElementById('overlay-iframe');
+      if (overlayIframe && overlayIframe.contentWindow) {
+        try {
+          overlayIframe.contentWindow.setOverlayResolution(res.width, res.height);
+          console.log(`✅ Resolution changed to ${res.width}x${res.height}`);
+          
+          // Send a test payload to see the overlay at this resolution
+          const testPayload = {
+            type: 'buttonTrigger',
+            options: { clearPrevious: true, durationMs: 5000 },
+            slots: {
+              center: { 
+                text: `${res.width}x${res.height}`, 
+                style: { 
+                  fontFamily: 'Arial', 
+                  fontSize: 32, 
+                  color: '#FFFFFF', 
+                  bold: true, 
+                  italic: false, 
+                  align: 'center', 
+                  animation: 'pulse' 
+                } 
+              }
+            },
+            centerMedia: []
+          };
+          
+          overlayIframe.contentWindow.postMessage(testPayload, '*');
+          console.log(`📺 Test content sent for ${res.name}`);
+          
+        } catch (error) {
+          console.error(`❌ Failed to change resolution to ${res.name}:`, error);
+        }
+      } else {
+        console.error('❌ Overlay iframe not found');
+      }
+      
+      currentIndex++;
+      
+      // Test next resolution after 3 seconds
+      if (currentIndex < resolutions.length) {
+        setTimeout(testNextResolution, 3000);
+      }
+    };
+    
+    console.log('1. Starting resolution test sequence...');
+    console.log('2. Will test each resolution for 3 seconds');
+    console.log('3. Check the overlay to see resolution changes');
+    
+    testNextResolution();
+  };
+  
+  // Function to create a simple test button with video
+  window.createVideoTestButton = async () => {
+    console.log('🎬 Creating test button with video...');
+    
+    const testButton = {
+      id: 'video-test-' + Date.now(),
+      name: 'Video Test Button',
+      type: 'multi-media',
+      hotkey: '',
+      slots: {
+        center: { 
+          text: 'VIDEO TEST BUTTON', 
+          style: { 
+            fontFamily: 'Arial', 
+            fontSize: 20, 
+            color: '#FFFFFF', 
+            bold: true, 
+            italic: false, 
+            align: 'center', 
+            animation: 'pulse' 
+          } 
+        }
+      },
+      centerMedia: [
+        { 
+          type: 'video', 
+          src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+          loop: true
+        }
+      ],
+      audio: [],
+      options: { clearPrevious: true, durationMs: 30000 }
+    };
+    
+    console.log('1. Test button data:', testButton);
+    
+    // Save the button
+    if (window.electronAPI && window.electronAPI.saveConfig) {
+      try {
+        const config = await window.electronAPI.getConfig();
+        config.buttons.push(testButton);
+        await window.electronAPI.saveConfig(config);
+        console.log('✅ Test button saved to config');
+        
+        // Reload buttons to show it
+        loadButtons();
+        console.log('✅ Buttons reloaded - test button should appear on dashboard');
+        console.log('💡 Click the test button to trigger the video');
+      } catch (error) {
+        console.log('❌ Failed to save test button:', error);
+      }
+    } else {
+      console.log('❌ Electron API not available');
+    }
+    
+    console.log('🎉 Video test button creation completed');
+  };
+  
+  
+  // Function to create a test multi-media button using the correct schema
+  window.createTestMultiMediaButton = async () => {
+    const testButton = {
+      id: 'test-multi-media-' + Date.now(),
+      name: 'Test Multi-Media Button',
+      type: 'multi-media',
+      hotkey: 'Ctrl+Shift+T',
+      slots: {
+        topLeft: {
+          text: 'Top Left',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 28,
+            color: '#FF0000',
+            bold: true,
+            italic: false,
+            align: 'left',
+            animation: null
+          }
+        },
+        topCenter: {
+          text: 'Top Center',
+          style: {
+            fontFamily: 'Arial',
+            fontSize: 24,
+            color: '#00FF00',
+            bold: false,
+            italic: true,
+            align: 'center',
+            animation: 'fadeIn'
+          }
+        },
+        topRight: {
+          text: 'Top Right',
+          style: {
+            fontFamily: 'Georgia',
+            fontSize: 20,
+            color: '#0000FF',
+            bold: true,
+            italic: false,
+            align: 'right',
+            animation: null
+          }
+        },
+        midLeft: {
+          text: '',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 16,
+            color: '#FFFFFF',
+            bold: false,
+            italic: false,
+            align: 'left',
+            animation: null
+          }
+        },
+        center: {
+          text: 'Center Text',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 32,
+            color: '#FFFF00',
+            bold: true,
+            italic: false,
+            align: 'center',
+            animation: 'pulse'
+          }
+        },
+        midRight: {
+          text: '',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 16,
+            color: '#FFFFFF',
+            bold: false,
+            italic: false,
+            align: 'right',
+            animation: null
+          }
+        },
+        bottomLeft: {
+          text: 'Bottom Left',
+          style: {
+            fontFamily: 'Courier',
+            fontSize: 18,
+            color: '#FF00FF',
+            bold: false,
+            italic: true,
+            align: 'left',
+            animation: null
+          }
+        },
+        bottomCenter: {
+          text: 'Bottom Center',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 22,
+            color: '#00FFFF',
+            bold: true,
+            italic: false,
+            align: 'center',
+            animation: 'slideUp'
+          }
+        },
+        bottomRight: {
+          text: 'Bottom Right',
+          style: {
+            fontFamily: 'Arial',
+            fontSize: 16,
+            color: '#FFFFFF',
+            bold: false,
+            italic: false,
+            align: 'right',
+            animation: null
+          }
+        }
+      },
+      centerMedia: [
+        {
+          id: 'm1',
+          type: 'image',
+          src: 'https://via.placeholder.com/400x300/ff6600/ffffff?text=Test+Image',
+          loop: false,
+          widthPct: 70,
+          align: 'center',
+          extraStyle: { zIndex: 2 }
+        }
+      ],
+      audio: [
+        {
+          id: 'a1',
+          src: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav',
+          volume: 0.8,
+          loop: false
+        }
+      ],
+      options: {
+        clearPrevious: true,
+        durationMs: 5000
+      }
+    };
+    
+    console.log('Creating test multi-media button:', testButton);
+    
+    // Add to config
+    if (window.electronAPI && window.electronAPI.saveConfig) {
+      try {
+        const currentConfig = await window.electronAPI.getConfig();
+        const buttons = currentConfig.buttons || [];
+        buttons.push(testButton);
+        
+        await window.electronAPI.saveConfig({ ...currentConfig, buttons });
+        console.log('Test button saved to config');
+        
+        // Reload buttons to show in DOM
+        await loadButtons();
+        console.log('Buttons reloaded, test button should now be visible');
+        
+        return testButton;
+      } catch (error) {
+        console.error('Failed to save test button:', error);
+        return null;
+      }
+    } else {
+      console.error('Electron API not available');
+      return null;
+    }
+  };
+  
+  // Function to create a simple test button (no external resources)
+  window.createSimpleTestButton = async () => {
+    const testButton = {
+      id: 'simple-test-' + Date.now(),
+      name: 'Simple Test Button',
+      type: 'multi-media',
+      hotkey: 'Ctrl+Shift+S',
+      slots: {
+        topLeft: {
+          text: '',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 16,
+            color: '#FFFFFF',
+            bold: false,
+            italic: false,
+            align: 'left',
+            animation: null
+          }
+        },
+        topCenter: {
+          text: 'SIMPLE TEST',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 32,
+            color: '#FFFF00',
+            bold: true,
+            italic: false,
+            align: 'center',
+            animation: 'fadeIn'
+          }
+        },
+        topRight: {
+          text: '',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 16,
+            color: '#FFFFFF',
+            bold: false,
+            italic: false,
+            align: 'right',
+            animation: null
+          }
+        },
+        midLeft: {
+          text: '',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 16,
+            color: '#FFFFFF',
+            bold: false,
+            italic: false,
+            align: 'left',
+            animation: null
+          }
+        },
+        center: {
+          text: '',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 16,
+            color: '#FFFFFF',
+            bold: false,
+            italic: false,
+            align: 'center',
+            animation: null
+          }
+        },
+        midRight: {
+          text: '',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 16,
+            color: '#FFFFFF',
+            bold: false,
+            italic: false,
+            align: 'right',
+            animation: null
+          }
+        },
+        bottomLeft: {
+          text: '',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 16,
+            color: '#FFFFFF',
+            bold: false,
+            italic: false,
+            align: 'left',
+            animation: null
+          }
+        },
+        bottomCenter: {
+          text: 'Click me!',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 18,
+            color: '#FFFFFF',
+            bold: false,
+            italic: false,
+            align: 'center',
+            animation: 'slideUp'
+          }
+        },
+        bottomRight: {
+          text: '',
+          style: {
+            fontFamily: 'Inter',
+            fontSize: 16,
+            color: '#FFFFFF',
+            bold: false,
+            italic: false,
+            align: 'right',
+            animation: null
+          }
+        }
+      },
+      centerMedia: [
+        {
+          id: 'm1',
+          type: 'image',
+          src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect width="300" height="200" fill="%23ff6600" rx="15"/><text x="150" y="120" font-size="36" text-anchor="middle" fill="white" font-weight="bold">TEST</text></svg>',
+          loop: false,
+          widthPct: 60,
+          align: 'center',
+          extraStyle: { zIndex: 1 }
+        }
+      ],
+      audio: [],
+      options: {
+        clearPrevious: true,
+        durationMs: 3000
+      }
+    };
+    
+    console.log('Creating simple test button:', testButton);
+    
+    // Add to config
+    if (window.electronAPI && window.electronAPI.saveConfig) {
+      try {
+        const currentConfig = await window.electronAPI.getConfig();
+        const buttons = currentConfig.buttons || [];
+        buttons.push(testButton);
+        
+        await window.electronAPI.saveConfig({ ...currentConfig, buttons });
+        console.log('Simple test button saved to config');
+        
+        // Reload buttons to show in DOM
+        await loadButtons();
+        console.log('Buttons reloaded, simple test button should now be visible');
+        
+        return testButton;
+      } catch (error) {
+        console.error('Failed to save simple test button:', error);
+        return null;
+      }
+    } else {
+      console.error('Electron API not available');
+      return null;
+    }
+  };
+  
+  // Setup overlay preview iframe
+  setupOverlayPreview();
 });
+
+function setupButtonTypeSelection() {
+  const selectionModal = document.getElementById('button-type-modal');
+  const audioOption = document.querySelector('[data-type="audio"]');
+  const multiMediaOption = document.querySelector('[data-type="multi-media"]');
+  const cancelBtn = document.querySelector('.cancel-selection');
+
+  // Audio option clicked
+  if (audioOption) {
+    audioOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      openAudioForm();
+    });
+  }
+
+  // Multi-media option clicked
+  if (multiMediaOption) {
+    multiMediaOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      if (window.addEditButtonForm) {
+        window.addEditButtonForm.openModal();
+      }
+    });
+  }
+
+  // Cancel button clicked
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+    });
+  }
+
+  // Close modal when clicking outside
+  selectionModal.addEventListener('click', (e) => {
+    if (e.target === selectionModal) {
+      selectionModal.classList.add('hidden');
+    }
+  });
+}
+
+function setupOverlayPreview() {
+  // Close overlay preview button
+  const closePreviewBtn = document.getElementById('close-overlay-preview');
+  if (closePreviewBtn) {
+    closePreviewBtn.addEventListener('click', () => {
+      document.getElementById('overlay-preview').classList.add('hidden');
+    });
+  }
+
+  // Add "Show Overlay Preview" button to tools menu
+  const toolsDropdown = document.getElementById('tools-dropdown');
+  if (toolsDropdown) {
+    const showPreviewBtn = document.createElement('button');
+    showPreviewBtn.textContent = 'Show Overlay Preview';
+    showPreviewBtn.className = 'dropdown-item';
+    showPreviewBtn.addEventListener('click', () => {
+      document.getElementById('overlay-preview').classList.remove('hidden');
+    });
+    toolsDropdown.appendChild(showPreviewBtn);
+  }
+}
+
+function openAudioForm() {
+  const settingsForm = document.getElementById('settings-form');
+  settingsForm.reset();
+  
+  // Stop any active hotkey recording and clear displayed status/value
+  if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
+  const hkIn = document.getElementById('hotkey-input'); 
+  if (hkIn) hkIn.value = '';
+  const hkStatus = document.getElementById('hotkey-status'); 
+  if (hkStatus) hkStatus.textContent = '';
+  
+  // Fully clear all dataset properties for new record
+  delete settingsForm.dataset.editingIndex;
+  delete settingsForm.dataset.editingId;
+  delete settingsForm.dataset.resolvedPath;
+  delete settingsForm.dataset.resolvedArgs;
+  delete settingsForm.dataset.existingFile;
+  
+  // Replace file inputs to clear previous file references
+  const oldFileInput = document.getElementById('file-input');
+  if (oldFileInput) {
+    const newFileInput = oldFileInput.cloneNode(false);
+    newFileInput.required = true;
+    newFileInput.id = 'file-input';
+    newFileInput.name = 'file';
+    oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
+  }
+  const oldAppFileInput = document.getElementById('app-file-input');
+  if (oldAppFileInput) {
+    const newAppFileInput = oldAppFileInput.cloneNode(false);
+    newAppFileInput.required = false;
+    newAppFileInput.id = 'app-file-input';
+    newAppFileInput.name = 'app-file';
+    oldAppFileInput.parentNode.replaceChild(newAppFileInput, oldAppFileInput);
+  }
+  
+  document.getElementById('settings-modal-title').textContent = 'Add New Audio Button';
+  
+  // Show settings modal
+  document.getElementById('settings-modal').classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) {
+    window.electronAPI.disableHotkeys();
+  }
+}

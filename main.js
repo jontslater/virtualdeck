@@ -179,7 +179,7 @@ function createWindow() {
 function startOverlayServer() {
   const port = 8080;
   
-  // Create HTTP server to serve overlay HTML
+  // Create HTTP server to serve overlay HTML and media files
   overlayServer = http.createServer((req, res) => {
     if (req.url === '/overlay' || req.url === '/') {
       // Serve the overlay HTML file
@@ -192,6 +192,59 @@ function startOverlayServer() {
         }
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(data);
+      });
+    } else if (req.url.startsWith('/media/')) {
+      // Serve media files from file paths
+      const filePath = decodeURIComponent(req.url.substring(7)); // Remove '/media/' prefix
+      
+      // Security check - ensure the file path is within allowed directories
+      const normalizedPath = path.normalize(filePath);
+      const isAllowed = normalizedPath.startsWith(userDataPath) || 
+                       normalizedPath.startsWith(__dirname) ||
+                       normalizedPath.startsWith(path.join(__dirname, 'public'));
+      
+      if (!isAllowed) {
+        res.writeHead(403);
+        res.end('Access denied');
+        return;
+      }
+      
+      // Check if file exists
+      fs.access(normalizedPath, fs.constants.F_OK, (err) => {
+        if (err) {
+          res.writeHead(404);
+          res.end('File not found');
+          return;
+        }
+        
+        // Get file extension for content type
+        const ext = path.extname(normalizedPath).toLowerCase();
+        const contentTypes = {
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.gif': 'image/gif',
+          '.webp': 'image/webp',
+          '.mp4': 'video/mp4',
+          '.webm': 'video/webm',
+          '.ogg': 'video/ogg',
+          '.mp3': 'audio/mpeg',
+          '.wav': 'audio/wav',
+          '.ogg': 'audio/ogg'
+        };
+        
+        const contentType = contentTypes[ext] || 'application/octet-stream';
+        
+        // Serve the file
+        fs.readFile(normalizedPath, (err, data) => {
+          if (err) {
+            res.writeHead(500);
+            res.end('Error reading file');
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': contentType });
+          res.end(data);
+        });
       });
     } else {
       res.writeHead(404);
@@ -370,6 +423,20 @@ ipcMain.handle('get-config', async () => {
     return { buttons: [] };
   }
 });
+
+// IPC handler to save config (complete replacement)
+ipcMain.handle('save-config', async (event, config) => {
+  try {
+    // Write the complete config to file
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log('Config saved successfully');
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving config:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 
 // IPC handler to update config
 ipcMain.handle('update-config', async (event, configUpdate) => {
@@ -1978,7 +2045,9 @@ function registerHotkeys() {
       // Register the full hotkey string, including modifiers
       try {
         const success = globalShortcut.register(btn.hotkey, () => {
-          win.webContents.send('trigger-media', btn.label);
+          // Use name for multi-media buttons, label for others
+          const identifier = btn.name || btn.label;
+          win.webContents.send('trigger-media', identifier);
         });
         if (!success) {
           console.warn('Failed to register hotkey:', btn.hotkey);
