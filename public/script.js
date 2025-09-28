@@ -3482,6 +3482,19 @@ function setupOverlayWidget() {
   const sendCustomTextBtn = document.getElementById('send-custom-text');
   const copyUrlBtn = document.getElementById('copy-overlay-url');
   
+  // Position mapping for overlay IDs
+  const positionMap = {
+    1: 'text-top-left',
+    2: 'text-top-center', 
+    3: 'text-top-right',
+    4: 'text-mid-left',
+    5: 'center-media',
+    6: 'text-mid-right',
+    7: 'text-bottom-left',
+    8: 'text-bottom-center',
+    9: 'text-bottom-right'
+  };
+  
   // Close widget
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
@@ -3493,16 +3506,19 @@ function setupOverlayWidget() {
   testBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       const position = parseInt(btn.dataset.position);
-      const text = btn.textContent;
-      console.log(`Testing text box ${position}: ${text}`);
+      const targetId = positionMap[position];
+      const testText = `Test - ${btn.textContent}`;
+      console.log(`Testing text box ${position} (${targetId}): ${testText}`);
       
-      if (window.electronAPI && typeof window.electronAPI.sendOverlayText === 'function') {
-        window.electronAPI.sendOverlayText({
-          position: position,
-          text: text
+      if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
+        window.electronAPI.sendOverlayMessage({
+          type: 'update-text',
+          targetId: targetId,
+          text: testText,
+          classes: ['text-slot', 'text-green']
         });
       } else {
-        console.log('sendOverlayText not available');
+        console.log('sendOverlayMessage not available');
       }
     });
   });
@@ -3512,26 +3528,33 @@ function setupOverlayWidget() {
     btn.addEventListener('click', () => {
       const type = btn.dataset.type;
       const position = parseInt(btn.dataset.position);
+      const targetId = positionMap[position];
       
-      console.log(`Testing ${type} in position ${position}`);
+      console.log(`Testing ${type} in position ${position} (${targetId})`);
       
       if (type === 'image') {
-        if (window.electronAPI && typeof window.electronAPI.sendOverlayImage === 'function') {
-          window.electronAPI.sendOverlayImage({
-            position: position,
-            imageUrl: 'https://via.placeholder.com/200x100/00ff00/000000?text=Test+Image'
+        if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
+          window.electronAPI.sendOverlayMessage({
+            type: 'update-media',
+            targetId: targetId,
+            mediaType: 'image',
+            mediaUrl: 'https://via.placeholder.com/300x200/00ff00/000000?text=Test+Image+Connected'
           });
         }
       } else if (type === 'video') {
-        if (window.electronAPI && typeof window.electronAPI.sendOverlayVideo === 'function') {
-          window.electronAPI.sendOverlayVideo({
-            position: position,
-            videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4'
+        if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
+          window.electronAPI.sendOverlayMessage({
+            type: 'update-media',
+            targetId: targetId,
+            mediaType: 'video',
+            mediaUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4'
           });
         }
       } else if (type === 'clear') {
-        if (window.electronAPI && typeof window.electronAPI.sendOverlayClearAll === 'function') {
-          window.electronAPI.sendOverlayClearAll();
+        if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
+          window.electronAPI.sendOverlayMessage({
+            type: 'clear-all'
+          });
         }
       }
     });
@@ -3542,14 +3565,17 @@ function setupOverlayWidget() {
     sendCustomTextBtn.addEventListener('click', () => {
       const text = customTextInput.value.trim();
       const position = parseInt(customPositionSelect.value);
+      const targetId = positionMap[position];
       
       if (text) {
-        console.log(`Sending custom text to position ${position}: ${text}`);
+        console.log(`Sending custom text to position ${position} (${targetId}): ${text}`);
         
-        if (window.electronAPI && typeof window.electronAPI.sendOverlayText === 'function') {
-          window.electronAPI.sendOverlayText({
-            position: position,
-            text: text
+        if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
+          window.electronAPI.sendOverlayMessage({
+            type: 'update-text',
+            targetId: targetId,
+            text: text,
+            classes: ['text-slot']
           });
           
           // Clear the input
@@ -4195,10 +4221,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
   
+  // Test all overlay positions
+  window.testAllOverlayPositions = function() {
+    console.log('Testing all overlay positions...');
+    
+    const positions = [
+      { id: 'text-top-left', text: 'Test - Top Left' },
+      { id: 'text-top-center', text: 'Test - Top Center' },
+      { id: 'text-top-right', text: 'Test - Top Right' },
+      { id: 'text-mid-left', text: 'Test - Mid Left' },
+      { id: 'center-media', text: 'Test - Center Media' },
+      { id: 'text-mid-right', text: 'Test - Mid Right' },
+      { id: 'text-bottom-left', text: 'Test - Bottom Left' },
+      { id: 'text-bottom-center', text: 'Test - Bottom Center' },
+      { id: 'text-bottom-right', text: 'Test - Bottom Right' }
+    ];
+    
+    positions.forEach((pos, index) => {
+      setTimeout(() => {
+        if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
+          window.electronAPI.sendOverlayMessage({
+            type: 'update-text',
+            targetId: pos.id,
+            text: pos.text,
+            classes: ['text-slot', 'text-green']
+          });
+          console.log(`Sent test to ${pos.id}: ${pos.text}`);
+        }
+      }, index * 200); // Stagger the messages by 200ms each
+    });
+  };
+
   console.log('Overlay test functions available:');
   console.log('- testOverlayText() - Send test text to center box');
   console.log('- testOverlayImage() - Send test image to top left box');
   console.log('- testOverlayVideo() - Send test video to top right box');
+  console.log('- testAllOverlayPositions() - Test all 9 positions with "Test" messages');
   console.log('- clearOverlay() - Clear all overlay content');
   
   // Watch for any changes to the document element's data-theme attribute
