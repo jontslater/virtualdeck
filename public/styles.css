@@ -1238,6 +1238,220 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   display: none !important;
 }
 
+/* Overlay Widget */
+.overlay-widget {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  max-width: 90vw;
+  max-height: 80vh;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-primary);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  z-index: 10001;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.overlay-widget.hidden {
+  display: none;
+}
+
+.overlay-widget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.overlay-widget-header h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.close-widget-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.close-widget-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.overlay-widget-content {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.overlay-section {
+  margin-bottom: 24px;
+}
+
+.overlay-section:last-child {
+  margin-bottom: 0;
+}
+
+.overlay-section h4 {
+  margin: 0 0 12px 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.text-box-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.overlay-test-btn {
+  background: var(--bg-quaternary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.overlay-test-btn:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-tertiary);
+}
+
+.overlay-test-btn:active {
+  transform: translateY(1px);
+}
+
+.media-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.overlay-media-btn {
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.overlay-media-btn:hover {
+  background: var(--accent-secondary);
+  transform: translateY(-1px);
+}
+
+.overlay-media-btn:active {
+  transform: translateY(0);
+}
+
+.custom-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.custom-input {
+  flex: 1;
+  min-width: 200px;
+  background: var(--bg-quaternary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.custom-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.custom-select {
+  background: var(--bg-quaternary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.overlay-action-btn {
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.overlay-action-btn:hover {
+  background: var(--accent-secondary);
+}
+
+.url-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-quaternary);
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-secondary);
+}
+
+.url-display code {
+  flex: 1;
+  color: var(--text-primary);
+  font-family: monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.copy-btn {
+  background: var(--bg-quinary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-tertiary);
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+.copy-btn:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-quaternary);
+}
+
 /* Custom Notification System */
 .notification-container {
   position: fixed;

@@ -3433,6 +3433,7 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('🔧 DOMContentLoaded fired - initializing toolbar');
   setupAppToolbar();
   setupOverlayControls();
+  setupOverlayWidget();
   // initialize left app menu
   if (typeof setupLeftAppMenu === 'function') {
     console.log('🔧 Setting up left app menu');
@@ -3465,6 +3466,143 @@ function setupOverlayControls() {
     });
   } else {
     console.log('🔧 Overlay URL button not found');
+  }
+}
+
+// Overlay widget setup
+function setupOverlayWidget() {
+  console.log('🔧 Setting up overlay widget');
+  
+  const overlayWidget = document.getElementById('overlay-widget');
+  const closeBtn = document.getElementById('close-overlay-widget');
+  const testBtns = document.querySelectorAll('.overlay-test-btn');
+  const mediaBtns = document.querySelectorAll('.overlay-media-btn');
+  const customTextInput = document.getElementById('custom-text');
+  const customPositionSelect = document.getElementById('custom-position');
+  const sendCustomTextBtn = document.getElementById('send-custom-text');
+  const copyUrlBtn = document.getElementById('copy-overlay-url');
+  
+  // Close widget
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      overlayWidget.classList.add('hidden');
+    });
+  }
+  
+  // Text box test buttons
+  testBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const position = parseInt(btn.dataset.position);
+      const text = btn.textContent;
+      console.log(`Testing text box ${position}: ${text}`);
+      
+      if (window.electronAPI && typeof window.electronAPI.sendOverlayText === 'function') {
+        window.electronAPI.sendOverlayText({
+          position: position,
+          text: text
+        });
+      } else {
+        console.log('sendOverlayText not available');
+      }
+    });
+  });
+  
+  // Media test buttons
+  mediaBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.dataset.type;
+      const position = parseInt(btn.dataset.position);
+      
+      console.log(`Testing ${type} in position ${position}`);
+      
+      if (type === 'image') {
+        if (window.electronAPI && typeof window.electronAPI.sendOverlayImage === 'function') {
+          window.electronAPI.sendOverlayImage({
+            position: position,
+            imageUrl: 'https://via.placeholder.com/200x100/00ff00/000000?text=Test+Image'
+          });
+        }
+      } else if (type === 'video') {
+        if (window.electronAPI && typeof window.electronAPI.sendOverlayVideo === 'function') {
+          window.electronAPI.sendOverlayVideo({
+            position: position,
+            videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4'
+          });
+        }
+      } else if (type === 'clear') {
+        if (window.electronAPI && typeof window.electronAPI.sendOverlayClearAll === 'function') {
+          window.electronAPI.sendOverlayClearAll();
+        }
+      }
+    });
+  });
+  
+  // Custom text input
+  if (sendCustomTextBtn) {
+    sendCustomTextBtn.addEventListener('click', () => {
+      const text = customTextInput.value.trim();
+      const position = parseInt(customPositionSelect.value);
+      
+      if (text) {
+        console.log(`Sending custom text to position ${position}: ${text}`);
+        
+        if (window.electronAPI && typeof window.electronAPI.sendOverlayText === 'function') {
+          window.electronAPI.sendOverlayText({
+            position: position,
+            text: text
+          });
+          
+          // Clear the input
+          customTextInput.value = '';
+        }
+      }
+    });
+  }
+  
+  // Enter key support for custom text
+  if (customTextInput) {
+    customTextInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        sendCustomTextBtn.click();
+      }
+    });
+  }
+  
+  // Copy URL button
+  if (copyUrlBtn) {
+    copyUrlBtn.addEventListener('click', () => {
+      const overlayUrl = 'http://localhost:8080/overlay';
+      
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(overlayUrl).then(() => {
+          console.log('Overlay URL copied to clipboard');
+          // Show brief feedback
+          const originalText = copyUrlBtn.textContent;
+          copyUrlBtn.textContent = '✓';
+          setTimeout(() => {
+            copyUrlBtn.textContent = originalText;
+          }, 1000);
+        }).catch(err => {
+          console.log('Failed to copy to clipboard:', err);
+        });
+      }
+    });
+  }
+}
+
+// Function to show overlay widget
+function showOverlayWidget() {
+  const overlayWidget = document.getElementById('overlay-widget');
+  if (overlayWidget) {
+    overlayWidget.classList.remove('hidden');
+  }
+}
+
+// Function to hide overlay widget
+function hideOverlayWidget() {
+  const overlayWidget = document.getElementById('overlay-widget');
+  if (overlayWidget) {
+    overlayWidget.classList.add('hidden');
   }
 }
 
@@ -3761,6 +3899,17 @@ function setupLeftAppMenu() {
     toolsReload.addEventListener('click', (e) => {
       e.stopPropagation();
       try { window.location.reload(); } catch (err) {}
+    });
+  }
+
+  // Overlay Controls
+  const toolsOverlay = document.getElementById('menu-tools-overlay');
+  if (toolsOverlay) {
+    toolsOverlay.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showOverlayWidget();
+      if (toolsDropdown) toolsDropdown.classList.add('hidden');
+      if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
     });
   }
   
