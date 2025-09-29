@@ -2422,16 +2422,33 @@ async function handleMultiMediaTrigger(button) {
   }
 
   // 2. Send overlay payload - immediately after starting audio
-  // Use the exact same pattern as the working test button
-  // Convert file paths to HTTP URLs for overlay access
+  // Process center media similar to alert system
   const processedCenterMedia = centerMediaData.map(item => {
-    if (item.src && !item.src.startsWith('http') && !item.src.startsWith('data:')) {
-      // Convert file path to HTTP URL
-      const encodedPath = encodeURIComponent(item.src);
-      return {
-        ...item,
-        src: `http://localhost:8080/media/${encodedPath}`
-      };
+    if (item.src) {
+      // Handle different image source types like alert system
+      if (item.src instanceof File) {
+        // Fresh file upload - create blob URL
+        console.log('🖼️ Processing fresh file for multi-media:', item.src.name);
+        return {
+          ...item,
+          src: URL.createObjectURL(item.src)
+        };
+      } else if (typeof item.src === 'string' && (item.src.startsWith('data:') || item.src.startsWith('blob:'))) {
+        // Base64 data or blob URL - use directly
+        console.log('🖼️ Using base64/blob data for multi-media');
+        return item;
+      } else if (typeof item.src === 'string' && !item.src.startsWith('http')) {
+        // File path - convert to HTTP URL
+        console.log('🖼️ Converting file path to HTTP URL for multi-media:', item.src);
+        const encodedPath = encodeURIComponent(item.src);
+        return {
+          ...item,
+          src: `http://localhost:8080/media/${encodedPath}`
+        };
+      } else {
+        // Already HTTP URL or other format - use as is
+        return item;
+      }
     }
     return item;
   });
@@ -5970,6 +5987,38 @@ document.addEventListener('DOMContentLoaded', () => {
       await handleMultiMediaTrigger(multiMediaButtons[0]);
     } else {
       console.log('No multi-media buttons found to test');
+    }
+  };
+
+  // Test image handling in multi-media buttons
+  window.testImageHandling = async () => {
+    console.log('🖼️ Testing image handling in multi-media buttons...');
+    
+    const multiMediaButtons = await findMultiMediaButtons();
+    if (multiMediaButtons.length === 0) {
+      console.log('❌ No multi-media buttons found to test');
+      return;
+    }
+
+    const button = multiMediaButtons[0];
+    console.log('📋 Button data:', button);
+    
+    if (button.centerMedia && button.centerMedia.length > 0) {
+      console.log('🖼️ Center media items:');
+      button.centerMedia.forEach((item, index) => {
+        console.log(`  ${index + 1}. Type: ${item.type}, Src type: ${typeof item.src}, Is File: ${item.src instanceof File}`);
+        if (item.src instanceof File) {
+          console.log(`     File name: ${item.src.name}, File size: ${item.src.size} bytes`);
+        } else if (typeof item.src === 'string') {
+          const isBase64 = item.src.startsWith('data:');
+          const isBlob = item.src.startsWith('blob:');
+          const isHttp = item.src.startsWith('http');
+          console.log(`     Src string: ${item.src.substring(0, 100)}${item.src.length > 100 ? '...' : ''}`);
+          console.log(`     Is base64: ${isBase64}, Is blob: ${isBlob}, Is HTTP: ${isHttp}`);
+        }
+      });
+    } else {
+      console.log('❌ No center media found in button');
     }
   };
   
