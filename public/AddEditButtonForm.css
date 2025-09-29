@@ -552,3 +552,15 @@
   color: #ccc;
   min-height: 16px;
 }
+
+/* Error styling */
+.error {
+  color: #ff4444;
+  background: #ffe6e6;
+  border: 1px solid #ff4444;
+  padding: 10px;
+  border-radius: 4px;
+  margin: 10px 0;
+  text-align: center;
+  font-weight: bold;
+}

@@ -3918,6 +3918,11 @@ function setupAppToolbar() {
 // Initialize toolbar after DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
   console.log('🔧 DOMContentLoaded fired - initializing toolbar');
+  
+  // Clear overlay immediately on app startup
+  console.log('🧹 Clearing overlay on DOM ready...');
+  clearOverlay();
+  
   setupAppToolbar();
   setupOverlayControls();
   setupOverlayWidget();
@@ -3933,6 +3938,14 @@ document.addEventListener('DOMContentLoaded', () => {
 // Overlay controls setup
 function setupOverlayControls() {
   console.log('🔧 Setting up overlay controls');
+  
+  // Clear overlay on app startup with a small delay to ensure overlay is ready
+  console.log('🧹 Clearing overlay on app startup...');
+  setTimeout(() => {
+    clearOverlay();
+    console.log('✅ Overlay cleared on startup');
+  }, 1000); // 1 second delay to ensure overlay is ready
+  
   const overlayUrlBtn = document.getElementById('show-overlay-url');
   
   if (overlayUrlBtn) {

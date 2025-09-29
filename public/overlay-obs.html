@@ -31,7 +31,7 @@
             color: white;
             padding: 10px;
             border-radius: 8px;
-            border: 2px solid #00ff00;
+            border: 2px solid transparent;
             min-width: 100px;
             min-height: 50px;
             display: flex;
@@ -46,7 +46,21 @@
 
         .text-box:hover {
             background: rgba(0, 0, 0, 0.9);
-            border-color: #00cc00;
+        }
+
+        /* Show placeholder text invisibly to maintain structure */
+        .text-box:empty::before {
+            content: attr(data-placeholder);
+            color: transparent;
+            display: block;
+            width: 100%;
+            height: 100%;
+            min-height: 50px;
+        }
+        
+        /* Show actual content in white */
+        .text-box:not(:empty) {
+            color: white;
         }
 
         /* Position the text boxes */
@@ -119,7 +133,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            border: 2px dashed rgba(0, 255, 0, 0.3);
+            border: 2px dashed transparent;
             border-radius: 8px;
             pointer-events: none;
         }
@@ -129,12 +143,12 @@
             color: white;
             padding: 8px 12px;
             border-radius: 6px;
+            border: 1px solid transparent;
             font-size: 14px;
             font-weight: bold;
             text-align: center;
             word-wrap: break-word;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.2);
             transition: all 0.2s ease;
         }
 
@@ -147,8 +161,8 @@
             max-width: 100%;
             max-height: 200px;
             border-radius: 6px;
+            border: 1px solid transparent;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.2);
             transition: all 0.2s ease;
         }
 
@@ -161,8 +175,8 @@
             max-width: 100%;
             max-height: 200px;
             border-radius: 6px;
+            border: 1px solid transparent;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.2);
             transition: all 0.2s ease;
         }
 
@@ -171,13 +185,51 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
         }
 
-        /* Debug info */
+        @keyframes fadeIn {
+            0% { 
+                opacity: 0; 
+                transform: scale(0.95);
+            }
+            100% { 
+                opacity: 1; 
+                transform: scale(1);
+            }
+        }
+
+        @keyframes fadeOut {
+            0% { 
+                opacity: 1; 
+                transform: scale(1);
+            }
+            100% { 
+                opacity: 0; 
+                transform: scale(0.95);
+            }
+        }
+
+        /* Fade animation classes */
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .fade-out {
+            animation: fadeOut 0.3s ease-in;
+        }
+
+        /* Apply fade in to media elements */
+        .media-text,
+        .media-image,
+        .media-video {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        /* Debug info - made transparent */
         .debug-info {
             position: fixed;
             top: 10px;
             right: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            color: #00ff00;
+            background: transparent;
+            color: transparent;
             padding: 10px;
             border-radius: 5px;
             font-family: monospace;
@@ -190,59 +242,48 @@
 <body>
     <div class="overlay-container">
         <!-- 9 text boxes positioned around the screen -->
-        <div class="text-box" id="text-box-1">
+        <div class="text-box" id="text-box-1" data-placeholder="Top Left">
             <div class="media-container">
-                <div class="media-text">Top Left<br>Ready for content</div>
             </div>
         </div>
         
-        <div class="text-box" id="text-box-2">
+        <div class="text-box" id="text-box-2" data-placeholder="Top Middle">
             <div class="media-container">
-                <div class="media-text">Top Middle<br>Ready for content</div>
             </div>
         </div>
         
-        <div class="text-box" id="text-box-3">
+        <div class="text-box" id="text-box-3" data-placeholder="Top Right">
             <div class="media-container">
-                <div class="media-text">Top Right<br>Ready for content</div>
             </div>
         </div>
         
-        <div class="text-box" id="text-box-4">
+        <div class="text-box" id="text-box-4" data-placeholder="Left Middle">
             <div class="media-container">
-                <div class="media-text">Left Middle<br>Ready for content</div>
             </div>
         </div>
         
-        <div class="text-box" id="text-box-5">
+        <div class="text-box" id="text-box-5" data-placeholder="Center">
             <div class="media-container">
-                <div class="media-text">Center<br>Ready for content</div>
             </div>
         </div>
         
-        <div class="text-box" id="text-box-6">
+        <div class="text-box" id="text-box-6" data-placeholder="Right Middle">
             <div class="media-container">
-                <div class="media-container">
-                    <div class="media-text">Right Middle<br>Ready for content</div>
-                </div>
             </div>
         </div>
         
-        <div class="text-box" id="text-box-7">
+        <div class="text-box" id="text-box-7" data-placeholder="Bottom Left">
             <div class="media-container">
-                <div class="media-text">Bottom Left<br>Ready for content</div>
             </div>
         </div>
         
-        <div class="text-box" id="text-box-8">
+        <div class="text-box" id="text-box-8" data-placeholder="Bottom Middle">
             <div class="media-container">
-                <div class="media-text">Bottom Middle<br>Ready for content</div>
             </div>
         </div>
         
-        <div class="text-box" id="text-box-9">
+        <div class="text-box" id="text-box-9" data-placeholder="Bottom Right">
             <div class="media-container">
-                <div class="media-text">Bottom Right<br>Ready for content</div>
             </div>
         </div>
     </div>
@@ -297,19 +338,24 @@
         function addTextMedia(container, text) {
             const position = calculateStackPosition(container, 'text');
             const textElement = document.createElement('div');
-            textElement.className = 'media-text';
+            textElement.className = 'media-text fade-in';
             textElement.textContent = text;
             textElement.style.zIndex = position.zIndex;
             textElement.style.order = position.order;
             textElement.style.transform = `translate(${position.offsetX}px, ${position.offsetY}px)`;
             container.appendChild(textElement);
+            
+            // Remove fade-in class after animation
+            setTimeout(() => {
+                textElement.classList.remove('fade-in');
+            }, 500);
         }
 
         // Add image media to a container
         function addImageMedia(container, imageUrl) {
             const position = calculateStackPosition(container, 'image');
             const imageElement = document.createElement('img');
-            imageElement.className = 'media-image';
+            imageElement.className = 'media-image fade-in';
             imageElement.src = imageUrl;
             imageElement.style.zIndex = position.zIndex;
             imageElement.style.order = position.order;
@@ -321,13 +367,18 @@
             };
             
             container.appendChild(imageElement);
+            
+            // Remove fade-in class after animation
+            setTimeout(() => {
+                imageElement.classList.remove('fade-in');
+            }, 500);
         }
 
         // Add video media to a container
         function addVideoMedia(container, videoUrl) {
             const position = calculateStackPosition(container, 'video');
             const videoElement = document.createElement('video');
-            videoElement.className = 'media-video';
+            videoElement.className = 'media-video fade-in';
             videoElement.src = videoUrl;
             videoElement.autoplay = true;
             videoElement.loop = true;
@@ -343,6 +394,11 @@
             };
             
             container.appendChild(videoElement);
+            
+            // Remove fade-in class after animation
+            setTimeout(() => {
+                videoElement.classList.remove('fade-in');
+            }, 500);
         }
 
         // Handle messages from the main app
