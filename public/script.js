@@ -2112,6 +2112,44 @@ window.electronAPI.onTwitchChatEvent((eventData) => {
 
 // Listen for Twitch EventSub events (follows, subs, raids, etc.)
 window.electronAPI.onTwitchEventSub((eventData) => {
+  console.log('📡 Twitch EventSub received:', eventData);
+  
+  // Update alerts from storage in case they changed
+  alertSystem.updateAlerts();
+  
+  // Map Twitch event types to alert types
+  const eventTypeMap = {
+    'channel.follow': 'follower',
+    'channel.subscribe': 'subscriber', 
+    'channel.subscription.gift': 'gift-sub',
+    'channel.raid': 'raid',
+    'channel.cheer': 'bits'
+  };
+  
+  const alertType = eventTypeMap[eventData.type];
+  if (alertType) {
+    // Extract user data from the event
+    const userData = {
+      username: eventData.event.user_name || eventData.event.user || eventData.event.from_name || eventData.event.user_login || 'Unknown',
+      display_name: eventData.event.display_name || eventData.event.user_name || eventData.event.user || 'Unknown',
+      tier: eventData.event.tier || eventData.event.sub_plan || '',
+      viewers: eventData.event.viewers || eventData.event.view_count || eventData.event.viewer_count || '',
+      bits: eventData.event.bits || eventData.event.bits_used || eventData.event.bits_amount || eventData.event.amount || '',
+      months: eventData.event.cumulative_months || eventData.event.months || '',
+      message: eventData.event.message || eventData.event.user_input || '',
+      reward: eventData.event.reward || eventData.event.reward_title || '',
+      ...eventData.event // Include all event data
+    };
+    
+    console.log('👤 Extracted user data:', userData);
+    
+    // Trigger the alert
+    alertSystem.triggerAlertForEvent(alertType, userData);
+  } else {
+    console.log('⚠️ No alert type mapping for event:', eventData.type);
+  }
+  
+  // Add to chat display (existing functionality)
   addTwitchEvent(eventData.type, eventData.event);
   
   // Update recent activity for follows and subscribers
@@ -3926,6 +3964,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupAppToolbar();
   setupOverlayControls();
   setupOverlayWidget();
+  setupAlertWidget();
   // initialize left app menu
   if (typeof setupLeftAppMenu === 'function') {
     console.log('🔧 Setting up left app menu');
@@ -4357,11 +4396,760 @@ function setupOverlayWidget() {
   }
 }
 
+// Alert Widget setup
+function setupAlertWidget() {
+  console.log('🔧 Setting up alert widget');
+  
+  const alertWidget = document.getElementById('alert-widget');
+  const closeBtn = document.getElementById('close-alert-widget');
+  const alertTypeSelect = document.getElementById('alert-type');
+  const alertTextInput = document.getElementById('alert-text');
+  const alertDurationInput = document.getElementById('alert-duration');
+  const alertSoundInput = document.getElementById('alert-sound');
+  const alertImageInput = document.getElementById('alert-image');
+  const saveAlertBtn = document.getElementById('save-alert');
+  const testAlertBtn = document.getElementById('test-alert');
+  const clearAlertsBtn = document.getElementById('clear-alerts');
+  const alertPreviewArea = document.getElementById('alert-preview-area');
+  const alertListContainer = document.getElementById('alert-list-container');
+  
+  // Queue control elements
+  const clearQueueBtn = document.getElementById('clear-queue');
+  const skipCurrentBtn = document.getElementById('skip-current');
+  const hardStopBtn = document.getElementById('hard-stop');
+  const queueStatusBtn = document.getElementById('queue-status');
+  const queueInfo = document.getElementById('queue-info');
+  
+  
+  // Alert storage
+  let savedAlerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  
+  // Helper function to convert file to base64
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = error => reject(error);
+    });
+  }
+  
+  // Helper function to get media duration
+  function getMediaDuration(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) {
+        resolve(null);
+        return;
+      }
+      
+      const url = URL.createObjectURL(file);
+      const media = document.createElement(file.type.startsWith('audio') ? 'audio' : 'video');
+      
+      media.onloadedmetadata = () => {
+        const duration = Math.ceil(media.duration);
+        URL.revokeObjectURL(url);
+        console.log(`📹 Media duration detected: ${duration}s`);
+        resolve(duration);
+      };
+      
+      media.onerror = () => {
+        URL.revokeObjectURL(url);
+        console.warn('Could not load media for duration detection');
+        resolve(null);
+      };
+      
+      media.src = url;
+      media.load();
+    });
+  }
+  
+  // Close widget
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      hideAlertWidget();
+    });
+  }
+  
+  // Close widget when clicking on backdrop
+  const alertBackdrop = document.querySelector('.alert-widget-backdrop');
+  if (alertBackdrop) {
+    alertBackdrop.addEventListener('click', () => {
+      hideAlertWidget();
+    });
+  }
+  
+  // Close widget with ESC key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !alertWidget.classList.contains('hidden')) {
+      hideAlertWidget();
+    }
+  });
+  
+  // Update preview when form changes
+  function updatePreview() {
+    const type = alertTypeSelect.value;
+    const text = alertTextInput.value;
+    const duration = alertDurationInput.value;
+    const soundFile = alertSoundInput.files[0];
+    const imageFile = alertImageInput.files[0];
+    
+    if (!text.trim()) {
+      alertPreviewArea.innerHTML = '<div class="preview-placeholder">Configure an alert to see preview</div>';
+      return;
+    }
+    
+    // Create sample user data for preview
+    const sampleUserData = {
+      username: 'TestUser123',
+      display_name: 'TestUser123',
+      user_name: 'TestUser123',
+      tier: 'Tier 1',
+      viewers: '25',
+      bits: '100',
+      months: '3',
+      message: 'Thanks for the follow!',
+      reward: 'Test Reward'
+    };
+    
+    // Process text with sample data for preview
+    const processedText = replacePlaceholders(text, sampleUserData);
+    
+    let previewHTML = '<div class="alert-preview-content">';
+    
+    if (imageFile) {
+      if (imageFile instanceof File) {
+        const imageUrl = URL.createObjectURL(imageFile);
+        previewHTML += `<img src="${imageUrl}" alt="Alert Image" />`;
+      } else if (imageFile.data) {
+        previewHTML += `<img src="${imageFile.data}" alt="Alert Image" />`;
+      }
+    }
+    
+    previewHTML += `<h3>${getAlertTypeDisplayName(type)}</h3>`;
+    previewHTML += `<p>${processedText}</p>`;
+    previewHTML += `<p><small>Duration: ${duration}s</small></p>`;
+    
+    if (soundFile) {
+      previewHTML += `<p><small>Sound: ${soundFile.name}</small></p>`;
+    }
+    
+    previewHTML += '</div>';
+    alertPreviewArea.innerHTML = previewHTML;
+  }
+  
+  // Get display name for alert type
+  function getAlertTypeDisplayName(type) {
+    const typeNames = {
+      'follower': 'New Follower',
+      'subscriber': 'New Subscriber', 
+      'resubscriber': 'Resubscriber',
+      'raid': 'Raid',
+      'gift-sub': 'Gifted Subscription',
+      'bits': 'Bits Donation'
+    };
+    return typeNames[type] || type;
+  }
+  
+  // Event listeners for form changes
+  [alertTypeSelect, alertTextInput, alertDurationInput, alertSoundInput, alertImageInput].forEach(element => {
+    if (element) {
+      element.addEventListener('change', updatePreview);
+      element.addEventListener('input', updatePreview);
+    }
+  });
+  
+  // Auto-update duration when media files are selected
+  if (alertSoundInput) {
+    alertSoundInput.addEventListener('change', async () => {
+      const file = alertSoundInput.files[0];
+      if (file) {
+        const duration = await getMediaDuration(file);
+        if (duration && duration > parseInt(alertDurationInput.value)) {
+          alertDurationInput.value = duration;
+          console.log(`🎵 Auto-updated duration to ${duration}s for audio file`);
+          updatePreview();
+        }
+      }
+    });
+  }
+  
+  if (alertImageInput) {
+    alertImageInput.addEventListener('change', async () => {
+      const file = alertImageInput.files[0];
+      if (file) {
+        const duration = await getMediaDuration(file);
+        if (duration && duration > parseInt(alertDurationInput.value)) {
+          alertDurationInput.value = duration;
+          console.log(`🎵 Auto-updated duration to ${duration}s for image/video file`);
+          updatePreview();
+        }
+      }
+    });
+  }
+  
+  // Save alert
+  if (saveAlertBtn) {
+    saveAlertBtn.addEventListener('click', async () => {
+      const type = alertTypeSelect.value;
+      const text = alertTextInput.value.trim();
+      let duration = parseInt(alertDurationInput.value) || 5;
+      const soundFile = alertSoundInput.files[0];
+      const imageFile = alertImageInput.files[0];
+      
+      if (!text) {
+        alert('Please enter alert text');
+        return;
+      }
+      
+      // Auto-detect duration from media files
+      const soundDuration = await getMediaDuration(soundFile);
+      const imageDuration = await getMediaDuration(imageFile);
+      
+      // Use the longer duration if media is present
+      if (soundDuration || imageDuration) {
+        const mediaDuration = Math.max(soundDuration || 0, imageDuration || 0);
+        if (mediaDuration > duration) {
+          duration = mediaDuration;
+          alertDurationInput.value = duration;
+          console.log(`🎵 Auto-set duration to ${duration}s based on media length`);
+        }
+      }
+      
+      const alertData = {
+        id: Date.now().toString(),
+        type: type,
+        text: text,
+        duration: duration,
+        soundFile: soundFile ? {
+          name: soundFile.name,
+          size: soundFile.size,
+          type: soundFile.type,
+          data: await fileToBase64(soundFile)
+        } : null,
+        imageFile: imageFile ? {
+          name: imageFile.name,
+          size: imageFile.size,
+          type: imageFile.type,
+          data: await fileToBase64(imageFile)
+        } : null,
+        createdAt: new Date().toISOString()
+      };
+      
+      try {
+        savedAlerts.push(alertData);
+        localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+        
+        updateAlertList();
+        clearForm();
+      } catch (error) {
+        console.error('Error saving alert:', error);
+        alert('Error saving alert: ' + error.message);
+      }
+    });
+  }
+  
+  // Test alert
+  if (testAlertBtn) {
+    testAlertBtn.addEventListener('click', async () => {
+      const type = alertTypeSelect.value;
+      const text = alertTextInput.value.trim();
+      let duration = parseInt(alertDurationInput.value) || 5;
+      const soundFile = alertSoundInput.files[0];
+      const imageFile = alertImageInput.files[0];
+      
+      if (!text) {
+        alert('Please enter alert text');
+        return;
+      }
+      
+      // Auto-detect duration from media files for test
+      const soundDuration = await getMediaDuration(soundFile);
+      const imageDuration = await getMediaDuration(imageFile);
+      
+      // Use the longer duration if media is present
+      if (soundDuration || imageDuration) {
+        const mediaDuration = Math.max(soundDuration || 0, imageDuration || 0);
+        if (mediaDuration > duration) {
+          duration = mediaDuration;
+          alertDurationInput.value = duration;
+          console.log(`🎵 Auto-set test duration to ${duration}s based on media length`);
+        }
+      }
+      
+      // Create test alert data
+      const testAlertData = {
+        type: type,
+        text: text,
+        duration: duration,
+        soundFile: soundFile,
+        imageFile: imageFile,
+        isTest: true
+      };
+      
+      // Create sample user data for testing
+      const sampleUserData = {
+        username: 'TestUser123',
+        display_name: 'TestUser123',
+        user_name: 'TestUser123',
+        tier: 'Tier 1',
+        viewers: '25',
+        bits: '100',
+        months: '3',
+        message: 'Thanks for the follow!',
+        reward: 'Test Reward'
+      };
+      
+      // Add to queue instead of triggering immediately
+      alertQueue.addToQueue(testAlertData, sampleUserData);
+      console.log('Testing alert with sample data (added to queue):', testAlertData);
+    });
+  }
+  
+  // Clear all alerts
+  if (clearAlertsBtn) {
+    clearAlertsBtn.addEventListener('click', () => {
+      if (confirm('Are you sure you want to clear all saved alerts?')) {
+        savedAlerts = [];
+        localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+        updateAlertList();
+        console.log('All alerts cleared');
+      }
+    });
+  }
+  
+  // Clear form
+  function clearForm() {
+    alertTextInput.value = '';
+    alertDurationInput.value = '5';
+    alertSoundInput.value = '';
+    alertImageInput.value = '';
+    updatePreview();
+  }
+  
+  // Update alert list display
+  function updateAlertList() {
+    if (!alertListContainer) return;
+    
+    if (savedAlerts.length === 0) {
+      alertListContainer.innerHTML = '<div class="no-alerts">No alerts configured yet</div>';
+      return;
+    }
+    
+    alertListContainer.innerHTML = savedAlerts.map(alert => `
+      <div class="alert-item" data-alert-id="${alert.id}">
+        <div class="alert-item-info">
+          <div class="alert-item-type">${getAlertTypeDisplayName(alert.type)}</div>
+          <div class="alert-item-text">${alert.text}</div>
+        </div>
+        <div class="alert-item-actions">
+          <button class="alert-item-btn test" onclick="testSavedAlert('${alert.id}')">Test</button>
+          <button class="alert-item-btn delete" onclick="deleteAlert('${alert.id}')">Delete</button>
+        </div>
+      </div>
+    `).join('');
+  }
+  
+  // Test saved alert
+  window.testSavedAlert = function(alertId) {
+    const alert = savedAlerts.find(a => a.id === alertId);
+    if (alert) {
+      // Create sample user data for testing
+      const sampleUserData = {
+        username: 'TestUser123',
+        display_name: 'TestUser123',
+        user_name: 'TestUser123',
+        tier: 'Tier 1',
+        viewers: '25',
+        bits: '100',
+        months: '3',
+        message: 'Thanks for the follow!',
+        reward: 'Test Reward'
+      };
+      
+      // Add to queue instead of triggering immediately
+      alertQueue.addToQueue(alert, sampleUserData);
+      console.log('Testing saved alert with sample data (added to queue):', alert);
+    }
+  };
+  
+  // Delete alert
+  window.deleteAlert = function(alertId) {
+    if (confirm('Are you sure you want to delete this alert?')) {
+      savedAlerts = savedAlerts.filter(a => a.id !== alertId);
+      localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+      updateAlertList();
+      console.log('Alert deleted:', alertId);
+    }
+  };
+  
+
+  // Queue control event listeners
+  if (clearQueueBtn) {
+    clearQueueBtn.addEventListener('click', () => {
+      alertQueue.clearQueue();
+      updateQueueStatus();
+    });
+  }
+  
+  if (skipCurrentBtn) {
+    skipCurrentBtn.addEventListener('click', () => {
+      alertQueue.clearCurrentAlert();
+      updateQueueStatus();
+    });
+  }
+  
+  if (hardStopBtn) {
+    hardStopBtn.addEventListener('click', () => {
+      alertQueue.hardStop();
+      updateQueueStatus();
+    });
+  }
+  
+  if (queueStatusBtn) {
+    queueStatusBtn.addEventListener('click', () => {
+      updateQueueStatus();
+      const status = alertQueue.getStatus();
+      console.log('Queue Status:', status);
+    });
+  }
+  
+  // Update queue status display
+  function updateQueueStatus() {
+    if (!queueInfo) return;
+    
+    const status = alertQueue.getStatus();
+    const statusText = queueInfo.querySelector('.queue-status-text');
+    
+    if (statusText) {
+      let statusMessage = `Queue: ${status.queueLength} alerts`;
+      statusMessage += ` | Processing: ${status.isProcessing ? 'Yes' : 'No'}`;
+      
+      if (status.currentAlert) {
+        statusMessage += ` | Current: ${status.currentAlert.type}`;
+      }
+      
+      statusText.textContent = statusMessage;
+    }
+  }
+  
+  // Update queue status every second
+  setInterval(updateQueueStatus, 1000);
+  
+  // Initialize
+  updateAlertList();
+  updatePreview();
+  updateQueueStatus();
+}
+
+// Global replace placeholders function
+function replacePlaceholders(text, userData) {
+  if (!userData) return text;
+  
+  let processedText = text;
+  
+  // Replace common placeholders
+  processedText = processedText.replace(/\{username\}/g, userData.username || userData.user_name || userData.user || 'Unknown');
+  processedText = processedText.replace(/\{display_name\}/g, userData.display_name || userData.user_name || userData.user || 'Unknown');
+  processedText = processedText.replace(/\{tier\}/g, userData.tier || userData.sub_plan || '');
+  processedText = processedText.replace(/\{viewers\}/g, userData.viewers || userData.view_count || userData.viewer_count || '');
+  processedText = processedText.replace(/\{bits\}/g, userData.bits || userData.bits_used || userData.bits_amount || userData.amount || '');
+  processedText = processedText.replace(/\{months\}/g, userData.cumulative_months || userData.months || '');
+  processedText = processedText.replace(/\{message\}/g, userData.message || userData.user_input || '');
+  processedText = processedText.replace(/\{reward\}/g, userData.reward || userData.reward_title || '');
+  
+  return processedText;
+}
+
+
+// Alert Queue System with Hard Stop
+let alertQueue = {
+  queue: [],
+  isProcessing: false,
+  currentAlert: null,
+  currentTimeout: null,
+  currentAudio: null,
+  
+  // Add alert to queue
+  addToQueue(alertData, userData) {
+    const queueItem = {
+      id: Date.now() + Math.random(),
+      alertData: alertData,
+      userData: userData,
+      timestamp: new Date(),
+      status: 'queued'
+    };
+    
+    this.queue.push(queueItem);
+    console.log(`📋 Alert added to queue: ${alertData.type} (${this.queue.length} in queue)`);
+    
+    // Start processing if not already running
+    if (!this.isProcessing) {
+      this.processQueue();
+    }
+  },
+  
+  // Process the queue
+  async processQueue() {
+    if (this.isProcessing || this.queue.length === 0) {
+      return;
+    }
+    
+    this.isProcessing = true;
+    
+    while (this.queue.length > 0) {
+      const queueItem = this.queue.shift();
+      queueItem.status = 'processing';
+      this.currentAlert = queueItem;
+      
+      console.log(`🎬 Processing alert: ${queueItem.alertData.type} (${this.queue.length} remaining)`);
+      
+      // HARD STOP: Clear any existing overlay and audio first
+      this.hardStop();
+      
+      // Trigger the alert
+      this.triggerAlert(queueItem.alertData, queueItem.userData);
+      
+      // Wait for the alert duration
+      await this.waitForAlertDuration(queueItem.alertData.duration);
+      
+      // Clear the overlay
+      clearOverlay();
+      
+      queueItem.status = 'completed';
+      this.currentAlert = null;
+    }
+    
+    this.isProcessing = false;
+    console.log('✅ Alert queue processing complete');
+  },
+  
+  // HARD STOP: Immediately stop all current alerts
+  hardStop() {
+    console.log('🛑 HARD STOP: Stopping all current alerts');
+    
+    // Clear any existing timeout
+    if (this.currentTimeout) {
+      console.log('🛑 Clearing timeout');
+      clearTimeout(this.currentTimeout);
+      this.currentTimeout = null;
+    }
+    
+    // Stop any playing audio
+    if (this.currentAudio) {
+      console.log('🛑 Stopping audio');
+      this.currentAudio.pause();
+      this.currentAudio.currentTime = 0;
+      this.currentAudio = null;
+    }
+    
+    // Clear overlay immediately
+    console.log('🛑 Clearing overlay');
+    clearOverlay();
+    
+    console.log('🛑 HARD STOP complete');
+  },
+  
+  // Wait for alert duration
+  waitForAlertDuration(duration) {
+    return new Promise(resolve => {
+      this.currentTimeout = setTimeout(() => {
+        resolve();
+      }, duration * 1000);
+    });
+  },
+  
+  // Clear current alert and stop processing
+  clearCurrentAlert() {
+    this.hardStop();
+    
+    if (this.currentAlert) {
+      this.currentAlert.status = 'cancelled';
+      this.currentAlert = null;
+    }
+    
+    console.log('🛑 Current alert cleared');
+  },
+  
+  // Clear entire queue
+  clearQueue() {
+    this.hardStop();
+    this.queue = [];
+    this.isProcessing = false;
+    console.log('🗑️ Alert queue cleared');
+  },
+  
+  // Get queue status
+  getStatus() {
+    return {
+      queueLength: this.queue.length,
+      isProcessing: this.isProcessing,
+      currentAlert: this.currentAlert ? {
+        type: this.currentAlert.alertData.type,
+        text: this.currentAlert.alertData.text,
+        duration: this.currentAlert.alertData.duration
+      } : null
+    };
+  },
+  
+  // Trigger alert (internal method) - NO auto-clear timeout
+  triggerAlert(alertData, userData) {
+    if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
+      // Process text with user data if available
+      const processedText = userData ? replacePlaceholders(alertData.text, userData) : alertData.text;
+      
+      console.log('🎯 Triggering alert:', { alertData, userData, processedText });
+      
+      const payload = {
+        type: 'buttonTrigger',
+        options: {
+          clearPrevious: true,
+          durationMs: alertData.duration * 1000
+        },
+        slots: {
+          topCenter: {
+            text: processedText,
+            style: {
+              fontFamily: 'Arial, sans-serif',
+              fontSize: '24px',
+              color: '#00ff00',
+              fontWeight: 'bold',
+              textAlign: 'center',
+              zIndex: '1'
+            }
+          }
+        },
+        centerMedia: []
+      };
+      
+      // Add image if present
+      if (alertData.imageFile) {
+        console.log('🖼️ Processing image for alert:', alertData.imageFile);
+        
+        if (alertData.imageFile instanceof File) {
+          // This is a fresh file upload, we can create a blob URL
+          const imageUrl = URL.createObjectURL(alertData.imageFile);
+          console.log('🖼️ Created blob URL for fresh file:', imageUrl);
+          payload.centerMedia.push({
+            type: 'image',
+            src: imageUrl,
+            alt: 'Alert Image'
+          });
+        } else if (alertData.imageFile && alertData.imageFile.data) {
+          // This is a saved alert with base64 data
+          console.log('🖼️ Using base64 data for saved alert');
+          payload.centerMedia.push({
+            type: 'image',
+            src: alertData.imageFile.data,
+            alt: 'Alert Image'
+          });
+        } else {
+          console.warn('🖼️ Unknown image file format:', alertData.imageFile);
+        }
+      }
+      
+      console.log('📤 Sending overlay message with payload:', payload);
+      window.electronAPI.sendOverlayMessage(payload);
+      
+      // Play sound if present - store reference for hard stop
+      if (alertData.soundFile) {
+        if (alertData.soundFile instanceof File) {
+          this.currentAudio = new Audio(URL.createObjectURL(alertData.soundFile));
+          this.currentAudio.volume = 0.7;
+          this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
+        } else if (alertData.soundFile && alertData.soundFile.data) {
+          this.currentAudio = new Audio(alertData.soundFile.data);
+          this.currentAudio.volume = 0.7;
+          this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
+        }
+      }
+    } else {
+      console.error('Overlay API not available');
+    }
+  }
+};
+
+// Alert system for Twitch events
+let alertSystem = {
+  alerts: JSON.parse(localStorage.getItem('twitchAlerts') || '[]'),
+  
+  // Trigger alert for specific event type
+  triggerAlertForEvent(eventType, userData) {
+    const alert = this.alerts.find(a => a.type === eventType);
+    if (alert) {
+      console.log(`🎯 Triggering alert for ${eventType}:`, userData);
+      console.log(`🎯 Alert text before processing:`, alert.text);
+      
+      // Add to queue instead of triggering immediately
+      alertQueue.addToQueue(alert, userData);
+    } else {
+      console.log(`⚠️ No alert found for event type: ${eventType}`);
+    }
+  },
+  
+  // Update alerts from storage
+  updateAlerts() {
+    this.alerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  }
+};
+
+
+// Global queue control functions for testing
+window.clearAlertQueue = () => alertQueue.clearQueue();
+window.skipCurrentAlert = () => alertQueue.clearCurrentAlert();
+window.getQueueStatus = () => alertQueue.getStatus();
+window.hardStopAlerts = () => alertQueue.hardStop();
+window.testMultipleAlerts = () => {
+  // Test multiple alerts in quick succession
+  const testData = {
+    username: 'TestUser1',
+    display_name: 'TestUser1',
+    user_name: 'TestUser1'
+  };
+  
+  const alert1 = { type: 'follower', text: 'Welcome {username}!', duration: 3, imageFile: null, soundFile: null };
+  const alert2 = { type: 'subscriber', text: '{username} subscribed!', duration: 3, imageFile: null, soundFile: null };
+  const alert3 = { type: 'raid', text: '{username} raided with 25 viewers!', duration: 3, imageFile: null, soundFile: null };
+  
+  alertQueue.addToQueue(alert1, testData);
+  alertQueue.addToQueue(alert2, testData);
+  alertQueue.addToQueue(alert3, testData);
+  
+  console.log('Added 3 test alerts to queue');
+};
+
+// Test media duration detection
+window.testMediaDuration = async (file) => {
+  if (!file) {
+    console.log('Please provide a file to test');
+    return;
+  }
+  
+  const duration = await getMediaDuration(file);
+  console.log(`Media duration: ${duration}s`);
+  return duration;
+};
+
 // Function to show overlay widget
 function showOverlayWidget() {
   const overlayWidget = document.getElementById('overlay-widget');
   if (overlayWidget) {
     overlayWidget.classList.remove('hidden');
+  }
+}
+
+// Function to show alert widget
+function showAlertWidget() {
+  const alertWidget = document.getElementById('alert-widget');
+  if (alertWidget) {
+    alertWidget.classList.remove('hidden');
+  }
+}
+
+// Function to hide alert widget
+function hideAlertWidget() {
+  const alertWidget = document.getElementById('alert-widget');
+  if (alertWidget) {
+    alertWidget.classList.add('hidden');
   }
 }
 
@@ -4675,6 +5463,17 @@ function setupLeftAppMenu() {
     toolsOverlay.addEventListener('click', (e) => {
       e.stopPropagation();
       showOverlayWidget();
+      if (toolsDropdown) toolsDropdown.classList.add('hidden');
+      if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  
+  // Alert Widget
+  const toolsAlerts = document.getElementById('menu-tools-alerts');
+  if (toolsAlerts) {
+    toolsAlerts.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showAlertWidget();
       if (toolsDropdown) toolsDropdown.classList.add('hidden');
       if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
     });
