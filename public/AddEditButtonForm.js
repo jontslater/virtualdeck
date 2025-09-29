@@ -305,9 +305,8 @@ class AddEditButtonForm {
     if (!files || files.length === 0) return;
 
     Array.from(files).forEach(file => {
-      // Use actual file path for persistence
-      const filePath = file.path || file.name; // file.path is available in Electron
-      this.addMediaItem(filePath, type, file.name);
+      // Store the actual File object for proper handling
+      this.addMediaItem(file, type, file.name);
     });
 
     // Clear the input
@@ -323,7 +322,7 @@ class AddEditButtonForm {
     const mediaItem = {
       id: Date.now() + Math.random(),
       type: type,
-      src: src,
+      src: src, // This will be a File object for uploaded files, or URL string for URLs
       name: name || `Media ${Date.now()}`,
       loop: type === 'video' ? false : undefined,
       volume: type === 'audio' ? 100 : undefined,
@@ -359,7 +358,9 @@ class AddEditButtonForm {
       if (item.src) {
         if (type === 'center') {
           if (item.type === 'image') {
-            previewHtml = `<img src="${item.src}" class="media-preview" alt="Preview" />`;
+            // Handle File objects and URL strings
+            const src = item.src instanceof File ? URL.createObjectURL(item.src) : item.src;
+            previewHtml = `<img src="${src}" class="media-preview" alt="Preview" />`;
           } else if (item.type === 'video') {
             previewHtml = `<div class="media-preview" style="background: #333; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold;">🎬 VIDEO</div>`;
           }
@@ -446,12 +447,12 @@ class AddEditButtonForm {
     });
   }
 
-  updatePreview() {
+  async updatePreview() {
     const preview = document.getElementById('button-preview');
     if (!preview) return;
 
     try {
-      const payload = this.getFormData();
+      const payload = await this.getFormData();
       preview.innerHTML = this.renderPreview(payload);
     } catch (error) {
       preview.innerHTML = `<div class="error">${error.message}</div>`;
@@ -530,7 +531,8 @@ class AddEditButtonForm {
         
         if (mediaItem.type === 'image') {
           const img = document.createElement('img');
-          img.src = mediaItem.src;
+          // Handle File objects and URL strings
+          img.src = mediaItem.src instanceof File ? URL.createObjectURL(mediaItem.src) : mediaItem.src;
           img.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain; display: block;';
           img.alt = mediaItem.alt || 'Preview Image';
           mediaElement.appendChild(img);
@@ -551,7 +553,7 @@ class AddEditButtonForm {
     return overlay.outerHTML;
   }
 
-  getFormData() {
+  async getFormData() {
     const name = document.getElementById('multi-media-button-name')?.value || '';
     const hotkey = document.getElementById('multi-media-hotkey-input')?.value || '';
     const durationInput = document.getElementById('multi-media-duration-input');
@@ -626,27 +628,58 @@ class AddEditButtonForm {
       }
     }
 
-    // Combine images and videos for center media using new schema
-    const centerMedia = [
-      ...this.images.filter(item => item.src).map((item, index) => ({
-        id: `m${index + 1}`,
-        type: 'image',
-        src: item.src,
-        alt: item.name || 'Image',
-        widthPct: item.widthPct || 100,
-        align: 'center',
-        extraStyle: { zIndex: index + 1 }
-      })),
-      ...this.videos.filter(item => item.src).map((item, index) => ({
-        id: `v${index + 1}`,
-        type: 'video',
-        src: item.src,
-        loop: item.loop || false,
-        widthPct: item.widthPct || 100,
-        align: 'center',
-        extraStyle: { zIndex: index + 1 }
-      }))
-    ];
+    // Helper function to convert File to base64
+    const fileToBase64 = (file) => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+      });
+    };
+
+    // Process center media - convert File objects to base64
+    const centerMedia = [];
+    
+    // Process images
+    for (const [index, item] of this.images.entries()) {
+      if (item.src) {
+        let src = item.src;
+        if (item.src instanceof File) {
+          // Convert File to base64
+          src = await fileToBase64(item.src);
+        }
+        centerMedia.push({
+          id: `m${index + 1}`,
+          type: 'image',
+          src: src,
+          alt: item.name || 'Image',
+          widthPct: item.widthPct || 100,
+          align: 'center',
+          extraStyle: { zIndex: index + 1 }
+        });
+      }
+    }
+
+    // Process videos
+    for (const [index, item] of this.videos.entries()) {
+      if (item.src) {
+        let src = item.src;
+        if (item.src instanceof File) {
+          // Convert File to base64
+          src = await fileToBase64(item.src);
+        }
+        centerMedia.push({
+          id: `v${index + 1}`,
+          type: 'video',
+          src: src,
+          loop: item.loop || false,
+          widthPct: item.widthPct || 100,
+          align: 'center',
+          extraStyle: { zIndex: index + 1 }
+        });
+      }
+    }
 
     return {
       id: this.editingId || `multi-media-${Date.now()}`,
@@ -655,11 +688,18 @@ class AddEditButtonForm {
       hotkey: hotkey,
       slots,
       centerMedia,
-      audio: this.audio.filter(item => item.src).map((item, index) => ({
-        id: `a${index + 1}`,
-        src: item.src,
-        volume: (item.volume || 100) / 100, // Convert percentage to 0-1
-        loop: item.loop || false
+      audio: await Promise.all(this.audio.filter(item => item.src).map(async (item, index) => {
+        let src = item.src;
+        if (item.src instanceof File) {
+          // Convert File to base64
+          src = await fileToBase64(item.src);
+        }
+        return {
+          id: `a${index + 1}`,
+          src: src,
+          volume: (item.volume || 100) / 100, // Convert percentage to 0-1
+          loop: item.loop || false
+        };
       })),
       options: {
         clearPrevious: true,
@@ -670,9 +710,9 @@ class AddEditButtonForm {
     };
   }
 
-  previewInOverlay() {
+  async previewInOverlay() {
     try {
-      const payload = this.getFormData();
+      const payload = await this.getFormData();
       
       if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
         window.electronAPI.sendOverlayMessage(payload);
@@ -685,12 +725,12 @@ class AddEditButtonForm {
     }
   }
 
-  handleMultiMediaSubmit(e) {
+  async handleMultiMediaSubmit(e) {
     e.preventDefault();
     
     let formData;
     try {
-      formData = this.getFormData();
+      formData = await this.getFormData();
       
       // Validate
       if (!formData.name || !formData.name.trim()) {
