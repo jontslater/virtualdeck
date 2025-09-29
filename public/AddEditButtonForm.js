@@ -450,8 +450,12 @@ class AddEditButtonForm {
     const preview = document.getElementById('button-preview');
     if (!preview) return;
 
-    const payload = this.getFormData();
-    preview.innerHTML = this.renderPreview(payload);
+    try {
+      const payload = this.getFormData();
+      preview.innerHTML = this.renderPreview(payload);
+    } catch (error) {
+      preview.innerHTML = `<div class="error">${error.message}</div>`;
+    }
   }
 
   renderPreview(payload) {
@@ -551,7 +555,16 @@ class AddEditButtonForm {
     const name = document.getElementById('multi-media-button-name')?.value || '';
     const hotkey = document.getElementById('multi-media-hotkey-input')?.value || '';
     const durationInput = document.getElementById('multi-media-duration-input');
-    const duration = durationInput ? parseInt(durationInput.value) || 60 : 60; // Default 60 seconds
+    
+    // Validate duration is provided and within range
+    if (!durationInput || !durationInput.value || durationInput.value.trim() === '') {
+      throw new Error('Duration is required');
+    }
+    
+    const duration = parseInt(durationInput.value);
+    if (isNaN(duration) || duration < 5 || duration > 300) {
+      throw new Error('Duration must be between 5 and 300 seconds');
+    }
 
     // Map old slot IDs to new schema slot names
     const slotMapping = {
@@ -658,24 +671,34 @@ class AddEditButtonForm {
   }
 
   previewInOverlay() {
-    const payload = this.getFormData();
-    
-    if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-      window.electronAPI.sendOverlayMessage(payload);
-      console.log('Preview sent to overlay:', payload);
-    } else {
-      console.error('Overlay API not available');
+    try {
+      const payload = this.getFormData();
+      
+      if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
+        window.electronAPI.sendOverlayMessage(payload);
+        console.log('Preview sent to overlay:', payload);
+      } else {
+        console.error('Overlay API not available');
+      }
+    } catch (error) {
+      alert(error.message);
     }
   }
 
   handleMultiMediaSubmit(e) {
     e.preventDefault();
     
-    const formData = this.getFormData();
-    
-    // Validate
-    if (!formData.name || !formData.name.trim()) {
-      alert('Button name is required');
+    let formData;
+    try {
+      formData = this.getFormData();
+      
+      // Validate
+      if (!formData.name || !formData.name.trim()) {
+        alert('Button name is required');
+        return;
+      }
+    } catch (error) {
+      alert(error.message);
       return;
     }
 

@@ -43,7 +43,7 @@
             color: white;
             padding: 15px;
             border-radius: 8px;
-            border: 2px solid #00ff00;
+            border: 2px solid transparent;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -57,7 +57,31 @@
 
         .text-slot:hover {
             background: rgba(0, 0, 0, 0.9);
-            border-color: #00cc00;
+        }
+
+        /* Show placeholder text invisibly to maintain structure */
+        .text-slot:empty::before {
+            content: attr(data-placeholder);
+            color: transparent;
+            display: block;
+            width: 100%;
+            height: 100%;
+            min-height: 80px;
+        }
+        
+        /* Show actual content in white */
+        .text-slot:not(:empty) {
+            color: white;
+        }
+        
+        /* Center media placeholder */
+        #center-media:empty::before {
+            content: attr(data-placeholder);
+            color: transparent;
+            display: block;
+            width: 100%;
+            height: 100%;
+            min-height: 300px;
         }
         
         @keyframes pulse {
@@ -66,10 +90,32 @@
             100% { opacity: 1; }
         }
 
+        @keyframes fadeIn {
+            0% { 
+                opacity: 0; 
+                transform: scale(0.95);
+            }
+            100% { 
+                opacity: 1; 
+                transform: scale(1);
+            }
+        }
+
+        @keyframes fadeOut {
+            0% { 
+                opacity: 1; 
+                transform: scale(1);
+            }
+            100% { 
+                opacity: 0; 
+                transform: scale(0.95);
+            }
+        }
+
         /* Center media container */
         #center-media {
             background: rgba(0, 0, 0, 0.8);
-            border: 3px solid #ff6600;
+            border: 3px solid transparent;
             border-radius: 12px;
             display: flex;
             align-items: center;
@@ -87,6 +133,16 @@
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        /* Fade animation classes */
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .fade-out {
+            animation: fadeOut 0.3s ease-in;
         }
 
         /* Text slot positions */
@@ -136,13 +192,13 @@
             grid-row: 3;
         }
 
-        /* Debug info */
+        /* Debug info - made transparent */
         .debug-info {
             position: fixed;
             top: 10px;
             right: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            color: #00ff00;
+            background: transparent;
+            color: transparent;
             padding: 10px;
             border-radius: 5px;
             font-family: monospace;
@@ -170,19 +226,18 @@
 <body>
     <div class="overlay-container">
         <!-- 9 text slots with specific IDs -->
-        <div id="text-top-left" class="text-slot">Top Left</div>
-        <div id="text-top-center" class="text-slot">Top Center</div>
-        <div id="text-top-right" class="text-slot">Top Right</div>
-        <div id="text-mid-left" class="text-slot">Mid Left</div>
-        <div id="text-center" class="text-slot">Center</div>
-        <div id="text-mid-right" class="text-slot">Mid Right</div>
-        <div id="text-bottom-left" class="text-slot">Bottom Left</div>
-        <div id="text-bottom-center" class="text-slot">Bottom Center</div>
-        <div id="text-bottom-right" class="text-slot">Bottom Right</div>
+        <div id="text-top-left" class="text-slot" data-placeholder="Top Left"></div>
+        <div id="text-top-center" class="text-slot" data-placeholder="Top Center"></div>
+        <div id="text-top-right" class="text-slot" data-placeholder="Top Right"></div>
+        <div id="text-mid-left" class="text-slot" data-placeholder="Mid Left"></div>
+        <div id="text-center" class="text-slot" data-placeholder="Center"></div>
+        <div id="text-mid-right" class="text-slot" data-placeholder="Mid Right"></div>
+        <div id="text-bottom-left" class="text-slot" data-placeholder="Bottom Left"></div>
+        <div id="text-bottom-center" class="text-slot" data-placeholder="Bottom Center"></div>
+        <div id="text-bottom-right" class="text-slot" data-placeholder="Bottom Right"></div>
         
         <!-- Center media container -->
-        <div id="center-media">
-            <span>Center Media</span>
+        <div id="center-media" data-placeholder="Center Media">
         </div>
     </div>
 
@@ -329,8 +384,17 @@
                 return;
             }
             
-            // Clear existing content
-            centerMedia.innerHTML = '';
+            // Add fade out animation if there's existing content
+            if (centerMedia.children.length > 0) {
+                centerMedia.classList.add('fade-out');
+                // Wait for fade out to complete before clearing
+                setTimeout(() => {
+                    centerMedia.innerHTML = '';
+                    centerMedia.classList.remove('fade-out');
+                }, 300);
+            } else {
+                centerMedia.innerHTML = '';
+            }
             
             const videoElements = [];
             
@@ -417,6 +481,15 @@
                 console.log('Attempted to play all videos with multiple retries');
             }
             
+            // Add fade-in animation to new content
+            setTimeout(() => {
+                centerMedia.classList.add('fade-in');
+                // Remove the class after animation completes
+                setTimeout(() => {
+                    centerMedia.classList.remove('fade-in');
+                }, 500);
+            }, 50);
+            
             // Set up reset timer
             setupResetTimer(payload);
             
@@ -483,13 +556,21 @@
             // Clear text slots
             const textSlots = document.querySelectorAll('.text-slot');
             textSlots.forEach(slot => {
-                slot.textContent = slot.id.replace('text-', '').replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                slot.textContent = '';
                 slot.style.cssText = ''; // Clear inline styles
             });
             
-            // Clear center media
+            // Clear center media with fade out
             const centerMedia = document.getElementById('center-media');
-            centerMedia.innerHTML = '<span>Center Media</span>';
+            if (centerMedia.children.length > 0) {
+                centerMedia.classList.add('fade-out');
+                setTimeout(() => {
+                    centerMedia.innerHTML = '';
+                    centerMedia.classList.remove('fade-out');
+                }, 300);
+            } else {
+                centerMedia.innerHTML = '';
+            }
             
             console.log('🔄 All slots cleared');
         }
@@ -761,12 +842,12 @@
             // Clear all text slots
             const textSlots = document.querySelectorAll('.text-slot');
             textSlots.forEach(slot => {
-                slot.textContent = slot.id.replace('text-', '').replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                slot.textContent = '';
             });
             
             // Clear center media
             const centerMedia = document.getElementById('center-media');
-            centerMedia.innerHTML = '<span>Center Media</span>';
+            centerMedia.innerHTML = '';
             
             console.log('Overlay cleared');
         };
