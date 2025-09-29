@@ -48,6 +48,7 @@
       <button id="menu-tools-btn" class="menu-button" aria-expanded="false" aria-controls="menu-tools-dropdown">Tools</button>
       <div id="menu-tools-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Tools menu">
         <button id="menu-tools-overlay" class="menu-dropdown-item" role="menuitem">Overlay Controls</button>
+        <button id="menu-tools-alerts" class="menu-dropdown-item" role="menuitem">Alert Widget</button>
         <div class="menu-divider"></div>
         <button id="menu-tools-devtools" class="menu-dropdown-item" role="menuitem">Developer Tools</button>
         <button id="menu-tools-reload" class="menu-dropdown-item" role="menuitem">Reload Application</button>
@@ -508,6 +509,92 @@
         <div class="url-display">
           <code>http://localhost:8080/overlay</code>
           <button id="copy-overlay-url" class="copy-btn" title="Copy URL">📋</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alert Widget -->
+  <div id="alert-widget" class="alert-widget hidden">
+    <div class="alert-widget-backdrop"></div>
+    <div class="alert-widget-content">
+      <div class="widget-header">
+        <h3>Twitch Alert Widget</h3>
+        <button id="close-alert-widget" class="close-btn" title="Close Alert Widget">✕</button>
+      </div>
+    
+    <div class="widget-content">
+      <div class="alert-section">
+        <h4>Alert Configuration</h4>
+        
+        <div class="alert-type-selector">
+          <label for="alert-type">Alert Type:</label>
+          <select id="alert-type">
+            <option value="follower">New Follower</option>
+            <option value="subscriber">New Subscriber</option>
+            <option value="resubscriber">Resubscriber</option>
+            <option value="raid">Raid</option>
+            <option value="gift-sub">Gifted Subscription</option>
+            <option value="bits">Bits Donation</option>
+          </select>
+        </div>
+
+        <div class="alert-settings">
+          <div class="setting-group">
+            <label for="alert-text">Alert Text:</label>
+            <input type="text" id="alert-text" placeholder="Welcome {username}!" />
+            <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+              Use placeholders: {username}, {display_name}, {tier}, {viewers}, {bits}, {months}
+            </small>
+          </div>
+          
+          <div class="setting-group">
+            <label for="alert-duration">Duration (seconds):</label>
+            <input type="number" id="alert-duration" min="1" max="60" value="5" />
+          </div>
+          
+          <div class="setting-group">
+            <label for="alert-sound">Sound File:</label>
+            <input type="file" id="alert-sound" accept="audio/*" />
+          </div>
+          
+          <div class="setting-group">
+            <label for="alert-image">Image File:</label>
+            <input type="file" id="alert-image" accept="image/*" />
+          </div>
+        </div>
+
+        <div class="alert-actions">
+          <button id="save-alert" class="action-btn primary">Save Alert</button>
+          <button id="test-alert" class="action-btn secondary">Test Alert</button>
+          <button id="clear-alerts" class="action-btn danger">Clear All Alerts</button>
+        </div>
+        
+        <div class="alert-queue-controls">
+          <h4>Queue Controls</h4>
+          <div class="queue-actions">
+            <button id="clear-queue" class="action-btn danger">Clear Queue</button>
+            <button id="skip-current" class="action-btn secondary">Skip Current</button>
+            <button id="hard-stop" class="action-btn danger">Hard Stop</button>
+            <button id="queue-status" class="action-btn secondary">Queue Status</button>
+          </div>
+          <div id="queue-info" class="queue-info">
+            <div class="queue-status-text">Queue: 0 alerts | Processing: No</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert-preview">
+        <h4>Alert Preview</h4>
+        <div id="alert-preview-area" class="preview-area">
+          <div class="preview-placeholder">Configure an alert to see preview</div>
+        </div>
+      </div>
+
+      <div class="alert-list">
+        <h4>Saved Alerts</h4>
+        <div id="alert-list-container" class="alert-list-container">
+          <div class="no-alerts">No alerts configured yet</div>
         </div>
       </div>
     </div>
