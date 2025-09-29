@@ -762,6 +762,17 @@ class AddEditButtonForm {
     const hotkeyInput = document.getElementById('multi-media-hotkey-input');
     if (hotkeyInput) hotkeyInput.value = buttonData.hotkey || '';
 
+    // Set duration (convert from milliseconds to seconds)
+    const durationInput = document.getElementById('multi-media-duration-input');
+    if (durationInput && buttonData.options && buttonData.options.durationMs) {
+      const durationSeconds = Math.round(buttonData.options.durationMs / 1000);
+      durationInput.value = durationSeconds;
+      console.log(`📝 [Edit] Setting duration to ${durationSeconds} seconds (from ${buttonData.options.durationMs}ms)`);
+    } else if (durationInput) {
+      durationInput.value = 60; // Default 60 seconds
+      console.log(`📝 [Edit] No duration found, using default 60 seconds`);
+    }
+
     // Map new schema slot names to old slot IDs for form population
     const slotMapping = {
       'topLeft': 'text-top-left',

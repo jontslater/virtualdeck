@@ -1824,6 +1824,7 @@ async function testTwitchStats() {
 // Make test function available globally for testing
 window.testTwitchStats = testTwitchStats;
 window.updateTwitchStats = updateTwitchStats;
+window.clearOverlay = clearOverlay;
 
 
 // Update Twitch statistics display
@@ -2289,6 +2290,41 @@ async function handleTrigger(button) {
     } catch (err) {
       // ignore and use default
     }
+    
+    // Set up overlay clearing when audio finishes
+    audio.addEventListener('ended', () => {
+      const timestamp = new Date().toLocaleTimeString();
+      console.log(`🎵 [${timestamp}] Audio finished playing, triggering overlay clear`);
+      clearOverlay();
+    });
+    
+    // Also set up a fallback timer in case the 'ended' event doesn't fire
+    audio.addEventListener('loadedmetadata', () => {
+      const duration = audio.duration;
+      if (duration && !isNaN(duration) && isFinite(duration)) {
+        const timestamp = new Date().toLocaleTimeString();
+        console.log(`🎵 [${timestamp}] Audio duration detected: ${duration.toFixed(2)}s, setting fallback clear timer for ${(duration + 0.5).toFixed(2)}s`);
+        setTimeout(() => {
+          const clearTimestamp = new Date().toLocaleTimeString();
+          console.log(`⏰ [${clearTimestamp}] Fallback timer triggered: clearing overlay after audio duration + buffer`);
+          clearOverlay();
+        }, (duration * 1000) + 500); // Add 500ms buffer
+      }
+    });
+    
+    // Check for custom duration override (for simple audio buttons with duration option)
+    if (button.options && button.options.durationMs) {
+      const customDuration = button.options.durationMs / 1000;
+      const timestamp = new Date().toLocaleTimeString();
+      console.log(`⏰ [${timestamp}] Overriding audio duration with custom duration: ${customDuration.toFixed(2)}s`);
+      
+      setTimeout(() => {
+        const clearTimestamp = new Date().toLocaleTimeString();
+        console.log(`⏰ [${clearTimestamp}] Custom duration override triggered: clearing overlay after ${customDuration.toFixed(2)}s`);
+        clearOverlay();
+      }, customDuration * 1000);
+    }
+    
     audio.play().catch(error => {
     });
   } else if (button.type === "app") {
@@ -2414,6 +2450,184 @@ async function handleMultiMediaTrigger(button) {
     } catch (error) {
       console.warn('Some audio failed to start:', error);
     }
+  }
+  
+  // Set up overlay clearing based on media duration
+  // Check if button has custom duration in options
+  const customDuration = button.options && button.options.durationMs ? button.options.durationMs / 1000 : null;
+  setupOverlayClearing(audioData, centerMediaData, customDuration);
+}
+
+// Function to clear overlay content
+function clearOverlay() {
+  const timestamp = new Date().toLocaleTimeString();
+  console.log(`🧹 [${timestamp}] ===== OVERLAY CLEAR TRIGGERED =====`);
+  console.log(`🧹 [${timestamp}] Reason: Media playback completed`);
+  
+  // Create clear payload - overlay expects 'buttonTrigger' type with clearPrevious option
+  const clearPayload = {
+    type: 'buttonTrigger',
+    options: {
+      clearPrevious: true
+    },
+    slots: {},
+    centerMedia: []
+  };
+  
+  console.log(`🧹 [${timestamp}] Clear payload created:`, clearPayload);
+  
+  // Send to overlay iframe (if exists)
+  const overlayIframe = document.getElementById('overlay-iframe');
+  if (overlayIframe && overlayIframe.contentWindow) {
+    try {
+      overlayIframe.contentWindow.postMessage(clearPayload, '*');
+      console.log(`✅ [${timestamp}] Clear message sent to overlay iframe`);
+    } catch (error) {
+      console.warn(`❌ [${timestamp}] Failed to send clear message to overlay iframe:`, error);
+    }
+  } else {
+    console.log(`ℹ️ [${timestamp}] No overlay iframe found or not accessible`);
+  }
+  
+  // Send to overlay widget (if exists)
+  const overlayWidget = document.getElementById('overlay-widget');
+  if (overlayWidget && !overlayWidget.classList.contains('hidden')) {
+    try {
+      if (window.testMultiSource) {
+        window.testMultiSource(clearPayload);
+        console.log(`✅ [${timestamp}] Clear message sent to overlay widget`);
+      } else {
+        console.log(`ℹ️ [${timestamp}] Overlay widget found but testMultiSource function not available`);
+      }
+    } catch (error) {
+      console.warn(`❌ [${timestamp}] Failed to send clear message to overlay widget:`, error);
+    }
+  } else {
+    console.log(`ℹ️ [${timestamp}] No overlay widget found or it's hidden`);
+  }
+  
+  // Send via WebSocket (if available)
+  if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
+    try {
+      window.electronAPI.sendOverlayMessage(clearPayload);
+      console.log(`✅ [${timestamp}] Clear message sent via WebSocket`);
+    } catch (error) {
+      console.warn(`❌ [${timestamp}] Failed to send clear message via WebSocket:`, error);
+    }
+  } else {
+    console.log(`ℹ️ [${timestamp}] WebSocket API not available`);
+  }
+  
+  console.log(`🧹 [${timestamp}] ===== OVERLAY CLEAR COMPLETE =====`);
+}
+
+// Function to set up overlay clearing based on media duration
+function setupOverlayClearing(audioData, centerMediaData, customDuration = null) {
+  let maxDuration = 0;
+  let mediaElements = [];
+  
+  // If custom duration is provided, use it instead of detecting media duration
+  if (customDuration && customDuration > 0) {
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`⏰ [${timestamp}] Using custom duration from form: ${customDuration.toFixed(2)}s`);
+    
+    setTimeout(() => {
+      const clearTimestamp = new Date().toLocaleTimeString();
+      console.log(`⏰ [${clearTimestamp}] Custom duration timer triggered: clearing overlay after ${customDuration.toFixed(2)}s`);
+      clearOverlay();
+    }, customDuration * 1000);
+    
+    return; // Skip media duration detection
+  }
+  
+  // Track audio duration
+  if (Array.isArray(audioData)) {
+    audioData.forEach(audioEntry => {
+      if (audioEntry.src) {
+        const audio = audioCache.get(audioEntry.src);
+        if (audio) {
+          mediaElements.push(audio);
+          
+          // Set up event listeners for this audio
+          audio.addEventListener('ended', () => {
+            const timestamp = new Date().toLocaleTimeString();
+            console.log(`🎵 [${timestamp}] Multi-media audio ended, checking if all media finished...`);
+            checkAllMediaFinished(mediaElements);
+          });
+          
+          audio.addEventListener('loadedmetadata', () => {
+            const duration = audio.duration;
+            if (duration && !isNaN(duration) && isFinite(duration)) {
+              maxDuration = Math.max(maxDuration, duration);
+              const timestamp = new Date().toLocaleTimeString();
+              console.log(`🎵 [${timestamp}] Multi-media audio duration: ${duration.toFixed(2)}s, max duration so far: ${maxDuration.toFixed(2)}s`);
+            }
+          });
+        }
+      }
+    });
+  }
+  
+  // Track video duration from center media
+  if (Array.isArray(centerMediaData)) {
+    centerMediaData.forEach(mediaItem => {
+      if (mediaItem.type === 'video' && mediaItem.src) {
+        // Create a temporary video element to get duration
+        const tempVideo = document.createElement('video');
+        tempVideo.src = mediaItem.src;
+        tempVideo.addEventListener('loadedmetadata', () => {
+          const duration = tempVideo.duration;
+          if (duration && !isNaN(duration) && isFinite(duration)) {
+            maxDuration = Math.max(maxDuration, duration);
+            const timestamp = new Date().toLocaleTimeString();
+            console.log(`🎬 [${timestamp}] Center video duration: ${duration.toFixed(2)}s, max duration so far: ${maxDuration.toFixed(2)}s`);
+          }
+        });
+        tempVideo.load();
+      }
+    });
+  }
+  
+  // Set up fallback timer based on the longest media duration
+  if (maxDuration > 0) {
+    const timestamp = new Date().toLocaleTimeString();
+    const clearTime = maxDuration + 1; // Add 1 second buffer
+    console.log(`⏰ [${timestamp}] Setting fallback clear timer for ${clearTime.toFixed(2)}s (max duration: ${maxDuration.toFixed(2)}s + 1s buffer)`);
+    setTimeout(() => {
+      const clearTimestamp = new Date().toLocaleTimeString();
+      console.log(`⏰ [${clearTimestamp}] Fallback timer triggered: clearing overlay after max media duration + buffer`);
+      clearOverlay();
+    }, (maxDuration * 1000) + 1000); // Add 1 second buffer
+  } else {
+    // If no duration available, set a default timer
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`⏰ [${timestamp}] No media duration available, setting default 10s timer`);
+    setTimeout(() => {
+      const clearTimestamp = new Date().toLocaleTimeString();
+      console.log(`⏰ [${clearTimestamp}] Default timer triggered: clearing overlay after 10s fallback`);
+      clearOverlay();
+    }, 10000);
+  }
+}
+
+// Function to check if all media elements have finished
+function checkAllMediaFinished(mediaElements) {
+  const timestamp = new Date().toLocaleTimeString();
+  console.log(`🔍 [${timestamp}] Checking if all media elements have finished...`);
+  
+  const allFinished = mediaElements.every(element => {
+    const isFinished = element.ended || element.paused;
+    console.log(`🔍 [${timestamp}] Media element status: ended=${element.ended}, paused=${element.paused}, finished=${isFinished}`);
+    return isFinished;
+  });
+  
+  console.log(`🔍 [${timestamp}] All media finished: ${allFinished}`);
+  
+  if (allFinished) {
+    console.log(`✅ [${timestamp}] All media finished, triggering overlay clear`);
+    clearOverlay();
+  } else {
+    console.log(`⏳ [${timestamp}] Some media still playing, waiting for completion...`);
   }
 }
 
@@ -4726,14 +4940,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
   
-  window.clearOverlay = function() {
-    console.log('Clearing overlay...');
-    if (window.electronAPI && typeof window.electronAPI.sendOverlayClearAll === 'function') {
-      window.electronAPI.sendOverlayClearAll();
-    } else {
-      console.log('sendOverlayClearAll not available');
-    }
-  };
+  // Removed duplicate clearOverlay function - using the main one defined earlier
   
   // Test multi-source functionality
   window.testMultiSource = function(payload) {

@@ -15,10 +15,6 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-:root {
-  --card-size: 110px; /* width and height of each sound card */
-}
-
 #app-file-section {
   display: none;
 }
@@ -138,7 +134,8 @@ input.theme-radio-input:checked + label.menu-dropdown-item.theme-item {
   padding-left: 6px;
 }
 
-
+:root {
+  --card-size: 110px; /* width and height of each sound card */
   --card-gap: 16px;   /* gap between cards - balanced for drag functionality */
   
   /* Theme Variables - Default Dark Theme */
