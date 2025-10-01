@@ -524,7 +524,9 @@
       </div>
     
     <div class="widget-content">
-      <div class="alert-section">
+      
+      <!-- Configuration Tab -->
+      <div class="alert-tab-content active" id="configuration-tab">
         <h4>Alert Configuration</h4>
         
         <div class="alert-type-selector">
@@ -533,9 +535,13 @@
             <option value="follower">New Follower</option>
             <option value="subscriber">New Subscriber</option>
             <option value="resubscriber">Resubscriber</option>
-            <option value="raid">Raid</option>
             <option value="gift-sub">Gifted Subscription</option>
+            <option value="gift-sub-received">Gift Sub Received</option>
+            <option value="raid">Raid</option>
             <option value="bits">Bits Donation</option>
+            <option value="host">Host</option>
+            <option value="unhost">Unhost</option>
+            <option value="channel-points">Channel Points</option>
           </select>
         </div>
 
@@ -553,6 +559,14 @@
             <input type="number" id="alert-duration" min="1" max="60" value="5" />
           </div>
           
+          <div class="setting-group" id="bits-threshold-group" style="display: none;">
+            <label for="alert-bits-threshold">Minimum Bits (threshold):</label>
+            <input type="number" id="alert-bits-threshold" min="1" max="100000" value="10" placeholder="10" />
+            <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+              Alert only triggers if bits amount meets or exceeds this threshold
+            </small>
+          </div>
+          
           <div class="setting-group">
             <label for="alert-sound">Sound File:</label>
             <input type="file" id="alert-sound" accept="audio/*" />
@@ -566,7 +580,6 @@
 
         <div class="alert-actions">
           <button id="save-alert" class="action-btn primary">Save Alert</button>
-          <button id="test-alert" class="action-btn secondary">Test Alert</button>
           <button id="clear-alerts" class="action-btn danger">Clear All Alerts</button>
         </div>
         
@@ -582,19 +595,21 @@
             <div class="queue-status-text">Queue: 0 alerts | Processing: No</div>
           </div>
         </div>
-      </div>
-
-      <div class="alert-preview">
-        <h4>Alert Preview</h4>
-        <div id="alert-preview-area" class="preview-area">
-          <div class="preview-placeholder">Configure an alert to see preview</div>
+        
+        <!-- Alert Preview Section -->
+        <div class="alert-preview">
+          <h4>Alert Preview</h4>
+          <div id="alert-preview-area" class="preview-area">
+            <div class="preview-placeholder">Configure an alert to see preview</div>
+          </div>
         </div>
-      </div>
 
-      <div class="alert-list">
-        <h4>Saved Alerts</h4>
-        <div id="alert-list-container" class="alert-list-container">
-          <div class="no-alerts">No alerts configured yet</div>
+        <!-- Saved Alerts Section -->
+        <div class="saved-alerts-section">
+          <h4>Saved <span id="selected-alert-type-name">Follower</span> Alerts</h4>
+          <div id="alert-list-container" class="alert-list-container">
+            <div class="no-alerts">No alerts configured yet</div>
+          </div>
         </div>
       </div>
     </div>
