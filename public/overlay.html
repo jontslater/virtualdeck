@@ -261,7 +261,17 @@
 
         // Render payload function
         function renderPayload(payload) {
-            console.log('Received payload:', payload);
+            // Log payload summary instead of full object to avoid base64 spam
+            const payloadSummary = {
+                type: payload.type,
+                options: payload.options,
+                slots: payload.slots ? Object.keys(payload.slots) : 'none',
+                centerMedia: payload.centerMedia ? payload.centerMedia.map(item => ({
+                    type: item.type,
+                    src: item.src ? (item.src.startsWith('data:') ? 'data:...' : item.src) : 'none'
+                })) : 'none'
+            };
+            console.log('Received payload:', payloadSummary);
             messageCount++;
             updateDebugInfo(payload);
             
@@ -298,11 +308,17 @@
         
         // Handle button trigger payload
         function handleButtonTrigger(payload) {
-            console.log('🎯 Processing button trigger payload:', payload);
-            console.log('🎯 Payload type:', payload.type);
-            console.log('🎯 Payload options:', payload.options);
-            console.log('🎯 Payload slots:', payload.slots);
-            console.log('🎯 Payload centerMedia:', payload.centerMedia);
+            // Log payload summary instead of full object to avoid base64 spam
+            const payloadSummary = {
+                type: payload.type,
+                options: payload.options,
+                slots: payload.slots ? Object.keys(payload.slots) : 'none',
+                centerMedia: payload.centerMedia ? payload.centerMedia.map(item => ({
+                    type: item.type,
+                    src: item.src ? (item.src.startsWith('data:') ? 'data:...' : item.src) : 'none'
+                })) : 'none'
+            };
+            console.log('🎯 Processing button trigger payload:', payloadSummary);
             
             // Clear any existing reset timer
             if (overlayResetTimer) {
@@ -404,7 +420,37 @@
             for (const item of mediaItems) {
                 if (item.type === 'image' || item.type === 'gif') {
                     const img = document.createElement('img');
-                    img.src = item.src;
+                    
+                    // Handle different source types
+                    if (item.src.startsWith('data:') || item.src.startsWith('blob:') || item.src.startsWith('http')) {
+                        // Direct data URI, blob URL, or HTTP URL
+                        img.src = item.src;
+                    } else {
+                        // File path - load from disk
+                        console.log('🖼️ Loading image from file path:', item.src);
+                        try {
+                            if (window.electronAPI && window.electronAPI.getMediaFile) {
+                                window.electronAPI.getMediaFile(item.src).then(result => {
+                                    if (result.success) {
+                                        const sizeKB = (result.data.length / 1024).toFixed(2);
+                                        console.log(`✅ Image loaded from disk: ${item.src} (${sizeKB} KB)`);
+                                        img.src = result.data;
+                                    } else {
+                                        console.error('Failed to load image from disk:', result.error);
+                                    }
+                                }).catch(error => {
+                                    console.error('Error loading image from disk:', error);
+                                });
+                            } else {
+                                console.warn('getMediaFile API not available, using path directly');
+                                img.src = item.src;
+                            }
+                        } catch (error) {
+                            console.error('Error loading image from disk:', error);
+                            img.src = item.src; // Fallback to path
+                        }
+                    }
+                    
                     img.alt = item.alt || 'Media';
                     img.style.maxWidth = '100%';
                     img.style.maxHeight = '100%';
@@ -412,12 +458,12 @@
                     img.style.display = 'block';
                     centerMedia.appendChild(img);
                     
-                    // Log image info without full base64
+                    // Log image info
                     const srcType = item.src.startsWith('data:') ? 'base64' : 
                                    item.src.startsWith('blob:') ? 'blob' : 
                                    item.src.startsWith('http') ? 'url' : 'path';
                     const srcPreview = srcType === 'base64' ? 
-                                      `${item.src.substring(0, 30)}... (${(item.src.length / 1024).toFixed(2)} KB)` : 
+                                      `data:image/... (${(item.src.length / 1024).toFixed(2)} KB)` : 
                                       item.src;
                     console.log(`Added image [${srcType}]: ${srcPreview}`);
                     
@@ -764,6 +810,164 @@
             renderPayload(payload);
         };
         
+        // Load alert configurations from localStorage
+        let savedAlerts = [];
+        function loadAlertConfigurations() {
+            try {
+                savedAlerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+                console.log('📋 Loaded alert configurations:', savedAlerts.length, 'alerts');
+            } catch (error) {
+                console.error('Error loading alert configurations:', error);
+                savedAlerts = [];
+            }
+        }
+        
+        // Load configurations on startup
+        loadAlertConfigurations();
+        
+        // Handle Twitch EventSub events
+        function handleTwitchEvent(eventData) {
+            console.log('🎭 Processing Twitch event:', eventData.type, eventData.event);
+            
+            // Map Twitch event types to alert types with special handling for subscriptions
+            let alertType = null;
+            
+            if (eventData.type === 'channel.subscribe') {
+                // Handle different subscription types based on event data
+                if (eventData.event.is_gift === true) {
+                    // Check if it's a gift received (someone received a gift) or gift given (someone gave a gift)
+                    if (eventData.event.user_id === eventData.event.broadcaster_user_id) {
+                        alertType = 'gift-sub-received';
+                    } else {
+                        alertType = 'gift-sub';
+                    }
+                } else if (eventData.event.cumulative_months > 1) {
+                    alertType = 'resubscriber';
+                } else {
+                    alertType = 'subscriber';
+                }
+            } else {
+                // Map other event types
+                const eventTypeMapping = {
+                    'channel.follow': 'follower',
+                    'channel.raid': 'raid',
+                    'channel.cheer': 'bits',
+                    'channel.host': 'host',
+                    'channel.unhost': 'unhost',
+                    'channel.channel_points_custom_reward_redemption.add': 'channel-points'
+                };
+                alertType = eventTypeMapping[eventData.type];
+            }
+            
+            if (!alertType) {
+                console.log('⚠️ No alert type mapping for event:', eventData.type);
+                return;
+            }
+            
+            console.log(`🎯 Mapped event ${eventData.type} to alert type: ${alertType}`);
+            
+            // Find matching alert configurations
+            const matchingAlerts = savedAlerts.filter(alert => 
+                alert.type === alertType && alert.enabled !== false
+            );
+            
+            if (matchingAlerts.length === 0) {
+                console.log(`⚠️ No enabled alerts found for type: ${alertType}`);
+                return;
+            }
+            
+            // Use the first matching alert (or random if randomMode is enabled)
+            let selectedAlert = matchingAlerts[0];
+            if (matchingAlerts.length > 1) {
+                const randomAlerts = matchingAlerts.filter(a => a.randomMode);
+                if (randomAlerts.length > 0) {
+                    selectedAlert = randomAlerts[Math.floor(Math.random() * randomAlerts.length)];
+                }
+            }
+            
+            console.log('🎯 Selected alert for display:', selectedAlert);
+            console.log('🎯 Alert type:', selectedAlert.type);
+            console.log('🎯 Alert text:', selectedAlert.text);
+            
+            // Create user data from event
+            const userData = {
+                username: eventData.event.user_name || eventData.event.from_broadcaster_user_name || 'TestUser',
+                displayName: eventData.event.user_login || eventData.event.from_broadcaster_user_login || 'TestUser',
+                tier: eventData.event.tier || '1000',
+                months: eventData.event.cumulative_months || 1,
+                viewers: eventData.event.viewers || 25,
+                bits: eventData.event.bits || 100,
+                reward: eventData.event.reward?.title || 'Test Reward',
+                message: eventData.event.message || ''
+            };
+            
+            // Process the alert with media files
+            processAlertWithMedia(selectedAlert, userData);
+        }
+        
+        // Process alert with media files
+        function processAlertWithMedia(alertConfig, userData) {
+            console.log('🎭 Processing alert with media:', alertConfig.type);
+            
+            // Replace placeholders in text
+            let alertText = alertConfig.text || 'Test alert!';
+            alertText = alertText.replace(/{username}/g, userData.username);
+            alertText = alertText.replace(/{displayName}/g, userData.displayName);
+            alertText = alertText.replace(/{tier}/g, userData.tier);
+            alertText = alertText.replace(/{months}/g, userData.months);
+            alertText = alertText.replace(/{viewers}/g, userData.viewers);
+            alertText = alertText.replace(/{bits}/g, userData.bits);
+            alertText = alertText.replace(/{reward}/g, userData.reward);
+            alertText = alertText.replace(/{message}/g, userData.message);
+            
+            // Create payload for overlay
+            const payload = {
+                type: 'buttonTrigger',
+                options: {
+                    duration: alertConfig.duration || 5
+                },
+                slots: {
+                    'topCenter': {
+                        type: 'text',
+                        text: alertText,
+                        style: {
+                            color: '#fff',
+                            fontFamily: 'Arial, sans-serif',
+                            fontSize: '24px',
+                            fontWeight: 'bold',
+                            textShadow: '2px 2px #000',
+                            zIndex: '1'
+                        }
+                    }
+                },
+                centerMedia: []
+            };
+            
+            // Add sound file if present
+            if (alertConfig.soundFile && alertConfig.soundFile.data) {
+                console.log('🎵 Adding sound file to alert');
+                payload.centerMedia.push({
+                    type: 'audio',
+                    src: alertConfig.soundFile.data,
+                    autoplay: true,
+                    loop: false
+                });
+            }
+            
+            // Add image file if present
+            if (alertConfig.imageFile && alertConfig.imageFile.data) {
+                console.log('🖼️ Adding image file to alert');
+                payload.centerMedia.push({
+                    type: 'image',
+                    src: alertConfig.imageFile.data,
+                    duration: alertConfig.duration || 5
+                });
+            }
+            
+            console.log('🎭 Final payload:', payload);
+            renderPayload(payload);
+        }
+        
         // Listen for messages from parent window (OBS Browser Source)
         window.addEventListener('message', function(event) {
             console.log('🔔 Overlay received message:', event);
@@ -778,6 +982,16 @@
             } else if (event.data && event.data.type === 'buttonTrigger') {
                 console.log('🔔 Processing direct payload:', event.data);
                 renderPayload(event.data);
+            } else if (event.data && event.data.type === 'processAlert') {
+                // Handle direct alert processing
+                console.log('🔔 Processing direct alert:', event.data.alertConfig.type);
+                console.log('🔔 Alert config:', event.data.alertConfig);
+                console.log('🔔 User data:', event.data.userData);
+                processAlertWithMedia(event.data.alertConfig, event.data.userData);
+            } else if (event.data && event.data.type && event.data.event) {
+                // Handle Twitch EventSub events
+                console.log('🔔 Processing Twitch event:', event.data.type);
+                handleTwitchEvent(event.data);
             } else if (event.data) {
                 console.log('🔔 Processing fallback payload:', event.data);
                 renderPayload(event.data);

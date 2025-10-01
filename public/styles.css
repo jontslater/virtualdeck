@@ -1651,9 +1651,9 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
 
 .alert-widget-content {
   position: relative;
-  width: 700px;
-  max-width: 90vw;
-  max-height: 85vh;
+  width: 600px;
+  max-width: 95vw;
+  max-height: 90vh;
   background: var(--bg-secondary);
   border: 2px solid var(--border-primary);
   border-radius: 12px;
@@ -1713,6 +1713,162 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   padding: 20px;
   overflow-y: auto;
   flex: 1;
+}
+
+
+.alert-type-selector h4,
+.alert-settings h4,
+.alert-actions h4,
+.alert-queue-controls h4,
+.alert-preview h4 {
+  margin: 0 0 15px 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.alert-settings .setting-group {
+  margin-bottom: 15px;
+}
+
+.alert-settings .setting-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.alert-settings .setting-group input,
+.alert-settings .setting-group select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: border-color 0.2s ease;
+}
+
+.alert-settings .setting-group input:focus,
+.alert-settings .setting-group select:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(var(--accent-primary-rgb), 0.2);
+}
+
+.alert-settings .setting-group small {
+  display: block;
+  margin-top: 5px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+/* Other sections remain vertical */
+.alert-type-selector .setting-group,
+.alert-actions .setting-group,
+.alert-queue-controls .setting-group {
+  margin-bottom: 15px;
+}
+
+.alert-type-selector .setting-group:last-child,
+.alert-actions .setting-group:last-child,
+.alert-queue-controls .setting-group:last-child {
+  margin-bottom: 0;
+}
+
+.alert-type-selector .setting-group label,
+.alert-actions .setting-group label,
+.alert-queue-controls .setting-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.alert-type-selector .setting-group input,
+.alert-type-selector .setting-group select,
+.alert-actions .setting-group input,
+.alert-actions .setting-group select,
+.alert-queue-controls .setting-group input,
+.alert-queue-controls .setting-group select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: border-color 0.2s ease;
+}
+
+.alert-type-selector .setting-group input:focus,
+.alert-type-selector .setting-group select:focus,
+.alert-actions .setting-group input:focus,
+.alert-actions .setting-group select:focus,
+.alert-queue-controls .setting-group input:focus,
+.alert-queue-controls .setting-group select:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(var(--accent-primary-rgb), 0.2);
+}
+
+/* Saved Alerts Section */
+.saved-alerts-section h4 {
+  margin: 0 0 15px 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.alert-list-container {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+/* Alert Widget Tabs */
+.alert-tabs {
+  display: flex;
+  border-bottom: 2px solid var(--border-primary);
+  margin-bottom: 20px;
+  background: var(--bg-tertiary);
+  border-radius: 8px 8px 0 0;
+  overflow: hidden;
+}
+
+.alert-tab {
+  flex: 1;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-bottom: 3px solid transparent;
+}
+
+.alert-tab:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.alert-tab.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.alert-tab-content {
+  display: none;
+}
+
+.alert-tab-content.active {
+  display: block;
 }
 
 .alert-section {
@@ -1987,6 +2143,294 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
 
 .alert-item-btn.delete:hover {
   background: #c0392b;
+}
+
+/* Alert Variations Styles */
+.alert-variations-section {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  border: 1px solid var(--border-secondary);
+}
+
+.alert-variations-section h4 {
+  margin: 0 0 16px 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.variations-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.variation-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.variation-mode label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.variation-mode input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.variations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.variation-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.variation-item:hover {
+  border-color: var(--border-secondary);
+  background: var(--hover-bg);
+}
+
+.variation-item.enabled {
+  border-color: var(--accent-color);
+  background: rgba(0, 122, 204, 0.05);
+}
+
+.variation-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.variation-toggle input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.variation-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.variation-text {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.variation-details {
+  color: var(--text-secondary);
+  font-size: 12px;
+  display: flex;
+  gap: 12px;
+}
+
+.variation-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.variation-btn {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.variation-btn.edit {
+  background: var(--accent-color);
+  color: white;
+}
+
+.variation-btn.edit:hover {
+  background: var(--accent-secondary);
+}
+
+.variation-btn.delete {
+  background: #e74c3c;
+  color: white;
+}
+
+.variation-btn.delete:hover {
+  background: #c0392b;
+}
+
+.variation-btn.test {
+  background: #27ae60;
+  color: white;
+}
+
+.variation-btn.test:hover {
+  background: #229954;
+}
+
+.no-variations {
+  text-align: center;
+  color: var(--text-tertiary);
+  font-style: italic;
+  padding: 20px;
+  background: var(--bg-primary);
+  border: 1px dashed var(--border-primary);
+  border-radius: 6px;
+}
+
+/* Alert Variations in List */
+.alert-variations-list {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+}
+
+.variations-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.random-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.random-toggle input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.variations-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.variation-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.variation-item:hover {
+  border-color: var(--border-secondary);
+  background: var(--hover-bg);
+}
+
+.variation-item.enabled {
+  border-color: var(--accent-color);
+  background: rgba(0, 122, 204, 0.05);
+}
+
+.variation-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  cursor: pointer;
+}
+
+.variation-toggle input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.variation-text {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.variation-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.variation-btn {
+  padding: 2px 6px;
+  border: none;
+  border-radius: 3px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.variation-btn.test {
+  background: #27ae60;
+  color: white;
+}
+
+.variation-btn.test:hover {
+  background: #229954;
+}
+
+.variation-btn.delete {
+  background: #e74c3c;
+  color: white;
+}
+
+.variation-btn.delete:hover {
+  background: #c0392b;
+}
+
+/* Alert Group Styling */
+.alert-group {
+  margin-bottom: 20px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.alert-group-header {
+  padding: 12px 16px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.alert-group-header .alert-item-type {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
 }
 
 /* Custom Notification System */

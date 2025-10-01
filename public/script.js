@@ -4470,6 +4470,81 @@ function setupOverlayWidget() {
   }
 }
 
+
+
+
+
+// Setup alert widget tabs
+function setupAlertTabs() {
+  const tabs = document.querySelectorAll('.alert-tab');
+  const tabContents = document.querySelectorAll('.alert-tab-content');
+  
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const targetTab = tab.getAttribute('data-tab');
+      
+      // Remove active class from all tabs and contents
+      tabs.forEach(t => t.classList.remove('active'));
+      tabContents.forEach(content => content.classList.remove('active'));
+      
+      // Add active class to clicked tab and corresponding content
+      tab.classList.add('active');
+      const targetContent = document.getElementById(`${targetTab}-tab`);
+      if (targetContent) {
+        targetContent.classList.add('active');
+      }
+      
+      console.log(`Switched to ${targetTab} tab`);
+    });
+  });
+}
+
+// Setup alert type filter to show only alerts for selected type
+function setupAlertTypeFilter() {
+  const alertTypeSelect = document.getElementById('alert-type');
+  const selectedAlertTypeName = document.getElementById('selected-alert-type-name');
+  
+  if (alertTypeSelect && selectedAlertTypeName) {
+    // Update alert type name and filter alerts when selection changes
+    alertTypeSelect.addEventListener('change', () => {
+      const selectedType = alertTypeSelect.value;
+      const typeNames = {
+        'follower': 'Follower',
+        'subscriber': 'Subscriber', 
+        'resubscriber': 'Resubscriber',
+        'gift-sub': 'Gift Sub',
+        'gift-sub-received': 'Gift Received',
+        'raid': 'Raid',
+        'bits': 'Bits',
+        'host': 'Host',
+        'unhost': 'Unhost',
+        'channel-points': 'Channel Points'
+      };
+      
+      selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
+      updateAlertList();
+    });
+    
+    // Initial update
+    const selectedType = alertTypeSelect.value;
+    const typeNames = {
+      'follower': 'Follower',
+      'subscriber': 'Subscriber', 
+      'resubscriber': 'Resubscriber',
+      'gift-sub': 'Gift Sub',
+      'gift-sub-received': 'Gift Received',
+      'raid': 'Raid',
+      'bits': 'Bits',
+      'host': 'Host',
+      'unhost': 'Unhost',
+      'channel-points': 'Channel Points'
+    };
+    selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
+  }
+}
+
+
+
 // Alert Widget setup
 function setupAlertWidget() {
   console.log('🔧 Setting up alert widget');
@@ -4479,13 +4554,15 @@ function setupAlertWidget() {
   const alertTypeSelect = document.getElementById('alert-type');
   const alertTextInput = document.getElementById('alert-text');
   const alertDurationInput = document.getElementById('alert-duration');
+  const alertBitsThresholdInput = document.getElementById('alert-bits-threshold');
+  const bitsThresholdGroup = document.getElementById('bits-threshold-group');
   const alertSoundInput = document.getElementById('alert-sound');
   const alertImageInput = document.getElementById('alert-image');
   const saveAlertBtn = document.getElementById('save-alert');
-  const testAlertBtn = document.getElementById('test-alert');
   const clearAlertsBtn = document.getElementById('clear-alerts');
   const alertPreviewArea = document.getElementById('alert-preview-area');
   const alertListContainer = document.getElementById('alert-list-container');
+  
   
   // Queue control elements
   const clearQueueBtn = document.getElementById('clear-queue');
@@ -4495,8 +4572,10 @@ function setupAlertWidget() {
   const queueInfo = document.getElementById('queue-info');
   
   
+  
   // Alert storage
   let savedAlerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  
   
   // Helper function to convert file to base64
   function fileToBase64(file) {
@@ -4537,12 +4616,63 @@ function setupAlertWidget() {
     });
   }
   
+  // Alert management functions for grouped approach
+  function toggleAlert(alertId, enabled) {
+    const alert = savedAlerts.find(a => a.id === alertId);
+    if (alert) {
+      alert.enabled = enabled;
+      localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+      updateAlertList();
+      console.log('Toggled alert:', alertId, 'enabled:', enabled);
+    }
+  }
+  
+  function toggleRandomModeForType(alertType, randomMode) {
+    // Update random mode for all alerts of this type
+    savedAlerts.forEach(alert => {
+      if (alert.type === alertType) {
+        alert.randomMode = randomMode;
+      }
+    });
+    
+    localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+    updateAlertList();
+    console.log('Toggled random mode for type:', alertType, 'random:', randomMode);
+  }
+  
   // Close widget
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
       hideAlertWidget();
     });
   }
+  
+  // Show/hide bits threshold based on alert type
+  if (alertTypeSelect && bitsThresholdGroup) {
+    alertTypeSelect.addEventListener('change', () => {
+      if (alertTypeSelect.value === 'bits') {
+        bitsThresholdGroup.style.display = 'block';
+      } else {
+        bitsThresholdGroup.style.display = 'none';
+      }
+    });
+    
+    // Trigger initial check
+    if (alertTypeSelect.value === 'bits') {
+      bitsThresholdGroup.style.display = 'block';
+    }
+  }
+  
+  // Make alert functions globally accessible
+  window.toggleAlert = toggleAlert;
+  window.toggleRandomModeForType = toggleRandomModeForType;
+  
+  
+  // Setup alert widget tabs
+  setupAlertTabs();
+  
+  // Setup alert type change handler to filter saved alerts
+  setupAlertTypeFilter();
   
   // Close widget when clicking on backdrop
   const alertBackdrop = document.querySelector('.alert-widget-backdrop');
@@ -4737,6 +4867,7 @@ function setupAlertWidget() {
         type: type,
         text: text,
         duration: duration,
+        bitsThreshold: type === 'bits' ? (parseInt(alertBitsThresholdInput.value) || 10) : null,
         soundFile: soundFilePath ? {
           name: soundFile.name,
           size: soundFile.size,
@@ -4749,6 +4880,8 @@ function setupAlertWidget() {
           type: imageFile.type,
           path: imageFilePath // Store file path instead of base64
         } : null,
+        variations: [],
+        randomMode: false,
         createdAt: new Date().toISOString()
       };
       
@@ -4765,62 +4898,6 @@ function setupAlertWidget() {
     });
   }
   
-  // Test alert
-  if (testAlertBtn) {
-    testAlertBtn.addEventListener('click', async () => {
-      const type = alertTypeSelect.value;
-      const text = alertTextInput.value.trim();
-      let duration = parseInt(alertDurationInput.value) || 5;
-      const soundFile = alertSoundInput.files[0];
-      const imageFile = alertImageInput.files[0];
-      
-      if (!text) {
-        alert('Please enter alert text');
-        return;
-      }
-      
-      // Auto-detect duration from media files for test
-      const soundDuration = await getMediaDuration(soundFile);
-      const imageDuration = await getMediaDuration(imageFile);
-      
-      // Use the longer duration if media is present
-      if (soundDuration || imageDuration) {
-        const mediaDuration = Math.max(soundDuration || 0, imageDuration || 0);
-        if (mediaDuration > duration) {
-          duration = mediaDuration;
-          alertDurationInput.value = duration;
-          console.log(`🎵 Auto-set test duration to ${duration}s based on media length`);
-        }
-      }
-      
-      // Create test alert data
-      const testAlertData = {
-        type: type,
-        text: text,
-        duration: duration,
-        soundFile: soundFile,
-        imageFile: imageFile,
-        isTest: true
-      };
-      
-      // Create sample user data for testing
-      const sampleUserData = {
-        username: 'TestUser123',
-        display_name: 'TestUser123',
-        user_name: 'TestUser123',
-        tier: 'Tier 1',
-        viewers: '25',
-        bits: '100',
-        months: '3',
-        message: 'Thanks for the follow!',
-        reward: 'Test Reward'
-      };
-      
-      // Add to queue instead of triggering immediately
-      alertQueue.addToQueue(testAlertData, sampleUserData);
-      console.log('Testing alert with sample data (added to queue):', testAlertData);
-    });
-  }
   
   // Clear all alerts
   if (clearAlertsBtn) {
@@ -4843,34 +4920,99 @@ function setupAlertWidget() {
     updatePreview();
   }
   
-  // Update alert list display
+  // Get display name for alert type
+  function getAlertTypeDisplayName(alertType) {
+    const typeNames = {
+      'follower': 'Follower',
+      'subscriber': 'Subscriber', 
+      'resubscriber': 'Resubscriber',
+      'gift-sub': 'Gift Sub',
+      'gift-sub-received': 'Gift Received',
+      'raid': 'Raid',
+      'bits': 'Bits',
+      'host': 'Host',
+      'unhost': 'Unhost',
+      'channel-points': 'Channel Points'
+    };
+    return typeNames[alertType] || alertType;
+  }
+
+  // Update alert list display - filtered by selected alert type
   function updateAlertList() {
     if (!alertListContainer) return;
     
-    if (savedAlerts.length === 0) {
-      alertListContainer.innerHTML = '<div class="no-alerts">No alerts configured yet</div>';
+    // Get the currently selected alert type
+    const alertTypeSelect = document.getElementById('alert-type');
+    const selectedType = alertTypeSelect ? alertTypeSelect.value : 'follower';
+    
+    // Filter alerts by selected type
+    const filteredAlerts = savedAlerts.filter(alert => alert.type === selectedType);
+    
+    if (filteredAlerts.length === 0) {
+      alertListContainer.innerHTML = `
+        <div class="no-alerts">
+          <div style="margin-bottom: 15px;">No ${selectedType} alerts configured yet</div>
+          <div style="color: var(--text-secondary); font-size: 14px;">
+            Create a new ${selectedType} alert using the form on the left.
+          </div>
+        </div>
+      `;
       return;
     }
     
-    alertListContainer.innerHTML = savedAlerts.map(alert => `
-      <div class="alert-item" data-alert-id="${alert.id}">
-        <div class="alert-item-info">
-          <div class="alert-item-type">${getAlertTypeDisplayName(alert.type)}</div>
-          <div class="alert-item-text">${alert.text}</div>
+    // Render filtered alerts for the selected type
+    const firstAlert = filteredAlerts[0];
+    const thresholdInfo = selectedType === 'bits' && firstAlert.bitsThreshold 
+      ? `<div class="alert-item-threshold" style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px;">Min bits: ${firstAlert.bitsThreshold}</div>`
+      : '';
+    
+    // Create variations list from all alerts of this type
+    const variationsHtml = `
+      <div class="alert-variations-list">
+        <div class="variations-header">
+          <span>Variations (${filteredAlerts.length}):</span>
+          <label class="random-toggle">
+            <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
+                   onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
+            Random
+          </label>
         </div>
-        <div class="alert-item-actions">
-          <button class="alert-item-btn test" onclick="testSavedAlert('${alert.id}')">Test</button>
-          <button class="alert-item-btn delete" onclick="deleteAlert('${alert.id}')">Delete</button>
+        <div class="variations-items">
+          ${filteredAlerts.map((alert, index) => `
+            <div class="variation-item ${alert.enabled !== false ? 'enabled' : ''}">
+              <label class="variation-toggle">
+                <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
+                       onchange="toggleAlert('${alert.id}', this.checked)" />
+                <span class="variation-text">${alert.text}</span>
+              </label>
+              <div class="variation-actions">
+                <button class="variation-btn test" onclick="testSavedAlert('${alert.id}')">Test</button>
+                <button class="variation-btn delete" onclick="deleteAlert('${alert.id}')">Delete</button>
+              </div>
+            </div>
+          `).join('')}
         </div>
       </div>
-    `).join('');
+    `;
+    
+    alertListContainer.innerHTML = `
+      <div class="alert-group" data-alert-type="${selectedType}">
+        <div class="alert-group-header">
+          <div class="alert-item-type">${getAlertTypeDisplayName(selectedType)}</div>
+          ${thresholdInfo}
+        </div>
+        ${variationsHtml}
+      </div>
+      `;
   }
   
   // Test saved alert
   window.testSavedAlert = function(alertId) {
     const alert = savedAlerts.find(a => a.id === alertId);
     if (alert) {
-      // Create sample user data for testing
+      console.log('🎭 Testing specific saved alert:', alertId, alert);
+      
+      // Create sample user data for the alert
       const sampleUserData = {
         username: 'TestUser123',
         display_name: 'TestUser123',
@@ -4883,11 +5025,18 @@ function setupAlertWidget() {
         reward: 'Test Reward'
       };
       
-      // Add to queue instead of triggering immediately
-      alertQueue.addToQueue(alert, sampleUserData);
-      console.log('Testing saved alert with sample data (added to queue):', alert);
+      // Directly trigger this specific alert - bypass the overlay event system
+      if (window.alertQueue) {
+        console.log('🎭 Adding specific alert to queue:', alert);
+        window.alertQueue.addToQueue(alert, sampleUserData);
+      } else {
+        console.error('Alert queue not available');
+      }
+    } else {
+      console.error('Alert not found:', alertId);
     }
   };
+  
   
   // Delete alert
   window.deleteAlert = function(alertId) {
@@ -5152,7 +5301,7 @@ let alertQueue = {
             alt: 'Alert Image'
           });
         } else if (alertData.imageFile.path) {
-          // This is a saved alert with file path - load from disk
+          // This is a saved alert with file path - load from disk like multi-media buttons
           console.log('🖼️ Loading alert image from disk:', alertData.imageFile.path);
           try {
             if (window.electronAPI && window.electronAPI.getMediaFile) {
@@ -5162,7 +5311,7 @@ let alertQueue = {
                 console.log(`✅ Alert image loaded: ${alertData.imageFile.path} (${sizeKB} KB)`);
                 payload.centerMedia.push({
                   type: 'image',
-                  src: result.data,
+                  src: result.data, // Send base64 data URI like multi-media buttons
                   alt: 'Alert Image'
                 });
               } else {
@@ -5174,10 +5323,10 @@ let alertQueue = {
           }
         } else if (alertData.imageFile.data) {
           // Legacy: saved alert with base64 data (backwards compatibility)
-          console.log('🖼️ Using base64 data for saved alert (legacy)');
+          console.log('🖼️ Using legacy base64 data for alert');
           payload.centerMedia.push({
             type: 'image',
-            src: alertData.imageFile.data,
+            src: alertData.imageFile.data, // Use base64 data directly
             alt: 'Alert Image'
           });
         } else {
@@ -5185,7 +5334,17 @@ let alertQueue = {
         }
       }
       
-      console.log('📤 Sending overlay message with payload:', payload);
+      // Log payload summary instead of full object to avoid base64 spam
+      const payloadSummary = {
+        type: payload.type,
+        options: payload.options,
+        slots: payload.slots ? Object.keys(payload.slots) : 'none',
+        centerMedia: payload.centerMedia ? payload.centerMedia.map(item => ({
+          type: item.type,
+          src: item.src ? (item.src.startsWith('data:') ? 'data:...' : item.src) : 'none'
+        })) : 'none'
+      };
+      console.log('📤 Sending overlay message with payload:', payloadSummary);
       window.electronAPI.sendOverlayMessage(payload);
       
       // Play sound if present - store reference for hard stop
@@ -5193,10 +5352,10 @@ let alertQueue = {
         if (alertData.soundFile instanceof File) {
           // Fresh file upload
           this.currentAudio = new Audio(URL.createObjectURL(alertData.soundFile));
-          this.currentAudio.volume = 0.7;
+          this.currentAudio.volume = 1.0;
           this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
         } else if (alertData.soundFile.path) {
-          // Saved alert with file path - load from disk
+          // Saved alert with file path - load from disk for audio playback
           console.log('🎵 Loading alert sound from disk:', alertData.soundFile.path);
           try {
             if (window.electronAPI && window.electronAPI.getMediaFile) {
@@ -5205,7 +5364,7 @@ let alertQueue = {
                 const sizeKB = (result.data.length / 1024).toFixed(2);
                 console.log(`✅ Alert sound loaded: ${alertData.soundFile.path} (${sizeKB} KB)`);
                 this.currentAudio = new Audio(result.data);
-                this.currentAudio.volume = 0.7;
+                this.currentAudio.volume = 1.0;
                 this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
               } else {
                 console.error('Failed to load alert sound:', result.error);
@@ -5216,9 +5375,9 @@ let alertQueue = {
           }
         } else if (alertData.soundFile.data) {
           // Legacy: saved alert with base64 data (backwards compatibility)
-          console.log('🎵 Using base64 data for alert sound (legacy)');
+          console.log('🎵 Using legacy base64 data for alert sound');
           this.currentAudio = new Audio(alertData.soundFile.data);
-          this.currentAudio.volume = 0.7;
+          this.currentAudio.volume = 1.0;
           this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
         }
       }
@@ -5228,22 +5387,185 @@ let alertQueue = {
   }
 };
 
+// Function to create realistic fake Twitch events for testing
+function createFakeTwitchEvent(alertType) {
+  const baseUserData = {
+    user_id: '123456789',
+    user_login: 'testuser123',
+    user_name: 'TestUser123',
+    display_name: 'TestUser123',
+    broadcaster_user_id: '987654321',
+    broadcaster_user_login: 'yourchannel',
+    broadcaster_user_name: 'YourChannel'
+  };
+  
+  const eventTypes = {
+    'follower': {
+      type: 'channel.follow',
+      event: {
+        ...baseUserData,
+        followed_at: new Date().toISOString()
+      }
+    },
+    'subscriber': {
+      type: 'channel.subscribe',
+      event: {
+        ...baseUserData,
+        tier: '1000',
+        is_gift: false,
+        cumulative_months: 3,
+        streak_months: 1,
+        duration_months: 1,
+        message: {
+          text: 'Thanks for subscribing!',
+          emotes: []
+        }
+      }
+    },
+    'raid': {
+      type: 'channel.raid',
+      event: {
+        ...baseUserData,
+        viewers: 25
+      }
+    },
+    'bits': {
+      type: 'channel.cheer',
+      event: {
+        ...baseUserData,
+        bits: 100,
+        message: 'Thanks for the bits!',
+        is_anonymous: false
+      }
+    },
+    'gift-sub': {
+      type: 'channel.subscribe',
+      event: {
+        ...baseUserData,
+        tier: '1000',
+        is_gift: true,
+        cumulative_months: 1,
+        streak_months: 1,
+        duration_months: 1,
+        message: {
+          text: 'Thanks for the gift sub!',
+          emotes: []
+        }
+      }
+    },
+    'resubscriber': {
+      type: 'channel.subscribe',
+      event: {
+        ...baseUserData,
+        tier: '1000',
+        is_gift: false,
+        cumulative_months: 6,
+        streak_months: 3,
+        duration_months: 1,
+        message: {
+          text: 'Thanks for resubscribing!',
+          emotes: []
+        }
+      }
+    },
+    'gift-sub-received': {
+      type: 'channel.subscribe',
+      event: {
+        ...baseUserData,
+        tier: '1000',
+        is_gift: true,
+        cumulative_months: 1,
+        streak_months: 1,
+        duration_months: 1,
+        message: {
+          text: 'Thanks for the gift!',
+          emotes: []
+        }
+      }
+    },
+    'host': {
+      type: 'channel.host',
+      event: {
+        ...baseUserData,
+        viewers: 15,
+        hosted_at: new Date().toISOString()
+      }
+    },
+    'unhost': {
+      type: 'channel.unhost',
+      event: {
+        ...baseUserData,
+        viewers: 0
+      }
+    },
+    'channel-points': {
+      type: 'channel.channel_points_custom_reward_redemption.add',
+      event: {
+        ...baseUserData,
+        reward: {
+          id: 'test-reward-id',
+          title: 'Test Reward',
+          cost: 100
+        },
+        user_input: 'Test message',
+        redeemed_at: new Date().toISOString()
+      }
+    }
+  };
+  
+  return eventTypes[alertType] || eventTypes['follower'];
+}
+
 // Alert system for Twitch events
 let alertSystem = {
   alerts: JSON.parse(localStorage.getItem('twitchAlerts') || '[]'),
   
   // Trigger alert for specific event type
   triggerAlertForEvent(eventType, userData) {
-    const alert = this.alerts.find(a => a.type === eventType);
-    if (alert) {
-      console.log(`🎯 Triggering alert for ${eventType}:`, userData);
-      console.log(`🎯 Alert text before processing:`, alert.text);
-      
-      // Add to queue instead of triggering immediately
-      alertQueue.addToQueue(alert, userData);
-    } else {
-      console.log(`⚠️ No alert found for event type: ${eventType}`);
+    const alertsOfType = this.alerts.filter(a => a.type === eventType);
+    if (alertsOfType.length === 0) {
+      console.log(`⚠️ No alerts found for event type: ${eventType}`);
+      return;
     }
+    
+    // Get enabled alerts
+    const enabledAlerts = alertsOfType.filter(a => a.enabled !== false);
+    if (enabledAlerts.length === 0) {
+      console.log(`⚠️ No enabled alerts found for event type: ${eventType}`);
+      return;
+    }
+    
+    // Check bits threshold for bits alerts
+    if (eventType === 'bits' && enabledAlerts[0].bitsThreshold) {
+      const bitsAmount = parseInt(userData.bits) || 0;
+      const threshold = parseInt(enabledAlerts[0].bitsThreshold) || 0;
+      
+      if (bitsAmount < threshold) {
+        console.log(`⚠️ Bits amount (${bitsAmount}) below threshold (${threshold}), skipping alert`);
+        return;
+      }
+      
+      console.log(`✅ Bits amount (${bitsAmount}) meets threshold (${threshold})`);
+    }
+    
+    // Select alert to trigger
+    let alertToTrigger;
+    if (enabledAlerts[0].randomMode) {
+      // Random selection from enabled alerts
+      const randomIndex = Math.floor(Math.random() * enabledAlerts.length);
+      alertToTrigger = enabledAlerts[randomIndex];
+      console.log(`🎲 Randomly selected alert ${randomIndex + 1}/${enabledAlerts.length}`);
+    } else {
+      // Use first enabled alert
+      alertToTrigger = enabledAlerts[0];
+      console.log(`📝 Using first enabled alert`);
+    }
+    
+    console.log(`🎯 Triggering alert for ${eventType}:`, userData);
+    console.log(`🎯 Alert text before processing:`, alertToTrigger.text);
+    
+    // Add to queue instead of triggering immediately
+    alertQueue.addToQueue(alertToTrigger, userData);
   },
   
   // Update alerts from storage
@@ -5252,6 +5574,9 @@ let alertSystem = {
   }
 };
 
+
+// Expose alertQueue to global scope
+window.alertQueue = alertQueue;
 
 // Global queue control functions for testing
 window.clearAlertQueue = () => alertQueue.clearQueue();
