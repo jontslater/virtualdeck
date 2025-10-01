@@ -638,7 +638,40 @@ class AddEditButtonForm {
       });
     };
 
-    // Process center media - convert File objects to base64
+    // Helper function to save media file and get path
+    const saveMediaFile = async (file, mediaType, buttonId) => {
+      if (!window.electronAPI || !window.electronAPI.saveMediaFile) {
+        console.warn('saveMediaFile API not available, falling back to base64');
+        return await fileToBase64(file);
+      }
+
+      try {
+        const base64Data = await fileToBase64(file);
+        const result = await window.electronAPI.saveMediaFile({
+          base64Data: base64Data,
+          buttonId: buttonId,
+          mediaType: mediaType,
+          originalName: file.name
+        });
+
+        if (result.success) {
+          console.log(`Media file saved to: ${result.filePath}`);
+          return result.filePath; // Return relative path
+        } else {
+          console.error('Failed to save media file:', result.error);
+          return base64Data; // Fallback to base64
+        }
+      } catch (error) {
+        console.error('Error saving media file:', error);
+        const base64Data = await fileToBase64(file);
+        return base64Data; // Fallback to base64
+      }
+    };
+
+    // Generate button ID for media storage
+    const buttonId = this.editingId || `multi-media-${Date.now()}`;
+
+    // Process center media - save File objects to disk
     const centerMedia = [];
     
     // Process images
@@ -646,8 +679,8 @@ class AddEditButtonForm {
       if (item.src) {
         let src = item.src;
         if (item.src instanceof File) {
-          // Convert File to base64
-          src = await fileToBase64(item.src);
+          // Save file to media folder
+          src = await saveMediaFile(item.src, 'image', buttonId);
         }
         centerMedia.push({
           id: `m${index + 1}`,
@@ -666,8 +699,8 @@ class AddEditButtonForm {
       if (item.src) {
         let src = item.src;
         if (item.src instanceof File) {
-          // Convert File to base64
-          src = await fileToBase64(item.src);
+          // Save file to media folder
+          src = await saveMediaFile(item.src, 'video', buttonId);
         }
         centerMedia.push({
           id: `v${index + 1}`,
@@ -691,8 +724,8 @@ class AddEditButtonForm {
       audio: await Promise.all(this.audio.filter(item => item.src).map(async (item, index) => {
         let src = item.src;
         if (item.src instanceof File) {
-          // Convert File to base64
-          src = await fileToBase64(item.src);
+          // Save file to media folder
+          src = await saveMediaFile(item.src, 'audio', buttonId);
         }
         return {
           id: `a${index + 1}`,

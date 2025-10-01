@@ -374,6 +374,9 @@
             if (payload.centerMedia && Array.isArray(payload.centerMedia)) {
                 updateCenterMedia(payload.centerMedia);
             }
+            
+            // Set up reset timer for the entire button trigger
+            setupResetTimer(payload);
         }
         
         // Update center media with multiple items
@@ -409,7 +412,14 @@
                     img.style.display = 'block';
                     centerMedia.appendChild(img);
                     
-                    console.log(`Added image: ${item.src}`);
+                    // Log image info without full base64
+                    const srcType = item.src.startsWith('data:') ? 'base64' : 
+                                   item.src.startsWith('blob:') ? 'blob' : 
+                                   item.src.startsWith('http') ? 'url' : 'path';
+                    const srcPreview = srcType === 'base64' ? 
+                                      `${item.src.substring(0, 30)}... (${(item.src.length / 1024).toFixed(2)} KB)` : 
+                                      item.src;
+                    console.log(`Added image [${srcType}]: ${srcPreview}`);
                     
                         } else if (item.type === 'video') {
                             const video = document.createElement('video');
@@ -490,10 +500,7 @@
                 }, 500);
             }, 50);
             
-            // Set up reset timer
-            setupResetTimer(payload);
-            
-            console.log('🎯 Button trigger processing completed');
+            console.log('🎯 Center media update completed');
         }
         
         // Set up reset timer based on payload options or default
