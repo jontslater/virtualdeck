@@ -437,6 +437,107 @@ ipcMain.handle('save-config', async (event, config) => {
   }
 });
 
+// Create media storage directory for multi-media button assets
+const mediaStoragePath = path.join(userDataPath, 'media');
+if (!fs.existsSync(mediaStoragePath)) {
+  fs.mkdirSync(mediaStoragePath, { recursive: true });
+}
+
+// IPC handler to save media file from base64 data
+ipcMain.handle('save-media-file', async (event, { base64Data, buttonId, mediaType, originalName }) => {
+  try {
+    // Create button-specific directory
+    const buttonMediaDir = path.join(mediaStoragePath, buttonId);
+    if (!fs.existsSync(buttonMediaDir)) {
+      fs.mkdirSync(buttonMediaDir, { recursive: true });
+    }
+
+    // Extract extension from original name or base64 mime type
+    let extension = '';
+    if (originalName) {
+      extension = path.extname(originalName);
+    } else {
+      // Extract from base64 data URI
+      const match = base64Data.match(/^data:([^;]+);/);
+      if (match) {
+        const mimeType = match[1];
+        const mimeToExt = {
+          'image/jpeg': '.jpg',
+          'image/jpg': '.jpg',
+          'image/png': '.png',
+          'image/gif': '.gif',
+          'image/webp': '.webp',
+          'video/mp4': '.mp4',
+          'video/webm': '.webm',
+          'audio/mpeg': '.mp3',
+          'audio/mp3': '.mp3',
+          'audio/wav': '.wav',
+          'audio/ogg': '.ogg'
+        };
+        extension = mimeToExt[mimeType] || '';
+      }
+    }
+
+    // Generate unique filename
+    const timestamp = Date.now();
+    const filename = `${mediaType}_${timestamp}${extension}`;
+    const filePath = path.join(buttonMediaDir, filename);
+
+    // Remove base64 prefix if present
+    const base64String = base64Data.replace(/^data:[^;]+;base64,/, '');
+    
+    // Write file
+    fs.writeFileSync(filePath, Buffer.from(base64String, 'base64'));
+    
+    console.log('Media file saved:', filePath);
+    
+    // Return relative path from userDataPath for storage in config
+    const relativePath = path.relative(userDataPath, filePath);
+    return { success: true, filePath: relativePath };
+  } catch (error) {
+    console.error('Error saving media file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC handler to get media file as base64 (for serving to overlay)
+ipcMain.handle('get-media-file', async (event, relativePath) => {
+  try {
+    const fullPath = path.join(userDataPath, relativePath);
+    if (!fs.existsSync(fullPath)) {
+      return { success: false, error: 'File not found' };
+    }
+
+    const fileBuffer = fs.readFileSync(fullPath);
+    const base64Data = fileBuffer.toString('base64');
+    
+    // Detect mime type from extension
+    const ext = path.extname(fullPath).toLowerCase();
+    const extToMime = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.mp4': 'video/mp4',
+      '.webm': 'video/webm',
+      '.mp3': 'audio/mpeg',
+      '.wav': 'audio/wav',
+      '.ogg': 'audio/ogg'
+    };
+    const mimeType = extToMime[ext] || 'application/octet-stream';
+    
+    return { 
+      success: true, 
+      data: `data:${mimeType};base64,${base64Data}`,
+      mimeType: mimeType
+    };
+  } catch (error) {
+    console.error('Error reading media file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 
 // IPC handler to update config
 ipcMain.handle('update-config', async (event, configUpdate) => {

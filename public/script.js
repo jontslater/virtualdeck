@@ -2396,34 +2396,60 @@ async function handleMultiMediaTrigger(button) {
   if (Array.isArray(audioData)) {
     for (const audioEntry of audioData) {
       if (audioEntry.src) {
-        try {
-          // Use cached audio or create new one
-          let audio = audioCache.get(audioEntry.src);
-          if (!audio) {
-            audio = new Audio(audioEntry.src);
-            audioCache.set(audioEntry.src, audio);
+        // Create async function to load and play audio
+        const playAudio = (async () => {
+          try {
+            let audioSrc = audioEntry.src;
+            
+            // Load audio from disk if it's a file path
+            if (typeof audioSrc === 'string' && 
+                !audioSrc.startsWith('data:') && 
+                !audioSrc.startsWith('blob:') && 
+                !audioSrc.startsWith('http')) {
+              console.log('🎵 Loading audio file from disk:', audioSrc);
+              try {
+                if (window.electronAPI && window.electronAPI.getMediaFile) {
+                  const result = await window.electronAPI.getMediaFile(audioSrc);
+                  if (result.success) {
+                    const sizeKB = (result.data.length / 1024).toFixed(2);
+                    console.log(`✅ Audio file loaded: ${audioSrc} (${sizeKB} KB)`);
+                    audioSrc = result.data; // Use base64 data URI
+                  } else {
+                    console.error('Failed to load audio file:', result.error);
+                  }
+                }
+              } catch (error) {
+                console.error('Error loading audio file:', error);
+              }
+            }
+            
+            // Use cached audio or create new one
+            let audio = audioCache.get(audioSrc);
+            if (!audio) {
+              audio = new Audio(audioSrc);
+              audioCache.set(audioSrc, audio);
+            }
+            
+            // Reset and configure audio
+            audio.currentTime = 0;
+            audio.volume = audioEntry.volume || 1.0; // Volume is already 0-1 in new schema
+            audio.loop = audioEntry.loop || false;
+            
+            // Start playing
+            return audio.play();
+          } catch (error) {
+            console.warn('Failed to play audio:', error);
           }
-          
-          // Reset and configure audio
-          audio.currentTime = 0;
-          audio.volume = audioEntry.volume || 1.0; // Volume is already 0-1 in new schema
-          audio.loop = audioEntry.loop || false;
-          
-          // Start playing immediately
-          const playPromise = audio.play().catch(error => {
-            console.warn('Audio playback failed:', error);
-          });
-          audioPromises.push(playPromise);
-        } catch (error) {
-          console.warn('Failed to create audio element:', error);
-        }
+        })();
+        
+        audioPromises.push(playAudio);
       }
     }
   }
 
   // 2. Send overlay payload - immediately after starting audio
   // Process center media similar to alert system
-  const processedCenterMedia = centerMediaData.map(item => {
+  const processedCenterMedia = await Promise.all(centerMediaData.map(async (item) => {
     if (item.src) {
       // Handle different image source types like alert system
       if (item.src instanceof File) {
@@ -2438,20 +2464,37 @@ async function handleMultiMediaTrigger(button) {
         console.log('🖼️ Using base64/blob data for multi-media');
         return item;
       } else if (typeof item.src === 'string' && !item.src.startsWith('http')) {
-        // File path - convert to HTTP URL
-        console.log('🖼️ Converting file path to HTTP URL for multi-media:', item.src);
-        const encodedPath = encodeURIComponent(item.src);
-        return {
-          ...item,
-          src: `http://localhost:8080/media/${encodedPath}`
-        };
+        // File path (relative to userDataPath) - load from disk
+        console.log('🖼️ Loading media file from disk:', item.src);
+        try {
+          if (window.electronAPI && window.electronAPI.getMediaFile) {
+            const result = await window.electronAPI.getMediaFile(item.src);
+            if (result.success) {
+              const sizeKB = (result.data.length / 1024).toFixed(2);
+              console.log(`✅ Media file loaded: ${item.src} (${sizeKB} KB)`);
+              return {
+                ...item,
+                src: result.data // Base64 data URI
+              };
+            } else {
+              console.error('Failed to load media file:', result.error);
+              return item; // Return as-is, might be URL
+            }
+          } else {
+            console.warn('getMediaFile API not available, using path directly');
+            return item;
+          }
+        } catch (error) {
+          console.error('Error loading media file:', error);
+          return item;
+        }
       } else {
         // Already HTTP URL or other format - use as is
         return item;
       }
     }
     return item;
-  });
+  }));
 
   const overlayPayload = {
     type: 'buttonTrigger',
@@ -2460,7 +2503,16 @@ async function handleMultiMediaTrigger(button) {
     centerMedia: processedCenterMedia
   };
 
-  console.log('Sending overlay payload (working pattern):', overlayPayload);
+  // Log payload summary without full base64 data
+  console.log('📤 Sending overlay payload:', {
+    type: overlayPayload.type,
+    slots: Object.keys(overlayPayload.slots || {}),
+    centerMedia: centerMediaData.map(item => ({
+      type: item.type,
+      src: item.src // Shows file path from config
+    })),
+    options: overlayPayload.options
+  });
 
   // Send to overlay iframe (if exists) - immediately
   const overlayIframe = document.getElementById('overlay-iframe');
@@ -3215,11 +3267,16 @@ window.electronAPI.onTriggerMedia(async (mediaId) => {
   const config = await window.electronAPI.getConfig();
   if (!config || !Array.isArray(config.buttons)) return;
   const button = config.buttons.find(btn => {
-    // Check both name and label for compatibility
+    // Check both name and label for compatibility - use exact match for precision
     const name = btn.name || btn.label || '';
-    return name.toLowerCase().includes(mediaId.toLowerCase());
+    return name.toLowerCase() === mediaId.toLowerCase();
   });
-  if (button) handleTrigger(button);
+  if (button) {
+    console.log('🎯 Triggering mapped button:', button.name || button.label, 'Type:', button.type);
+    handleTrigger(button);
+  } else {
+    console.warn('⚠️ No button found for mapping trigger:', mediaId);
+  }
 });
 
 function handleFileDrop(file) {
@@ -4632,22 +4689,65 @@ function setupAlertWidget() {
         }
       }
       
+      // Generate alert ID for file storage
+      const alertId = `alert-${Date.now()}`;
+      
+      // Save media files to disk instead of base64
+      let soundFilePath = null;
+      let imageFilePath = null;
+      
+      if (soundFile && window.electronAPI && window.electronAPI.saveMediaFile) {
+        try {
+          const base64Data = await fileToBase64(soundFile);
+          const result = await window.electronAPI.saveMediaFile({
+            base64Data: base64Data,
+            buttonId: alertId,
+            mediaType: 'sound',
+            originalName: soundFile.name
+          });
+          if (result.success) {
+            soundFilePath = result.filePath;
+            console.log(`💾 Alert sound saved to: ${soundFilePath}`);
+          }
+        } catch (error) {
+          console.error('Error saving alert sound:', error);
+        }
+      }
+      
+      if (imageFile && window.electronAPI && window.electronAPI.saveMediaFile) {
+        try {
+          const base64Data = await fileToBase64(imageFile);
+          const result = await window.electronAPI.saveMediaFile({
+            base64Data: base64Data,
+            buttonId: alertId,
+            mediaType: 'image',
+            originalName: imageFile.name
+          });
+          if (result.success) {
+            imageFilePath = result.filePath;
+            console.log(`💾 Alert image saved to: ${imageFilePath}`);
+          }
+        } catch (error) {
+          console.error('Error saving alert image:', error);
+        }
+      }
+      
       const alertData = {
-        id: Date.now().toString(),
+        id: alertId,
         type: type,
         text: text,
         duration: duration,
-        soundFile: soundFile ? {
+        soundFile: soundFilePath ? {
           name: soundFile.name,
           size: soundFile.size,
           type: soundFile.type,
-          data: await fileToBase64(soundFile)
+          path: soundFilePath // Store file path instead of base64
         } : null,
-        imageFile: imageFile ? {
+        imageFile: imageFilePath ? {
           name: imageFile.name,
           size: imageFile.size,
           type: imageFile.type,
-          data: await fileToBase64(imageFile)
+          path: imageFilePath // Store file path instead of base64
         } : null,
         createdAt: new Date().toISOString()
       };
@@ -5009,7 +5109,7 @@ let alertQueue = {
   },
   
   // Trigger alert (internal method) - NO auto-clear timeout
-  triggerAlert(alertData, userData) {
+  async triggerAlert(alertData, userData) {
     if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
       // Process text with user data if available
       const processedText = userData ? replacePlaceholders(alertData.text, userData) : alertData.text;
@@ -5051,9 +5151,30 @@ let alertQueue = {
             src: imageUrl,
             alt: 'Alert Image'
           });
-        } else if (alertData.imageFile && alertData.imageFile.data) {
-          // This is a saved alert with base64 data
-          console.log('🖼️ Using base64 data for saved alert');
+        } else if (alertData.imageFile.path) {
+          // This is a saved alert with file path - load from disk
+          console.log('🖼️ Loading alert image from disk:', alertData.imageFile.path);
+          try {
+            if (window.electronAPI && window.electronAPI.getMediaFile) {
+              const result = await window.electronAPI.getMediaFile(alertData.imageFile.path);
+              if (result.success) {
+                const sizeKB = (result.data.length / 1024).toFixed(2);
+                console.log(`✅ Alert image loaded: ${alertData.imageFile.path} (${sizeKB} KB)`);
+                payload.centerMedia.push({
+                  type: 'image',
+                  src: result.data,
+                  alt: 'Alert Image'
+                });
+              } else {
+                console.error('Failed to load alert image:', result.error);
+              }
+            }
+          } catch (error) {
+            console.error('Error loading alert image:', error);
+          }
+        } else if (alertData.imageFile.data) {
+          // Legacy: saved alert with base64 data (backwards compatibility)
+          console.log('🖼️ Using base64 data for saved alert (legacy)');
           payload.centerMedia.push({
             type: 'image',
             src: alertData.imageFile.data,
@@ -5070,10 +5191,32 @@ let alertQueue = {
       // Play sound if present - store reference for hard stop
       if (alertData.soundFile) {
         if (alertData.soundFile instanceof File) {
+          // Fresh file upload
           this.currentAudio = new Audio(URL.createObjectURL(alertData.soundFile));
           this.currentAudio.volume = 0.7;
           this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
-        } else if (alertData.soundFile && alertData.soundFile.data) {
+        } else if (alertData.soundFile.path) {
+          // Saved alert with file path - load from disk
+          console.log('🎵 Loading alert sound from disk:', alertData.soundFile.path);
+          try {
+            if (window.electronAPI && window.electronAPI.getMediaFile) {
+              const result = await window.electronAPI.getMediaFile(alertData.soundFile.path);
+              if (result.success) {
+                const sizeKB = (result.data.length / 1024).toFixed(2);
+                console.log(`✅ Alert sound loaded: ${alertData.soundFile.path} (${sizeKB} KB)`);
+                this.currentAudio = new Audio(result.data);
+                this.currentAudio.volume = 0.7;
+                this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
+              } else {
+                console.error('Failed to load alert sound:', result.error);
+              }
+            }
+          } catch (error) {
+            console.error('Error loading alert sound:', error);
+          }
+        } else if (alertData.soundFile.data) {
+          // Legacy: saved alert with base64 data (backwards compatibility)
+          console.log('🎵 Using base64 data for alert sound (legacy)');
           this.currentAudio = new Audio(alertData.soundFile.data);
           this.currentAudio.volume = 0.7;
           this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
@@ -6019,6 +6162,30 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     } else {
       console.log('❌ No center media found in button');
+    }
+  };
+
+  // Test multi-media button mapping functionality
+  window.testMultiMediaMapping = async () => {
+    console.log('🎯 Testing multi-media button mapping functionality...');
+    
+    const multiMediaButtons = await findMultiMediaButtons();
+    if (multiMediaButtons.length === 0) {
+      console.log('❌ No multi-media buttons found to test mapping');
+      return;
+    }
+
+    const button = multiMediaButtons[0];
+    const buttonName = button.name || button.label || 'Unnamed';
+    console.log('📋 Testing with button:', buttonName);
+    
+    // Test the mapping trigger system
+    console.log('🎯 Simulating mapping trigger for:', buttonName);
+    if (window.electronAPI && window.electronAPI.sendTrigger) {
+      window.electronAPI.sendTrigger(buttonName);
+      console.log('✅ Trigger sent via mapping system');
+    } else {
+      console.log('❌ sendTrigger API not available');
     }
   };
   
