@@ -27,7 +27,7 @@
 
         .text-box {
             position: absolute;
-            background: rgba(0, 0, 0, 0.7);
+            background: transparent;
             color: white;
             padding: 10px;
             border-radius: 8px;
@@ -45,6 +45,15 @@
         }
 
         .text-box:hover {
+            background: rgba(0, 0, 0, 0.9);
+        }
+
+        /* Show background only when text box has content */
+        .text-box:not(:empty) {
+            background: rgba(0, 0, 0, 0.7);
+        }
+
+        .text-box:not(:empty):hover {
             background: rgba(0, 0, 0, 0.9);
         }
 
