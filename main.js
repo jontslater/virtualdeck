@@ -2126,6 +2126,35 @@ ipcMain.on('twitch-fake-event', (event, evt) => {
   }
 });
 
+// IPC handler to send fake Twitch events for testing
+ipcMain.handle('send-fake-twitch-event', async (event, evt) => {
+  console.log('Received fake twitch event via handle:', evt);
+  // Forward to renderer as if it came from twitch
+  if (win && win.webContents) {
+    if (evt.type === 'chat') {
+      win.webContents.send('twitch-chat-event', { 
+        type: 'chat', 
+        user: evt.user, 
+        message: evt.message,
+        badges: evt.badges || {}
+      });
+      // also run command matching logic to trigger media
+      if (evt.message && evt.message.startsWith('!')) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        const commandText = evt.message.split(' ')[0].substring(1).toLowerCase();
+        config.buttons.forEach((btn) => {
+          if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+            win.webContents.send('trigger-media', btn.label);
+          }
+        });
+      }
+    } else {
+      win.webContents.send('twitch-eventsub', { type: evt.type || 'test', event: evt.event || {} });
+    }
+  }
+  return { success: true };
+});
+
 // Allow renderer to request a media trigger by label (used by event->sound mappings)
 ipcMain.on('trigger-media-to-main', (event, label) => {
   try {
