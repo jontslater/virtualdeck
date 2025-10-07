@@ -418,9 +418,12 @@ ipcMain.on('enable-hotkeys', () => {
 // IPC handler to get config
 ipcMain.handle('get-config', async () => {
   try {
-    return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    // Include userDataPath for constructing absolute paths in renderer
+    config.userDataPath = userDataPath;
+    return config;
   } catch (e) {
-    return { buttons: [] };
+    return { buttons: [], userDataPath: userDataPath };
   }
 });
 
@@ -443,7 +446,40 @@ if (!fs.existsSync(mediaStoragePath)) {
   fs.mkdirSync(mediaStoragePath, { recursive: true });
 }
 
-// IPC handler to save media file from base64 data
+// IPC handler to save media file by copying directly from source path (efficient for large files)
+ipcMain.handle('save-media-file-by-path', async (event, { sourcePath, buttonId, mediaType, originalName }) => {
+  try {
+    console.log('Saving media file by path:', { sourcePath, buttonId, mediaType, originalName });
+    
+    // Create button-specific directory
+    const buttonMediaDir = path.join(mediaStoragePath, buttonId);
+    if (!fs.existsSync(buttonMediaDir)) {
+      fs.mkdirSync(buttonMediaDir, { recursive: true });
+    }
+
+    // Extract extension from original name
+    const extension = path.extname(originalName || sourcePath);
+
+    // Generate unique filename
+    const timestamp = Date.now();
+    const filename = `${mediaType}_${timestamp}${extension}`;
+    const destPath = path.join(buttonMediaDir, filename);
+
+    // Copy file directly (much faster for large video files)
+    fse.copySync(sourcePath, destPath);
+    
+    console.log('Media file copied successfully:', destPath);
+    
+    // Return relative path from userDataPath for storage in config
+    const relativePath = path.relative(userDataPath, destPath);
+    return { success: true, filePath: relativePath };
+  } catch (error) {
+    console.error('Error copying media file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC handler to save media file from base64 data (for backwards compatibility and small files)
 ipcMain.handle('save-media-file', async (event, { base64Data, buttonId, mediaType, originalName }) => {
   try {
     // Create button-specific directory
@@ -500,7 +536,24 @@ ipcMain.handle('save-media-file', async (event, { base64Data, buttonId, mediaTyp
   }
 });
 
-// IPC handler to get media file as base64 (for serving to overlay)
+// IPC handler to get absolute path for media file (for HTTP serving)
+ipcMain.handle('get-media-file-path', async (event, relativePath) => {
+  try {
+    const fullPath = path.join(userDataPath, relativePath);
+    if (!fs.existsSync(fullPath)) {
+      return { success: false, error: 'File not found' };
+    }
+    return { 
+      success: true, 
+      absolutePath: fullPath
+    };
+  } catch (error) {
+    console.error('Error getting media file path:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC handler to get media file as base64 (for serving to overlay) - DEPRECATED, use HTTP serving instead
 ipcMain.handle('get-media-file', async (event, relativePath) => {
   try {
     const fullPath = path.join(userDataPath, relativePath);
