@@ -5157,6 +5157,267 @@ function setupAlertWidget() {
   // Update queue status every second
   setInterval(updateQueueStatus, 1000);
   
+  // Test Events functionality
+  const testEventTypeSelect = document.getElementById('test-event-type');
+  const testUsernameInput = document.getElementById('test-username');
+  const testBitsAmountInput = document.getElementById('test-bits-amount');
+  const testViewersCountInput = document.getElementById('test-viewers-count');
+  const testMonthsCountInput = document.getElementById('test-months-count');
+  const testTierSelect = document.getElementById('test-tier-select');
+  const testRewardTitleInput = document.getElementById('test-reward-title');
+  const fireTestEventBtn = document.getElementById('fire-test-event');
+  const testEventStatus = document.getElementById('test-event-status');
+  
+  const testBitsGroup = document.getElementById('test-bits-group');
+  const testViewersGroup = document.getElementById('test-viewers-group');
+  const testMonthsGroup = document.getElementById('test-months-group');
+  const testTierGroup = document.getElementById('test-tier-group');
+  const testRewardGroup = document.getElementById('test-reward-group');
+  
+  // Show/hide test fields based on event type
+  if (testEventTypeSelect) {
+    testEventTypeSelect.addEventListener('change', () => {
+      const eventType = testEventTypeSelect.value;
+      
+      // Hide all conditional fields first
+      if (testBitsGroup) testBitsGroup.style.display = 'none';
+      if (testViewersGroup) testViewersGroup.style.display = 'none';
+      if (testMonthsGroup) testMonthsGroup.style.display = 'none';
+      if (testTierGroup) testTierGroup.style.display = 'none';
+      if (testRewardGroup) testRewardGroup.style.display = 'none';
+      
+      // Show relevant fields based on event type
+      switch (eventType) {
+        case 'bits':
+          if (testBitsGroup) testBitsGroup.style.display = 'block';
+          break;
+        case 'raid':
+        case 'host':
+          if (testViewersGroup) testViewersGroup.style.display = 'block';
+          break;
+        case 'resubscriber':
+          if (testMonthsGroup) testMonthsGroup.style.display = 'block';
+          if (testTierGroup) testTierGroup.style.display = 'block';
+          break;
+        case 'subscriber':
+        case 'gift-sub':
+        case 'gift-sub-received':
+          if (testTierGroup) testTierGroup.style.display = 'block';
+          break;
+        case 'channel-points':
+          if (testRewardGroup) testRewardGroup.style.display = 'block';
+          break;
+      }
+    });
+  }
+  
+  // Fire test event
+  if (fireTestEventBtn) {
+    fireTestEventBtn.addEventListener('click', () => {
+      const eventType = testEventTypeSelect.value;
+      const username = testUsernameInput.value.trim() || 'TestUser123';
+      
+      // Build base user data
+      const baseUserData = {
+        user_id: '123456789',
+        user_login: username.toLowerCase(),
+        user_name: username,
+        display_name: username,
+        broadcaster_user_id: '987654321',
+        broadcaster_user_login: 'yourchannel',
+        broadcaster_user_name: 'YourChannel'
+      };
+      
+      // Create proper Twitch EventSub-style event object
+      let twitchEvent = null;
+      
+      switch (eventType) {
+        case 'follower':
+          twitchEvent = {
+            type: 'channel.follow',
+            event: {
+              ...baseUserData,
+              followed_at: new Date().toISOString()
+            }
+          };
+          break;
+          
+        case 'subscriber':
+          twitchEvent = {
+            type: 'channel.subscribe',
+            event: {
+              ...baseUserData,
+              tier: testTierSelect.value,
+              is_gift: false,
+              cumulative_months: 1,
+              streak_months: 1,
+              duration_months: 1
+            }
+          };
+          break;
+          
+        case 'resubscriber':
+          twitchEvent = {
+            type: 'channel.subscribe',
+            event: {
+              ...baseUserData,
+              tier: testTierSelect.value,
+              is_gift: false,
+              cumulative_months: parseInt(testMonthsCountInput.value) || 6,
+              streak_months: 3,
+              duration_months: 1
+            }
+          };
+          break;
+          
+        case 'gift-sub':
+          twitchEvent = {
+            type: 'channel.subscribe',
+            event: {
+              ...baseUserData,
+              tier: testTierSelect.value,
+              is_gift: true,
+              cumulative_months: 1,
+              streak_months: 1,
+              duration_months: 1
+            }
+          };
+          break;
+          
+        case 'gift-sub-received':
+          twitchEvent = {
+            type: 'channel.subscribe',
+            event: {
+              ...baseUserData,
+              tier: testTierSelect.value,
+              is_gift: true,
+              cumulative_months: 1,
+              streak_months: 1,
+              duration_months: 1,
+              user_id: baseUserData.broadcaster_user_id // Mark as received by broadcaster
+            }
+          };
+          break;
+          
+        case 'raid':
+          twitchEvent = {
+            type: 'channel.raid',
+            event: {
+              from_broadcaster_user_id: baseUserData.user_id,
+              from_broadcaster_user_login: baseUserData.user_login,
+              from_broadcaster_user_name: baseUserData.user_name,
+              to_broadcaster_user_id: baseUserData.broadcaster_user_id,
+              to_broadcaster_user_login: baseUserData.broadcaster_user_login,
+              to_broadcaster_user_name: baseUserData.broadcaster_user_name,
+              viewers: parseInt(testViewersCountInput.value) || 25
+            }
+          };
+          break;
+          
+        case 'bits':
+          twitchEvent = {
+            type: 'channel.cheer',
+            event: {
+              ...baseUserData,
+              bits: parseInt(testBitsAmountInput.value) || 100,
+              message: `Test cheer with ${parseInt(testBitsAmountInput.value) || 100} bits!`,
+              is_anonymous: false
+            }
+          };
+          break;
+          
+        case 'host':
+          twitchEvent = {
+            type: 'channel.host',
+            event: {
+              ...baseUserData,
+              viewers: parseInt(testViewersCountInput.value) || 25,
+              hosted_at: new Date().toISOString()
+            }
+          };
+          break;
+          
+        case 'unhost':
+          twitchEvent = {
+            type: 'channel.unhost',
+            event: {
+              ...baseUserData,
+              viewers: 0
+            }
+          };
+          break;
+          
+        case 'channel-points':
+          twitchEvent = {
+            type: 'channel.channel_points_custom_reward_redemption.add',
+            event: {
+              ...baseUserData,
+              reward: {
+                id: 'test-reward-id',
+                title: testRewardTitleInput.value.trim() || 'Test Reward',
+                cost: 100
+              },
+              user_input: 'Test redemption message',
+              redeemed_at: new Date().toISOString()
+            }
+          };
+          break;
+      }
+      
+      if (twitchEvent) {
+        console.log('🎬 Firing test event through Twitch pipeline:', twitchEvent);
+        
+        // Push through the full Twitch event pipeline (for activity log and mappings)
+        if (typeof pushTwitchEvent === 'function') {
+          pushTwitchEvent(twitchEvent);
+        } else {
+          console.error('pushTwitchEvent function not available');
+        }
+        
+        // Use the SAME alert system as saved alerts - this ensures consistency
+        // Create user data from the Twitch event for the alert system
+        const userData = {
+          username: twitchEvent.event.user_name || twitchEvent.event.from_broadcaster_user_name || username,
+          display_name: twitchEvent.event.user_login || twitchEvent.event.from_broadcaster_user_login || username,
+          user_name: twitchEvent.event.user_name || twitchEvent.event.from_broadcaster_user_name || username,
+          tier: twitchEvent.event.tier || '1000',
+          viewers: twitchEvent.event.viewers || 25,
+          bits: twitchEvent.event.bits || 100,
+          months: twitchEvent.event.cumulative_months || 1,
+          message: twitchEvent.event.message || '',
+          reward: twitchEvent.event.reward?.title || 'Test Reward'
+        };
+        
+        console.log('🎯 Triggering alert through main app alert system:', eventType, userData);
+        alertSystem.triggerAlertForEvent(eventType, userData);
+        
+        // Show status message
+        if (testEventStatus) {
+          const statusMessage = testEventStatus.querySelector('.status-message');
+          if (statusMessage) {
+            statusMessage.innerHTML = `
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="color: #4ade80;">✓</span>
+                <span>Test event fired: <strong>${getAlertTypeDisplayName(eventType)}</strong> for <strong>${username}</strong></span>
+              </div>
+              <div style="margin-top: 5px; font-size: 11px; opacity: 0.7;">
+                Event processed through main app alert system - check overlay
+              </div>
+            `;
+            testEventStatus.style.display = 'block';
+            
+            // Hide status message after 5 seconds
+            setTimeout(() => {
+              testEventStatus.style.display = 'none';
+            }, 5000);
+          }
+        }
+        
+        updateQueueStatus();
+      }
+    });
+  }
+  
   // Initialize
   updateAlertList();
   updatePreview();

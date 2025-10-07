@@ -614,6 +614,83 @@
             <div class="no-alerts">No alerts configured yet</div>
           </div>
         </div>
+        
+        <!-- Test Events Section -->
+        <div class="test-events-section">
+          <h4>Test Events</h4>
+          <div class="test-events-description" style="color: var(--text-secondary); font-size: 13px; margin-bottom: 15px;">
+            Test how your alerts appear on the overlay by simulating Twitch events
+          </div>
+          
+          <div class="test-events-controls">
+            <div class="setting-group">
+              <label for="test-event-type">Event Type:</label>
+              <select id="test-event-type">
+                <option value="follower">New Follower</option>
+                <option value="subscriber">New Subscriber</option>
+                <option value="resubscriber">Resubscriber</option>
+                <option value="gift-sub">Gifted Subscription</option>
+                <option value="gift-sub-received">Gift Sub Received</option>
+                <option value="raid">Raid</option>
+                <option value="bits">Bits Donation</option>
+                <option value="host">Host</option>
+                <option value="unhost">Unhost</option>
+                <option value="channel-points">Channel Points</option>
+              </select>
+            </div>
+            
+            <div class="setting-group">
+              <label for="test-username">Username:</label>
+              <input type="text" id="test-username" placeholder="TestUser123" value="TestUser123" />
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                The username that will appear in the alert
+              </small>
+            </div>
+            
+            <div class="setting-group" id="test-bits-group" style="display: none;">
+              <label for="test-bits-amount">Bits Amount:</label>
+              <input type="number" id="test-bits-amount" min="1" max="100000" value="100" placeholder="100" />
+            </div>
+            
+            <div class="setting-group" id="test-viewers-group" style="display: none;">
+              <label for="test-viewers-count">Viewers Count:</label>
+              <input type="number" id="test-viewers-count" min="1" max="100000" value="25" placeholder="25" />
+            </div>
+            
+            <div class="setting-group" id="test-months-group" style="display: none;">
+              <label for="test-months-count">Months:</label>
+              <input type="number" id="test-months-count" min="1" max="1000" value="6" placeholder="6" />
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                For resubscribers - number of cumulative months
+              </small>
+            </div>
+            
+            <div class="setting-group" id="test-tier-group" style="display: none;">
+              <label for="test-tier-select">Subscription Tier:</label>
+              <select id="test-tier-select">
+                <option value="1000">Tier 1</option>
+                <option value="2000">Tier 2</option>
+                <option value="3000">Tier 3</option>
+                <option value="Prime">Prime</option>
+              </select>
+            </div>
+            
+            <div class="setting-group" id="test-reward-group" style="display: none;">
+              <label for="test-reward-title">Reward Title:</label>
+              <input type="text" id="test-reward-title" placeholder="Test Reward" value="Test Reward" />
+            </div>
+            
+            <div class="test-actions" style="margin-top: 20px;">
+              <button id="fire-test-event" class="action-btn primary" style="width: 100%;">
+                🎬 Fire Test Event
+              </button>
+            </div>
+            
+            <div id="test-event-status" class="test-status" style="margin-top: 10px; padding: 10px; background: var(--bg-tertiary); border-radius: 6px; font-size: 12px; color: var(--text-secondary); display: none;">
+              <div class="status-message"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
