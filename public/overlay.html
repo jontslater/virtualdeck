@@ -476,71 +476,64 @@
                             
                             // Show the text slot
                             element.classList.add('active');
+                            
+                            // Apply inline styles to the text element (not the parent container)
+                            if (slotData.style) {
+                                // Map schema style properties to CSS properties
+                                if (slotData.style.fontFamily) {
+                                    textEl.style.fontFamily = slotData.style.fontFamily;
+                                }
+                                if (slotData.style.fontSize) {
+                                    textEl.style.fontSize = typeof slotData.style.fontSize === 'number' 
+                                        ? slotData.style.fontSize + 'px' 
+                                        : slotData.style.fontSize;
+                                }
+                                if (slotData.style.fontWeight) {
+                                    textEl.style.fontWeight = slotData.style.fontWeight;
+                                }
+                                if (slotData.style.color) {
+                                    textEl.style.color = slotData.style.color;
+                                }
+                                if (slotData.style.textShadow) {
+                                    textEl.style.textShadow = slotData.style.textShadow;
+                                }
+                                if (slotData.style.webkitTextStroke) {
+                                    textEl.style.webkitTextStroke = slotData.style.webkitTextStroke;
+                                }
+                                if (slotData.style.textAlign) {
+                                    textEl.style.textAlign = slotData.style.textAlign;
+                                }
+                                if (slotData.style.zIndex) {
+                                    textEl.style.zIndex = slotData.style.zIndex;
+                                }
+                                
+                                // Legacy support
+                                if (slotData.style.bold !== undefined) {
+                                    textEl.style.fontWeight = slotData.style.bold ? 'bold' : 'normal';
+                                }
+                                if (slotData.style.italic !== undefined) {
+                                    textEl.style.fontStyle = slotData.style.italic ? 'italic' : 'normal';
+                                }
+                                if (slotData.style.align) {
+                                    textEl.style.textAlign = slotData.style.align;
+                                }
+                            }
+                            
+                            // Apply animation to the text element if present
+                            if (slotData.animation && slotData.animation.name !== 'none') {
+                                textEl.style.animationName = slotData.animation.name;
+                                textEl.style.animationDuration = slotData.animation.duration;
+                                textEl.style.animationDelay = slotData.animation.delay;
+                                textEl.style.animationIterationCount = slotData.animation.iterationCount;
+                                textEl.style.animationTimingFunction = slotData.animation.timingFunction;
+                                console.log(`🎬 Applied animation: ${slotData.animation.name} for ${slotData.animation.duration}`);
+                            }
                         } else {
                             // Hide the text slot
                             element.classList.remove('active');
                         }
                         
-                        console.log(`🎯 Set text content: "${textContent}"`);
-                        
-                        // Apply inline styles with proper CSS property mapping
-                        if (slotData.style) {
-                            // Map schema style properties to CSS properties
-                            if (slotData.style.fontFamily) {
-                                element.style.fontFamily = slotData.style.fontFamily;
-                            }
-                            if (slotData.style.fontSize) {
-                                element.style.fontSize = typeof slotData.style.fontSize === 'number' 
-                                    ? slotData.style.fontSize + 'px' 
-                                    : slotData.style.fontSize;
-                            }
-                            if (slotData.style.fontWeight) {
-                                element.style.fontWeight = slotData.style.fontWeight;
-                            }
-                            if (slotData.style.color) {
-                                element.style.color = slotData.style.color;
-                            }
-                            if (slotData.style.textShadow) {
-                                element.style.textShadow = slotData.style.textShadow;
-                            }
-                            if (slotData.style.webkitTextStroke) {
-                                element.style.webkitTextStroke = slotData.style.webkitTextStroke;
-                            }
-                            if (slotData.style.textAlign) {
-                                element.style.textAlign = slotData.style.textAlign;
-                            }
-                            if (slotData.style.zIndex) {
-                                element.style.zIndex = slotData.style.zIndex;
-                            }
-                            
-                            // Legacy support
-                            if (slotData.style.bold !== undefined) {
-                                element.style.fontWeight = slotData.style.bold ? 'bold' : 'normal';
-                            }
-                            if (slotData.style.italic !== undefined) {
-                                element.style.fontStyle = slotData.style.italic ? 'italic' : 'normal';
-                            }
-                            if (slotData.style.align) {
-                                element.style.textAlign = slotData.style.align;
-                            }
-                        }
-                        
-                        // Apply animation if present
-                        if (slotData.animation && slotData.animation.name !== 'none') {
-                            element.style.animationName = slotData.animation.name;
-                            element.style.animationDuration = slotData.animation.duration;
-                            element.style.animationDelay = slotData.animation.delay;
-                            element.style.animationIterationCount = slotData.animation.iterationCount;
-                            element.style.animationTimingFunction = slotData.animation.timingFunction;
-                            console.log(`🎬 Applied animation: ${slotData.animation.name} for ${slotData.animation.duration}`);
-                        } else {
-                            // Clear any existing animation
-                            element.style.animationName = '';
-                            element.style.animationDuration = '';
-                            element.style.animationDelay = '';
-                            element.style.animationIterationCount = '';
-                            element.style.animationTimingFunction = '';
-                        }
+                        console.log(`🎯 Set text content: "${textContent}"`)
                         
                         console.log(`Updated slot ${elementId}: ${slotData.text}`);
                     } else {
@@ -960,17 +953,30 @@
             processAlertWithMedia(selectedAlert, userData);
         }
         
-        // Process alert with media files
-        function processAlertWithMedia(alertConfig, userData) {
-            // Safety check for undefined alertConfig
-            if (!alertConfig) {
-                console.error('❌ processAlertWithMedia called with undefined alertConfig');
-                return;
+        // Validate alert parameters
+        function validateAlertParameters(alertConfig, userData) {
+            // Check if alertConfig exists and is an object
+            if (!alertConfig || typeof alertConfig !== 'object' || Array.isArray(alertConfig)) {
+                console.error('❌ Invalid alertConfig:', alertConfig);
+                return false;
             }
             
-            // Safety check for undefined userData
-            if (!userData) {
-                console.error('❌ processAlertWithMedia called with undefined userData');
+            // Check if userData exists and is an object
+            if (!userData || typeof userData !== 'object' || Array.isArray(userData)) {
+                console.error('❌ Invalid userData:', userData);
+                return false;
+            }
+            
+            return true;
+        }
+        
+        // Process alert with media files
+        function processAlertWithMedia(alertConfig, userData) {
+            // Validate parameters
+            if (!validateAlertParameters(alertConfig, userData)) {
+                console.error('❌ processAlertWithMedia called with invalid parameters');
+                console.error('   alertConfig:', alertConfig);
+                console.error('   userData:', userData);
                 return;
             }
             
@@ -1068,10 +1074,14 @@
                 console.log('🔔 Processing direct alert:', event.data.alertConfig?.type || 'unknown');
                 console.log('🔔 Alert config:', event.data.alertConfig);
                 console.log('🔔 User data:', event.data.userData);
-                if (event.data.alertConfig && event.data.userData) {
+                
+                // Validate parameters before processing
+                if (validateAlertParameters(event.data.alertConfig, event.data.userData)) {
                     processAlertWithMedia(event.data.alertConfig, event.data.userData);
                 } else {
-                    console.error('❌ Missing alertConfig or userData in processAlert message');
+                    console.error('❌ Invalid or missing alertConfig/userData in processAlert message');
+                    console.error('   alertConfig:', event.data.alertConfig);
+                    console.error('   userData:', event.data.userData);
                 }
             } else if (event.data && event.data.type && event.data.event) {
                 // Handle Twitch EventSub events
@@ -1115,10 +1125,14 @@
                             renderPayload(message);
                         } else if (message && message.type === 'processAlert') {
                             console.log('🔔 WebSocket processing direct alert:', message.alertConfig?.type || 'unknown');
-                            if (message.alertConfig && message.userData) {
+                            
+                            // Validate parameters before processing
+                            if (validateAlertParameters(message.alertConfig, message.userData)) {
                                 processAlertWithMedia(message.alertConfig, message.userData);
                             } else {
-                                console.error('❌ Missing alertConfig or userData in WebSocket processAlert message');
+                                console.error('❌ Invalid or missing alertConfig/userData in WebSocket processAlert message');
+                                console.error('   alertConfig:', message.alertConfig);
+                                console.error('   userData:', message.userData);
                             }
                         } else if (message && message.type && message.event) {
                             console.log('🔔 WebSocket processing Twitch event:', message.type);
