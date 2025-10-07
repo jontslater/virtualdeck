@@ -1632,18 +1632,378 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   border-color: var(--border-quaternary);
 }
 
-/* Alert Widget */
+/* ============================================
+   ALERT WIDGET - UNIFIED LAYOUT SYSTEM
+   ============================================ */
+
 .alert-widget {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 32px;
   z-index: 10020;
   animation: alertWidgetFadeIn 0.3s ease-out;
+  box-sizing: border-box;
+}
+
+/* Main container (modal box) */
+.alert-widget .section {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  padding: 20px;
+  width: 100%;
+  max-width: 1200px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Section headers */
+.section h4 {
+  margin-bottom: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-secondary);
+  padding-bottom: 6px;
+}
+
+/* ============================================
+   UNIFIED GRID SYSTEM
+   ============================================ */
+
+/* Force grid layout for styling rows */
+.alert-widget .styling-row,
+.section .styling-row,
+.styling-row {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 24px !important;
+  margin-bottom: 24px !important;
+  align-items: start !important;
+  width: 100% !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+}
+
+/* Ensure setting groups are grid items */
+.alert-widget .styling-row .setting-group,
+.section .styling-row .setting-group,
+.styling-row .setting-group {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  grid-column: auto !important;
+}
+
+/* Unified setting groups */
+.alert-widget .setting-group,
+.section .setting-group,
+.setting-group {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+}
+
+/* Unified labels */
+.alert-widget .setting-group label,
+.section .setting-group label,
+.setting-group label {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: var(--text-secondary) !important;
+  margin: 0 !important;
+  display: block !important;
+}
+
+/* Unified form inputs */
+.alert-widget .setting-group input,
+.alert-widget .setting-group select,
+.section .setting-group input,
+.section .setting-group select,
+.setting-group input,
+.setting-group select {
+  width: 100% !important;
+  padding: 8px 12px !important;
+  font-size: 14px !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: 6px !important;
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* Unified focus states */
+.alert-widget .setting-group input:focus,
+.alert-widget .setting-group select:focus,
+.section .setting-group input:focus,
+.section .setting-group select:focus,
+.setting-group input:focus,
+.setting-group select:focus {
+  outline: none !important;
+  border-color: var(--accent-color) !important;
+  box-shadow: 0 0 0 3px rgba(var(--accent-color-rgb), 0.25) !important;
+}
+
+/* ============================================
+   RANGE SLIDERS (now fit properly)
+   ============================================ */
+
+input[type="range"] {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border-secondary);
+  outline: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb,
+input[type="range"]::-moz-range-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  border: 2px solid var(--bg-primary);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+  transition: transform 0.1s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover,
+input[type="range"]::-moz-range-thumb:hover {
+  transform: scale(1.1);
+}
+
+.range-value {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-top: 6px;
+  font-weight: 500;
+}
+
+/* ============================================
+   COLOR PICKER
+   ============================================ */
+
+input[type="color"] {
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--border-primary);
+  border-radius: 8px;
+  cursor: pointer;
+  background: none;
+  padding: 0;
+  transition: border-color 0.2s ease;
+}
+
+input[type="color"]:hover {
+  border-color: var(--accent-color);
+}
+
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 6px;
+}
+
+/* ============================================
+   ANIMATION ENTRY (for modal)
+   ============================================ */
+@keyframes alertWidgetFadeIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; } to { opacity: 1; }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideInUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes slideInDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes bounceIn {
+  0% { transform: scale(0.3); opacity: 0; }
+  50% { transform: scale(1.05); }
+  70% { transform: scale(0.9); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes zoomIn {
+  from { transform: scale(0); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes flipInX {
+  from { transform: perspective(400px) rotateX(90deg); opacity: 0; }
+  to { transform: perspective(400px) rotateX(0); opacity: 1; }
+}
+
+@keyframes flipInY {
+  from { transform: perspective(400px) rotateY(90deg); opacity: 0; }
+  to { transform: perspective(400px) rotateY(0); opacity: 1; }
+}
+
+@keyframes rotateIn {
+  from { transform: rotate(-200deg); opacity: 0; }
+  to { transform: rotate(0); opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+  20%, 40%, 60%, 80% { transform: translateX(10px); }
+}
+
+@keyframes wobble {
+  0% { transform: translateX(0%); }
+  15% { transform: translateX(-25%) rotate(-5deg); }
+  30% { transform: translateX(20%) rotate(3deg); }
+  45% { transform: translateX(-15%) rotate(-3deg); }
+  60% { transform: translateX(10%) rotate(2deg); }
+  75% { transform: translateX(-5%) rotate(-1deg); }
+  100% { transform: translateX(0%); }
+}
+
+@keyframes rubberBand {
+  0% { transform: scale(1); }
+  30% { transform: scaleX(1.25) scaleY(0.75); }
+  40% { transform: scaleX(0.75) scaleY(1.25); }
+  50% { transform: scaleX(1.15) scaleY(0.85); }
+  65% { transform: scaleX(0.95) scaleY(1.05); }
+  75% { transform: scaleX(1.05) scaleY(0.95); }
+  100% { transform: scale(1); }
+}
+
+@keyframes tada {
+  0% { transform: scale(1) rotate(0deg); }
+  10%, 20% { transform: scale(0.9) rotate(-3deg); }
+  30%, 50%, 70%, 90% { transform: scale(1.1) rotate(3deg); }
+  40%, 60%, 80% { transform: scale(1.1) rotate(-3deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+/* ============================================
+   FINAL OVERRIDE - FORCE GRID LAYOUT
+   ============================================ */
+
+/* CRITICAL: Force grid layout for alert widget styling rows */
+.alert-widget .section .styling-row {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 24px !important;
+  margin-bottom: 24px !important;
+  align-items: start !important;
+  width: 100% !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+}
+
+.alert-widget .section .styling-row .setting-group {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  grid-column: auto !important;
+}
+
+/* Ensure no other CSS overrides these rules */
+.alert-widget .section .styling-row .setting-group label {
+  display: block !important;
+  margin: 0 !important;
+  margin-bottom: 6px !important;
+}
+
+.alert-widget .section .styling-row .setting-group input,
+.alert-widget .section .styling-row .setting-group select {
+  width: 100% !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* ============================================
+   HIGH-SPECIFICITY OVERRIDE - METHODICAL FIX
+   ============================================ */
+
+/* Force grid layout for unified styling section */
+.alert-widget .section.text-styling-animation-section .styling-row {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 16px !important;
+  align-items: start !important;
+  width: 100% !important;
+  margin-bottom: 16px !important;
+}
+
+/* First row with 3 columns (Text Position, Font Family, Font Size) */
+.alert-widget .section.text-styling-animation-section .styling-row:first-child {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+/* Make sure children don't override layout */
+.alert-widget .section.text-styling-animation-section .styling-row .setting-group {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  margin: 0 !important;
+  min-width: 0 !important;
+  gap: 4px !important;
+}
+
+
+/* Fix gray box container interference */
+.alert-widget .section.text-styling-animation-section {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+/* Ensure styling rows can use full width */
+.alert-widget .section.text-styling-animation-section .styling-row {
+  width: 100% !important;
+  min-width: 0 !important;
+  flex-shrink: 0 !important;
 }
 
 /* Test Events Section */
@@ -1695,9 +2055,9 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
 
 .alert-widget-content {
   position: relative;
-  width: 600px;
-  max-width: 95vw;
-  max-height: 90vh;
+  width: 1000px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 40px);
   background: var(--bg-secondary);
   border: 2px solid var(--border-primary);
   border-radius: 12px;
@@ -1754,9 +2114,12 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
 }
 
 .widget-content {
-  padding: 20px;
+  padding: 24px;
   overflow-y: auto;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 
@@ -1956,32 +2319,7 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   margin-bottom: 20px;
 }
 
-.setting-group {
-  display: flex;
-  flex-direction: column;
-}
-
-.setting-group label {
-  margin-bottom: 6px;
-  color: var(--text-primary);
-  font-weight: 500;
-  font-size: 13px;
-}
-
-.setting-group input {
-  padding: 8px 12px;
-  background: var(--bg-quaternary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-secondary);
-  border-radius: 6px;
-  font-size: 14px;
-}
-
-.setting-group input:focus {
-  outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
-}
+/* Remove conflicting styles - handled by unified system above */
 
 .alert-actions {
   display: flex;
@@ -2102,6 +2440,17 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   margin: 0;
   font-size: 14px;
   color: var(--text-secondary);
+}
+
+.image-placeholder {
+  background: var(--bg-tertiary);
+  border: 2px dashed var(--border-primary);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin: 8px 0;
 }
 
 .alert-list {
