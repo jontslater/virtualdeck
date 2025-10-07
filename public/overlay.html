@@ -746,6 +746,8 @@
         // Handle Twitch EventSub events
         function handleTwitchEvent(eventData) {
             console.log('🎭 Processing Twitch event:', eventData.type, eventData.event);
+            console.log('🎭 Current savedAlerts count:', savedAlerts.length);
+            console.log('🎭 SavedAlerts:', savedAlerts);
             
             // Map Twitch event types to alert types with special handling for subscriptions
             let alertType = null;
@@ -910,6 +912,7 @@
                 // Handle Twitch EventSub events
                 console.log('🔔 Processing Twitch event:', event.data.type);
                 handleTwitchEvent(event.data);
+                return; // Don't fall through to renderPayload
             } else if (event.data) {
                 console.log('🔔 Processing fallback payload:', event.data);
                 renderPayload(event.data);
@@ -936,7 +939,26 @@
                 overlayWS.onmessage = function(event) {
                     try {
                         const message = JSON.parse(event.data);
-                        renderPayload(message);
+                        console.log('🔔 WebSocket received message:', message);
+                        
+                        // Use the same message handling logic as window message listener
+                        if (message && message.type === 'buttonTrigger' && message.payload) {
+                            console.log('🔔 WebSocket processing wrapped payload:', message.payload);
+                            renderPayload(message.payload);
+                        } else if (message && message.type === 'buttonTrigger') {
+                            console.log('🔔 WebSocket processing direct payload:', message);
+                            renderPayload(message);
+                        } else if (message && message.type === 'processAlert') {
+                            console.log('🔔 WebSocket processing direct alert:', message.alertConfig.type);
+                            processAlertWithMedia(message.alertConfig, message.userData);
+                        } else if (message && message.type && message.event) {
+                            console.log('🔔 WebSocket processing Twitch event:', message.type);
+                            handleTwitchEvent(message);
+                            return; // Don't fall through to renderPayload
+                        } else {
+                            console.log('🔔 WebSocket processing fallback payload:', message);
+                            renderPayload(message);
+                        }
                     } catch (e) {
                         console.error('Error parsing WebSocket message:', e);
                     }
