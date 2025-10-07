@@ -2428,6 +2428,15 @@ app.whenReady().then(() => {
     try { if (win && !win.isDestroyed()) win.close(); } catch (e) { console.warn('window-close failed', e); }
   });
 
+  // Handle window move requests from renderer
+  ipcMain.on('move-window', (event, position) => {
+    try {
+      if (!win || win.isDestroyed()) return;
+      const currentPos = win.getPosition();
+      win.setPosition(currentPos[0] + position.x, currentPos[1] + position.y);
+    } catch (e) { console.warn('move-window failed', e); }
+  });
+
   // Allow renderer to request the Preferences view (forward to renderer)
   ipcMain.on('open-preferences', () => {
     try { if (win && !win.isDestroyed()) win.webContents.send('open-preferences'); } catch (e) { console.warn('open-preferences failed', e); }
