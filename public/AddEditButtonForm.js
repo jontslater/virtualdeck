@@ -555,12 +555,19 @@ class AddEditButtonForm {
     const preview = document.getElementById('button-preview');
     if (!preview) return;
 
-    try {
-      const payload = await this.getFormData();
-      preview.innerHTML = this.renderPreview(payload);
-    } catch (error) {
-      preview.innerHTML = `<div class="error">${error.message}</div>`;
+    // Debounce preview updates to avoid lag on every keystroke
+    if (this.previewTimeout) {
+      clearTimeout(this.previewTimeout);
     }
+    
+    this.previewTimeout = setTimeout(async () => {
+      try {
+        const payload = await this.getFormData(true); // Pass true to skip file processing for preview
+        preview.innerHTML = this.renderPreview(payload);
+      } catch (error) {
+        preview.innerHTML = `<div class="error">${error.message}</div>`;
+      }
+    }, 300); // Wait 300ms after user stops typing
   }
 
   renderPreview(payload) {
@@ -669,7 +676,7 @@ class AddEditButtonForm {
     return overlay.outerHTML;
   }
 
-  async getFormData() {
+  async getFormData(isPreview = false) {
     const name = document.getElementById('multi-media-button-name')?.value || '';
     const hotkey = document.getElementById('multi-media-hotkey-input')?.value || '';
     const durationInput = document.getElementById('multi-media-duration-input');
@@ -750,12 +757,43 @@ class AddEditButtonForm {
 
     // Helper function to save media file and get path
     const saveMediaFile = async (file, mediaType, buttonId) => {
-      if (!window.electronAPI || !window.electronAPI.saveMediaFile) {
-        console.warn('saveMediaFile API not available, falling back to base64');
+      if (!window.electronAPI) {
+        console.warn('electronAPI not available, falling back to base64');
         return await fileToBase64(file);
       }
 
       try {
+        // For video files (which can be large), use path-based copying if available
+        // This avoids converting large files to base64 in the renderer process
+        const isLargeFile = file.size > 10 * 1024 * 1024; // Files larger than 10MB
+        const isVideo = mediaType === 'video';
+        
+        if ((isVideo || isLargeFile) && file.path && window.electronAPI.saveMediaFileByPath) {
+          console.log(`Using efficient path-based copy for ${mediaType} file (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+          
+          const result = await window.electronAPI.saveMediaFileByPath({
+            sourcePath: file.path,
+            buttonId: buttonId,
+            mediaType: mediaType,
+            originalName: file.name
+          });
+
+          if (result.success) {
+            console.log(`Media file copied to: ${result.filePath}`);
+            return result.filePath; // Return relative path
+          } else {
+            console.error('Failed to copy media file:', result.error);
+            // Fall through to base64 method
+          }
+        }
+        
+        // For smaller files or if path-based method fails, use base64 method
+        if (!window.electronAPI.saveMediaFile) {
+          console.warn('saveMediaFile API not available, falling back to base64');
+          return await fileToBase64(file);
+        }
+        
+        console.log(`Using base64 method for ${mediaType} file (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
         const base64Data = await fileToBase64(file);
         const result = await window.electronAPI.saveMediaFile({
           base64Data: base64Data,
@@ -789,8 +827,13 @@ class AddEditButtonForm {
       if (item.src) {
         let src = item.src;
         if (item.src instanceof File) {
-          // Save file to media folder
-          src = await saveMediaFile(item.src, 'image', buttonId);
+          if (isPreview) {
+            // For preview, just use a placeholder instead of processing the file
+            src = 'preview-placeholder';
+          } else {
+            // Save file to media folder
+            src = await saveMediaFile(item.src, 'image', buttonId);
+          }
         }
         centerMedia.push({
           id: `m${index + 1}`,
@@ -809,8 +852,13 @@ class AddEditButtonForm {
       if (item.src) {
         let src = item.src;
         if (item.src instanceof File) {
-          // Save file to media folder
-          src = await saveMediaFile(item.src, 'video', buttonId);
+          if (isPreview) {
+            // For preview, just use a placeholder instead of processing the file
+            src = 'preview-placeholder';
+          } else {
+            // Save file to media folder
+            src = await saveMediaFile(item.src, 'video', buttonId);
+          }
         }
         centerMedia.push({
           id: `v${index + 1}`,
@@ -836,8 +884,13 @@ class AddEditButtonForm {
       audio: await Promise.all(this.audio.filter(item => item.src).map(async (item, index) => {
         let src = item.src;
         if (item.src instanceof File) {
-          // Save file to media folder
-          src = await saveMediaFile(item.src, 'audio', buttonId);
+          if (isPreview) {
+            // For preview, just use a placeholder instead of processing the file
+            src = 'preview-placeholder';
+          } else {
+            // Save file to media folder
+            src = await saveMediaFile(item.src, 'audio', buttonId);
+          }
         }
         return {
           id: `a${index + 1}`,
@@ -857,7 +910,7 @@ class AddEditButtonForm {
 
   async previewInOverlay() {
     try {
-      const payload = await this.getFormData();
+      const payload = await this.getFormData(true); // Use preview mode to avoid processing large files
       
       if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
         window.electronAPI.sendOverlayMessage(payload);

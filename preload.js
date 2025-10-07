@@ -14,7 +14,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateConfig: async (configUpdate) => ipcRenderer.invoke('update-config', configUpdate),
   // Media file storage for multi-media buttons
   saveMediaFile: async (mediaData) => ipcRenderer.invoke('save-media-file', mediaData),
+  saveMediaFileByPath: async (mediaData) => ipcRenderer.invoke('save-media-file-by-path', mediaData),
   getMediaFile: async (relativePath) => ipcRenderer.invoke('get-media-file', relativePath),
+  getMediaFilePath: async (relativePath) => ipcRenderer.invoke('get-media-file-path', relativePath),
   // Return persisted Twitch Client config (tc_config.json in userData)
   getTwitchConfig: async () => ipcRenderer.invoke('get-tc-config'),
   getSoundPath: async (relativePath) => ipcRenderer.invoke('get-sound-path', relativePath),

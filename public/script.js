@@ -10,6 +10,56 @@ window.electronAPI.onRefreshUI(() => {
   loadButtons();
 });
 
+// Mute overlay iframe in dashboard to prevent double audio
+// Audio should only play in OBS browser source
+function muteOverlayIframeAudio() {
+  const overlayIframe = document.getElementById('overlay-iframe');
+  if (!overlayIframe) return;
+  
+  try {
+    // Wait for iframe to load
+    overlayIframe.addEventListener('load', () => {
+      const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow.document;
+      
+      // Mute all existing audio and video elements
+      const muteElements = () => {
+        const audios = iframeDoc.querySelectorAll('audio');
+        const videos = iframeDoc.querySelectorAll('video');
+        
+        audios.forEach(audio => {
+          audio.muted = true;
+          audio.volume = 0;
+        });
+        
+        videos.forEach(video => {
+          video.muted = true;
+          video.volume = 0;
+        });
+      };
+      
+      // Mute immediately
+      muteElements();
+      
+      // Set up mutation observer to mute any new audio/video elements
+      const observer = new MutationObserver(() => {
+        muteElements();
+      });
+      
+      observer.observe(iframeDoc.body, {
+        childList: true,
+        subtree: true
+      });
+      
+      console.log('🔇 Dashboard overlay preview muted (audio plays in OBS only)');
+    });
+  } catch (error) {
+    console.warn('Could not mute overlay iframe:', error);
+  }
+}
+
+// Initialize muting when page loads
+muteOverlayIframeAudio();
+
 // Chat display variables
 let chatMessages = [];
 const MAX_CHAT_MESSAGES = 50;
@@ -2391,66 +2441,23 @@ async function handleMultiMediaTrigger(button) {
   const centerMediaData = button.centerMedia || [];
   const optionsData = button.options || { clearPrevious: true };
   
-  // 1. Play audio(s) in dashboard - start immediately
-  const audioPromises = [];
-  if (Array.isArray(audioData)) {
-    for (const audioEntry of audioData) {
-      if (audioEntry.src) {
-        // Create async function to load and play audio
-        const playAudio = (async () => {
-          try {
-            let audioSrc = audioEntry.src;
-            
-            // Load audio from disk if it's a file path
-            if (typeof audioSrc === 'string' && 
-                !audioSrc.startsWith('data:') && 
-                !audioSrc.startsWith('blob:') && 
-                !audioSrc.startsWith('http')) {
-              console.log('🎵 Loading audio file from disk:', audioSrc);
-              try {
-                if (window.electronAPI && window.electronAPI.getMediaFile) {
-                  const result = await window.electronAPI.getMediaFile(audioSrc);
-                  if (result.success) {
-                    const sizeKB = (result.data.length / 1024).toFixed(2);
-                    console.log(`✅ Audio file loaded: ${audioSrc} (${sizeKB} KB)`);
-                    audioSrc = result.data; // Use base64 data URI
-                  } else {
-                    console.error('Failed to load audio file:', result.error);
-                  }
-                }
-              } catch (error) {
-                console.error('Error loading audio file:', error);
-              }
-            }
-            
-            // Use cached audio or create new one
-            let audio = audioCache.get(audioSrc);
-            if (!audio) {
-              audio = new Audio(audioSrc);
-              audioCache.set(audioSrc, audio);
-            }
-            
-            // Reset and configure audio
-            audio.currentTime = 0;
-            audio.volume = audioEntry.volume || 1.0; // Volume is already 0-1 in new schema
-            audio.loop = audioEntry.loop || false;
-            
-            // Start playing
-            return audio.play();
-          } catch (error) {
-            console.warn('Failed to play audio:', error);
-          }
-        })();
-        
-        audioPromises.push(playAudio);
-      }
-    }
-  }
+  // 1. Audio handling for multi-media buttons
+  // NOTE: Audio plays ONLY in the overlay, not in the dashboard, to prevent double audio
+  console.log('🎵 Audio will play in overlay only (preventing double audio)');
+  const audioPromises = []; // Keep empty for overlay-only playback
 
   // 2. Send overlay payload - immediately after starting audio
+  // Check if we have separate audio files - if so, mute videos to avoid double audio
+  const hasSeparateAudio = audioData && audioData.length > 0;
+  
   // Process center media similar to alert system
   const processedCenterMedia = await Promise.all(centerMediaData.map(async (item) => {
     if (item.src) {
+      // Mute videos if there are separate audio files to prevent double audio
+      if (item.type === 'video' && hasSeparateAudio) {
+        console.log('🔇 Muting video because separate audio files are present');
+        item.muted = true;
+      }
       // Handle different image source types like alert system
       if (item.src instanceof File) {
         // Fresh file upload - create blob URL
@@ -2464,28 +2471,37 @@ async function handleMultiMediaTrigger(button) {
         console.log('🖼️ Using base64/blob data for multi-media');
         return item;
       } else if (typeof item.src === 'string' && !item.src.startsWith('http')) {
-        // File path (relative to userDataPath) - load from disk
-        console.log('🖼️ Loading media file from disk:', item.src);
+        // File path (relative to userDataPath) - serve via HTTP to avoid base64 conversion
+        console.log('🖼️ Converting file path to HTTP URL:', item.src);
         try {
-          if (window.electronAPI && window.electronAPI.getMediaFile) {
-            const result = await window.electronAPI.getMediaFile(item.src);
+          // Get absolute path for the file
+          if (window.electronAPI && window.electronAPI.getMediaFilePath) {
+            const result = await window.electronAPI.getMediaFilePath(item.src);
             if (result.success) {
-              const sizeKB = (result.data.length / 1024).toFixed(2);
-              console.log(`✅ Media file loaded: ${item.src} (${sizeKB} KB)`);
+              // Serve via HTTP instead of loading entire file into memory as base64
+              const httpUrl = `http://localhost:8080/media/${encodeURIComponent(result.absolutePath)}`;
+              console.log(`✅ Serving media via HTTP: ${httpUrl}`);
               return {
                 ...item,
-                src: result.data // Base64 data URI
+                src: httpUrl
               };
-            } else {
-              console.error('Failed to load media file:', result.error);
-              return item; // Return as-is, might be URL
             }
-          } else {
-            console.warn('getMediaFile API not available, using path directly');
-            return item;
           }
+          // Fallback: try to get userDataPath and construct absolute path
+          const config = await window.electronAPI.getConfig();
+          if (config && config.userDataPath) {
+            // Assume item.src is relative to userDataPath
+            const absolutePath = item.src.includes(':') ? item.src : config.userDataPath + '/' + item.src.replace(/\\/g, '/');
+            const httpUrl = `http://localhost:8080/media/${encodeURIComponent(absolutePath)}`;
+            console.log(`✅ Serving media via HTTP (fallback): ${httpUrl}`);
+            return {
+              ...item,
+              src: httpUrl
+            };
+          }
+          return item;
         } catch (error) {
-          console.error('Error loading media file:', error);
+          console.error('Error constructing HTTP URL for media:', error);
           return item;
         }
       } else {
@@ -2496,73 +2512,87 @@ async function handleMultiMediaTrigger(button) {
     return item;
   }));
 
+  // Process audio files for overlay (convert paths to HTTP URLs)
+  const processedAudio = await Promise.all(audioData.map(async (audioItem) => {
+    if (audioItem.src) {
+      let audioSrc = audioItem.src;
+      
+      // Convert file paths to HTTP URLs
+      if (typeof audioSrc === 'string' && 
+          !audioSrc.startsWith('data:') && 
+          !audioSrc.startsWith('blob:') && 
+          !audioSrc.startsWith('http')) {
+        console.log('🎵 Converting audio file path to HTTP URL:', audioSrc);
+        try {
+          if (window.electronAPI && window.electronAPI.getMediaFilePath) {
+            const result = await window.electronAPI.getMediaFilePath(audioSrc);
+            if (result.success) {
+              audioSrc = `http://localhost:8080/media/${encodeURIComponent(result.absolutePath)}`;
+              console.log(`✅ Serving audio via HTTP: ${audioSrc}`);
+            }
+          } else {
+            const config = await window.electronAPI.getConfig();
+            if (config && config.userDataPath) {
+              const absolutePath = audioSrc.includes(':') ? audioSrc : config.userDataPath + '/' + audioSrc.replace(/\\/g, '/');
+              audioSrc = `http://localhost:8080/media/${encodeURIComponent(absolutePath)}`;
+              console.log(`✅ Serving audio via HTTP (fallback): ${audioSrc}`);
+            }
+          }
+        } catch (error) {
+          console.error('Error constructing HTTP URL for audio:', error);
+        }
+      }
+      
+      return {
+        ...audioItem,
+        src: audioSrc,
+        type: 'audio'
+      };
+    }
+    return audioItem;
+  }));
+
   const overlayPayload = {
     type: 'buttonTrigger',
     options: optionsData,
     slots: slotsData,
-    centerMedia: processedCenterMedia
+    centerMedia: [...processedCenterMedia, ...processedAudio] // Include audio in centerMedia
   };
 
   // Log payload summary without full base64 data
   console.log('📤 Sending overlay payload:', {
     type: overlayPayload.type,
     slots: Object.keys(overlayPayload.slots || {}),
-    centerMedia: centerMediaData.map(item => ({
+    centerMedia: overlayPayload.centerMedia.map(item => ({
       type: item.type,
-      src: item.src // Shows file path from config
+      volume: item.volume
     })),
+    audioCount: processedAudio.length,
+    videoCount: processedCenterMedia.filter(i => i.type === 'video').length,
+    imageCount: processedCenterMedia.filter(i => i.type === 'image').length,
     options: overlayPayload.options
   });
 
-  // Send to overlay iframe (if exists) - immediately
-  const overlayIframe = document.getElementById('overlay-iframe');
-  if (overlayIframe && overlayIframe.contentWindow) {
-    try {
-      overlayIframe.contentWindow.postMessage(overlayPayload, '*');
-      console.log('Message sent to overlay iframe');
-    } catch (error) {
-      console.warn('Failed to send message to overlay iframe:', error);
-    }
-  }
-
-  // Send to overlay widget (if exists) - immediately
-  const overlayWidget = document.getElementById('overlay-widget');
-  if (overlayWidget && !overlayWidget.classList.contains('hidden')) {
-    try {
-      // Trigger the overlay widget's test function
-      if (window.testMultiSource) {
-        window.testMultiSource(overlayPayload);
-      }
-      console.log('Message sent to overlay widget');
-    } catch (error) {
-      console.warn('Failed to send message to overlay widget:', error);
-    }
-  }
-
-  // Send via WebSocket (if available) - immediately
+  // Send via WebSocket (primary method for OBS overlay) - immediately
   if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
     try {
       window.electronAPI.sendOverlayMessage(overlayPayload);
-      console.log('Message sent via WebSocket');
+      console.log('📤 Message sent to overlay via WebSocket');
     } catch (error) {
       console.warn('Failed to send message via WebSocket:', error);
     }
-  }
-
-  // Wait for audio to start (non-blocking - overlay message already sent)
-  if (audioPromises.length > 0) {
-    try {
-      await Promise.all(audioPromises);
-      console.log('All audio started successfully');
-    } catch (error) {
-      console.warn('Some audio failed to start:', error);
-    }
+  } else {
+    console.warn('⚠️ WebSocket not available, overlay message not sent');
   }
   
-  // Set up overlay clearing based on media duration
-  // Check if button has custom duration in options
-  const customDuration = button.options && button.options.durationMs ? button.options.durationMs / 1000 : null;
-  setupOverlayClearing(audioData, centerMediaData, customDuration);
+  // Note: Removed duplicate iframe and widget sending to prevent double-triggering
+  // The overlay receives messages via WebSocket only
+  
+  // Note: Audio plays in overlay only (not in dashboard) to prevent double audio
+  
+  // Note: Overlay handles its own reset timer based on payload.options.durationMs
+  // No need to call setupOverlayClearing from dashboard - it would conflict with overlay's timer
+  console.log('✅ Overlay will handle auto-clear based on duration:', optionsData.durationMs, 'ms');
 }
 
 // Function to clear overlay content
