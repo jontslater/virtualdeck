@@ -1062,6 +1062,13 @@ body.vd-dragging .sound-card.draggable:hover {
 .window-btn-close:hover { background: #ff4444; color: #fff; }
 .window-btn-min:hover { background: rgba(255,255,255,0.02); }
 .window-btn-max:hover { background: rgba(255,255,255,0.02); }
+.window-btn-move { cursor: grab; }
+.window-btn-move:hover { background: rgba(255,255,255,0.06); }
+.window-btn-move.dragging { 
+  cursor: grabbing; 
+  background: rgba(255,255,255,0.1); 
+  transform: scale(0.95);
+}
 
 /* Small icons fallback styling */
 #app-toolbar button { font-weight: 600; }
