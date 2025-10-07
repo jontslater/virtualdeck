@@ -1714,6 +1714,11 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   margin: 0 !important;
 }
 
+/* Hide bits threshold group when not needed */
+#bits-threshold-group[style*="display: none"] {
+  display: none !important;
+}
+
 /* Unified labels */
 .alert-widget .setting-group label,
 .section .setting-group label,

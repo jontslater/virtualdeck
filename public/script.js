@@ -4115,27 +4115,6 @@ function setupOverlayControls() {
     console.log('✅ Overlay cleared on startup');
   }, 1000); // 1 second delay to ensure overlay is ready
   
-  const overlayUrlBtn = document.getElementById('show-overlay-url');
-  
-  if (overlayUrlBtn) {
-    console.log('🔧 Overlay URL button found');
-    overlayUrlBtn.addEventListener('click', () => {
-      console.log('🔧 Overlay URL button clicked');
-      const overlayUrl = 'http://localhost:8080/overlay';
-      alert(`Overlay URL for OBS Browser Source:\n\n${overlayUrl}\n\nCopy this URL and paste it into OBS Browser Source.`);
-      
-      // Copy to clipboard if possible
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(overlayUrl).then(() => {
-          console.log('Overlay URL copied to clipboard');
-        }).catch(err => {
-          console.log('Failed to copy to clipboard:', err);
-        });
-      }
-    });
-  } else {
-    console.log('🔧 Overlay URL button not found');
-  }
 }
 
 // Overlay widget setup
@@ -4697,21 +4676,6 @@ function setupAlertWidget() {
   }
   
   // Show/hide bits threshold based on alert type
-  if (alertTypeSelect && bitsThresholdGroup) {
-    alertTypeSelect.addEventListener('change', () => {
-      if (alertTypeSelect.value === 'bits') {
-        bitsThresholdGroup.style.display = 'block';
-      } else {
-        bitsThresholdGroup.style.display = 'none';
-      }
-    });
-    
-    // Trigger initial check
-    if (alertTypeSelect.value === 'bits') {
-      bitsThresholdGroup.style.display = 'block';
-    }
-  }
-  
   // Range slider value updates
   if (alertFontSizeRange && fontSizeValue) {
     alertFontSizeRange.addEventListener('input', () => {
@@ -4731,6 +4695,16 @@ function setupAlertWidget() {
     alertAnimationDelayRange.addEventListener('input', () => {
       animationDelayValue.textContent = alertAnimationDelayRange.value + 's';
       updatePreview().catch(console.error);
+    });
+  }
+  
+  // Volume slider for alert sound
+  const alertSoundVolumeRange = document.getElementById('alert-sound-volume');
+  const alertSoundVolumeValue = document.getElementById('alert-sound-volume-value');
+  
+  if (alertSoundVolumeRange && alertSoundVolumeValue) {
+    alertSoundVolumeRange.addEventListener('input', () => {
+      alertSoundVolumeValue.textContent = alertSoundVolumeRange.value + '%';
     });
   }
   
@@ -5066,6 +5040,9 @@ function setupAlertWidget() {
         easing: alertAnimationEasingSelect ? alertAnimationEasingSelect.value : 'ease'
       };
 
+      // Get volume value
+      const soundVolume = alertSoundVolumeRange ? parseInt(alertSoundVolumeRange.value) : 100;
+      
       const alertData = {
         id: alertId,
         type: type,
@@ -5078,7 +5055,8 @@ function setupAlertWidget() {
           name: soundFile.name,
           size: soundFile.size,
           type: soundFile.type,
-          path: soundFilePath // Store file path instead of base64
+          path: soundFilePath, // Store file path instead of base64
+          volume: soundVolume  // Store volume setting
         } : null,
         imageFile: imageFilePath ? {
           name: imageFile.name,
@@ -5102,8 +5080,11 @@ function setupAlertWidget() {
             
             // Preserve existing media files if no new files were uploaded
             if (!soundFilePath && window.editingAlertMedia?.soundFile) {
-              alertData.soundFile = window.editingAlertMedia.soundFile;
-              console.log('Preserved existing sound file:', window.editingAlertMedia.soundFile.name);
+              alertData.soundFile = {
+                ...window.editingAlertMedia.soundFile,
+                volume: soundVolume  // Update volume even when keeping existing file
+              };
+              console.log('Preserved existing sound file with updated volume:', window.editingAlertMedia.soundFile.name, soundVolume + '%');
             }
             
             if (!imageFilePath && window.editingAlertMedia?.imageFile) {
@@ -5177,9 +5158,27 @@ function setupAlertWidget() {
     alertSoundInput.value = '';
     alertImageInput.value = '';
     
+    // Reset volume slider
+    if (alertSoundVolumeRange) {
+      alertSoundVolumeRange.value = '100';
+    }
+    if (alertSoundVolumeValue) {
+      alertSoundVolumeValue.textContent = '100%';
+    }
+    
     // Reset bits threshold
     if (alertBitsThresholdInput) {
       alertBitsThresholdInput.value = '10';
+    }
+    
+    // Reset alert type to first option (follower) and hide bits threshold
+    if (alertTypeSelect) {
+      alertTypeSelect.value = 'follower'; // Explicitly set to follower
+    }
+    
+    // Hide bits threshold when clearing form
+    if (bitsThresholdGroup) {
+      bitsThresholdGroup.style.display = 'none';
     }
     
     // Reset styling to defaults
@@ -5456,6 +5455,16 @@ function setupAlertWidget() {
       }
       if (alertAnimationEasingSelect && alertToEdit.animation.easing) {
         alertAnimationEasingSelect.value = alertToEdit.animation.easing;
+      }
+    }
+    
+    // Populate volume if sound file has volume setting
+    if (alertToEdit.soundFile && alertToEdit.soundFile.volume !== undefined) {
+      if (alertSoundVolumeRange) {
+        alertSoundVolumeRange.value = alertToEdit.soundFile.volume;
+      }
+      if (alertSoundVolumeValue) {
+        alertSoundVolumeValue.textContent = alertToEdit.soundFile.volume + '%';
       }
     }
     
@@ -5902,10 +5911,14 @@ let alertQueue = {
       
       // Play sound if present - store reference for hard stop
       if (alertData.soundFile) {
+        // Get volume from alert data (stored as 0-100, convert to 0-1)
+        const volume = (alertData.soundFile.volume !== undefined ? alertData.soundFile.volume / 100 : 1.0);
+        console.log('🔊 Alert sound volume:', volume, `(${Math.round(volume * 100)}%)`);
+        
         if (alertData.soundFile instanceof File) {
           // Fresh file upload
           this.currentAudio = new Audio(URL.createObjectURL(alertData.soundFile));
-          this.currentAudio.volume = 1.0;
+          this.currentAudio.volume = volume;
           this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
         } else if (alertData.soundFile.path) {
           // Saved alert with file path - load from disk for audio playback
@@ -5917,7 +5930,7 @@ let alertQueue = {
                 const sizeKB = (result.data.length / 1024).toFixed(2);
                 console.log(`✅ Alert sound loaded: ${alertData.soundFile.path} (${sizeKB} KB)`);
                 this.currentAudio = new Audio(result.data);
-                this.currentAudio.volume = 1.0;
+                this.currentAudio.volume = volume;
                 this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
               } else {
                 console.error('Failed to load alert sound:', result.error);
@@ -5930,7 +5943,7 @@ let alertQueue = {
           // Legacy: saved alert with base64 data (backwards compatibility)
           console.log('🎵 Using legacy base64 data for alert sound');
           this.currentAudio = new Audio(alertData.soundFile.data);
-          this.currentAudio.volume = 1.0;
+          this.currentAudio.volume = volume;
           this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
         }
       }
@@ -6152,6 +6165,31 @@ function showAlertWidget() {
   const alertWidget = document.getElementById('alert-widget');
   if (alertWidget) {
     alertWidget.classList.remove('hidden');
+    
+    // Disable hotkeys when alert widget is open to prevent conflicts
+    if (window.electronAPI && window.electronAPI.disableHotkeys) {
+      window.electronAPI.disableHotkeys();
+    }
+    
+    // Ensure bits threshold is hidden unless alert type is 'bits'
+    const alertTypeSelect = document.getElementById('alert-type');
+    const bitsThresholdGroup = document.getElementById('bits-threshold-group');
+    
+    if (alertTypeSelect && bitsThresholdGroup) {
+      if (alertTypeSelect.value === 'bits') {
+        bitsThresholdGroup.style.display = 'block';
+      } else {
+        bitsThresholdGroup.style.display = 'none';
+      }
+    }
+    
+    // Focus on the alert text input after a short delay to ensure DOM is ready
+    setTimeout(() => {
+      const alertTextInput = document.getElementById('alert-text');
+      if (alertTextInput) {
+        alertTextInput.focus();
+      }
+    }, 100);
   }
 }
 
@@ -6160,6 +6198,11 @@ function hideAlertWidget() {
   const alertWidget = document.getElementById('alert-widget');
   if (alertWidget) {
     alertWidget.classList.add('hidden');
+    
+    // Re-enable hotkeys when alert widget is closed
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
   }
 }
 

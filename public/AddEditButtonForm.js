@@ -299,22 +299,121 @@ class AddEditButtonForm {
     });
   }
 
-  handleFileUpload(event, type) {
+  async handleFileUpload(event, type) {
     const files = event.target.files;
+    console.log(`📁 handleFileUpload called - type: ${type}, files:`, files.length);
+    
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach(file => {
+    for (const file of files) {
+      console.log(`📁 Processing file: ${file.name}, type: ${file.type}`);
+      
       // Store the actual File object for proper handling
       this.addMediaItem(file, type, file.name);
-    });
+      
+      // Auto-detect duration for audio/video files
+      if (type === 'audio' || type === 'video') {
+        console.log(`⏱️ Starting duration detection for ${type} file: ${file.name}`);
+        const duration = await this.getMediaDuration(file);
+        console.log(`⏱️ Duration detected: ${duration}s`);
+        
+        if (duration) {
+          const durationInput = document.getElementById('multi-media-duration-input');
+          console.log(`⏱️ Duration input element found:`, durationInput ? 'YES' : 'NO');
+          
+          if (durationInput) {
+            const currentDuration = parseInt(durationInput.value) || 0;
+            console.log(`⏱️ Current duration: ${currentDuration}s, New duration: ${duration}s`);
+            
+            // Only update if new duration is longer
+            if (duration > currentDuration) {
+              durationInput.value = duration;
+              console.log(`✅ Auto-updated duration to ${duration}s for ${type} file`);
+            } else {
+              console.log(`⏭️ Skipped update - new duration (${duration}s) is not longer than current (${currentDuration}s)`);
+            }
+          }
+        } else {
+          console.log(`⚠️ Could not detect duration for file: ${file.name}`);
+        }
+      }
+    }
 
     // Clear the input
     event.target.value = '';
   }
+  
+  // Helper function to get media duration
+  getMediaDuration(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) {
+        resolve(null);
+        return;
+      }
+      
+      const url = URL.createObjectURL(file);
+      const media = document.createElement(file.type.startsWith('audio') ? 'audio' : 'video');
+      
+      media.onloadedmetadata = () => {
+        const duration = Math.ceil(media.duration);
+        URL.revokeObjectURL(url);
+        console.log(`📹 Media duration detected: ${duration}s for ${file.name}`);
+        resolve(duration);
+      };
+      
+      media.onerror = () => {
+        URL.revokeObjectURL(url);
+        console.warn('Could not load media for duration detection');
+        resolve(null);
+      };
+      
+      media.src = url;
+      media.load();
+    });
+  }
 
-  addFromUrl(url, type) {
+  async addFromUrl(url, type) {
     if (!url.trim()) return;
     this.addMediaItem(url, type);
+    
+    // Auto-detect duration for audio/video URLs
+    if (type === 'audio' || type === 'video') {
+      const duration = await this.getMediaDurationFromUrl(url, type);
+      if (duration) {
+        const durationInput = document.getElementById('multi-media-duration-input');
+        if (durationInput) {
+          const currentDuration = parseInt(durationInput.value) || 0;
+          // Only update if new duration is longer
+          if (duration > currentDuration) {
+            durationInput.value = duration;
+            console.log(`🎵 Auto-updated duration to ${duration}s for ${type} URL`);
+          }
+        }
+      }
+    }
+  }
+  
+  // Helper function to get media duration from URL
+  getMediaDurationFromUrl(url, type) {
+    return new Promise((resolve) => {
+      const media = document.createElement(type === 'audio' ? 'audio' : 'video');
+      
+      media.onloadedmetadata = () => {
+        const duration = Math.ceil(media.duration);
+        console.log(`📹 Media duration detected from URL: ${duration}s`);
+        media.src = ''; // Clean up
+        resolve(duration);
+      };
+      
+      media.onerror = () => {
+        console.warn('Could not load media from URL for duration detection');
+        media.src = ''; // Clean up
+        resolve(null);
+      };
+      
+      media.src = url;
+      media.load();
+    });
   }
 
   addMediaItem(src, type, name = '') {
@@ -370,10 +469,13 @@ class AddEditButtonForm {
         previewHtml = `<div class="media-preview" style="background: #333; display: flex; align-items: center; justify-content: center; color: #666; font-size: 12px;">+</div>`;
       }
 
+      // Display file name for File objects, URL for strings
+      const displayValue = item.src instanceof File ? item.name : item.src;
+      
       mediaItem.innerHTML = `
         ${previewHtml}
         <div class="media-info">
-          <input type="text" class="media-url" placeholder="Enter URL or drag file..." value="${item.src}" />
+          <input type="text" class="media-url" placeholder="Enter URL or drag file..." value="${displayValue}" ${item.src instanceof File ? 'readonly' : ''} />
           ${type === 'center' ? `
             <select class="media-type">
               <option value="image" ${item.type === 'image' ? 'selected' : ''}>Image</option>
@@ -396,10 +498,13 @@ class AddEditButtonForm {
       const urlInput = mediaItem.querySelector('.media-url');
       const removeBtn = mediaItem.querySelector('.remove-media');
       
+      // Only allow editing URL if it's not a File object
       urlInput.addEventListener('input', (e) => {
-        item.src = e.target.value;
-        this.updatePreview();
-        this.renderMediaList(containerId, items, type);
+        if (!(item.src instanceof File)) {
+          item.src = e.target.value;
+          this.updatePreview();
+          this.renderMediaList(containerId, items, type);
+        }
       });
 
       if (type === 'center') {
