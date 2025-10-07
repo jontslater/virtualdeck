@@ -5448,7 +5448,7 @@ function setupAlertWidget() {
         const delay = alertToEdit.animation.delay.replace('s', '');
         alertAnimationDelayRange.value = delay;
         // Update the display value
-        const delayValue = document.getElementById('animation-duration-value');
+        const delayValue = document.getElementById('animation-delay-value');
         if (delayValue) delayValue.textContent = delay + 's';
       }
       if (alertAnimationIterationSelect && alertToEdit.animation.iteration) {
