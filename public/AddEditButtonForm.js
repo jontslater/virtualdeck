@@ -21,8 +21,7 @@ class AddEditButtonForm {
   }
 
   createFormContent() {
-    // The form content is now in the HTML, just need to set up the text slots
-    this.createTextSlotEditors();
+    // The form content is now in the HTML
     this.updatePreview();
   }
 
@@ -476,47 +475,59 @@ class AddEditButtonForm {
       'text-center': 'center'
     };
 
-    this.textSlots.forEach(slotId => {
-      const newSlotName = slotMapping[slotId];
-      const slotData = payload.slots[newSlotName];
+    // Create text slot if text exists
+    if (payload.slots && Object.keys(payload.slots).length > 0) {
+      const [position, slotData] = Object.entries(payload.slots)[0];
       if (slotData && slotData.text) {
         const slot = document.createElement('div');
         slot.className = 'preview-text-slot';
         slot.textContent = slotData.text;
         
-        // Apply styles using new schema format
-        if (slotData.style) {
+        // Apply global styling options from form
+        if (payload.textStyling) {
           Object.assign(slot.style, {
-            fontFamily: slotData.style.fontFamily || 'Arial, sans-serif',
-            fontSize: (typeof slotData.style.fontSize === 'number' ? slotData.style.fontSize + 'px' : slotData.style.fontSize) || '12px',
-            color: slotData.style.color || '#ffffff',
-            fontWeight: slotData.style.bold ? 'bold' : 'normal',
-            fontStyle: slotData.style.italic ? 'italic' : 'normal',
-            textAlign: slotData.style.align || 'center',
+            fontFamily: payload.textStyling.fontFamily || 'Arial, sans-serif',
+            fontSize: payload.textStyling.fontSize || '24px',
+            fontWeight: payload.textStyling.fontWeight || '700',
+            color: payload.textStyling.color || '#ffffff',
+            textShadow: payload.textStyling.textShadow || '1px 1px 2px rgba(0,0,0,0.8)',
+            webkitTextStroke: payload.textStyling.textStroke || '1px #000',
+            textAlign: 'center',
             zIndex: '1'
           });
         }
 
-        // Map to grid positions
+        // Apply animation if specified
+        if (payload.animation && payload.animation.type !== 'none') {
+          Object.assign(slot.style, {
+            animationName: payload.animation.type,
+            animationDuration: payload.animation.duration,
+            animationDelay: payload.animation.delay,
+            animationIterationCount: payload.animation.iteration,
+            animationTimingFunction: payload.animation.easing
+          });
+        }
+
+        // Map position to grid positions
         const gridPositions = {
-          'text-top-left': '1,1',
-          'text-top-center': '2,1', 
-          'text-top-right': '3,1',
-          'text-mid-left': '1,2',
-          'text-center': '2,2',
-          'text-mid-right': '3,2',
-          'text-bottom-left': '1,3',
-          'text-bottom-center': '2,3',
-          'text-bottom-right': '3,3'
+          'topLeft': '1,1',
+          'topCenter': '2,1', 
+          'topRight': '3,1',
+          'midLeft': '1,2',
+          'center': '2,2',
+          'midRight': '3,2',
+          'bottomLeft': '1,3',
+          'bottomCenter': '2,3',
+          'bottomRight': '3,3'
         };
 
-        const [col, row] = gridPositions[slotId].split(',').map(Number);
+        const [col, row] = (gridPositions[position] || '2,1').split(',').map(Number);
         slot.style.gridColumn = col;
         slot.style.gridRow = row;
 
         overlay.appendChild(slot);
       }
-    });
+    }
 
     // Create center media
     if (payload.centerMedia && payload.centerMedia.length > 0) {
@@ -568,64 +579,58 @@ class AddEditButtonForm {
       throw new Error('Duration must be between 5 and 300 seconds');
     }
 
-    // Map old slot IDs to new schema slot names
-    const slotMapping = {
-      'text-top-left': 'topLeft',
-      'text-top-center': 'topCenter', 
-      'text-top-right': 'topRight',
-      'text-mid-left': 'midLeft',
-      'text-mid-right': 'midRight',
-      'text-bottom-left': 'bottomLeft',
-      'text-bottom-center': 'bottomCenter',
-      'text-bottom-right': 'bottomRight'
+    // Get global styling options first
+    const textStyling = {
+      position: document.getElementById('multi-media-text-position')?.value || 'topCenter',
+      fontFamily: document.getElementById('multi-media-font-family')?.value || 'Arial, sans-serif',
+      fontSize: document.getElementById('multi-media-font-size')?.value + 'px' || '24px',
+      fontWeight: document.getElementById('multi-media-font-weight')?.value || '700',
+      color: document.getElementById('multi-media-text-color')?.value || '#ffffff',
+      textShadow: document.getElementById('multi-media-text-shadow')?.value || '1px 1px 2px rgba(0,0,0,0.8)',
+      textStroke: document.getElementById('multi-media-text-stroke')?.value || '1px #000'
     };
 
+    const animation = {
+      type: document.getElementById('multi-media-animation')?.value || 'none',
+      duration: document.getElementById('multi-media-animation-duration')?.value + 's' || '1s',
+      delay: document.getElementById('multi-media-animation-delay')?.value + 's' || '0s',
+      iteration: document.getElementById('multi-media-animation-iteration')?.value || '1',
+      easing: document.getElementById('multi-media-animation-easing')?.value || 'ease'
+    };
+
+    // Get overlay text (single input)
+    const overlayTextInput = document.getElementById('multi-media-overlay-text');
+    const overlayText = overlayTextInput?.value?.trim();
+    
     const slots = {};
     
-    // Collect text slot data using new schema
-    this.textSlots.forEach(slotId => {
-      const editor = document.querySelector(`[data-slot="${slotId}"]`);
-      if (editor) {
-        const textInput = editor.querySelector('.slot-text-input');
-        const text = textInput?.value?.trim();
-        
-        if (text) {
-          const style = {
-            fontFamily: editor.querySelector('.font-family')?.value || 'Inter',
-            fontSize: parseInt(editor.querySelector('.font-size')?.value) || 16,
-            color: editor.querySelector('.text-color')?.value || '#FFFFFF',
-            bold: editor.querySelector('.bold-toggle')?.checked || false,
-            italic: editor.querySelector('.italic-toggle')?.checked || false,
-            align: editor.querySelector('.text-align')?.value || 'center',
-            animation: editor.querySelector('.animation')?.value || null
-          };
-
-          // Map to new slot name
-          const newSlotName = slotMapping[slotId];
-          if (newSlotName) {
-            slots[newSlotName] = { text, style };
-          }
-        }
-      }
-    });
-
-    // Add center slot if it exists
-    const centerEditor = document.querySelector(`[data-slot="text-center"]`);
-    if (centerEditor) {
-      const textInput = centerEditor.querySelector('.slot-text-input');
-      const text = textInput?.value?.trim();
-      if (text) {
-        const style = {
-          fontFamily: centerEditor.querySelector('.font-family')?.value || 'Inter',
-          fontSize: parseInt(centerEditor.querySelector('.font-size')?.value) || 16,
-          color: centerEditor.querySelector('.text-color')?.value || '#FFFFFF',
-          bold: centerEditor.querySelector('.bold-toggle')?.checked || false,
-          italic: centerEditor.querySelector('.italic-toggle')?.checked || false,
-          align: centerEditor.querySelector('.text-align')?.value || 'center',
-          animation: centerEditor.querySelector('.animation')?.value || null
-        };
-        slots.center = { text, style };
-      }
+    // If there's overlay text, add it to the appropriate slot based on position
+    if (overlayText) {
+      const position = textStyling.position;
+      
+      // Build style object from global styling
+      const style = {
+        fontFamily: textStyling.fontFamily,
+        fontSize: textStyling.fontSize,
+        fontWeight: textStyling.fontWeight,
+        color: textStyling.color,
+        textShadow: textStyling.textShadow,
+        webkitTextStroke: textStyling.textStroke,
+        textAlign: 'center',
+        zIndex: '1'
+      };
+      
+      slots[position] = {
+        text: overlayText,
+        style: style,
+        animation: animation.type !== 'none' ? {
+          name: animation.type,
+          duration: animation.duration,
+          delay: animation.delay,
+          iterationCount: animation.iteration,
+          timingFunction: animation.easing
+        } : null
+      };
     }
 
     // Helper function to convert File to base64
@@ -721,6 +726,8 @@ class AddEditButtonForm {
       hotkey: hotkey,
       slots,
       centerMedia,
+      textStyling: textStyling,
+      animation: animation,
       audio: await Promise.all(this.audio.filter(item => item.src).map(async (item, index) => {
         let src = item.src;
         if (item.src instanceof File) {
@@ -869,6 +876,67 @@ class AddEditButtonForm {
       console.log(`📝 [Edit] No duration found, using default 60 seconds`);
     }
 
+    // Set global text styling options
+    if (buttonData.textStyling) {
+      const textStyling = buttonData.textStyling;
+      
+      const textPositionSelect = document.getElementById('multi-media-text-position');
+      if (textPositionSelect) textPositionSelect.value = textStyling.position || 'topCenter';
+      
+      const fontFamilySelect = document.getElementById('multi-media-font-family');
+      if (fontFamilySelect) fontFamilySelect.value = textStyling.fontFamily || 'Arial, sans-serif';
+      
+      const fontSizeRange = document.getElementById('multi-media-font-size');
+      const fontSizeValue = document.getElementById('multi-media-font-size-value');
+      if (fontSizeRange && fontSizeValue) {
+        const fontSize = parseInt(textStyling.fontSize?.replace('px', '')) || 24;
+        fontSizeRange.value = fontSize;
+        fontSizeValue.textContent = fontSize + 'px';
+      }
+      
+      const fontWeightSelect = document.getElementById('multi-media-font-weight');
+      if (fontWeightSelect) fontWeightSelect.value = textStyling.fontWeight || '700';
+      
+      const textColorInput = document.getElementById('multi-media-text-color');
+      if (textColorInput) textColorInput.value = textStyling.color || '#ffffff';
+      
+      const textShadowSelect = document.getElementById('multi-media-text-shadow');
+      if (textShadowSelect) textShadowSelect.value = textStyling.textShadow || '1px 1px 2px rgba(0,0,0,0.8)';
+      
+      const textStrokeSelect = document.getElementById('multi-media-text-stroke');
+      if (textStrokeSelect) textStrokeSelect.value = textStyling.textStroke || '1px #000';
+    }
+
+    // Set animation options
+    if (buttonData.animation) {
+      const animation = buttonData.animation;
+      
+      const animationSelect = document.getElementById('multi-media-animation');
+      if (animationSelect) animationSelect.value = animation.type || 'none';
+      
+      const animationDurationRange = document.getElementById('multi-media-animation-duration');
+      const animationDurationValue = document.getElementById('multi-media-animation-duration-value');
+      if (animationDurationRange && animationDurationValue) {
+        const duration = parseFloat(animation.duration?.replace('s', '')) || 1;
+        animationDurationRange.value = duration;
+        animationDurationValue.textContent = duration + 's';
+      }
+      
+      const animationDelayRange = document.getElementById('multi-media-animation-delay');
+      const animationDelayValue = document.getElementById('multi-media-animation-delay-value');
+      if (animationDelayRange && animationDelayValue) {
+        const delay = parseFloat(animation.delay?.replace('s', '')) || 0;
+        animationDelayRange.value = delay;
+        animationDelayValue.textContent = delay + 's';
+      }
+      
+      const animationIterationSelect = document.getElementById('multi-media-animation-iteration');
+      if (animationIterationSelect) animationIterationSelect.value = animation.iteration || '1';
+      
+      const animationEasingSelect = document.getElementById('multi-media-animation-easing');
+      if (animationEasingSelect) animationEasingSelect.value = animation.easing || 'ease';
+    }
+
     // Map new schema slot names to old slot IDs for form population
     const slotMapping = {
       'topLeft': 'text-top-left',
@@ -882,30 +950,15 @@ class AddEditButtonForm {
       'center': 'text-center'
     };
 
-    // Set text slots using new schema
-    Object.keys(slotMapping).forEach(newSlotName => {
-      const oldSlotId = slotMapping[newSlotName];
-      const editor = document.querySelector(`[data-slot="${oldSlotId}"]`);
-      if (editor && buttonData.slots && buttonData.slots[newSlotName]) {
-        const slotData = buttonData.slots[newSlotName];
-        const textInput = editor.querySelector('.slot-text-input');
-        if (textInput) textInput.value = slotData.text || '';
-
-        if (slotData.style) {
-          const style = slotData.style;
-          if (editor.querySelector('.font-family')) editor.querySelector('.font-family').value = style.fontFamily || 'Inter';
-          if (editor.querySelector('.font-size')) editor.querySelector('.font-size').value = style.fontSize || 16;
-          if (editor.querySelector('.text-color')) editor.querySelector('.text-color').value = style.color || '#FFFFFF';
-          if (editor.querySelector('.bold-toggle')) editor.querySelector('.bold-toggle').checked = style.bold || false;
-          if (editor.querySelector('.italic-toggle')) editor.querySelector('.italic-toggle').checked = style.italic || false;
-          if (editor.querySelector('.text-align')) editor.querySelector('.text-align').value = style.align || 'center';
-          if (editor.querySelector('.animation')) {
-            const animation = style.animation || 'none';
-            editor.querySelector('.animation').value = animation;
-          }
-        }
+    // Set overlay text from the first available slot
+    const overlayTextInput = document.getElementById('multi-media-overlay-text');
+    if (overlayTextInput && buttonData.slots) {
+      // Find the first slot with text
+      const slotWithText = Object.values(buttonData.slots).find(slot => slot && slot.text);
+      if (slotWithText) {
+        overlayTextInput.value = slotWithText.text || '';
       }
-    });
+    }
 
     // Set media - separate images and videos from centerMedia using new schema
     this.images = (buttonData.centerMedia || []).filter(item => item.type === 'image').map(item => ({
@@ -981,16 +1034,11 @@ class AddEditButtonForm {
       hotkeyInput.addEventListener('input', () => this.updatePreview());
     }
 
-    // Update preview when any text slot content changes
-    this.textSlots.forEach(slotId => {
-      const editor = document.querySelector(`[data-slot="${slotId}"]`);
-      if (editor) {
-        const textInput = editor.querySelector('.slot-text-input');
-        if (textInput) {
-          textInput.addEventListener('input', () => this.updatePreview());
-        }
-      }
-    });
+    // Update preview when overlay text changes
+    const overlayTextInput = document.getElementById('multi-media-overlay-text');
+    if (overlayTextInput) {
+      overlayTextInput.addEventListener('input', () => this.updatePreview());
+    }
 
     // Update preview when any style changes
     document.addEventListener('change', (e) => {
@@ -1005,6 +1053,55 @@ class AddEditButtonForm {
         this.updatePreview();
       }
     });
+
+    // Update preview when styling controls change
+    const stylingControls = [
+      'multi-media-text-position',
+      'multi-media-font-family',
+      'multi-media-font-size',
+      'multi-media-font-weight',
+      'multi-media-text-color',
+      'multi-media-text-shadow',
+      'multi-media-text-stroke',
+      'multi-media-animation',
+      'multi-media-animation-duration',
+      'multi-media-animation-delay',
+      'multi-media-animation-iteration',
+      'multi-media-animation-easing'
+    ];
+
+    stylingControls.forEach(controlId => {
+      const control = document.getElementById(controlId);
+      if (control) {
+        control.addEventListener('change', () => this.updatePreview());
+        control.addEventListener('input', () => this.updatePreview());
+      }
+    });
+
+    // Update range slider value displays
+    const fontSizeRange = document.getElementById('multi-media-font-size');
+    const fontSizeValue = document.getElementById('multi-media-font-size-value');
+    if (fontSizeRange && fontSizeValue) {
+      fontSizeRange.addEventListener('input', () => {
+        fontSizeValue.textContent = fontSizeRange.value + 'px';
+      });
+    }
+
+    const animationDurationRange = document.getElementById('multi-media-animation-duration');
+    const animationDurationValue = document.getElementById('multi-media-animation-duration-value');
+    if (animationDurationRange && animationDurationValue) {
+      animationDurationRange.addEventListener('input', () => {
+        animationDurationValue.textContent = animationDurationRange.value + 's';
+      });
+    }
+
+    const animationDelayRange = document.getElementById('multi-media-animation-delay');
+    const animationDelayValue = document.getElementById('multi-media-animation-delay-value');
+    if (animationDelayRange && animationDelayValue) {
+      animationDelayRange.addEventListener('input', () => {
+        animationDelayValue.textContent = animationDelayRange.value + 's';
+      });
+    }
   }
 
   setupHotkeyRecording() {

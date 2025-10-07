@@ -9,8 +9,10 @@
   <link rel="stylesheet" href="AddEditButtonForm.css" />
   <!-- Google Material Icons -->
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-  <!-- Google Fonts: Roboto (UI) + Roboto Mono (monospace) -->
+  <!-- Google Fonts: Roboto (UI) + Roboto Mono (monospace) + Custom Alert Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <!-- Additional Google Fonts for Alert Customization -->
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&family=Lato:wght@300;400;700;900&family=Montserrat:wght@300;400;500;600;700;800;900&family=Oswald:wght@300;400;500;600;700&family=Raleway:wght@300;400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800;900&family=Nunito:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&display=swap" rel="stylesheet">
 </head>
 <body>
   <div id="global-drop-zone" class="hidden">Drop files here</div>
@@ -52,6 +54,7 @@
         <div class="menu-divider"></div>
         <button id="menu-tools-devtools" class="menu-dropdown-item" role="menuitem">Developer Tools</button>
         <button id="menu-tools-reload" class="menu-dropdown-item" role="menuitem">Reload Application</button>
+        <!-- Twitch Setup submenu commented out - preserving code for future use
         <div class="menu-item" id="menu-tools-twitch-sub" aria-haspopup="true">
           <button id="menu-tools-twitch-btn" class="menu-dropdown-item" aria-expanded="false" aria-controls="menu-tools-twitch-dropdown">Twitch Setup ▸</button>
           <div id="menu-tools-twitch-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Twitch Setup submenu" style="left:100%; top:0;">
@@ -62,6 +65,7 @@
             <button id="menu-tools-twitch-clear" class="menu-dropdown-item" role="menuitem">Clear Twitch Credentials</button>
           </div>
         </div>
+        -->
         <div class="menu-divider"></div>
         <div id="menu-tools-themes" class="menu-dropdown-section">
           <!-- Themes will be populated dynamically -->
@@ -332,17 +336,9 @@
           <div class="form-section">
             <h3>Media Sources</h3>
             <div class="media-tabs">
-              <button type="button" class="tab-btn active" data-tab="text">Text Slots</button>
-              <button type="button" class="tab-btn" data-tab="images">Images</button>
+              <button type="button" class="tab-btn active" data-tab="images">Images</button>
               <button type="button" class="tab-btn" data-tab="videos">Videos</button>
               <button type="button" class="tab-btn" data-tab="audio">Audio</button>
-            </div>
-            
-            <!-- Text Slots Tab -->
-            <div id="tab-text" class="tab-content active">
-              <div class="text-slots-grid">
-                <!-- Text slots will be added here dynamically -->
-              </div>
             </div>
             
             <!-- Images Tab -->
@@ -399,6 +395,170 @@
               </div>
               <div id="audio-list" class="media-list">
                 <!-- Audio items will be added here dynamically -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Overlay Text -->
+          <div class="form-section">
+            <label for="multi-media-overlay-text">Overlay Text (Optional):
+              <input type="text" id="multi-media-overlay-text" placeholder="Enter text to display on overlay..." />
+              <small>Text will be styled using the options below</small>
+            </label>
+          </div>
+
+          <!-- Text Styling & Animation Section -->
+          <div class="form-section text-styling-animation-section">
+            <h3>Text Styling & Animation</h3>
+            
+            <!-- Row 1: Text Position | Font Family | Font Size -->
+            <div class="styling-row">
+              <div class="setting-group">
+                <label for="multi-media-text-position">Text Position:</label>
+                <select id="multi-media-text-position">
+                  <option value="topLeft">Top Left</option>
+                  <option value="topCenter" selected>Top Center</option>
+                  <option value="topRight">Top Right</option>
+                  <option value="midLeft">Mid Left</option>
+                  <option value="midRight">Mid Right</option>
+                  <option value="bottomLeft">Bottom Left</option>
+                  <option value="bottomCenter">Bottom Center</option>
+                  <option value="bottomRight">Bottom Right</option>
+                </select>
+              </div>
+              
+              <div class="setting-group">
+                <label for="multi-media-font-family">Font Family:</label>
+                <select id="multi-media-font-family">
+                  <option value="Arial, sans-serif">Arial</option>
+                  <option value="Helvetica, sans-serif">Helvetica</option>
+                  <option value="Georgia, serif">Georgia</option>
+                  <option value="Times New Roman, serif">Times New Roman</option>
+                  <option value="Courier New, monospace">Courier New</option>
+                  <option value="Verdana, sans-serif">Verdana</option>
+                  <option value="Roboto, sans-serif">Roboto</option>
+                  <option value="Open Sans, sans-serif">Open Sans</option>
+                  <option value="Lato, sans-serif">Lato</option>
+                  <option value="Montserrat, sans-serif">Montserrat</option>
+                  <option value="Oswald, sans-serif">Oswald</option>
+                  <option value="Raleway, sans-serif">Raleway</option>
+                  <option value="Poppins, sans-serif">Poppins</option>
+                  <option value="Nunito, sans-serif">Nunito</option>
+                  <option value="Ubuntu, sans-serif">Ubuntu</option>
+                  <option value="Playfair Display, serif">Playfair Display</option>
+                  <option value="Merriweather, serif">Merriweather</option>
+                </select>
+              </div>
+              
+              <div class="setting-group">
+                <label for="multi-media-font-size">Font Size:</label>
+                <input type="range" id="multi-media-font-size" min="12" max="72" value="24" />
+                <div class="range-value" id="multi-media-font-size-value">24px</div>
+              </div>
+            </div>
+            
+            <!-- Row 2: Font Weight | Text Color | Text Shadow | Text Stroke -->
+            <div class="styling-row">
+              <div class="setting-group">
+                <label for="multi-media-font-weight">Font Weight:</label>
+                <select id="multi-media-font-weight">
+                  <option value="300">Light (300)</option>
+                  <option value="400">Regular (400)</option>
+                  <option value="500">Medium (500)</option>
+                  <option value="600">Semi Bold (600)</option>
+                  <option value="700" selected>Bold (700)</option>
+                  <option value="800">Extra Bold (800)</option>
+                  <option value="900">Black (900)</option>
+                </select>
+              </div>
+              
+              <div class="setting-group">
+                <label for="multi-media-text-color">Text Color:</label>
+                <input type="color" id="multi-media-text-color" value="#ffffff" />
+              </div>
+              
+              <div class="setting-group">
+                <label for="multi-media-text-shadow">Text Shadow:</label>
+                <select id="multi-media-text-shadow">
+                  <option value="none">None</option>
+                  <option value="1px 1px 2px rgba(0,0,0,0.8)" selected>Soft Shadow</option>
+                  <option value="2px 2px 4px rgba(0,0,0,0.8)">Medium Shadow</option>
+                  <option value="3px 3px 6px rgba(0,0,0,0.8)">Strong Shadow</option>
+                  <option value="0 0 10px rgba(255,255,255,0.8)">Glow</option>
+                  <option value="0 0 20px rgba(255,255,255,0.8)">Strong Glow</option>
+                </select>
+              </div>
+              
+              <div class="setting-group">
+                <label for="multi-media-text-stroke">Text Stroke:</label>
+                <select id="multi-media-text-stroke">
+                  <option value="none">None</option>
+                  <option value="1px #000" selected>Thin Black</option>
+                  <option value="2px #000">Medium Black</option>
+                  <option value="3px #000">Thick Black</option>
+                  <option value="1px #fff">Thin White</option>
+                  <option value="2px #fff">Medium White</option>
+                  <option value="3px #fff">Thick White</option>
+                </select>
+              </div>
+            </div>
+            
+            <!-- Row 3: Animation Type | Animation Duration | Animation Delay -->
+            <div class="styling-row">
+              <div class="setting-group">
+                <label for="multi-media-animation">Animation Type:</label>
+                <select id="multi-media-animation">
+                  <option value="none" selected>None</option>
+                  <option value="fadeIn">Fade In</option>
+                  <option value="slideIn">Slide In</option>
+                  <option value="bounceIn">Bounce In</option>
+                  <option value="zoomIn">Zoom In</option>
+                  <option value="flipIn">Flip In</option>
+                  <option value="rotateIn">Rotate In</option>
+                  <option value="pulse">Pulse</option>
+                  <option value="shake">Shake</option>
+                  <option value="wobble">Wobble</option>
+                  <option value="rubberBand">Rubber Band</option>
+                  <option value="tada">Tada</option>
+                </select>
+              </div>
+              
+              <div class="setting-group">
+                <label for="multi-media-animation-duration">Animation Duration:</label>
+                <input type="range" id="multi-media-animation-duration" min="0.5" max="3" step="0.1" value="1" />
+                <div class="range-value" id="multi-media-animation-duration-value">1.0s</div>
+              </div>
+              
+              <div class="setting-group">
+                <label for="multi-media-animation-delay">Animation Delay:</label>
+                <input type="range" id="multi-media-animation-delay" min="0" max="2" step="0.1" value="0" />
+                <div class="range-value" id="multi-media-animation-delay-value">0.0s</div>
+              </div>
+            </div>
+            
+            <!-- Row 4: Animation Repeat | Animation Easing -->
+            <div class="styling-row">
+              <div class="setting-group">
+                <label for="multi-media-animation-iteration">Animation Repeat:</label>
+                <select id="multi-media-animation-iteration">
+                  <option value="1" selected>Once</option>
+                  <option value="2">Twice</option>
+                  <option value="3">3 Times</option>
+                  <option value="infinite">Infinite</option>
+                </select>
+              </div>
+              
+              <div class="setting-group">
+                <label for="multi-media-animation-easing">Animation Easing:</label>
+                <select id="multi-media-animation-easing">
+                  <option value="ease" selected>Ease</option>
+                  <option value="ease-in">Ease In</option>
+                  <option value="ease-out">Ease Out</option>
+                  <option value="ease-in-out">Ease In Out</option>
+                  <option value="linear">Linear</option>
+                  <option value="cubic-bezier(0.68, -0.55, 0.265, 1.55)">Bounce</option>
+                  <option value="cubic-bezier(0.175, 0.885, 0.32, 1.275)">Elastic</option>
+                </select>
               </div>
             </div>
           </div>
@@ -542,9 +702,6 @@
             <option value="gift-sub-received">Gift Sub Received</option>
             <option value="raid">Raid</option>
             <option value="bits">Bits Donation</option>
-            <option value="host">Host</option>
-            <option value="unhost">Unhost</option>
-            <option value="channel-points">Channel Points</option>
           </select>
         </div>
 
@@ -555,6 +712,168 @@
             <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
               Use placeholders: {username}, {display_name}, {tier}, {viewers}, {bits}, {months}
             </small>
+          </div>
+          
+          <!-- Text Styling & Animation Section -->
+          <div class="section text-styling-animation-section">
+            <h4>Text Styling & Animation</h4>
+            
+            <!-- Row 1: Text Position | Font Family | Font Size -->
+            <div class="styling-row">
+              <div class="setting-group">
+                <label for="alert-text-position">Text Position:</label>
+                <select id="alert-text-position">
+                  <option value="topLeft">Top Left</option>
+                  <option value="topCenter" selected>Top Center</option>
+                  <option value="topRight">Top Right</option>
+                  <option value="midLeft">Mid Left</option>
+                  <option value="midRight">Mid Right</option>
+                  <option value="bottomLeft">Bottom Left</option>
+                  <option value="bottomCenter">Bottom Center</option>
+                  <option value="bottomRight">Bottom Right</option>
+                </select>
+              </div>
+              
+              <div class="setting-group">
+                <label for="alert-font-family">Font Family:</label>
+                <select id="alert-font-family">
+                  <option value="Arial, sans-serif">Arial</option>
+                  <option value="'Helvetica Neue', sans-serif">Helvetica</option>
+                  <option value="'Times New Roman', serif">Times New Roman</option>
+                  <option value="'Courier New', monospace">Courier New</option>
+                  <option value="'Georgia', serif">Georgia</option>
+                  <option value="'Verdana', sans-serif">Verdana</option>
+                  <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+                  <option value="'Impact', sans-serif">Impact</option>
+                  <option value="'Comic Sans MS', cursive">Comic Sans MS</option>
+                  <option value="'Roboto', sans-serif">Roboto</option>
+                  <option value="'Open Sans', sans-serif">Open Sans</option>
+                  <option value="'Lato', sans-serif">Lato</option>
+                  <option value="'Montserrat', sans-serif">Montserrat</option>
+                  <option value="'Oswald', sans-serif">Oswald</option>
+                  <option value="'Raleway', sans-serif">Raleway</option>
+                  <option value="'Poppins', sans-serif">Poppins</option>
+                  <option value="'Nunito', sans-serif">Nunito</option>
+                  <option value="'Ubuntu', sans-serif">Ubuntu</option>
+                  <option value="'Playfair Display', serif">Playfair Display</option>
+                  <option value="'Merriweather', serif">Merriweather</option>
+                </select>
+              </div>
+              
+              <div class="setting-group">
+                <label for="alert-font-size">Font Size:</label>
+                <input type="range" id="alert-font-size" min="12" max="72" value="24" />
+                <div class="range-value" id="font-size-value">24px</div>
+              </div>
+            </div>
+            
+            <!-- Row 2: Font Weight | Text Color | Text Shadow | Text Stroke -->
+            <div class="styling-row">
+              <div class="setting-group">
+                <label for="alert-font-weight">Font Weight:</label>
+                <select id="alert-font-weight">
+                  <option value="300">Light (300)</option>
+                  <option value="400">Normal (400)</option>
+                  <option value="500">Medium (500)</option>
+                  <option value="600">Semi Bold (600)</option>
+                  <option value="700" selected>Bold (700)</option>
+                  <option value="800">Extra Bold (800)</option>
+                  <option value="900">Black (900)</option>
+                </select>
+              </div>
+              
+              <div class="setting-group">
+                <label for="alert-text-color">Text Color:</label>
+                <input type="color" id="alert-text-color" value="#ffffff" />
+              </div>
+              
+              <div class="setting-group">
+                <label for="alert-text-shadow">Text Shadow:</label>
+                <select id="alert-text-shadow">
+                  <option value="none">None</option>
+                  <option value="1px 1px 2px rgba(0,0,0,0.8)" selected>Basic Shadow</option>
+                  <option value="2px 2px 4px rgba(0,0,0,0.8)">Strong Shadow</option>
+                  <option value="0 0 10px rgba(255,255,255,0.8)">Glow</option>
+                  <option value="2px 2px 0px #000, 4px 4px 0px rgba(0,0,0,0.3)">3D Effect</option>
+                  <option value="0 0 5px #000, 0 0 10px #000, 0 0 15px #000">Multiple Glow</option>
+                </select>
+              </div>
+              
+              <div class="setting-group">
+                <label for="alert-text-stroke">Text Stroke:</label>
+                <select id="alert-text-stroke">
+                  <option value="none">None</option>
+                  <option value="1px #000" selected>Thin Black</option>
+                  <option value="2px #000">Medium Black</option>
+                  <option value="3px #000">Thick Black</option>
+                  <option value="1px #fff">Thin White</option>
+                  <option value="2px #fff">Medium White</option>
+                </select>
+              </div>
+            </div>
+            
+            <!-- Row 3: Animation Type | Animation Duration | Animation Delay -->
+            <div class="styling-row">
+              <div class="setting-group">
+                <label for="alert-animation">Animation Type:</label>
+                <select id="alert-animation">
+                  <option value="none">None</option>
+                  <option value="fadeIn">Fade In</option>
+                  <option value="slideInLeft">Slide In Left</option>
+                  <option value="slideInRight">Slide In Right</option>
+                  <option value="slideInUp">Slide In Up</option>
+                  <option value="slideInDown">Slide In Down</option>
+                  <option value="bounceIn">Bounce In</option>
+                  <option value="zoomIn">Zoom In</option>
+                  <option value="flipInX">Flip In X</option>
+                  <option value="flipInY">Flip In Y</option>
+                  <option value="rotateIn">Rotate In</option>
+                  <option value="pulse">Pulse</option>
+                  <option value="shake">Shake</option>
+                  <option value="wobble">Wobble</option>
+                  <option value="rubberBand">Rubber Band</option>
+                  <option value="tada">Tada</option>
+                </select>
+              </div>
+              
+              <div class="setting-group">
+                <label for="alert-animation-duration">Animation Duration:</label>
+                <input type="range" id="alert-animation-duration" min="0.5" max="3" step="0.1" value="1" />
+                <div class="range-value" id="animation-duration-value">1.0s</div>
+              </div>
+              
+              <div class="setting-group">
+                <label for="alert-animation-delay">Animation Delay:</label>
+                <input type="range" id="alert-animation-delay" min="0" max="2" step="0.1" value="0" />
+                <div class="range-value" id="animation-delay-value">0.0s</div>
+              </div>
+            </div>
+            
+            <!-- Row 4: Animation Repeat | Animation Easing -->
+            <div class="styling-row">
+              <div class="setting-group">
+                <label for="alert-animation-iteration">Animation Repeat:</label>
+                <select id="alert-animation-iteration">
+                  <option value="1" selected>Once</option>
+                  <option value="2">Twice</option>
+                  <option value="3">Three Times</option>
+                  <option value="infinite">Infinite</option>
+                </select>
+              </div>
+              
+              <div class="setting-group">
+                <label for="alert-animation-easing">Animation Easing:</label>
+                <select id="alert-animation-easing">
+                  <option value="ease" selected>Ease</option>
+                  <option value="linear">Linear</option>
+                  <option value="ease-in">Ease In</option>
+                  <option value="ease-out">Ease Out</option>
+                  <option value="ease-in-out">Ease In Out</option>
+                  <option value="cubic-bezier(0.68, -0.55, 0.265, 1.55)">Bounce</option>
+                  <option value="cubic-bezier(0.175, 0.885, 0.32, 1.275)">Back</option>
+                </select>
+              </div>
+            </div>
           </div>
           
           <div class="setting-group">
@@ -614,6 +933,7 @@
             <div class="no-alerts">No alerts configured yet</div>
           </div>
         </div>
+        
       </div>
     </div>
   </div>

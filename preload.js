@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listEventSubSubscriptions: async () => ipcRenderer.invoke('list-eventsub-subscriptions'),
   onTwitchEventSub: (callback) => ipcRenderer.on('twitch-eventsub', (event, eventData) => callback(eventData)),
   sendFakeTwitchEvent: (evt) => ipcRenderer.send('twitch-fake-event', evt),
+  sendFakeTwitchEventHandle: async (evt) => ipcRenderer.invoke('send-fake-twitch-event', evt),
   // Event->Sound mappings
   getMappings: async () => ipcRenderer.invoke('get-event-mappings'),
   saveMapping: (mapping) => ipcRenderer.send('save-event-mapping', mapping),
