@@ -25,6 +25,99 @@
             margin: 0;
             padding: 0;
         }
+        
+        /* Animation Keyframes for Alert Text */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideInLeft {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes slideInUp {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        @keyframes slideInDown {
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        @keyframes bounceIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.05); }
+            70% { transform: scale(0.9); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        @keyframes zoomIn {
+            from { transform: scale(0); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        
+        @keyframes flipInX {
+            from { transform: perspective(400px) rotateX(90deg); opacity: 0; }
+            to { transform: perspective(400px) rotateX(0deg); opacity: 1; }
+        }
+        
+        @keyframes flipInY {
+            from { transform: perspective(400px) rotateY(90deg); opacity: 0; }
+            to { transform: perspective(400px) rotateY(0deg); opacity: 1; }
+        }
+        
+        @keyframes rotateIn {
+            from { transform: rotate(-200deg); opacity: 0; }
+            to { transform: rotate(0deg); opacity: 1; }
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+            20%, 40%, 60%, 80% { transform: translateX(10px); }
+        }
+        
+        @keyframes wobble {
+            0% { transform: translateX(0%); }
+            15% { transform: translateX(-25%) rotate(-5deg); }
+            30% { transform: translateX(20%) rotate(3deg); }
+            45% { transform: translateX(-15%) rotate(-3deg); }
+            60% { transform: translateX(10%) rotate(2deg); }
+            75% { transform: translateX(-5%) rotate(-1deg); }
+            100% { transform: translateX(0%); }
+        }
+        
+        @keyframes rubberBand {
+            0% { transform: scale(1); }
+            30% { transform: scaleX(1.25) scaleY(0.75); }
+            40% { transform: scaleX(0.75) scaleY(1.25); }
+            50% { transform: scaleX(1.15) scaleY(0.85); }
+            65% { transform: scaleX(0.95) scaleY(1.05); }
+            75% { transform: scaleX(1.05) scaleY(0.95); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes tada {
+            0% { transform: scale(1) rotate(0deg); }
+            10%, 20% { transform: scale(0.9) rotate(-3deg); }
+            30%, 50%, 70%, 90% { transform: scale(1.1) rotate(3deg); }
+            40%, 60%, 80% { transform: scale(1.1) rotate(-3deg); }
+            100% { transform: scale(1) rotate(0deg); }
+        }
 
         .overlay-container {
             position: relative;
@@ -272,6 +365,12 @@
 
         // Render payload function
         function renderPayload(payload) {
+            // Safety check for undefined payload
+            if (!payload) {
+                console.error('❌ renderPayload called with undefined payload');
+                return;
+            }
+            
             // Log payload summary instead of full object to avoid base64 spam
             const payloadSummary = {
                 type: payload.type,
@@ -319,6 +418,12 @@
         
         // Handle button trigger payload
         function handleButtonTrigger(payload) {
+            // Safety check for undefined payload
+            if (!payload) {
+                console.error('❌ handleButtonTrigger called with undefined payload');
+                return;
+            }
+            
             // Log payload summary instead of full object to avoid base64 spam
             const payloadSummary = {
                 type: payload.type,
@@ -389,9 +494,26 @@
                                     ? slotData.style.fontSize + 'px' 
                                     : slotData.style.fontSize;
                             }
+                            if (slotData.style.fontWeight) {
+                                element.style.fontWeight = slotData.style.fontWeight;
+                            }
                             if (slotData.style.color) {
                                 element.style.color = slotData.style.color;
                             }
+                            if (slotData.style.textShadow) {
+                                element.style.textShadow = slotData.style.textShadow;
+                            }
+                            if (slotData.style.webkitTextStroke) {
+                                element.style.webkitTextStroke = slotData.style.webkitTextStroke;
+                            }
+                            if (slotData.style.textAlign) {
+                                element.style.textAlign = slotData.style.textAlign;
+                            }
+                            if (slotData.style.zIndex) {
+                                element.style.zIndex = slotData.style.zIndex;
+                            }
+                            
+                            // Legacy support
                             if (slotData.style.bold !== undefined) {
                                 element.style.fontWeight = slotData.style.bold ? 'bold' : 'normal';
                             }
@@ -401,10 +523,23 @@
                             if (slotData.style.align) {
                                 element.style.textAlign = slotData.style.align;
                             }
-                            if (slotData.style.animation) {
-                                element.style.animationName = slotData.style.animation;
-                                element.style.animationDuration = '1s';
-                            }
+                        }
+                        
+                        // Apply animation if present
+                        if (slotData.animation && slotData.animation.name !== 'none') {
+                            element.style.animationName = slotData.animation.name;
+                            element.style.animationDuration = slotData.animation.duration;
+                            element.style.animationDelay = slotData.animation.delay;
+                            element.style.animationIterationCount = slotData.animation.iterationCount;
+                            element.style.animationTimingFunction = slotData.animation.timingFunction;
+                            console.log(`🎬 Applied animation: ${slotData.animation.name} for ${slotData.animation.duration}`);
+                        } else {
+                            // Clear any existing animation
+                            element.style.animationName = '';
+                            element.style.animationDuration = '';
+                            element.style.animationDelay = '';
+                            element.style.animationIterationCount = '';
+                            element.style.animationTimingFunction = '';
                         }
                         
                         console.log(`Updated slot ${elementId}: ${slotData.text}`);
@@ -827,18 +962,30 @@
         
         // Process alert with media files
         function processAlertWithMedia(alertConfig, userData) {
+            // Safety check for undefined alertConfig
+            if (!alertConfig) {
+                console.error('❌ processAlertWithMedia called with undefined alertConfig');
+                return;
+            }
+            
+            // Safety check for undefined userData
+            if (!userData) {
+                console.error('❌ processAlertWithMedia called with undefined userData');
+                return;
+            }
+            
             console.log('🎭 Processing alert with media:', alertConfig.type);
             
             // Replace placeholders in text
             let alertText = alertConfig.text || 'Test alert!';
-            alertText = alertText.replace(/{username}/g, userData.username);
-            alertText = alertText.replace(/{displayName}/g, userData.displayName);
-            alertText = alertText.replace(/{tier}/g, userData.tier);
-            alertText = alertText.replace(/{months}/g, userData.months);
-            alertText = alertText.replace(/{viewers}/g, userData.viewers);
-            alertText = alertText.replace(/{bits}/g, userData.bits);
-            alertText = alertText.replace(/{reward}/g, userData.reward);
-            alertText = alertText.replace(/{message}/g, userData.message);
+            alertText = alertText.replace(/{username}/g, userData.username || 'Unknown');
+            alertText = alertText.replace(/{displayName}/g, userData.displayName || userData.display_name || 'Unknown');
+            alertText = alertText.replace(/{tier}/g, userData.tier || '');
+            alertText = alertText.replace(/{months}/g, userData.months || '');
+            alertText = alertText.replace(/{viewers}/g, userData.viewers || '');
+            alertText = alertText.replace(/{bits}/g, userData.bits || '');
+            alertText = alertText.replace(/{reward}/g, userData.reward || '');
+            alertText = alertText.replace(/{message}/g, userData.message || '');
             
             // Create payload for overlay
             const payload = {
@@ -847,17 +994,25 @@
                     duration: alertConfig.duration || 5
                 },
                 slots: {
-                    'topCenter': {
+                    [alertConfig.textStyling?.position || 'topCenter']: {
                         type: 'text',
                         text: alertText,
                         style: {
-                            color: '#fff',
-                            fontFamily: 'Arial, sans-serif',
-                            fontSize: '24px',
-                            fontWeight: 'bold',
-                            textShadow: '2px 2px #000',
+                            color: alertConfig.textStyling?.color || '#fff',
+                            fontFamily: alertConfig.textStyling?.fontFamily || 'Arial, sans-serif',
+                            fontSize: alertConfig.textStyling?.fontSize || '24px',
+                            fontWeight: alertConfig.textStyling?.fontWeight || 'bold',
+                            textShadow: alertConfig.textStyling?.textShadow || '2px 2px #000',
+                            webkitTextStroke: alertConfig.textStyling?.textStroke || '1px #000',
                             zIndex: '1'
-                        }
+                        },
+                        animation: alertConfig.animation?.type !== 'none' ? {
+                            name: alertConfig.animation.type,
+                            duration: alertConfig.animation.duration,
+                            delay: alertConfig.animation.delay,
+                            iterationCount: alertConfig.animation.iteration,
+                            timingFunction: alertConfig.animation.easing
+                        } : null
                     }
                 },
                 centerMedia: []
@@ -895,6 +1050,12 @@
             console.log('🔔 Event data type:', typeof event.data);
             console.log('🔔 Event data keys:', event.data ? Object.keys(event.data) : 'No data');
             
+            // Safety check for event.data
+            if (!event.data) {
+                console.error('❌ Received message event with no data');
+                return;
+            }
+            
             // Handle the message structure: { type: 'buttonTrigger', payload: overlayPayload }
             if (event.data && event.data.type === 'buttonTrigger' && event.data.payload) {
                 console.log('🔔 Processing wrapped payload:', event.data.payload);
@@ -904,10 +1065,14 @@
                 renderPayload(event.data);
             } else if (event.data && event.data.type === 'processAlert') {
                 // Handle direct alert processing
-                console.log('🔔 Processing direct alert:', event.data.alertConfig.type);
+                console.log('🔔 Processing direct alert:', event.data.alertConfig?.type || 'unknown');
                 console.log('🔔 Alert config:', event.data.alertConfig);
                 console.log('🔔 User data:', event.data.userData);
-                processAlertWithMedia(event.data.alertConfig, event.data.userData);
+                if (event.data.alertConfig && event.data.userData) {
+                    processAlertWithMedia(event.data.alertConfig, event.data.userData);
+                } else {
+                    console.error('❌ Missing alertConfig or userData in processAlert message');
+                }
             } else if (event.data && event.data.type && event.data.event) {
                 // Handle Twitch EventSub events
                 console.log('🔔 Processing Twitch event:', event.data.type);
@@ -949,8 +1114,12 @@
                             console.log('🔔 WebSocket processing direct payload:', message);
                             renderPayload(message);
                         } else if (message && message.type === 'processAlert') {
-                            console.log('🔔 WebSocket processing direct alert:', message.alertConfig.type);
-                            processAlertWithMedia(message.alertConfig, message.userData);
+                            console.log('🔔 WebSocket processing direct alert:', message.alertConfig?.type || 'unknown');
+                            if (message.alertConfig && message.userData) {
+                                processAlertWithMedia(message.alertConfig, message.userData);
+                            } else {
+                                console.error('❌ Missing alertConfig or userData in WebSocket processAlert message');
+                            }
                         } else if (message && message.type && message.event) {
                             console.log('🔔 WebSocket processing Twitch event:', message.type);
                             handleTwitchEvent(message);

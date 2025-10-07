@@ -4571,10 +4571,7 @@ function setupAlertTypeFilter() {
         'gift-sub': 'Gift Sub',
         'gift-sub-received': 'Gift Received',
         'raid': 'Raid',
-        'bits': 'Bits',
-        'host': 'Host',
-        'unhost': 'Unhost',
-        'channel-points': 'Channel Points'
+        'bits': 'Bits'
       };
       
       selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
@@ -4591,9 +4588,6 @@ function setupAlertTypeFilter() {
       'gift-sub-received': 'Gift Received',
       'raid': 'Raid',
       'bits': 'Bits',
-      'host': 'Host',
-      'unhost': 'Unhost',
-      'channel-points': 'Channel Points'
     };
     selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
   }
@@ -4618,6 +4612,27 @@ function setupAlertWidget() {
   const clearAlertsBtn = document.getElementById('clear-alerts');
   const alertPreviewArea = document.getElementById('alert-preview-area');
   const alertListContainer = document.getElementById('alert-list-container');
+  
+  // Text styling controls
+  const alertTextPositionSelect = document.getElementById('alert-text-position');
+  const alertFontFamilySelect = document.getElementById('alert-font-family');
+  const alertFontSizeRange = document.getElementById('alert-font-size');
+  const alertFontWeightSelect = document.getElementById('alert-font-weight');
+  const alertTextColorInput = document.getElementById('alert-text-color');
+  const alertTextShadowSelect = document.getElementById('alert-text-shadow');
+  const alertTextStrokeSelect = document.getElementById('alert-text-stroke');
+  
+  // Animation controls
+  const alertAnimationSelect = document.getElementById('alert-animation');
+  const alertAnimationDurationRange = document.getElementById('alert-animation-duration');
+  const alertAnimationDelayRange = document.getElementById('alert-animation-delay');
+  const alertAnimationIterationSelect = document.getElementById('alert-animation-iteration');
+  const alertAnimationEasingSelect = document.getElementById('alert-animation-easing');
+  
+  // Range value displays
+  const fontSizeValue = document.getElementById('font-size-value');
+  const animationDurationValue = document.getElementById('animation-duration-value');
+  const animationDelayValue = document.getElementById('animation-delay-value');
   
   
   // Queue control elements
@@ -4672,29 +4687,7 @@ function setupAlertWidget() {
     });
   }
   
-  // Alert management functions for grouped approach
-  function toggleAlert(alertId, enabled) {
-    const alert = savedAlerts.find(a => a.id === alertId);
-    if (alert) {
-      alert.enabled = enabled;
-      localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
-      updateAlertList();
-      console.log('Toggled alert:', alertId, 'enabled:', enabled);
-    }
-  }
-  
-  function toggleRandomModeForType(alertType, randomMode) {
-    // Update random mode for all alerts of this type
-    savedAlerts.forEach(alert => {
-      if (alert.type === alertType) {
-        alert.randomMode = randomMode;
-      }
-    });
-    
-    localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
-    updateAlertList();
-    console.log('Toggled random mode for type:', alertType, 'random:', randomMode);
-  }
+  // Alert management functions moved to global scope
   
   // Close widget
   if (closeBtn) {
@@ -4718,6 +4711,81 @@ function setupAlertWidget() {
       bitsThresholdGroup.style.display = 'block';
     }
   }
+  
+  // Range slider value updates
+  if (alertFontSizeRange && fontSizeValue) {
+    alertFontSizeRange.addEventListener('input', () => {
+      fontSizeValue.textContent = alertFontSizeRange.value + 'px';
+      updatePreview().catch(console.error);
+    });
+  }
+  
+  if (alertAnimationDurationRange && animationDurationValue) {
+    alertAnimationDurationRange.addEventListener('input', () => {
+      animationDurationValue.textContent = alertAnimationDurationRange.value + 's';
+      updatePreview().catch(console.error);
+    });
+  }
+  
+  if (alertAnimationDelayRange && animationDelayValue) {
+    alertAnimationDelayRange.addEventListener('input', () => {
+      animationDelayValue.textContent = alertAnimationDelayRange.value + 's';
+      updatePreview().catch(console.error);
+    });
+  }
+  
+  // Alert type change listener - show/hide bits threshold and update alert list
+  if (alertTypeSelect) {
+    alertTypeSelect.addEventListener('change', () => {
+      const selectedType = alertTypeSelect.value;
+      
+      // Show/hide bits threshold input based on alert type
+      if (bitsThresholdGroup) {
+        bitsThresholdGroup.style.display = selectedType === 'bits' ? 'block' : 'none';
+      }
+      
+      // Update alert list to show only matching alerts
+      updateAlertList();
+      
+      // Update the selected alert type name display
+      if (selectedAlertTypeName) {
+        const typeNames = {
+          'follower': 'Follower',
+          'subscriber': 'Subscriber', 
+          'resubscriber': 'Resubscriber',
+          'gift-sub': 'Gift Subscription',
+          'gift-sub-received': 'Gift Sub Received',
+          'raid': 'Raid',
+          'bits': 'Bits',
+        };
+        selectedAlertTypeName.textContent = typeNames[selectedType] || 'Unknown';
+      }
+      
+      // Update preview when type changes
+      updatePreview().catch(console.error);
+    });
+    
+    // Trigger initial change event to set up initial state
+    alertTypeSelect.dispatchEvent(new Event('change'));
+  }
+  
+  // Styling control event listeners
+  const stylingControls = [
+    alertFontFamilySelect,
+    alertFontWeightSelect,
+    alertTextColorInput,
+    alertTextShadowSelect,
+    alertTextStrokeSelect,
+    alertAnimationSelect,
+    alertAnimationIterationSelect,
+    alertAnimationEasingSelect
+  ];
+  
+  stylingControls.forEach(control => {
+    if (control) {
+      control.addEventListener('change', () => updatePreview().catch(console.error));
+    }
+  });
   
   // Make alert functions globally accessible
   window.toggleAlert = toggleAlert;
@@ -4746,12 +4814,22 @@ function setupAlertWidget() {
   });
   
   // Update preview when form changes
-  function updatePreview() {
+  async function updatePreview() {
     const type = alertTypeSelect.value;
     const text = alertTextInput.value;
     const duration = alertDurationInput.value;
-    const soundFile = alertSoundInput.files[0];
-    const imageFile = alertImageInput.files[0];
+    
+    // Check for new files first, then existing media when editing
+    let soundFile = alertSoundInput.files[0];
+    let imageFile = alertImageInput.files[0];
+    
+    // If no new files and we're editing, use existing media
+    if (!soundFile && window.editingAlertMedia?.soundFile) {
+      soundFile = window.editingAlertMedia.soundFile;
+    }
+    if (!imageFile && window.editingAlertMedia?.imageFile) {
+      imageFile = window.editingAlertMedia.imageFile;
+    }
     
     if (!text.trim()) {
       alertPreviewArea.innerHTML = '<div class="preview-placeholder">Configure an alert to see preview</div>';
@@ -4774,23 +4852,74 @@ function setupAlertWidget() {
     // Process text with sample data for preview
     const processedText = replacePlaceholders(text, sampleUserData);
     
+    // Get styling values
+    const textPosition = alertTextPositionSelect ? alertTextPositionSelect.value : 'topCenter';
+    const fontFamily = alertFontFamilySelect ? alertFontFamilySelect.value : 'Arial, sans-serif';
+    const fontSize = alertFontSizeRange ? alertFontSizeRange.value + 'px' : '24px';
+    const fontWeight = alertFontWeightSelect ? alertFontWeightSelect.value : '700';
+    const textColor = alertTextColorInput ? alertTextColorInput.value : '#ffffff';
+    const textShadow = alertTextShadowSelect ? alertTextShadowSelect.value : '1px 1px 2px rgba(0,0,0,0.8)';
+    const textStroke = alertTextStrokeSelect ? alertTextStrokeSelect.value : '1px #000';
+    const animation = alertAnimationSelect ? alertAnimationSelect.value : 'none';
+    const animationDuration = alertAnimationDurationRange ? alertAnimationDurationRange.value + 's' : '1s';
+    const animationDelay = alertAnimationDelayRange ? alertAnimationDelayRange.value + 's' : '0s';
+    const animationIteration = alertAnimationIterationSelect ? alertAnimationIterationSelect.value : '1';
+    const animationEasing = alertAnimationEasingSelect ? alertAnimationEasingSelect.value : 'ease';
+    
+    // Build text style
+    let textStyle = `
+      font-family: ${fontFamily};
+      font-size: ${fontSize};
+      font-weight: ${fontWeight};
+      color: ${textColor};
+      text-shadow: ${textShadow};
+      -webkit-text-stroke: ${textStroke};
+    `;
+    
+    // Add animation if selected
+    if (animation !== 'none') {
+      textStyle += `
+        animation: ${animation} ${animationDuration} ${animationEasing} ${animationDelay} ${animationIteration};
+      `;
+    }
+    
     let previewHTML = '<div class="alert-preview-content">';
     
     if (imageFile) {
       if (imageFile instanceof File) {
+        // New file from input
         const imageUrl = URL.createObjectURL(imageFile);
         previewHTML += `<img src="${imageUrl}" alt="Alert Image" />`;
       } else if (imageFile.data) {
+        // Legacy base64 data
         previewHTML += `<img src="${imageFile.data}" alt="Alert Image" />`;
+      } else if (imageFile.path && window.electronAPI && window.electronAPI.getMediaFile) {
+        // Existing saved file with path - load from disk
+        try {
+          const result = await window.electronAPI.getMediaFile(imageFile.path);
+          if (result.success) {
+            previewHTML += `<img src="${result.data}" alt="Alert Image" />`;
+          } else {
+            // Fallback to placeholder if loading fails
+            previewHTML += `<div class="image-placeholder">📷 ${imageFile.name || 'Alert Image'}</div>`;
+          }
+        } catch (error) {
+          console.error('Error loading preview image:', error);
+          previewHTML += `<div class="image-placeholder">📷 ${imageFile.name || 'Alert Image'}</div>`;
+        }
+      } else if (imageFile.name) {
+        // Existing file (show placeholder)
+        previewHTML += `<div class="image-placeholder">📷 ${imageFile.name}</div>`;
       }
     }
     
     previewHTML += `<h3>${getAlertTypeDisplayName(type)}</h3>`;
-    previewHTML += `<p>${processedText}</p>`;
+    previewHTML += `<p style="${textStyle}">${processedText}</p>`;
     previewHTML += `<p><small>Duration: ${duration}s</small></p>`;
     
     if (soundFile) {
-      previewHTML += `<p><small>Sound: ${soundFile.name}</small></p>`;
+      const soundName = soundFile.name || 'Existing Sound';
+      previewHTML += `<p><small>🔊 Sound: ${soundName}</small></p>`;
     }
     
     previewHTML += '</div>';
@@ -4813,8 +4942,8 @@ function setupAlertWidget() {
   // Event listeners for form changes
   [alertTypeSelect, alertTextInput, alertDurationInput, alertSoundInput, alertImageInput].forEach(element => {
     if (element) {
-      element.addEventListener('change', updatePreview);
-      element.addEventListener('input', updatePreview);
+      element.addEventListener('change', () => updatePreview().catch(console.error));
+      element.addEventListener('input', () => updatePreview().catch(console.error));
     }
   });
   
@@ -4827,7 +4956,7 @@ function setupAlertWidget() {
         if (duration && duration > parseInt(alertDurationInput.value)) {
           alertDurationInput.value = duration;
           console.log(`🎵 Auto-updated duration to ${duration}s for audio file`);
-          updatePreview();
+          updatePreview().catch(console.error);
         }
       }
     });
@@ -4841,7 +4970,7 @@ function setupAlertWidget() {
         if (duration && duration > parseInt(alertDurationInput.value)) {
           alertDurationInput.value = duration;
           console.log(`🎵 Auto-updated duration to ${duration}s for image/video file`);
-          updatePreview();
+          updatePreview().catch(console.error);
         }
       }
     });
@@ -4918,12 +5047,33 @@ function setupAlertWidget() {
         }
       }
       
+      // Get styling values
+      const textStyling = {
+        position: alertTextPositionSelect ? alertTextPositionSelect.value : 'topCenter',
+        fontFamily: alertFontFamilySelect ? alertFontFamilySelect.value : 'Arial, sans-serif',
+        fontSize: alertFontSizeRange ? alertFontSizeRange.value + 'px' : '24px',
+        fontWeight: alertFontWeightSelect ? alertFontWeightSelect.value : '700',
+        color: alertTextColorInput ? alertTextColorInput.value : '#ffffff',
+        textShadow: alertTextShadowSelect ? alertTextShadowSelect.value : '1px 1px 2px rgba(0,0,0,0.8)',
+        textStroke: alertTextStrokeSelect ? alertTextStrokeSelect.value : '1px #000'
+      };
+      
+      const animation = {
+        type: alertAnimationSelect ? alertAnimationSelect.value : 'none',
+        duration: alertAnimationDurationRange ? alertAnimationDurationRange.value + 's' : '1s',
+        delay: alertAnimationDelayRange ? alertAnimationDelayRange.value + 's' : '0s',
+        iteration: alertAnimationIterationSelect ? alertAnimationIterationSelect.value : '1',
+        easing: alertAnimationEasingSelect ? alertAnimationEasingSelect.value : 'ease'
+      };
+
       const alertData = {
         id: alertId,
         type: type,
         text: text,
         duration: duration,
         bitsThreshold: type === 'bits' ? (parseInt(alertBitsThresholdInput.value) || 10) : null,
+        textStyling: textStyling,
+        animation: animation,
         soundFile: soundFilePath ? {
           name: soundFile.name,
           size: soundFile.size,
@@ -4942,7 +5092,40 @@ function setupAlertWidget() {
       };
       
       try {
-        savedAlerts.push(alertData);
+        // Check if we're editing an existing alert
+        if (window.editingAlertId) {
+          // Update existing alert
+          const alertIndex = savedAlerts.findIndex(a => a.id === window.editingAlertId);
+          if (alertIndex !== -1) {
+            // Preserve the original creation date
+            alertData.createdAt = savedAlerts[alertIndex].createdAt;
+            
+            // Preserve existing media files if no new files were uploaded
+            if (!soundFilePath && window.editingAlertMedia?.soundFile) {
+              alertData.soundFile = window.editingAlertMedia.soundFile;
+              console.log('Preserved existing sound file:', window.editingAlertMedia.soundFile.name);
+            }
+            
+            if (!imageFilePath && window.editingAlertMedia?.imageFile) {
+              alertData.imageFile = window.editingAlertMedia.imageFile;
+              console.log('Preserved existing image file:', window.editingAlertMedia.imageFile.name);
+            }
+            
+            savedAlerts[alertIndex] = alertData;
+            console.log('Updated existing alert:', window.editingAlertId);
+          } else {
+            console.error('Alert to edit not found:', window.editingAlertId);
+            savedAlerts.push(alertData);
+          }
+          // Clear editing state
+          window.editingAlertId = null;
+          window.editingAlertMedia = null;
+        } else {
+          // Create new alert
+          savedAlerts.push(alertData);
+          console.log('Created new alert:', alertId);
+        }
+        
         localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
         
         updateAlertList();
@@ -4969,15 +5152,87 @@ function setupAlertWidget() {
   
   // Clear form
   function clearForm() {
+    // Clear editing state
+    window.editingAlertId = null;
+    window.editingAlertMedia = null;
+    
+    // Reset file input labels
+    const soundFileLabel = document.querySelector('label[for="alert-sound"]');
+    if (soundFileLabel) {
+      soundFileLabel.textContent = 'Sound File:';
+      soundFileLabel.style.color = '';
+      soundFileLabel.style.fontWeight = '';
+    }
+    
+    const imageFileLabel = document.querySelector('label[for="alert-image"]');
+    if (imageFileLabel) {
+      imageFileLabel.textContent = 'Image File:';
+      imageFileLabel.style.color = '';
+      imageFileLabel.style.fontWeight = '';
+    }
+    
+    // Reset form fields
     alertTextInput.value = '';
     alertDurationInput.value = '5';
     alertSoundInput.value = '';
     alertImageInput.value = '';
-    updatePreview();
+    
+    // Reset bits threshold
+    if (alertBitsThresholdInput) {
+      alertBitsThresholdInput.value = '10';
+    }
+    
+    // Reset styling to defaults
+    if (alertTextPositionSelect) {
+      alertTextPositionSelect.value = 'topCenter';
+    }
+    if (alertFontFamilySelect) {
+      alertFontFamilySelect.value = 'Arial, sans-serif';
+    }
+    if (alertFontSizeRange) {
+      alertFontSizeRange.value = '24';
+      const fontSizeValue = document.getElementById('font-size-value');
+      if (fontSizeValue) fontSizeValue.textContent = '24px';
+    }
+    if (alertFontWeightSelect) {
+      alertFontWeightSelect.value = '700';
+    }
+    if (alertTextColorInput) {
+      alertTextColorInput.value = '#ffffff';
+    }
+    if (alertTextShadowSelect) {
+      alertTextShadowSelect.value = '1px 1px 2px rgba(0,0,0,0.8)';
+    }
+    if (alertTextStrokeSelect) {
+      alertTextStrokeSelect.value = '1px #000';
+    }
+    
+    // Reset animation to defaults
+    if (alertAnimationSelect) {
+      alertAnimationSelect.value = 'none';
+    }
+    if (alertAnimationDurationRange) {
+      alertAnimationDurationRange.value = '1';
+      const durationValue = document.getElementById('animation-duration-value');
+      if (durationValue) durationValue.textContent = '1.0s';
+    }
+    if (alertAnimationDelayRange) {
+      alertAnimationDelayRange.value = '0';
+      const delayValue = document.getElementById('animation-delay-value');
+      if (delayValue) delayValue.textContent = '0.0s';
+    }
+    if (alertAnimationIterationSelect) {
+      alertAnimationIterationSelect.value = '1';
+    }
+    if (alertAnimationEasingSelect) {
+      alertAnimationEasingSelect.value = 'ease';
+    }
+    
+    updatePreview().catch(console.error);
   }
   
   // Get display name for alert type
-  function getAlertTypeDisplayName(alertType) {
+  window.getAlertTypeDisplayName = function(alertType) {
     const typeNames = {
       'follower': 'Follower',
       'subscriber': 'Subscriber', 
@@ -4986,15 +5241,12 @@ function setupAlertWidget() {
       'gift-sub-received': 'Gift Received',
       'raid': 'Raid',
       'bits': 'Bits',
-      'host': 'Host',
-      'unhost': 'Unhost',
-      'channel-points': 'Channel Points'
     };
     return typeNames[alertType] || alertType;
   }
 
   // Update alert list display - filtered by selected alert type
-  function updateAlertList() {
+  window.updateAlertList = function() {
     if (!alertListContainer) return;
     
     // Get the currently selected alert type
@@ -5042,6 +5294,7 @@ function setupAlertWidget() {
                 <span class="variation-text">${alert.text}</span>
               </label>
               <div class="variation-actions">
+                <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
                 <button class="variation-btn test" onclick="testSavedAlert('${alert.id}')">Test</button>
                 <button class="variation-btn delete" onclick="deleteAlert('${alert.id}')">Delete</button>
               </div>
@@ -5095,6 +5348,139 @@ function setupAlertWidget() {
   
   
   // Delete alert
+  // Display existing media files in the form
+  function displayExistingMedia(soundFile, imageFile) {
+    // Display existing sound file
+    if (soundFile) {
+      const soundFileLabel = document.querySelector('label[for="alert-sound"]');
+      if (soundFileLabel) {
+        const fileName = soundFile.name || 'Existing Sound File';
+        soundFileLabel.textContent = `Sound File: ${fileName}`;
+        soundFileLabel.style.color = 'var(--accent-color)';
+        soundFileLabel.style.fontWeight = 'bold';
+      }
+    }
+    
+    // Display existing image file
+    if (imageFile) {
+      const imageFileLabel = document.querySelector('label[for="alert-image"]');
+      if (imageFileLabel) {
+        const fileName = imageFile.name || 'Existing Image File';
+        imageFileLabel.textContent = `Image File: ${fileName}`;
+        imageFileLabel.style.color = 'var(--accent-color)';
+        imageFileLabel.style.fontWeight = 'bold';
+      }
+    }
+  }
+
+  window.editAlert = function(alertId) {
+    // Find the alert to edit
+    const alertToEdit = savedAlerts.find(a => a.id === alertId);
+    if (!alertToEdit) {
+      console.error('Alert not found:', alertId);
+      return;
+    }
+    
+    console.log('Editing alert:', alertToEdit);
+    
+    // Populate the form with the alert data
+    if (alertTypeSelect) {
+      alertTypeSelect.value = alertToEdit.type;
+      // Trigger change event to update UI
+      alertTypeSelect.dispatchEvent(new Event('change'));
+    }
+    
+    if (alertTextInput) {
+      alertTextInput.value = alertToEdit.text;
+    }
+    
+    if (alertDurationInput) {
+      alertDurationInput.value = alertToEdit.duration || 5;
+    }
+    
+    // Populate bits threshold if it's a bits alert
+    if (alertToEdit.type === 'bits' && alertToEdit.bitsThreshold && alertBitsThresholdInput) {
+      alertBitsThresholdInput.value = alertToEdit.bitsThreshold;
+    }
+    
+    // Populate styling data
+    if (alertToEdit.textStyling) {
+      if (alertTextPositionSelect && alertToEdit.textStyling.position) {
+        alertTextPositionSelect.value = alertToEdit.textStyling.position;
+      }
+      if (alertFontFamilySelect && alertToEdit.textStyling.fontFamily) {
+        alertFontFamilySelect.value = alertToEdit.textStyling.fontFamily;
+      }
+      if (alertFontSizeRange && alertToEdit.textStyling.fontSize) {
+        const fontSize = alertToEdit.textStyling.fontSize.replace('px', '');
+        alertFontSizeRange.value = fontSize;
+        // Update the display value
+        const fontSizeValue = document.getElementById('font-size-value');
+        if (fontSizeValue) fontSizeValue.textContent = fontSize + 'px';
+      }
+      if (alertFontWeightSelect && alertToEdit.textStyling.fontWeight) {
+        alertFontWeightSelect.value = alertToEdit.textStyling.fontWeight;
+      }
+      if (alertTextColorInput && alertToEdit.textStyling.color) {
+        alertTextColorInput.value = alertToEdit.textStyling.color;
+      }
+      if (alertTextShadowSelect && alertToEdit.textStyling.textShadow) {
+        alertTextShadowSelect.value = alertToEdit.textStyling.textShadow;
+      }
+      if (alertTextStrokeSelect && alertToEdit.textStyling.textStroke) {
+        alertTextStrokeSelect.value = alertToEdit.textStyling.textStroke;
+      }
+    }
+    
+    // Populate animation data
+    if (alertToEdit.animation) {
+      if (alertAnimationSelect && alertToEdit.animation.type) {
+        alertAnimationSelect.value = alertToEdit.animation.type;
+      }
+      if (alertAnimationDurationRange && alertToEdit.animation.duration) {
+        const duration = alertToEdit.animation.duration.replace('s', '');
+        alertAnimationDurationRange.value = duration;
+        // Update the display value
+        const durationValue = document.getElementById('animation-duration-value');
+        if (durationValue) durationValue.textContent = duration + 's';
+      }
+      if (alertAnimationDelayRange && alertToEdit.animation.delay) {
+        const delay = alertToEdit.animation.delay.replace('s', '');
+        alertAnimationDelayRange.value = delay;
+        // Update the display value
+        const delayValue = document.getElementById('animation-duration-value');
+        if (delayValue) delayValue.textContent = delay + 's';
+      }
+      if (alertAnimationIterationSelect && alertToEdit.animation.iteration) {
+        alertAnimationIterationSelect.value = alertToEdit.animation.iteration;
+      }
+      if (alertAnimationEasingSelect && alertToEdit.animation.easing) {
+        alertAnimationEasingSelect.value = alertToEdit.animation.easing;
+      }
+    }
+    
+    // Store the alert ID and existing media for editing
+    window.editingAlertId = alertId;
+    window.editingAlertMedia = {
+      soundFile: alertToEdit.soundFile,
+      imageFile: alertToEdit.imageFile
+    };
+    
+    // Display existing media files in the form
+    displayExistingMedia(alertToEdit.soundFile, alertToEdit.imageFile);
+    
+    // Update preview
+    updatePreview().catch(console.error);
+    
+    // Scroll to top of form
+    const alertWidget = document.getElementById('alert-widget');
+    if (alertWidget) {
+      alertWidget.scrollTop = 0;
+    }
+    
+    console.log('Alert form populated for editing');
+  };
+
   window.deleteAlert = function(alertId) {
     if (confirm('Are you sure you want to delete this alert?')) {
       savedAlerts = savedAlerts.filter(a => a.id !== alertId);
@@ -5157,272 +5543,107 @@ function setupAlertWidget() {
   // Update queue status every second
   setInterval(updateQueueStatus, 1000);
   
-  // Test Events functionality
-  const testEventTypeSelect = document.getElementById('test-event-type');
-  const testUsernameInput = document.getElementById('test-username');
-  const testBitsAmountInput = document.getElementById('test-bits-amount');
-  const testViewersCountInput = document.getElementById('test-viewers-count');
-  const testMonthsCountInput = document.getElementById('test-months-count');
-  const testTierSelect = document.getElementById('test-tier-select');
-  const testRewardTitleInput = document.getElementById('test-reward-title');
-  const fireTestEventBtn = document.getElementById('fire-test-event');
-  const testEventStatus = document.getElementById('test-event-status');
-  
-  const testBitsGroup = document.getElementById('test-bits-group');
-  const testViewersGroup = document.getElementById('test-viewers-group');
-  const testMonthsGroup = document.getElementById('test-months-group');
-  const testTierGroup = document.getElementById('test-tier-group');
-  const testRewardGroup = document.getElementById('test-reward-group');
-  
-  // Show/hide test fields based on event type
-  if (testEventTypeSelect) {
-    testEventTypeSelect.addEventListener('change', () => {
-      const eventType = testEventTypeSelect.value;
-      
-      // Hide all conditional fields first
-      if (testBitsGroup) testBitsGroup.style.display = 'none';
-      if (testViewersGroup) testViewersGroup.style.display = 'none';
-      if (testMonthsGroup) testMonthsGroup.style.display = 'none';
-      if (testTierGroup) testTierGroup.style.display = 'none';
-      if (testRewardGroup) testRewardGroup.style.display = 'none';
-      
-      // Show relevant fields based on event type
-      switch (eventType) {
-        case 'bits':
-          if (testBitsGroup) testBitsGroup.style.display = 'block';
-          break;
-        case 'raid':
-        case 'host':
-          if (testViewersGroup) testViewersGroup.style.display = 'block';
-          break;
-        case 'resubscriber':
-          if (testMonthsGroup) testMonthsGroup.style.display = 'block';
-          if (testTierGroup) testTierGroup.style.display = 'block';
-          break;
-        case 'subscriber':
-        case 'gift-sub':
-        case 'gift-sub-received':
-          if (testTierGroup) testTierGroup.style.display = 'block';
-          break;
-        case 'channel-points':
-          if (testRewardGroup) testRewardGroup.style.display = 'block';
-          break;
-      }
-    });
-  }
-  
-  // Fire test event
-  if (fireTestEventBtn) {
-    fireTestEventBtn.addEventListener('click', () => {
-      const eventType = testEventTypeSelect.value;
-      const username = testUsernameInput.value.trim() || 'TestUser123';
-      
-      // Build base user data
-      const baseUserData = {
-        user_id: '123456789',
-        user_login: username.toLowerCase(),
-        user_name: username,
-        display_name: username,
-        broadcaster_user_id: '987654321',
-        broadcaster_user_login: 'yourchannel',
-        broadcaster_user_name: 'YourChannel'
-      };
-      
-      // Create proper Twitch EventSub-style event object
-      let twitchEvent = null;
-      
-      switch (eventType) {
-        case 'follower':
-          twitchEvent = {
-            type: 'channel.follow',
-            event: {
-              ...baseUserData,
-              followed_at: new Date().toISOString()
-            }
-          };
-          break;
-          
-        case 'subscriber':
-          twitchEvent = {
-            type: 'channel.subscribe',
-            event: {
-              ...baseUserData,
-              tier: testTierSelect.value,
-              is_gift: false,
-              cumulative_months: 1,
-              streak_months: 1,
-              duration_months: 1
-            }
-          };
-          break;
-          
-        case 'resubscriber':
-          twitchEvent = {
-            type: 'channel.subscribe',
-            event: {
-              ...baseUserData,
-              tier: testTierSelect.value,
-              is_gift: false,
-              cumulative_months: parseInt(testMonthsCountInput.value) || 6,
-              streak_months: 3,
-              duration_months: 1
-            }
-          };
-          break;
-          
-        case 'gift-sub':
-          twitchEvent = {
-            type: 'channel.subscribe',
-            event: {
-              ...baseUserData,
-              tier: testTierSelect.value,
-              is_gift: true,
-              cumulative_months: 1,
-              streak_months: 1,
-              duration_months: 1
-            }
-          };
-          break;
-          
-        case 'gift-sub-received':
-          twitchEvent = {
-            type: 'channel.subscribe',
-            event: {
-              ...baseUserData,
-              tier: testTierSelect.value,
-              is_gift: true,
-              cumulative_months: 1,
-              streak_months: 1,
-              duration_months: 1,
-              user_id: baseUserData.broadcaster_user_id // Mark as received by broadcaster
-            }
-          };
-          break;
-          
-        case 'raid':
-          twitchEvent = {
-            type: 'channel.raid',
-            event: {
-              from_broadcaster_user_id: baseUserData.user_id,
-              from_broadcaster_user_login: baseUserData.user_login,
-              from_broadcaster_user_name: baseUserData.user_name,
-              to_broadcaster_user_id: baseUserData.broadcaster_user_id,
-              to_broadcaster_user_login: baseUserData.broadcaster_user_login,
-              to_broadcaster_user_name: baseUserData.broadcaster_user_name,
-              viewers: parseInt(testViewersCountInput.value) || 25
-            }
-          };
-          break;
-          
-        case 'bits':
-          twitchEvent = {
-            type: 'channel.cheer',
-            event: {
-              ...baseUserData,
-              bits: parseInt(testBitsAmountInput.value) || 100,
-              message: `Test cheer with ${parseInt(testBitsAmountInput.value) || 100} bits!`,
-              is_anonymous: false
-            }
-          };
-          break;
-          
-        case 'host':
-          twitchEvent = {
-            type: 'channel.host',
-            event: {
-              ...baseUserData,
-              viewers: parseInt(testViewersCountInput.value) || 25,
-              hosted_at: new Date().toISOString()
-            }
-          };
-          break;
-          
-        case 'unhost':
-          twitchEvent = {
-            type: 'channel.unhost',
-            event: {
-              ...baseUserData,
-              viewers: 0
-            }
-          };
-          break;
-          
-        case 'channel-points':
-          twitchEvent = {
-            type: 'channel.channel_points_custom_reward_redemption.add',
-            event: {
-              ...baseUserData,
-              reward: {
-                id: 'test-reward-id',
-                title: testRewardTitleInput.value.trim() || 'Test Reward',
-                cost: 100
-              },
-              user_input: 'Test redemption message',
-              redeemed_at: new Date().toISOString()
-            }
-          };
-          break;
-      }
-      
-      if (twitchEvent) {
-        console.log('🎬 Firing test event through Twitch pipeline:', twitchEvent);
-        
-        // Push through the full Twitch event pipeline (for activity log and mappings)
-        if (typeof pushTwitchEvent === 'function') {
-          pushTwitchEvent(twitchEvent);
-        } else {
-          console.error('pushTwitchEvent function not available');
-        }
-        
-        // Use the SAME alert system as saved alerts - this ensures consistency
-        // Create user data from the Twitch event for the alert system
-        const userData = {
-          username: twitchEvent.event.user_name || twitchEvent.event.from_broadcaster_user_name || username,
-          display_name: twitchEvent.event.user_login || twitchEvent.event.from_broadcaster_user_login || username,
-          user_name: twitchEvent.event.user_name || twitchEvent.event.from_broadcaster_user_name || username,
-          tier: twitchEvent.event.tier || '1000',
-          viewers: twitchEvent.event.viewers || 25,
-          bits: twitchEvent.event.bits || 100,
-          months: twitchEvent.event.cumulative_months || 1,
-          message: twitchEvent.event.message || '',
-          reward: twitchEvent.event.reward?.title || 'Test Reward'
-        };
-        
-        console.log('🎯 Triggering alert through main app alert system:', eventType, userData);
-        alertSystem.triggerAlertForEvent(eventType, userData);
-        
-        // Show status message
-        if (testEventStatus) {
-          const statusMessage = testEventStatus.querySelector('.status-message');
-          if (statusMessage) {
-            statusMessage.innerHTML = `
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="color: #4ade80;">✓</span>
-                <span>Test event fired: <strong>${getAlertTypeDisplayName(eventType)}</strong> for <strong>${username}</strong></span>
-              </div>
-              <div style="margin-top: 5px; font-size: 11px; opacity: 0.7;">
-                Event processed through main app alert system - check overlay
-              </div>
-            `;
-            testEventStatus.style.display = 'block';
-            
-            // Hide status message after 5 seconds
-            setTimeout(() => {
-              testEventStatus.style.display = 'none';
-            }, 5000);
-          }
-        }
-        
-        updateQueueStatus();
-      }
-    });
-  }
   
   // Initialize
   updateAlertList();
   updatePreview();
   updateQueueStatus();
 }
+
+// Global functions for inline event handlers
+window.updateAlertList = function() {
+  if (!alertListContainer) return;
+  
+  // Get the currently selected alert type
+  const alertTypeSelect = document.getElementById('alert-type');
+  const selectedType = alertTypeSelect ? alertTypeSelect.value : 'follower';
+  
+  // Filter alerts by selected type
+  const filteredAlerts = savedAlerts.filter(alert => alert.type === selectedType);
+  
+  if (filteredAlerts.length === 0) {
+    alertListContainer.innerHTML = `
+      <div class="no-alerts">
+        <div style="margin-bottom: 15px;">No ${selectedType} alerts configured yet</div>
+        <div style="color: var(--text-secondary); font-size: 14px;">
+          Create a new ${selectedType} alert using the form on the left.
+        </div>
+      </div>
+    `;
+    return;
+  }
+  
+  // Render filtered alerts for the selected type
+  const firstAlert = filteredAlerts[0];
+  const thresholdInfo = selectedType === 'bits' && firstAlert.bitsThreshold 
+    ? `<div class="alert-item-threshold" style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px;">Min bits: ${firstAlert.bitsThreshold}</div>`
+    : '';
+  
+  // Create variations list from all alerts of this type
+  const variationsHtml = `
+    <div class="alert-variations-list">
+      <div class="variations-header">
+        <span>Variations (${filteredAlerts.length}):</span>
+        <label class="random-toggle">
+          <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
+                 onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
+          Random
+        </label>
+      </div>
+      <div class="variations-items">
+        ${filteredAlerts.map((alert, index) => `
+          <div class="variation-item ${alert.enabled !== false ? 'enabled' : ''}">
+            <label class="variation-toggle">
+              <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
+                     onchange="toggleAlert('${alert.id}', this.checked)" />
+              <span class="variation-text">${alert.text}</span>
+            </label>
+            <div class="variation-actions">
+              <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
+              <button class="variation-btn test" onclick="testSavedAlert('${alert.id}')">Test</button>
+              <button class="variation-btn delete" onclick="deleteAlert('${alert.id}')">Delete</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+  
+  alertListContainer.innerHTML = `
+    <div class="alert-group" data-alert-type="${selectedType}">
+      <div class="alert-item">
+        <div class="alert-item-header">
+          <h4>${getAlertTypeDisplayName(selectedType)}</h4>
+          ${thresholdInfo}
+        </div>
+        ${variationsHtml}
+      </div>
+    </div>
+  `;
+};
+
+window.toggleAlert = function(alertId, enabled) {
+  const alert = savedAlerts.find(a => a.id === alertId);
+  if (alert) {
+    alert.enabled = enabled;
+    localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+    updateAlertList();
+    console.log('Toggled alert:', alertId, 'enabled:', enabled);
+  }
+};
+
+window.toggleRandomModeForType = function(alertType, randomMode) {
+  // Update random mode for all alerts of this type
+  savedAlerts.forEach(alert => {
+    if (alert.type === alertType) {
+      alert.randomMode = randomMode;
+    }
+  });
+  
+  localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+  updateAlertList();
+  console.log('Toggled random mode for type:', alertType, 'random:', randomMode);
+};
 
 // Global replace placeholders function
 function replacePlaceholders(text, userData) {
@@ -5576,6 +5797,12 @@ let alertQueue = {
   
   // Trigger alert (internal method) - NO auto-clear timeout
   async triggerAlert(alertData, userData) {
+    // Safety check for undefined alertData
+    if (!alertData) {
+      console.error('❌ triggerAlert called with undefined alertData');
+      return;
+    }
+    
     if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
       // Process text with user data if available
       const processedText = userData ? replacePlaceholders(alertData.text, userData) : alertData.text;
@@ -5589,16 +5816,25 @@ let alertQueue = {
           durationMs: alertData.duration * 1000
         },
         slots: {
-          topCenter: {
+          [alertData.textStyling?.position || 'topCenter']: {
             text: processedText,
             style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: '24px',
-              color: '#00ff00',
-              fontWeight: 'bold',
+              fontFamily: alertData.textStyling?.fontFamily || 'Arial, sans-serif',
+              fontSize: alertData.textStyling?.fontSize || '24px',
+              color: alertData.textStyling?.color || '#00ff00',
+              fontWeight: alertData.textStyling?.fontWeight || 'bold',
+              textShadow: alertData.textStyling?.textShadow || '2px 2px #000',
+              webkitTextStroke: alertData.textStyling?.textStroke || '1px #000',
               textAlign: 'center',
               zIndex: '1'
-            }
+            },
+            animation: alertData.animation?.type !== 'none' ? {
+              name: alertData.animation.type,
+              duration: alertData.animation.duration,
+              delay: alertData.animation.delay,
+              iterationCount: alertData.animation.iteration,
+              timingFunction: alertData.animation.easing
+            } : null
           }
         },
         centerMedia: []
@@ -5798,34 +6034,6 @@ function createFakeTwitchEvent(alertType) {
           text: 'Thanks for the gift!',
           emotes: []
         }
-      }
-    },
-    'host': {
-      type: 'channel.host',
-      event: {
-        ...baseUserData,
-        viewers: 15,
-        hosted_at: new Date().toISOString()
-      }
-    },
-    'unhost': {
-      type: 'channel.unhost',
-      event: {
-        ...baseUserData,
-        viewers: 0
-      }
-    },
-    'channel-points': {
-      type: 'channel.channel_points_custom_reward_redemption.add',
-      event: {
-        ...baseUserData,
-        reward: {
-          id: 'test-reward-id',
-          title: 'Test Reward',
-          cost: 100
-        },
-        user_input: 'Test message',
-        redeemed_at: new Date().toISOString()
       }
     }
   };
