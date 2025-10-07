@@ -191,9 +191,6 @@
       <button id="toggle-drag-mode" class="drag-toggle-btn" title="Toggle Drag Mode">
         🔒 Lock
       </button>
-      <button id="show-overlay-url" class="overlay-url-btn" title="Show Overlay URL">
-        📺 Overlay URL
-      </button>
       <span class="drag-status">Sound buttons are locked</span>
     </div>
     
@@ -892,6 +889,8 @@
           <div class="setting-group">
             <label for="alert-sound">Sound File:</label>
             <input type="file" id="alert-sound" accept="audio/*" />
+            <label for="alert-sound-volume" class="volume-label">Volume: <span id="alert-sound-volume-value">100%</span></label>
+            <input type="range" id="alert-sound-volume" name="alert-sound-volume" min="0" max="100" value="100" />
           </div>
           
           <div class="setting-group">

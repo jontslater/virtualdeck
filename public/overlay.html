@@ -208,6 +208,11 @@
             box-shadow: none;
             pointer-events: none; /* prevents blocking clicks */
             z-index: 10;
+            /* Constrain to center grid cell - prevents bleeding into text areas */
+            max-width: 33.333%; /* 1/3 of overlay width (center column) */
+            max-height: 33.333%; /* 1/3 of overlay height (center row) */
+            width: 33.333%;
+            height: 33.333%;
         }
 
         #center-media img,
@@ -226,6 +231,8 @@
         #center-media video {
             max-width: 100%;
             max-height: 100%;
+            width: auto;
+            height: auto;
             object-fit: contain;
         }
 
@@ -587,6 +594,27 @@
                     const loopAttr = item.loop !== false ? 'loop' : '';
                     contentHTML += `<video src="${videoSrc}" ${loopAttr} muted autoplay></video>`;
                     console.log(`Added video: ${videoSrc}`);
+                } else if (item.type === 'audio') {
+                    // Handle audio content
+                    const audioSrc = item.src || item.url || item.path || item;
+                    const volume = item.volume !== undefined ? item.volume : 1.0;
+                    const loopAttr = item.loop ? 'loop' : '';
+                    const autoplayAttr = item.autoplay !== false ? 'autoplay' : '';
+                    
+                    // Create audio element with volume control
+                    const audioId = 'audio-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                    contentHTML += `<audio id="${audioId}" src="${audioSrc}" ${loopAttr} ${autoplayAttr} style="display:none;"></audio>`;
+                    
+                    // Store audio ID and volume to set after insertion
+                    setTimeout(() => {
+                        const audioEl = document.getElementById(audioId);
+                        if (audioEl) {
+                            audioEl.volume = volume;
+                            console.log(`🎵 Audio volume set to ${volume} (${Math.round(volume * 100)}%)`);
+                        }
+                    }, 0);
+                    
+                    console.log(`Added audio: ${audioSrc} with volume ${volume}`);
                 } else if (item.type === 'text') {
                     // Handle text content
                     const textContent = item.text || item.content || '';
@@ -1027,12 +1055,15 @@
             // Add sound file if present
             if (alertConfig.soundFile && alertConfig.soundFile.data) {
                 console.log('🎵 Adding sound file to alert');
+                const volume = alertConfig.soundFile.volume !== undefined ? alertConfig.soundFile.volume / 100 : 1.0;
                 payload.centerMedia.push({
                     type: 'audio',
                     src: alertConfig.soundFile.data,
                     autoplay: true,
-                    loop: false
+                    loop: false,
+                    volume: volume  // Volume as decimal (0.0 to 1.0)
                 });
+                console.log('🎵 Sound volume set to:', volume);
             }
             
             // Add image file if present
