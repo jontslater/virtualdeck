@@ -3363,6 +3363,62 @@ function setupAppToolbar() {
     if (window.electronAPI && typeof window.electronAPI.closeWindow === 'function') window.electronAPI.closeWindow();
   });
 
+  // Move button functionality
+  const btnMove = document.getElementById('btn-move');
+  if (btnMove) {
+    let isDragging = false;
+    let startX, startY;
+
+    btnMove.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      btnMove.classList.add('dragging');
+      
+      // Store initial mouse position relative to screen
+      startX = e.screenX;
+      startY = e.screenY;
+      
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      
+      // Calculate movement delta
+      const deltaX = e.screenX - startX;
+      const deltaY = e.screenY - startY;
+      
+      // Only move if there's significant movement to avoid jitter
+      if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+        // Move the window by the delta amount
+        if (window.electronAPI && typeof window.electronAPI.moveWindow === 'function') {
+          window.electronAPI.moveWindow({
+            x: deltaX,
+            y: deltaY
+          });
+        }
+        
+        // Update start position to current position
+        startX = e.screenX;
+        startY = e.screenY;
+      }
+      
+      e.preventDefault();
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        btnMove.classList.remove('dragging');
+      }
+    });
+
+    // Prevent context menu on move button
+    btnMove.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
+  }
+
   // Update maximize icon state
   function showMaximizedState(isMax) {
     if (!maxIcon) return;
