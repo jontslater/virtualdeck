@@ -288,6 +288,7 @@ function broadcastToOverlay(message) {
 
 ipcMain.on('add-media', (event, data) => {
   console.log('add-media received:', data);
+  console.log('Chat command data:', data.chatCommand);
   const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 
   // Handle app files differently than audio files
@@ -351,7 +352,9 @@ ipcMain.on('add-media', (event, data) => {
     // Persist volume if provided (expected 0.0 - 1.0). This value is only
     // meaningful for `type: 'audio'` buttons; the renderer will set the
     // Audio element's `volume` property when a button is triggered.
-    volume: (typeof data.volume === 'number') ? data.volume : (data.volume ? parseFloat(data.volume) : undefined)
+    volume: (typeof data.volume === 'number') ? data.volume : (data.volume ? parseFloat(data.volume) : undefined),
+    // Include chat command data if provided
+    chatCommand: data.chatCommand || undefined
   };
 
   // Ensure each button has a stable unique id
@@ -1493,16 +1496,26 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
         type: 'chat',
         user: tags.username,
         message,
-        badges: tags.badges || {}
+        badges: tags.badges || {},
+        source: 'real-twitch' // Debug: identify event source
       });
     }
-    // Trigger command type buttons if message starts with '!'
+    // Trigger buttons with chat commands enabled if message starts with '!'
     if (message.startsWith('!')) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       const commandText = message.split(' ')[0].substring(1).toLowerCase();
       config.buttons.forEach((btn) => {
-        if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+        // Check if button has chat command enabled and keyword matches
+        if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword === commandText) {
           if (win && win.webContents) {
+            console.log(`[Twitch Chat] Triggering button "${btn.name || btn.label}" via chat command !${commandText}`);
+            win.webContents.send('trigger-media', btn.label || btn.name);
+          }
+        }
+        // Legacy support: Also check old 'command' type buttons
+        else if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+          if (win && win.webContents) {
+            console.log(`[Twitch Chat] Triggering legacy command button "${btn.label}" via chat command !${commandText}`);
             win.webContents.send('trigger-media', btn.label);
           }
         }
@@ -2161,14 +2174,22 @@ ipcMain.on('twitch-fake-event', (event, evt) => {
         type: 'chat', 
         user: evt.user, 
         message: evt.message,
-        badges: evt.badges || {}
+        badges: evt.badges || {},
+        source: 'fake-event-ipc' // Debug: identify event source
       });
       // also run command matching logic to trigger media
       if (evt.message && evt.message.startsWith('!')) {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         const commandText = evt.message.split(' ')[0].substring(1).toLowerCase();
         config.buttons.forEach((btn) => {
-          if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+          // Check if button has chat command enabled and keyword matches
+          if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword === commandText) {
+            console.log(`[Fake Event] Triggering button "${btn.name || btn.label}" via chat command !${commandText}`);
+            win.webContents.send('trigger-media', btn.label || btn.name);
+          }
+          // Legacy support: Also check old 'command' type buttons
+          else if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+            console.log(`[Fake Event] Triggering legacy command button "${btn.label}" via chat command !${commandText}`);
             win.webContents.send('trigger-media', btn.label);
           }
         });
@@ -2189,14 +2210,22 @@ ipcMain.handle('send-fake-twitch-event', async (event, evt) => {
         type: 'chat', 
         user: evt.user, 
         message: evt.message,
-        badges: evt.badges || {}
+        badges: evt.badges || {},
+        source: 'fake-event-handle' // Debug: identify event source
       });
       // also run command matching logic to trigger media
       if (evt.message && evt.message.startsWith('!')) {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         const commandText = evt.message.split(' ')[0].substring(1).toLowerCase();
         config.buttons.forEach((btn) => {
-          if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+          // Check if button has chat command enabled and keyword matches
+          if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword === commandText) {
+            console.log(`[Fake Event Handle] Triggering button "${btn.name || btn.label}" via chat command !${commandText}`);
+            win.webContents.send('trigger-media', btn.label || btn.name);
+          }
+          // Legacy support: Also check old 'command' type buttons
+          else if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+            console.log(`[Fake Event Handle] Triggering legacy command button "${btn.label}" via chat command !${commandText}`);
             win.webContents.send('trigger-media', btn.label);
           }
         });

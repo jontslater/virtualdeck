@@ -263,6 +263,16 @@
           <div id="hotkey-status"></div>
           <!-- modifier checkboxes removed — recorder captures modifiers live -->
         </label><br>
+        <label>
+          <input type="checkbox" id="chat-command-enabled" />
+          Enable Twitch Chat Command
+        </label>
+        <div id="chat-command-settings" style="margin-top: 10px; padding-left: 20px; display: none;">
+          <label for="chat-command-keyword">Command Keyword:
+            <input type="text" id="chat-command-keyword" placeholder="e.g., rizz" style="margin-left: 10px; width: 120px;" />
+            <small style="display: block; margin-top: 5px; color: #888;">Viewers will type !keyword in chat to trigger this button</small>
+          </label>
+        </div><br>
         <div id="audio-file-section">
           <label>File:
             <input type="file" name="file" id="file-input" required />
@@ -319,6 +329,20 @@
               <button type="button" id="multi-media-record-hotkey">Record Hotkey</button>
               <div id="multi-media-hotkey-status"></div>
             </label>
+          </div>
+
+          <!-- Chat Command -->
+          <div class="form-section">
+            <label>
+              <input type="checkbox" id="multi-media-chat-command-enabled" />
+              Enable Twitch Chat Command
+            </label>
+            <div id="multi-media-chat-command-settings" style="margin-top: 10px; padding-left: 20px;">
+              <label for="multi-media-chat-command-keyword">Command Keyword:
+                <input type="text" id="multi-media-chat-command-keyword" placeholder="e.g., rizz" style="margin-left: 10px; width: 120px;" />
+                <small style="display: block; margin-top: 5px; color: #888;">Viewers will type !keyword in chat to trigger this button</small>
+              </label>
+            </div>
           </div>
 
           <!-- Duration -->
