@@ -111,6 +111,9 @@ class AddEditButtonForm {
 
     // Hotkey recording
     this.setupHotkeyRecording();
+
+    // Chat command toggle
+    this.setupChatCommandToggle();
   }
 
   setupTabSwitching() {
@@ -872,7 +875,11 @@ class AddEditButtonForm {
       }
     }
 
-    return {
+    // Get chat command settings
+    const chatCommandEnabled = document.getElementById('multi-media-chat-command-enabled')?.checked || false;
+    const chatCommandKeyword = document.getElementById('multi-media-chat-command-keyword')?.value?.trim() || '';
+
+    const buttonData = {
       id: this.editingId || `multi-media-${Date.now()}`,
       name: name,
       type: 'multi-media',
@@ -906,6 +913,16 @@ class AddEditButtonForm {
       isEditing: this.isEditing,
       editingId: this.editingId
     };
+
+    // Add chat command data if enabled
+    if (chatCommandEnabled && chatCommandKeyword) {
+      buttonData.chatCommand = {
+        enabled: true,
+        keyword: chatCommandKeyword.toLowerCase()
+      };
+    }
+
+    return buttonData;
   }
 
   async previewInOverlay() {
@@ -974,6 +991,15 @@ class AddEditButtonForm {
         if (textInput) textInput.value = '';
       }
     });
+
+    // Reset chat command fields
+    const chatCommandEnabled = document.getElementById('multi-media-chat-command-enabled');
+    const chatCommandKeyword = document.getElementById('multi-media-chat-command-keyword');
+    const chatCommandSettings = document.getElementById('multi-media-chat-command-settings');
+    
+    if (chatCommandEnabled) chatCommandEnabled.checked = false;
+    if (chatCommandKeyword) chatCommandKeyword.value = '';
+    if (chatCommandSettings) chatCommandSettings.style.display = 'none';
 
     // Update UI
     document.getElementById('multi-media-modal-title').textContent = 'Create Multi-Media Button';
@@ -1115,6 +1141,23 @@ class AddEditButtonForm {
       const slotWithText = Object.values(buttonData.slots).find(slot => slot && slot.text);
       if (slotWithText) {
         overlayTextInput.value = slotWithText.text || '';
+      }
+    }
+
+    // Set chat command settings
+    const chatCommandEnabled = document.getElementById('multi-media-chat-command-enabled');
+    const chatCommandKeyword = document.getElementById('multi-media-chat-command-keyword');
+    const chatCommandSettings = document.getElementById('multi-media-chat-command-settings');
+    
+    if (chatCommandEnabled && chatCommandKeyword && chatCommandSettings) {
+      if (buttonData.chatCommand && buttonData.chatCommand.enabled) {
+        chatCommandEnabled.checked = true;
+        chatCommandKeyword.value = buttonData.chatCommand.keyword || '';
+        chatCommandSettings.style.display = 'block';
+      } else {
+        chatCommandEnabled.checked = false;
+        chatCommandKeyword.value = '';
+        chatCommandSettings.style.display = 'none';
       }
     }
 
@@ -1384,6 +1427,21 @@ class AddEditButtonForm {
       }
     } catch (e) {
       console.error('Error stopping multi-media hotkey recorder:', e);
+    }
+  }
+
+  setupChatCommandToggle() {
+    const checkbox = document.getElementById('multi-media-chat-command-enabled');
+    const settings = document.getElementById('multi-media-chat-command-settings');
+    
+    if (checkbox && settings) {
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          settings.style.display = 'block';
+        } else {
+          settings.style.display = 'none';
+        }
+      });
     }
   }
 }

@@ -2142,9 +2142,40 @@ function addRecentSubscriber(subscriber) {
   updateRecentSubscribersDisplay();
 }
 
+// Deduplication for chat messages (similar to overlay)
+const processedChatMessages = new Set();
+const CHAT_DEDUP_WINDOW = 5000; // 5 seconds
+
+// Generate hash for chat message deduplication
+function getChatMessageHash(user, message, timestamp) {
+  // Group messages within 100ms for deduplication
+  const timeGroup = Math.floor(timestamp / 100);
+  return `${user}:${message}:${timeGroup}`;
+}
+
 // Listen for Twitch chat events
 window.electronAPI.onTwitchChatEvent((eventData) => {
+  console.log('📨 Twitch chat event received:', eventData);
+  console.log('📨 Event source:', eventData.source || 'unknown');
+  
   if (eventData.type === 'chat') {
+    // Generate hash for deduplication
+    const messageHash = getChatMessageHash(eventData.user, eventData.message, Date.now());
+    
+    // Check for duplicates
+    if (processedChatMessages.has(messageHash)) {
+      console.log('🚫 Duplicate chat message detected, skipping');
+      return;
+    }
+    
+    // Add to processed set
+    processedChatMessages.add(messageHash);
+    
+    // Remove after deduplication window
+    setTimeout(() => {
+      processedChatMessages.delete(messageHash);
+    }, CHAT_DEDUP_WINDOW);
+    
     // Check if it's a command (starts with !)
     if (eventData.message && eventData.message.startsWith('!')) {
       addTwitchEvent('command', {
@@ -2781,7 +2812,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   e.preventDefault();
   const form = e.target;
   const label = form.label.value.trim();
-  const type = form.type.value;
+  
+  // Determine type based on which section is visible
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  const type = audioFileSection && audioFileSection.style.display !== 'none' ? 'audio' : 'app';
+  
   // Ensure we reference the hotkey input element safely
   const hotkeyInput = document.getElementById('hotkey-input');
   const hotkey = hotkeyInput && hotkeyInput.value ? hotkeyInput.value.trim() : '';
@@ -2792,6 +2828,22 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   if (!label) return alert("Please fill in the label field.");
   // Use the recorded hotkey directly (accumulative recorder populates hotkeyInput.value)
   const completeHotkey = (hotkeyInput && hotkeyInput.value && hotkeyInput.value.trim()) ? hotkeyInput.value.trim() : hotkey;
+
+  // Get chat command settings
+  const chatCommandCheckbox = document.getElementById('chat-command-enabled');
+  const chatCommandInput = document.getElementById('chat-command-keyword');
+  
+  console.log('Chat command elements found:');
+  console.log('- Checkbox element:', chatCommandCheckbox);
+  console.log('- Input element:', chatCommandInput);
+  
+  const chatCommandEnabled = chatCommandCheckbox?.checked || false;
+  const chatCommandKeyword = chatCommandInput?.value?.trim() || '';
+  
+  const chatCommand = (chatCommandEnabled && chatCommandKeyword) ? {
+    enabled: true,
+    keyword: chatCommandKeyword.toLowerCase()
+  } : undefined;
 
   // Get the appropriate file input based on type
   const fileInput = type === 'app' ? document.getElementById('app-file-input') : document.getElementById('file-input');
@@ -2812,6 +2864,9 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   console.log('- File input files length:', fileInput.files.length);
   console.log('- Resolved path:', resolvedPath);
   console.log('- Resolved args:', resolvedArgs);
+  console.log('- Chat command enabled:', chatCommandEnabled);
+  console.log('- Chat command keyword:', chatCommandKeyword);
+  console.log('- Chat command object:', chatCommand);
 
   // Prevent dangerous system shortcuts like Alt+F4 from being saved
   if (completeHotkey && (completeHotkey.includes('Alt') && completeHotkey.includes('F4'))) {
@@ -2831,7 +2886,8 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
       targetPath: existingFile,
       originalPath: existingFile,
-      editingIndex: parseInt(form.dataset.editingIndex)
+      editingIndex: parseInt(form.dataset.editingIndex),
+      chatCommand: chatCommand
     });
     window.electronAPI.refreshHotkeys();
     // Update the displayed card in-place to avoid full re-render flash
@@ -2886,11 +2942,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       hotkey: completeHotkey,
       targetPath,
       originalPath: filePath,
-      args
+      args,
+      chatCommand: chatCommand
     });
 
     // Send file path and data to main
-    window.electronAPI.addMedia({
+    const addMediaData = {
       label,
       type,
       hotkey: completeHotkey,
@@ -2898,8 +2955,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       targetPath,
       originalPath: filePath,
       args,
-      editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined
-    });
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined,
+      chatCommand: chatCommand
+    };
+    
+    console.log('Final addMediaData object:', addMediaData);
+    window.electronAPI.addMedia(addMediaData);
     window.electronAPI.refreshHotkeys();
     // If editing (with new file), update in-place using the computed targetPath
     if (isEditing) {
@@ -2985,9 +3046,6 @@ window.editButton = async (index) => {
   labelInput.value = btn.name || btn.label || ''; // Support both new and old schema
   labelInput.readOnly = false;
   labelInput.disabled = false;
-  // Set the type selection
-  const typeSelect = document.querySelector(`input[name="button-type"][value="${btn.type}"]`);
-  if (typeSelect) typeSelect.checked = true;
   // Toggle file input sections and required states based on type
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
@@ -3012,6 +3070,24 @@ window.editButton = async (index) => {
   } else {
     hotkeyInput.value = '';
   }
+  
+  // Set chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  
+  if (chatCommandEnabled && chatCommandKeyword && chatCommandSettings) {
+    if (btn.chatCommand && btn.chatCommand.enabled) {
+      chatCommandEnabled.checked = true;
+      chatCommandKeyword.value = btn.chatCommand.keyword || '';
+      chatCommandSettings.style.display = 'block';
+    } else {
+      chatCommandEnabled.checked = false;
+      chatCommandKeyword.value = '';
+      chatCommandSettings.style.display = 'none';
+    }
+  }
+  
   // Store the existing file path and args for editing
   settingsForm.dataset.existingFile = btn.src;
   if (btn.args) {
@@ -3210,6 +3286,20 @@ window.addEventListener('DOMContentLoaded', () => {
   // Make the hotkey input read-only to force use of the recorder button
   if (hotkeyInput) hotkeyInput.readOnly = true;
 
+  // Setup chat command checkbox toggle for regular form
+  const chatCommandCheckbox = document.getElementById('chat-command-enabled');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  
+  if (chatCommandCheckbox && chatCommandSettings) {
+    chatCommandCheckbox.addEventListener('change', () => {
+      if (chatCommandCheckbox.checked) {
+        chatCommandSettings.style.display = 'block';
+      } else {
+        chatCommandSettings.style.display = 'none';
+      }
+    });
+  }
+
   if (recordHotkeyBtn) {
     recordHotkeyBtn.addEventListener('click', () => {
       // Button click animation
@@ -3379,6 +3469,15 @@ function handleFileDrop(file) {
   hotkeyStatus.textContent = '';
   delete settingsForm.dataset.editingIndex;
   delete settingsForm.dataset.editingId;
+  
+  // Clear chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  if (chatCommandEnabled) chatCommandEnabled.checked = false;
+  if (chatCommandKeyword) chatCommandKeyword.value = '';
+  if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+  
   document.querySelector('#settings-modal h2').textContent = 'Add New ' + (type === 'audio' ? 'Sound' : 'App');
   
   // Since we're using the modal-based approach, we need to directly open the audio form
@@ -6966,7 +7065,9 @@ document.addEventListener('DOMContentLoaded', () => {
           slots: buttonData.slots,
           centerMedia: buttonData.centerMedia,
           audio: buttonData.audio,
-          options: buttonData.options
+          options: buttonData.options,
+          // Include chat command data if provided
+          chatCommand: buttonData.chatCommand || undefined
         };
 
         // Check if Electron API is available
@@ -9381,6 +9482,14 @@ function openAudioForm() {
   delete settingsForm.dataset.resolvedPath;
   delete settingsForm.dataset.resolvedArgs;
   delete settingsForm.dataset.existingFile;
+  
+  // Clear chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  if (chatCommandEnabled) chatCommandEnabled.checked = false;
+  if (chatCommandKeyword) chatCommandKeyword.value = '';
+  if (chatCommandSettings) chatCommandSettings.style.display = 'none';
   
   // Replace file inputs to clear previous file references
   const oldFileInput = document.getElementById('file-input');
