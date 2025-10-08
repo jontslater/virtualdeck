@@ -110,4 +110,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendOverlayText: (data) => ipcRenderer.send('overlay-text', data),
   sendOverlayImage: (data) => ipcRenderer.send('overlay-image', data),
   sendOverlayVideo: (data) => ipcRenderer.send('overlay-video', data),
+  getOverlayUrl: async () => ipcRenderer.invoke('get-overlay-url'),
 });

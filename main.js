@@ -116,6 +116,7 @@ let overlayWindow;
 let overlayServer;
 let overlayWSS;
 let overlayClients = new Set();
+let overlayServerPort;
 
 function createWindow() {
   win = new BrowserWindow({
@@ -270,10 +271,33 @@ function startOverlayServer() {
     });
   });
 
-  overlayServer.listen(port, () => {
-    console.log(`Overlay server running at http://localhost:${port}/overlay`);
-    console.log(`Use this URL in OBS Browser Source: http://localhost:${port}/overlay`);
-  });
+  // Try to start server with automatic port fallback
+  function tryStartServer(port, attempt = 1) {
+    overlayServer.listen(port, (err) => {
+      if (err) {
+        if (err.code === 'EADDRINUSE') {
+          console.log(`Port ${port} is already in use, trying next port...`);
+          if (attempt < 10) { // Try up to 10 different ports
+            // Try next port
+            tryStartServer(port + 1, attempt + 1);
+          } else {
+            console.error(`Failed to start overlay server after trying ${attempt} ports`);
+            console.error('Please check if another VirtualDeck instance is running or free up some ports');
+          }
+        } else {
+          console.error('Failed to start overlay server:', err);
+        }
+      } else {
+        console.log(`✅ Overlay server running at http://localhost:${port}/overlay`);
+        console.log(`📺 Use this URL in OBS Browser Source: http://localhost:${port}/overlay`);
+        
+        // Store the actual port used for reference
+        overlayServerPort = port;
+      }
+    });
+  }
+
+  tryStartServer(port);
 }
 
 // Function to broadcast messages to all overlay clients
@@ -284,6 +308,11 @@ function broadcastToOverlay(message) {
       client.send(messageStr);
     }
   });
+}
+
+// Function to get the current overlay server URL
+function getOverlayServerUrl() {
+  return `http://localhost:${overlayServerPort || 8080}/overlay`;
 }
 
 ipcMain.on('add-media', (event, data) => {
@@ -2522,6 +2551,11 @@ app.whenReady().then(() => {
   // Allow renderer to request the Preferences view (forward to renderer)
   ipcMain.on('open-preferences', () => {
     try { if (win && !win.isDestroyed()) win.webContents.send('open-preferences'); } catch (e) { console.warn('open-preferences failed', e); }
+  });
+
+  // Allow renderer to get the current overlay server URL
+  ipcMain.handle('get-overlay-url', async () => {
+    return getOverlayServerUrl();
   });
 
   // Overlay communication handlers - now using WebSocket broadcast
