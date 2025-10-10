@@ -1024,6 +1024,106 @@ body.vd-dragging .sound-card.draggable:hover {
 }
 #about-modal.hidden { display: none; }
 
+/* Preferences Modal Styles */
+#preferences-modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 11000;
+  background: rgba(0,0,0,0.6);
+}
+
+#preferences-modal.hidden { 
+  display: none; 
+}
+
+.preferences-modal-content {
+  width: 500px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.preferences-content {
+  padding: 10px 0;
+}
+
+.preferences-section {
+  margin-bottom: 20px;
+}
+
+.preferences-section h3 {
+  margin: 0 0 15px 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.preference-item {
+  margin-bottom: 15px;
+}
+
+.preference-item label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.preference-item input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+.preference-item small {
+  display: block;
+  color: var(--text-secondary, #888);
+  font-size: 12px;
+  margin-top: 5px;
+  margin-left: 24px;
+  line-height: 1.4;
+}
+
+.preference-button {
+  background: var(--accent-color, #4CAF50);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.preference-button:hover {
+  background: var(--accent-hover, #45a049);
+}
+
+.preference-button.primary {
+  background: var(--primary-color, #2196F3);
+}
+
+.preference-button.primary:hover {
+  background: var(--primary-hover, #1976D2);
+}
+
+.preferences-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-color, #444);
+}
+
 .title-bar {
   -webkit-app-region: drag;
   display: flex;
