@@ -55,7 +55,8 @@ function ensureUserData() {
         'channel.subscription.message',
         'channel.follow',
         'channel.raid',
-        'channel.cheer'
+        'channel.cheer',
+        'channel.ban'
       ]
       ,
       // ISO string for last time we polled followers; used to detect new followers since last run
@@ -2012,6 +2013,8 @@ function buildSubscriptionFromKey(key, userId) {
     case 'channel.cheer':
     case 'channel.bits':
       return { type: 'channel.cheer', condition: { broadcaster_user_id: userId } };
+    case 'channel.ban':
+      return { type: 'channel.ban', condition: { broadcaster_user_id: userId } };
     default:
       return null;
   }

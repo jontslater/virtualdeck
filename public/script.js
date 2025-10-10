@@ -4728,7 +4728,8 @@ function setupAlertTypeFilter() {
         'gift-sub': 'Gift Sub',
         'gift-sub-received': 'Gift Received',
         'raid': 'Raid',
-        'bits': 'Bits'
+        'bits': 'Bits',
+        'ban': 'Ban'
       };
       
       selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
@@ -4745,6 +4746,7 @@ function setupAlertTypeFilter() {
       'gift-sub-received': 'Gift Received',
       'raid': 'Raid',
       'bits': 'Bits',
+      'ban': 'Ban',
     };
     selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
   }
@@ -4909,8 +4911,24 @@ function setupAlertWidget() {
           'gift-sub-received': 'Gift Sub Received',
           'raid': 'Raid',
           'bits': 'Bits',
+          'ban': 'Ban',
         };
         selectedAlertTypeName.textContent = typeNames[selectedType] || 'Unknown';
+      }
+      
+      // Update placeholder text based on alert type
+      if (alertTextInput) {
+        const placeholderTexts = {
+          'follower': 'Welcome {username}!',
+          'subscriber': '{username} subscribed!',
+          'resubscriber': '{username} resubscribed for {months} months!',
+          'gift-sub': '{username} gifted {tier} to {recipient}!',
+          'gift-sub-received': '{username} received a gift sub!',
+          'raid': '{username} raided with {viewers} viewers!',
+          'bits': '{username} cheered {bits} bits!',
+          'ban': '{username} has been banned by {moderator}!'
+        };
+        alertTextInput.placeholder = placeholderTexts[selectedType] || 'Welcome {username}!';
       }
       
       // Update preview when type changes
@@ -4998,7 +5016,9 @@ function setupAlertWidget() {
       bits: '100',
       months: '3',
       message: 'Thanks for the follow!',
-      reward: 'Test Reward'
+      reward: 'Test Reward',
+      moderator: 'TestModerator',
+      reason: 'Spam'
     };
     
     // Process text with sample data for preview
@@ -5508,7 +5528,9 @@ function setupAlertWidget() {
         bits: '100',
         months: '3',
         message: 'Thanks for the follow!',
-        reward: 'Test Reward'
+        reward: 'Test Reward',
+        moderator: 'TestModerator',
+        reason: 'Spam'
       };
       
       // Directly trigger this specific alert - bypass the overlay event system
