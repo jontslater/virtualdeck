@@ -4914,6 +4914,8 @@ function updateAllOverlaySelects() {
   const alertOverlaySelect = document.getElementById('alert-overlay-select');
   if (alertOverlaySelect) {
     const currentValue = alertOverlaySelect.value;
+    console.log('🔄 Updating alert overlay select. Current value:', currentValue);
+    console.log('🔄 Available options for alert:', options);
     alertOverlaySelect.innerHTML = '';
     
     options.forEach(option => {
@@ -4925,6 +4927,9 @@ function updateAllOverlaySelects() {
       }
       alertOverlaySelect.appendChild(optionElement);
     });
+    console.log('✅ Alert overlay select updated with', options.length, 'options');
+  } else {
+    console.log('⚠️ Alert overlay select not found');
   }
 }
 
@@ -5437,44 +5442,81 @@ function setupAlertWidget() {
       `;
     }
     
-    let previewHTML = '<div class="alert-preview-content">';
+    // Build position style for text
+    let positionStyle = '';
+    switch(textPosition) {
+      case 'topLeft':
+        positionStyle = 'top: 10%; left: 10%;';
+        break;
+      case 'topCenter':
+        positionStyle = 'top: 10%; left: 50%; transform: translateX(-50%);';
+        break;
+      case 'topRight':
+        positionStyle = 'top: 10%; right: 10%;';
+        break;
+      case 'midLeft':
+        positionStyle = 'top: 50%; left: 10%; transform: translateY(-50%);';
+        break;
+      case 'center':
+        positionStyle = 'top: 50%; left: 50%; transform: translate(-50%, -50%);';
+        break;
+      case 'midRight':
+        positionStyle = 'top: 50%; right: 10%; transform: translateY(-50%);';
+        break;
+      case 'bottomLeft':
+        positionStyle = 'bottom: 10%; left: 10%;';
+        break;
+      case 'bottomCenter':
+        positionStyle = 'bottom: 10%; left: 50%; transform: translateX(-50%);';
+        break;
+      case 'bottomRight':
+        positionStyle = 'bottom: 10%; right: 10%;';
+        break;
+    }
+    
+    let previewHTML = '<div class="alert-preview-content" style="position: relative; width: 100%; height: 300px; background: rgba(0,0,0,0.1); border: 1px solid var(--border-color);">';
     
     if (imageFile) {
       if (imageFile instanceof File) {
         // New file from input
         const imageUrl = URL.createObjectURL(imageFile);
-        previewHTML += `<img src="${imageUrl}" alt="Alert Image" />`;
+        previewHTML += `<img src="${imageUrl}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
       } else if (imageFile.data) {
         // Legacy base64 data
-        previewHTML += `<img src="${imageFile.data}" alt="Alert Image" />`;
+        previewHTML += `<img src="${imageFile.data}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
       } else if (imageFile.path && window.electronAPI && window.electronAPI.getMediaFile) {
         // Existing saved file with path - load from disk
         try {
           const result = await window.electronAPI.getMediaFile(imageFile.path);
           if (result.success) {
-            previewHTML += `<img src="${result.data}" alt="Alert Image" />`;
+            previewHTML += `<img src="${result.data}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
           } else {
             // Fallback to placeholder if loading fails
-            previewHTML += `<div class="image-placeholder">📷 ${imageFile.name || 'Alert Image'}</div>`;
+            previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name || 'Alert Image'}</div>`;
           }
         } catch (error) {
           console.error('Error loading preview image:', error);
-          previewHTML += `<div class="image-placeholder">📷 ${imageFile.name || 'Alert Image'}</div>`;
+          previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name || 'Alert Image'}</div>`;
         }
       } else if (imageFile.name) {
         // Existing file (show placeholder)
-        previewHTML += `<div class="image-placeholder">📷 ${imageFile.name}</div>`;
+        previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name}</div>`;
       }
     }
     
-    previewHTML += `<h3>${getAlertTypeDisplayName(type)}</h3>`;
-    previewHTML += `<p style="${textStyle}">${processedText}</p>`;
-    previewHTML += `<p><small>Duration: ${duration}s</small></p>`;
+    // Add positioned text
+    previewHTML += `<div style="position: absolute; ${positionStyle} white-space: nowrap;">`;
+    previewHTML += `<p style="${textStyle} margin: 0;">${processedText}</p>`;
+    previewHTML += `</div>`;
     
+    // Add info at bottom
+    previewHTML += `<div style="position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--text-tertiary); text-align: center;">`;
+    previewHTML += `<div><small>Position: ${textPosition} | Duration: ${duration}s</small></div>`;
     if (soundFile) {
       const soundName = soundFile.name || 'Existing Sound';
-      previewHTML += `<p><small>🔊 Sound: ${soundName}</small></p>`;
+      previewHTML += `<div><small>🔊 Sound: ${soundName}</small></div>`;
     }
+    previewHTML += `</div>`;
     
     previewHTML += '</div>';
     alertPreviewArea.innerHTML = previewHTML;
@@ -5679,6 +5721,8 @@ function setupAlertWidget() {
       // Get overlay selection
       const overlaySelect = document.getElementById('alert-overlay-select')?.value || 'main';
       
+      console.log('🔍 Creating alert with overlay:', overlaySelect);
+      
       const alertData = {
         id: alertId,
         type: type,
@@ -5738,8 +5782,25 @@ function setupAlertWidget() {
               console.log('Preserved existing image file:', window.editingAlertMedia.imageFile.name);
             }
             
+            if (!videoFilePath && window.editingAlertMedia?.videoFile) {
+              alertData.videoFile = window.editingAlertMedia.videoFile;
+              console.log('Preserved existing video file:', window.editingAlertMedia.videoFile.name);
+            }
+            
+            // Preserve existing text styling and animation if they weren't explicitly changed
+            if (!textStyling || Object.keys(textStyling).length === 0) {
+              alertData.textStyling = savedAlerts[alertIndex].textStyling || alertData.textStyling;
+              console.log('Preserved existing text styling');
+            }
+            
+            if (!animation || Object.keys(animation).length === 0) {
+              alertData.animation = savedAlerts[alertIndex].animation || alertData.animation;
+              console.log('Preserved existing animation');
+            }
+            
             savedAlerts[alertIndex] = alertData;
-            console.log('Updated existing alert:', window.editingAlertId);
+            console.log('✅ Updated existing alert:', window.editingAlertId);
+            console.log('✅ Alert overlay property:', alertData.overlay);
           } else {
             console.error('Alert to edit not found:', window.editingAlertId);
             savedAlerts.push(alertData);
@@ -5750,10 +5811,21 @@ function setupAlertWidget() {
         } else {
           // Create new alert
           savedAlerts.push(alertData);
-          console.log('Created new alert:', alertId);
+          console.log('✅ Created new alert:', alertId);
+          console.log('✅ Alert overlay property:', alertData.overlay);
         }
         
         localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+        console.log('💾 Saved to localStorage. Verifying overlay property persisted...');
+        
+        // Verify the alert was saved correctly with overlay
+        const savedAlertsCheck = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+        const savedAlert = savedAlertsCheck.find(a => a.id === alertId);
+        if (savedAlert) {
+          console.log('✅ Verified alert in localStorage has overlay:', savedAlert.overlay);
+        } else {
+          console.error('❌ Alert not found in localStorage after save');
+        }
         
         updateAlertList();
         clearForm();
@@ -5983,6 +6055,7 @@ function setupAlertWidget() {
     const alert = savedAlerts.find(a => a.id === alertId);
     if (alert) {
       console.log('🎭 Testing specific saved alert:', alertId, alert);
+      console.log('🎯 Alert overlay setting:', alert.overlay || 'NOT SET (will default to main)');
       
       // Create sample user data for the alert
       const sampleUserData = {
@@ -6524,11 +6597,17 @@ let alertQueue = {
       return;
     }
     
+    console.log('🔥 triggerAlert called with alertData:', alertData);
+    console.log('🔥 alertData.overlay:', alertData.overlay);
+    
     if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
       // Process text with user data if available
       const processedText = userData ? replacePlaceholders(alertData.text, userData) : alertData.text;
       
       console.log('🎯 Triggering alert:', { alertData, userData, processedText });
+      
+      console.log('🎯 Alert overlay from alertData:', alertData.overlay || 'NOT SET');
+      console.log('🎯 Alert will be sent to overlay:', alertData.overlay || 'main');
       
       const payload = {
         type: 'buttonTrigger',
@@ -6639,6 +6718,7 @@ let alertQueue = {
         } else if (alertData.videoFile.path) {
           // This is a saved alert with file path - serve via HTTP like multi-media buttons
           console.log('🎬 Converting alert video path to HTTP URL:', alertData.videoFile.path);
+          console.log('🎬 Video file object:', alertData.videoFile);
           try {
             let videoSrc = alertData.videoFile.path;
             
@@ -6667,8 +6747,11 @@ let alertQueue = {
               muted: false
             };
             
+            console.log('🎬 Video item created:', videoItem);
+            
             // Add to appropriate media array based on display mode
             const displayMode = alertData.videoFile.displayMode || 'center';
+            console.log('🎬 Alert video displayMode:', displayMode);
             if (displayMode === 'fullscreen') {
               payload.fullscreenMedia.push(videoItem);
               console.log('🎬 Added video to fullscreenMedia');
@@ -6676,6 +6759,8 @@ let alertQueue = {
               payload.centerMedia.push(videoItem);
               console.log('🎬 Added video to centerMedia');
             }
+            
+            console.log('🎬 CenterMedia array now has:', payload.centerMedia.length, 'items');
           } catch (error) {
             console.error('Error loading alert video:', error);
           }
@@ -6708,6 +6793,7 @@ let alertQueue = {
         })) : 'none'
       };
       console.log('📤 Sending overlay message with payload:', payloadSummary);
+      console.log('🎬 Full centerMedia array:', payload.centerMedia);
       console.log(`🎯 SENDING ALERT TO OVERLAY: "${payload.targetOverlay}"`);
       console.log(`📊 Alert overlay setting: ${alertData.overlay || 'NOT SET (defaulting to main)'}`);
       window.electronAPI.sendOverlayMessage(payload);

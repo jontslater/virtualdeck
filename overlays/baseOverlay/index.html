@@ -112,6 +112,30 @@
             from { transform: translateY(-100%); opacity: 0; }
             to { transform: translateY(0); opacity: 1; }
         }
+        
+        @keyframes zoomIn {
+            from { transform: scale(0.3); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        
+        @keyframes bounceIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.05); opacity: 1; }
+            70% { transform: scale(0.9); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+            20%, 40%, 60%, 80% { transform: translateX(10px); }
+        }
 
         /* Layout Classes */
         .layout-center {
@@ -184,12 +208,18 @@
                 
                 overlayWS.onmessage = function(event) {
                     try {
+                        console.log('🔥 Raw WebSocket message received:', event.data);
                         const payload = JSON.parse(event.data);
+                        console.log('🔥 Parsed payload:', payload);
                         
                         // Check for duplicate messages
-                        if (isDuplicateMessage(payload)) {
+                        const isDuplicate = isDuplicateMessage(payload);
+                        console.log('🔥 Is duplicate message?', isDuplicate);
+                        if (isDuplicate) {
                             console.log('⚠️ Duplicate message ignored:', payload.type);
-                            return;
+                            // TEMPORARILY DISABLE DUPLICATE CHECK FOR DEBUGGING
+                            console.log('🔥 TEMPORARILY ALLOWING DUPLICATE FOR DEBUGGING');
+                            // return;
                         }
                         
                         // Add to message history for deduplication
@@ -278,19 +308,28 @@
         // Render payload to overlay
         function renderPayload(payload) {
             console.log('🎯 Rendering payload:', payload.type);
+            console.log('🎯 Full payload received:', payload);
             
             if (payload.type === 'buttonTrigger') {
+                console.log('🎯 Calling handleButtonTrigger...');
                 handleButtonTrigger(payload);
             } else if (payload.type === 'alert') {
+                console.log('🎯 Calling handleAlert...');
                 handleAlert(payload);
             } else if (payload.type === 'clear') {
+                console.log('🎯 Calling clearOverlay...');
                 clearOverlay();
             } else if (payload.type === 'text') {
+                console.log('🎯 Calling handleText...');
                 handleText(payload);
             } else if (payload.type === 'image') {
+                console.log('🎯 Calling handleImage...');
                 handleImage(payload);
             } else if (payload.type === 'video') {
+                console.log('🎯 Calling handleVideo...');
                 handleVideo(payload);
+            } else {
+                console.log('❓ Unknown payload type:', payload.type);
             }
         }
 
@@ -307,9 +346,40 @@
             // Clear existing content
             clearOverlay();
             
+            // Process text slots first
+            console.log('📝 Payload slots:', payload.slots);
+            console.log('📝 Slots type:', typeof payload.slots);
+            console.log('📝 Slots keys:', payload.slots ? Object.keys(payload.slots) : 'no slots');
+            
+            if (payload.slots && Object.keys(payload.slots).length > 0) {
+                console.log('📝 Processing text slots:', Object.keys(payload.slots));
+                Object.entries(payload.slots).forEach(([position, slotData]) => {
+                    console.log(`📝 Slot entry: ${position} =`, slotData);
+                    if (slotData && slotData.text) {
+                        console.log(`📝 Rendering text slot: ${position}`, slotData);
+                        renderTextSlot(position, slotData);
+                    } else {
+                        console.log(`📝 Slot ${position} has no text:`, slotData);
+                    }
+                });
+            } else {
+                console.log('📝 No slots to process or slots is empty');
+            }
+            
             // Process center media
             if (payload.centerMedia && payload.centerMedia.length > 0) {
+                console.log('🎬 Processing centerMedia:', payload.centerMedia.length, 'items');
                 payload.centerMedia.forEach((media, index) => {
+                    setTimeout(() => {
+                        renderMedia(media, index);
+                    }, index * 100); // Stagger media appearance
+                });
+            }
+            
+            // Process fullscreen media
+            if (payload.fullscreenMedia && payload.fullscreenMedia.length > 0) {
+                console.log('🖥️ Processing fullscreenMedia:', payload.fullscreenMedia.length, 'items');
+                payload.fullscreenMedia.forEach((media, index) => {
                     setTimeout(() => {
                         renderMedia(media, index);
                     }, index * 100); // Stagger media appearance
@@ -414,6 +484,9 @@
 
         // Handle video
         function handleVideo(payload) {
+            console.log('🎬 handleVideo called with payload:', payload);
+            console.log('🎬 Video src:', payload.src || payload.url || 'NO SRC');
+            
             const video = document.createElement('video');
             video.className = 'media-element';
             video.src = payload.src || payload.url || '';
@@ -421,6 +494,14 @@
             video.loop = payload.loop || false;
             video.muted = payload.muted !== false; // Default to muted unless explicitly set to false
             video.volume = payload.volume || 1.0;
+            
+            console.log('🎬 Video element created:', {
+                src: video.src,
+                autoplay: video.autoplay,
+                loop: video.loop,
+                muted: video.muted,
+                volume: video.volume
+            });
             
             video.style.cssText = `
                 max-width: 100%;
@@ -430,12 +511,22 @@
             `;
             
             video.onloadeddata = () => {
-                console.log('🎥 Video loaded:', video.src);
-                video.play();
+                console.log('🎥 Video loaded successfully:', video.src);
+                console.log('🎥 Attempting to play video...');
+                video.play().then(() => {
+                    console.log('✅ Video playing successfully');
+                }).catch(error => {
+                    console.error('❌ Video play failed:', error);
+                    if (error.name === 'NotAllowedError') {
+                        console.log('🎬 Autoplay blocked - adding click-to-play overlay');
+                        showPlayOverlay(video);
+                    }
+                });
             };
             
-            video.onerror = () => {
+            video.onerror = (error) => {
                 console.error('❌ Failed to load video:', video.src);
+                console.error('❌ Video error details:', error);
             };
             
             // Listen for ended event to clear overlay when video finishes
@@ -453,8 +544,99 @@
             }
             
             document.querySelector('.overlay-content').appendChild(video);
+            console.log('🎬 Video element appended to DOM');
+        }
+        
+        // Show play overlay for autoplay-blocked videos
+        function showPlayOverlay(video) {
+            const overlay = document.createElement('div');
+            overlay.style.position = 'absolute';
+            overlay.style.top = '50%';
+            overlay.style.left = '50%';
+            overlay.style.transform = 'translate(-50%, -50%)';
+            overlay.style.background = 'rgba(0, 0, 0, 0.8)';
+            overlay.style.color = 'white';
+            overlay.style.padding = '20px 40px';
+            overlay.style.borderRadius = '10px';
+            overlay.style.cursor = 'pointer';
+            overlay.style.zIndex = '1000';
+            overlay.style.fontSize = '24px';
+            overlay.style.fontWeight = 'bold';
+            overlay.style.textAlign = 'center';
+            overlay.innerHTML = '▶️ Click to Play Video';
+            
+            overlay.addEventListener('click', () => {
+                video.play().catch(err => console.warn('Manual play failed:', err));
+                overlay.remove();
+            });
+            
+            // Add to the overlay content container
+            const content = document.querySelector('.overlay-content');
+            content.style.position = 'relative';
+            content.appendChild(overlay);
+            console.log('🎬 Click-to-play overlay added');
         }
 
+        // Render text slot
+        function renderTextSlot(position, slotData) {
+            console.log('📝 Rendering text slot:', position, slotData);
+            
+            const textElement = document.createElement('div');
+            textElement.className = 'text-element';
+            textElement.textContent = slotData.text;
+            
+            // Apply styling
+            const style = slotData.style || {};
+            
+            // Apply webkit-text-stroke if specified
+            const webkitTextStroke = style.webkitTextStroke || '';
+            
+            textElement.style.cssText = `
+                position: absolute;
+                color: ${style.color || 'white'};
+                font-family: ${style.fontFamily || 'Arial, sans-serif'};
+                font-size: ${style.fontSize || '24px'};
+                font-weight: ${style.fontWeight || 'bold'};
+                text-shadow: ${style.textShadow || '2px 2px 4px rgba(0, 0, 0, 0.8)'};
+                -webkit-text-stroke: ${webkitTextStroke};
+                text-align: center;
+                white-space: nowrap;
+                z-index: ${style.zIndex || '1'};
+                animation: fadeIn 0.5s ease-in-out;
+                ${position === 'topCenter' ? 'top: 10%; left: 50%; transform: translateX(-50%);' : ''}
+                ${position === 'topLeft' ? 'top: 10%; left: 10%;' : ''}
+                ${position === 'topRight' ? 'top: 10%; right: 10%;' : ''}
+                ${position === 'midLeft' ? 'top: 50%; left: 10%; transform: translateY(-50%);' : ''}
+                ${position === 'center' ? 'top: 50%; left: 50%; transform: translate(-50%, -50%);' : ''}
+                ${position === 'midRight' ? 'top: 50%; right: 10%; transform: translateY(-50%);' : ''}
+                ${position === 'bottomCenter' ? 'bottom: 10%; left: 50%; transform: translateX(-50%);' : ''}
+                ${position === 'bottomLeft' ? 'bottom: 10%; left: 10%;' : ''}
+                ${position === 'bottomRight' ? 'bottom: 10%; right: 10%;' : ''}
+            `;
+            
+            // Apply animation if specified
+            if (slotData.animation && slotData.animation.name !== 'none') {
+                const anim = slotData.animation;
+                console.log('🎬 Applying animation:', anim);
+                
+                // Build animation string
+                let animationString = anim.name;
+                if (anim.duration) animationString += ` ${anim.duration}`;
+                if (anim.timingFunction) animationString += ` ${anim.timingFunction}`;
+                if (anim.delay) animationString += ` ${anim.delay}`;
+                if (anim.iterationCount) animationString += ` ${anim.iterationCount}`;
+                animationString += ' forwards';
+                
+                textElement.style.animation = animationString;
+                console.log('🎬 Animation string:', animationString);
+            } else {
+                console.log('🎬 No animation or animation is "none"');
+            }
+            
+            document.querySelector('.overlay-content').appendChild(textElement);
+            console.log('✅ Text element added to DOM:', slotData.text);
+        }
+        
         // Render media element
         function renderMedia(media, index) {
             console.log('🎨 Rendering media:', media.type, media);
@@ -477,12 +659,23 @@
             audio.autoplay = true;
             
             audio.onloadeddata = () => {
-                console.log('🔊 Audio loaded:', audio.src);
-                audio.play();
+                console.log('🔊 Audio loaded successfully:', audio.src);
+                console.log('🔊 Attempting to play audio...');
+                audio.play().then(() => {
+                    console.log('✅ Audio playing successfully');
+                }).catch(error => {
+                    console.error('❌ Audio play failed:', error);
+                    if (error.name === 'NotAllowedError') {
+                        console.log('🎵 Autoplay blocked - audio will play on next interaction');
+                        // Audio autoplay blocking is less critical than video
+                        // The audio will play on the next user interaction (like clicking the video)
+                    }
+                });
             };
             
-            audio.onerror = () => {
+            audio.onerror = (error) => {
                 console.error('❌ Failed to load audio:', audio.src);
+                console.error('❌ Audio error details:', error);
             };
             
             // Listen for ended event to clear overlay when audio finishes
