@@ -359,6 +359,14 @@
     </div>
 
     <script>
+        // Set overlay name for debugging
+        const urlParams = new URLSearchParams(window.location.search);
+        const extractedOverlayName = urlParams.get('name') || 'main';
+        window.overlayName = extractedOverlayName;
+        
+        console.log('🔍 Main overlay name extracted:', extractedOverlayName);
+        console.log('🔍 Main overlay window.overlayName:', window.overlayName);
+        
         let messageCount = 0;
         
         // Message deduplication - track recently processed messages
@@ -669,6 +677,18 @@
                                 audioEl.play().catch(err => console.warn('Audio autoplay failed:', err));
                             }
                             console.log(`🎵 Audio volume set to ${volume} (${Math.round(volume * 100)}%)`);
+                            
+                            // Listen for ended event to clear overlay when audio finishes (only if not looping)
+                            if (!audioEl.hasAttribute('loop')) {
+                                audioEl.addEventListener('ended', () => {
+                                    console.log('🎵 Audio finished playing - triggering clear all');
+                                    console.log('🎵 Audio ended event fired!');
+                                    triggerClearAll();
+                                }, { once: true });
+                                console.log('🎵 Added ended event listener to audio');
+                            } else {
+                                console.log('🎵 Audio has loop attribute - no ended listener added');
+                            }
                         }
                     }, 0);
                     
@@ -702,6 +722,19 @@
                     video.addEventListener('error', (error) => {
                         console.error('❌ Video playback error:', error);
                     }, { once: true });
+                    
+                    // Listen for ended event to clear overlay when video finishes (only if not looping)
+                    if (!video.hasAttribute('loop')) {
+                        video.addEventListener('ended', () => {
+                            console.log('🎬 Video finished playing - triggering clear all');
+                            console.log('🎬 Video ended event fired! Current time:', video.currentTime);
+                            console.log('🎬 Video duration:', video.duration);
+                            triggerClearAll();
+                        }, { once: true });
+                        console.log('🎬 Added ended event listener to video');
+                    } else {
+                        console.log('🎬 Video has loop attribute - no ended listener added');
+                    }
                 });
                 
             }, 100);
@@ -712,7 +745,12 @@
         
         // Set up reset timer based on payload options or default
         function setupResetTimer(payload) {
-            let resetDelay = 60000; // Default 1 minute (60 seconds)
+            console.log('🔥 setupResetTimer FUNCTION CALLED!');
+            console.log('🔍 Payload received:', payload);
+            
+            let resetDelay = payload?.options?.durationMs || 30000; // default 30s
+            
+            console.log(`⏰ Timer delay: ${resetDelay}ms (${(resetDelay/1000).toFixed(1)}s)`);
             
             // Check for custom duration in options
             if (payload && payload.options && payload.options.durationMs) {
@@ -760,12 +798,25 @@
             video.parentElement.appendChild(overlay);
         }
         
+        // Trigger clear all - mimics the "Clear All" button functionality
+        function triggerClearAll() {
+            console.log('🔄 Triggering clear all button functionality...');
+            
+            // Call the same function that the "Clear All" button uses - directly clear the slots
+            // This avoids the circular message loop
+            console.log('🧹 Calling clearSlots() directly (same as Clear All button)');
+            clearSlots();
+        }
+        
         // Clear all slots helper
         function clearSlots() {
+            console.log('🧹 clearSlots() called');
+            
             // Clear any existing reset timer
             if (overlayResetTimer) {
                 clearTimeout(overlayResetTimer);
                 overlayResetTimer = null;
+                console.log('⏰ Cleared existing reset timer');
             }
             
             // Clear text slots
@@ -1189,9 +1240,40 @@
         
         // Listen for messages from parent window (DISABLED - using WebSocket only)
         window.addEventListener('message', function(event) {
+            // Handle disableAudio message from dashboard
+            if (event.data?.type === 'disableAudio' && event.data?.source === 'dashboard') {
+                console.log('🔇 Received disableAudio message from dashboard - muting all audio/video');
+                disableAllAudio();
+                return;
+            }
+            
             // Disabled to prevent duplicate triggering - overlay receives via WebSocket only
             console.log('⚠️ Received postMessage (ignored - using WebSocket only):', event.data?.type);
         });
+        
+        // Function to disable all audio/video in this overlay
+        function disableAllAudio() {
+            const audios = document.querySelectorAll('audio');
+            const videos = document.querySelectorAll('video');
+            
+            audios.forEach(audio => {
+                audio.muted = true;
+                audio.volume = 0;
+                if (!audio.paused) {
+                    audio.pause();
+                }
+            });
+            
+            videos.forEach(video => {
+                video.muted = true;
+                video.volume = 0;
+                if (!video.paused) {
+                    video.pause();
+                }
+            });
+            
+            console.log(`🔇 Disabled ${audios.length} audio and ${videos.length} video elements`);
+        }
 
         // Also listen for WebSocket messages (for our current implementation)
         let overlayWS = null;
@@ -1200,18 +1282,34 @@
 
         function connectWebSocket() {
             try {
-                overlayWS = new WebSocket('ws://localhost:8080');
+                // Extract overlay name from URL parameters
+                const urlParams = new URLSearchParams(window.location.search);
+                const overlayName = urlParams.get('name') || 'main';
+                overlayWS = new WebSocket(`ws://localhost:8080?overlay=${overlayName}`);
+                console.log(`🔗 Connecting WebSocket for overlay: ${overlayName}`);
                 
                 overlayWS.onopen = function() {
-                    console.log('Overlay WebSocket connected');
+                    console.log('🔥 Overlay WebSocket connected successfully!');
+                    console.log(`🔗 Connected to overlay: ${overlayName}`);
+                    console.log(`🌐 WebSocket URL: ws://localhost:8080?overlay=${overlayName}`);
                     reconnectAttempts = 0;
                     updateDebugInfo();
+                };
+                
+                overlayWS.onerror = function(error) {
+                    console.error('🔥 WebSocket connection error:', error);
+                };
+                
+                overlayWS.onclose = function(event) {
+                    console.log('🔥 WebSocket connection closed:', event.code, event.reason);
                 };
                 
                 overlayWS.onmessage = function(event) {
                     try {
                         const message = JSON.parse(event.data);
-                        console.log('🔔 WebSocket received message:', message.type);
+                        console.log('🔥 WebSocket message received:', message.type);
+                        console.log('📨 Received message:', message);
+                        console.log('🎯 Current overlay ID:', window.overlayName || 'not set');
                         
                         // Handle different message types
                         if (message.type === 'buttonTrigger') {
@@ -1301,6 +1399,19 @@
         console.log('Available test functions:');
         console.log('- testOverlay() - Test the overlay');
         console.log('- clearOverlay() - Clear all content');
+        
+        // Test WebSocket connection
+        window.testWebSocket = function() {
+            console.log('🧪 Testing WebSocket connection...');
+            console.log('WebSocket object:', overlayWS);
+            console.log('WebSocket state:', overlayWS ? overlayWS.readyState : 'No WebSocket');
+            console.log('WebSocket readyState:', overlayWS ? 
+                (overlayWS.readyState === 0 ? 'CONNECTING' : 
+                 overlayWS.readyState === 1 ? 'OPEN' : 
+                 overlayWS.readyState === 2 ? 'CLOSING' : 
+                 overlayWS.readyState === 3 ? 'CLOSED' : 'UNKNOWN') : 'No WebSocket');
+            console.log('Overlay name:', window.overlayName);
+        };
     </script>
 </body>
 </html>

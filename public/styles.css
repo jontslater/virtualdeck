@@ -3667,9 +3667,94 @@ body.resizing-chat * {
   cursor: pointer;
 }
 
-.chroma-key-controls input[type="range"] {
-  width: 150px;
-  margin: 0 8px;
+/* Overlay Management Styles */
+.overlay-management {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.overlay-create {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.overlay-create .custom-input {
+  flex: 1;
+}
+
+.overlay-list {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.overlay-list label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.overlay-list .custom-select {
+  min-width: 150px;
+}
+
+.overlay-action-btn.danger {
+  background: linear-gradient(135deg, #ff4757, #ff3838);
+  color: white;
+  border: none;
+}
+
+.overlay-action-btn.danger:hover {
+  background: linear-gradient(135deg, #ff3742, #ff2f2f);
+  transform: translateY(-1px);
+}
+
+.overlay-url-display {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.overlay-url-display label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.url-display {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-secondary);
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.url-display code {
+  flex: 1;
+  background: transparent;
+  color: var(--accent-color);
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.copy-btn {
+  background: var(--accent-color);
+  color: white;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.copy-btn:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
 }
 
 
@@ -3721,4 +3806,77 @@ body.resizing-chat * {
     height: 25vh;
     min-height: 200px;
   }
+}
+
+/* Overlay Grid Styles */
+.overlay-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.overlay-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 15px;
+  transition: all 0.2s ease;
+}
+
+.overlay-card:hover {
+  border-color: var(--accent-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.overlay-card h5 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.overlay-card p {
+  margin: 0 0 12px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.overlay-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.overlay-actions button {
+  background: var(--accent-color);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.2s ease;
+}
+
+.overlay-actions button:hover {
+  background: var(--accent-hover);
+}
+
+.overlay-actions .copy-url-btn {
+  background: var(--success-color);
+}
+
+.overlay-actions .copy-url-btn:hover {
+  background: var(--success-hover);
+}
+
+.overlay-actions .preview-btn {
+  background: var(--info-color);
+}
+
+.overlay-actions .preview-btn:hover {
+  background: var(--info-hover);
 }

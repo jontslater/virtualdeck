@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VirtualDeck Overlay - {{OVERLAY_NAME}}</title>
+    <style>
+        :root {
+            --overlay-width: 1920px;
+            --overlay-height: 1080px;
+            --background-mode: {{BACKGROUND_MODE}};
+            --chroma-color: {{CHROMA_COLOR}};
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            width: var(--overlay-width);
+            height: var(--overlay-height);
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            
+            /* Background mode handling */
+            background: var(--background-mode) === 'transparent' ? transparent : var(--chroma-color);
+        }
+        
+        /* Connection Status Indicator */
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 9999;
+            pointer-events: none;
+            display: none;
+        }
+        
+        #connection-status.error {
+            color: #ff0000;
+        }
+        
+        #connection-status.warning {
+            color: #ffaa00;
+        }
+
+        /* Overlay Content Container */
+        .overlay-content {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Media Elements */
+        .media-element {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .media-element.hidden {
+            display: none;
+        }
+
+        /* Text Elements */
+        .text-element {
+            position: absolute;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        /* Animation Keyframes */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideInLeft {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes slideInUp {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        @keyframes slideInDown {
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Layout Classes */
+        .layout-center {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .layout-fullscreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .layout-text-only {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body>
+    <div id="connection-status">Connecting...</div>
+    <div class="overlay-content {{LAYOUT_CLASS}}">
+        <!-- Dynamic content will be inserted here -->
+    </div>
+
+    <script>
+        // Overlay Configuration
+        const OVERLAY_CONFIG = {
+            name: '{{OVERLAY_NAME}}',
+            backgroundMode: '{{BACKGROUND_MODE}}',
+            chromaColor: '{{CHROMA_COLOR}}',
+            layout: '{{LAYOUT_CLASS}}'
+        };
+
+        // Global variables
+        let overlayWS = null;
+        let messageCount = 0;
+        let overlayResetTimer = null;
+        let messageHistory = new Map();
+        let hasUserDefinedDuration = false; // Track if user set a custom duration
+        const MESSAGE_DEDUP_WINDOW = 5000; // 5 seconds
+
+        // Initialize overlay
+        function initOverlay() {
+            console.log('🚀 Initializing overlay:', OVERLAY_CONFIG.name);
+            console.log('🎨 Background mode:', OVERLAY_CONFIG.backgroundMode);
+            console.log('🎯 Layout:', OVERLAY_CONFIG.layout);
+            
+            connectWebSocket();
+            showConnectionStatus('🔄 Connecting...', 'warning');
+        }
+
+        // WebSocket connection
+        function connectWebSocket() {
+            try {
+                const wsUrl = `ws://localhost:8080?overlay=${OVERLAY_CONFIG.name}`;
+                console.log('🔗 Connecting to:', wsUrl);
+                
+                overlayWS = new WebSocket(wsUrl);
+                
+                overlayWS.onopen = function() {
+                    console.log('✅ WebSocket connected successfully!');
+                    showConnectionStatus('✅ Connected', 'success');
+                };
+                
+                overlayWS.onmessage = function(event) {
+                    try {
+                        const payload = JSON.parse(event.data);
+                        
+                        // Check for duplicate messages
+                        if (isDuplicateMessage(payload)) {
+                            console.log('⚠️ Duplicate message ignored:', payload.type);
+                            return;
+                        }
+                        
+                        // Add to message history for deduplication
+                        addToMessageHistory(payload);
+                        
+                        messageCount++;
+                        console.log('📨 Received message:', payload.type);
+                        console.log('📊 Message count:', messageCount);
+                        
+                        renderPayload(payload);
+                    } catch (error) {
+                        console.error('❌ Error parsing WebSocket message:', error);
+                    }
+                };
+                
+                overlayWS.onclose = function(event) {
+                    console.log('🔌 WebSocket disconnected');
+                    console.log('📊 Close code:', event.code, 'Reason:', event.reason);
+                    showConnectionStatus('❌ Disconnected', 'error');
+                };
+                
+                overlayWS.onerror = function(error) {
+                    console.error('❌ WebSocket error:', error);
+                    showConnectionStatus('❌ Connection Error', 'error');
+                };
+                
+            } catch (error) {
+                console.error('❌ Failed to create WebSocket connection:', error);
+                showConnectionStatus('❌ Connection Failed', 'error');
+            }
+        }
+
+        // Show connection status indicator
+        function showConnectionStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('connection-status');
+            if (!statusDiv) return;
+            
+            statusDiv.textContent = `${message} - ${OVERLAY_CONFIG.name}`;
+            statusDiv.className = type === 'success' ? '' : type;
+            statusDiv.style.display = 'block';
+            
+            // Auto-hide success messages after 3 seconds
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // Message deduplication
+        function isDuplicateMessage(payload) {
+            const messageId = generateMessageId(payload);
+            const now = Date.now();
+            
+            if (messageHistory.has(messageId)) {
+                const lastSeen = messageHistory.get(messageId);
+                if (now - lastSeen < MESSAGE_DEDUP_WINDOW) {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+
+        function addToMessageHistory(payload) {
+            const messageId = generateMessageId(payload);
+            messageHistory.set(messageId, Date.now());
+            
+            // Clean up old messages
+            const now = Date.now();
+            for (const [id, timestamp] of messageHistory.entries()) {
+                if (now - timestamp > MESSAGE_DEDUP_WINDOW) {
+                    messageHistory.delete(id);
+                }
+            }
+        }
+
+        function generateMessageId(payload) {
+            return JSON.stringify({
+                type: payload.type,
+                timestamp: payload.timestamp || 0,
+                id: payload.id || ''
+            });
+        }
+
+        // Render payload to overlay
+        function renderPayload(payload) {
+            console.log('🎯 Rendering payload:', payload.type);
+            
+            if (payload.type === 'buttonTrigger') {
+                handleButtonTrigger(payload);
+            } else if (payload.type === 'alert') {
+                handleAlert(payload);
+            } else if (payload.type === 'clear') {
+                clearOverlay();
+            } else if (payload.type === 'text') {
+                handleText(payload);
+            } else if (payload.type === 'image') {
+                handleImage(payload);
+            } else if (payload.type === 'video') {
+                handleVideo(payload);
+            }
+        }
+
+        // Handle button trigger
+        function handleButtonTrigger(payload) {
+            console.log('🎮 Button triggered:', payload.options?.name || 'Unknown');
+            
+            // Clear any existing timer
+            if (overlayResetTimer) {
+                clearTimeout(overlayResetTimer);
+                overlayResetTimer = null;
+            }
+            
+            // Clear existing content
+            clearOverlay();
+            
+            // Process center media
+            if (payload.centerMedia && payload.centerMedia.length > 0) {
+                payload.centerMedia.forEach((media, index) => {
+                    setTimeout(() => {
+                        renderMedia(media, index);
+                    }, index * 100); // Stagger media appearance
+                });
+            }
+            
+            // Set auto-clear timer if duration is specified
+            // Support both durationMs (milliseconds) and duration (seconds)
+            const durationMs = payload.options?.durationMs || (payload.options?.duration ? payload.options.duration * 1000 : null);
+            
+            if (durationMs && durationMs > 0) {
+                hasUserDefinedDuration = true; // User set a custom duration
+                overlayResetTimer = setTimeout(() => {
+                    console.log('⏰ Auto-clearing overlay after user-defined duration:', durationMs, 'ms', `(${(durationMs/1000).toFixed(1)}s)`);
+                    triggerClearAll();
+                }, durationMs);
+                console.log('✅ Timer armed for user-defined duration:', durationMs, 'ms', `(${(durationMs/1000).toFixed(1)}s)`);
+            } else {
+                hasUserDefinedDuration = false; // No user duration - media ended event will clear
+                console.log('ℹ️ No user-defined duration - overlay will clear when media ends');
+            }
+        }
+
+        // Handle alert
+        function handleAlert(payload) {
+            console.log('🚨 Alert triggered:', payload.alertType || 'Unknown');
+            
+            // Clear any existing timer
+            if (overlayResetTimer) {
+                clearTimeout(overlayResetTimer);
+                overlayResetTimer = null;
+            }
+            
+            // Clear existing content
+            clearOverlay();
+            
+            // Process alert media
+            if (payload.media && payload.media.length > 0) {
+                payload.media.forEach((media, index) => {
+                    setTimeout(() => {
+                        renderMedia(media, index);
+                    }, index * 100);
+                });
+            }
+            
+            // Set auto-clear timer
+            // Support both durationMs (milliseconds) and duration (seconds)
+            const durationMs = payload.options?.durationMs || (payload.duration ? payload.duration * 1000 : 60000);
+            
+            if (durationMs > 0) {
+                overlayResetTimer = setTimeout(() => {
+                    console.log('⏰ Auto-clearing alert after', durationMs, 'ms', `(${(durationMs/1000).toFixed(1)}s)`);
+                    triggerClearAll();
+                }, durationMs);
+                console.log('✅ Alert timer armed for', durationMs, 'ms', `(${(durationMs/1000).toFixed(1)}s)`);
+            }
+        }
+
+        // Handle text
+        function handleText(payload) {
+            const textDiv = document.createElement('div');
+            textDiv.className = 'text-element';
+            textDiv.textContent = payload.text || '';
+            textDiv.style.cssText = `
+                position: absolute;
+                top: ${payload.position?.top || '50%'};
+                left: ${payload.position?.left || '50%'};
+                transform: translate(-50%, -50%);
+                color: ${payload.color || 'white'};
+                font-size: ${payload.fontSize || '24px'};
+                font-weight: ${payload.fontWeight || 'bold'};
+                text-align: center;
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+                animation: fadeIn 0.5s ease-in-out;
+            `;
+            
+            document.querySelector('.overlay-content').appendChild(textDiv);
+        }
+
+        // Handle image
+        function handleImage(payload) {
+            const img = document.createElement('img');
+            img.className = 'media-element';
+            img.src = payload.src || payload.url || '';
+            img.style.cssText = `
+                max-width: 100%;
+                max-height: 100%;
+                object-fit: contain;
+                animation: fadeIn 0.5s ease-in-out;
+            `;
+            
+            img.onload = () => {
+                console.log('🖼️ Image loaded:', img.src);
+            };
+            
+            img.onerror = () => {
+                console.error('❌ Failed to load image:', img.src);
+            };
+            
+            document.querySelector('.overlay-content').appendChild(img);
+        }
+
+        // Handle video
+        function handleVideo(payload) {
+            const video = document.createElement('video');
+            video.className = 'media-element';
+            video.src = payload.src || payload.url || '';
+            video.autoplay = true;
+            video.loop = payload.loop || false;
+            video.muted = payload.muted !== false; // Default to muted unless explicitly set to false
+            video.volume = payload.volume || 1.0;
+            
+            video.style.cssText = `
+                max-width: 100%;
+                max-height: 100%;
+                object-fit: contain;
+                animation: fadeIn 0.5s ease-in-out;
+            `;
+            
+            video.onloadeddata = () => {
+                console.log('🎥 Video loaded:', video.src);
+                video.play();
+            };
+            
+            video.onerror = () => {
+                console.error('❌ Failed to load video:', video.src);
+            };
+            
+            // Listen for ended event to clear overlay when video finishes
+            // ONLY if user didn't set a custom duration (prioritize user input)
+            if (!payload.loop && !hasUserDefinedDuration) {
+                video.addEventListener('ended', () => {
+                    console.log('🎬 Video finished playing - triggering clear all (no user duration set)');
+                    triggerClearAll();
+                }, { once: true });
+                console.log('🎬 Added ended event listener to video (will clear on video end)');
+            } else if (payload.loop) {
+                console.log('🎬 Video has loop attribute - no ended listener added');
+            } else if (hasUserDefinedDuration) {
+                console.log('🎬 User-defined duration set - video ended listener skipped (timer will handle clearing)');
+            }
+            
+            document.querySelector('.overlay-content').appendChild(video);
+        }
+
+        // Render media element
+        function renderMedia(media, index) {
+            console.log('🎨 Rendering media:', media.type, media);
+            
+            if (media.type === 'image') {
+                handleImage(media);
+            } else if (media.type === 'video') {
+                handleVideo(media);
+            } else if (media.type === 'audio') {
+                handleAudio(media);
+            }
+        }
+
+        // Handle audio
+        function handleAudio(payload) {
+            const audio = document.createElement('audio');
+            audio.src = payload.src || payload.url || '';
+            audio.volume = payload.volume || 1.0;
+            audio.loop = payload.loop || false;
+            audio.autoplay = true;
+            
+            audio.onloadeddata = () => {
+                console.log('🔊 Audio loaded:', audio.src);
+                audio.play();
+            };
+            
+            audio.onerror = () => {
+                console.error('❌ Failed to load audio:', audio.src);
+            };
+            
+            // Listen for ended event to clear overlay when audio finishes
+            // ONLY if user didn't set a custom duration (prioritize user input)
+            if (!payload.loop && !hasUserDefinedDuration) {
+                audio.addEventListener('ended', () => {
+                    console.log('🎵 Audio finished playing - triggering clear all (no user duration set)');
+                    triggerClearAll();
+                }, { once: true });
+                console.log('🎵 Added ended event listener to audio (will clear on audio end)');
+            } else if (payload.loop) {
+                console.log('🎵 Audio has loop attribute - no ended listener added');
+            } else if (hasUserDefinedDuration) {
+                console.log('🎵 User-defined duration set - audio ended listener skipped (timer will handle clearing)');
+            }
+            
+            document.body.appendChild(audio);
+        }
+
+        // Trigger clear all - mimics the "Clear All" button functionality
+        function triggerClearAll() {
+            console.log('🔄 Triggering clear all button functionality...');
+            console.log('🧹 Calling clearOverlay() directly (same as Clear All button)');
+            clearOverlay();
+        }
+        
+        // Clear overlay
+        function clearOverlay() {
+            console.log('🧹 Clearing overlay');
+            
+            const content = document.querySelector('.overlay-content');
+            if (content) {
+                content.innerHTML = '';
+            }
+            
+            // Clear all audio elements
+            const audioElements = document.querySelectorAll('audio');
+            audioElements.forEach(audio => {
+                audio.pause();
+                audio.remove();
+            });
+            
+            // Clear timer
+            if (overlayResetTimer) {
+                clearTimeout(overlayResetTimer);
+                overlayResetTimer = null;
+                console.log('⏰ Cleared existing reset timer');
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initOverlay);
+        
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (overlayWS) {
+                overlayWS.close();
+            }
+        });
+    </script>
+</body>
+</html>

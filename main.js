@@ -122,6 +122,7 @@ let overlayWindow;
 let overlayServer;
 let overlayWSS;
 let overlayClients = new Set();
+let overlayRegistry = new Map(); // overlayName -> Set of WebSocket connections
 let overlayServerPort;
 
 function createWindow() {
@@ -200,7 +201,7 @@ function startOverlayServer() {
     }
     
     if (req.url === '/overlay' || req.url === '/') {
-      // Serve the overlay HTML file
+      // Serve the main overlay HTML file
       const overlayPath = path.join(__dirname, 'public/overlay.html');
       fs.readFile(overlayPath, (err, data) => {
         if (err) {
@@ -216,6 +217,57 @@ function startOverlayServer() {
         });
         res.end(data);
       });
+    } else if (req.url.startsWith('/overlay/') || req.url.startsWith('/overlay?')) {
+      // Handle custom overlays - /overlay/name or /overlay?name=name
+      let overlayName = 'main';
+      
+      // Parse overlay name from URL
+      if (req.url.includes('?')) {
+        const url = new URL(req.url, `http://localhost:${port}`);
+        overlayName = url.searchParams.get('name') || 'main';
+      } else {
+        // Extract from path like /overlay/custom-name
+        overlayName = req.url.substring(9); // Remove '/overlay/'
+      }
+      
+      console.log(`🎯 Serving overlay: ${overlayName}`);
+      
+      // Check if it's a predefined overlay
+      const predefinedOverlays = ['hudOverlay', 'cameraFrameOverlay', 'chatOverlay'];
+      if (predefinedOverlays.includes(overlayName)) {
+        // Serve predefined overlay
+        const overlayPath = path.join(__dirname, 'overlays', overlayName, 'index.html');
+        fs.readFile(overlayPath, (err, data) => {
+          if (err) {
+            res.writeHead(500);
+            res.end('Error loading overlay');
+            return;
+          }
+          res.writeHead(200, { 
+            'Content-Type': 'text/html',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          });
+          res.end(data);
+        });
+      } else {
+        // Generate custom overlay from base template
+        generateOverlayHTML(overlayName, (err, html) => {
+          if (err) {
+            res.writeHead(500);
+            res.end('Error generating overlay');
+            return;
+          }
+          res.writeHead(200, { 
+            'Content-Type': 'text/html',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          });
+          res.end(html);
+        });
+      }
     } else if (req.url.startsWith('/media/')) {
       // Serve media files from file paths
       const filePath = decodeURIComponent(req.url.substring(7)); // Remove '/media/' prefix
@@ -283,18 +335,61 @@ function startOverlayServer() {
   // Create WebSocket server for real-time communication
   overlayWSS = new WebSocket.Server({ server: overlayServer });
   
-  overlayWSS.on('connection', (ws) => {
-    console.log('Overlay client connected');
+  overlayWSS.on('connection', (ws, req) => {
+    console.log('Overlay client connected - URL:', req.url);
+    
+    // Extract overlay name from URL query parameters
+    const url = new URL(req.url || '/', `http://localhost:${port}`);
+    const overlayName = url.searchParams.get('overlay') || 'main';
+    ws.overlayName = overlayName; // Store overlay name on the WebSocket connection
+    
+    // Add to global clients set
     overlayClients.add(ws);
     
+    // Register in overlay registry
+    if (!overlayRegistry.has(overlayName)) {
+      overlayRegistry.set(overlayName, new Set());
+    }
+    overlayRegistry.get(overlayName).add(ws);
+    
+    console.log(`✅ WebSocket connected for overlay: "${overlayName}"`);
+    console.log(`📊 Registry status:`, Array.from(overlayRegistry.entries()).map(([name, clients]) => `${name}:${clients.size}`));
+    
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message);
+        console.log(`📨 Message from overlay ${overlayName}:`, data);
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
+    });
+    
     ws.on('close', () => {
-      console.log('Overlay client disconnected');
+      console.log(`Overlay client disconnected: ${overlayName}`);
       overlayClients.delete(ws);
+      
+      // Remove from overlay registry
+      if (overlayRegistry.has(overlayName)) {
+        overlayRegistry.get(overlayName).delete(ws);
+        if (overlayRegistry.get(overlayName).size === 0) {
+          overlayRegistry.delete(overlayName);
+        }
+      }
+      
+      console.log(`📊 Registry status after disconnect:`, Array.from(overlayRegistry.entries()).map(([name, clients]) => `${name}:${clients.size}`));
     });
     
     ws.on('error', (error) => {
       console.log('Overlay WebSocket error:', error);
       overlayClients.delete(ws);
+      
+      // Remove from overlay registry
+      if (overlayRegistry.has(overlayName)) {
+        overlayRegistry.get(overlayName).delete(ws);
+        if (overlayRegistry.get(overlayName).size === 0) {
+          overlayRegistry.delete(overlayName);
+        }
+      }
     });
   });
 
@@ -327,14 +422,79 @@ function startOverlayServer() {
   tryStartServer(port);
 }
 
-// Function to broadcast messages to all overlay clients
-function broadcastToOverlay(message) {
+// Generate overlay HTML based on overlay name and template
+function generateOverlayHTML(overlayName, callback) {
+  try {
+    // Use the base overlay template for custom overlays
+    const templatePath = path.join(__dirname, 'overlays/baseOverlay/index.html');
+    
+    fs.readFile(templatePath, 'utf8', (err, template) => {
+      if (err) {
+        callback(err, null);
+        return;
+      }
+      
+      // Replace template variables
+      let html = template.replace(/\{\{OVERLAY_NAME\}\}/g, overlayName);
+      html = html.replace(/\{\{BACKGROUND_MODE\}\}/g, 'transparent');
+      html = html.replace(/\{\{CHROMA_COLOR\}\}/g, '#00ff00');
+      html = html.replace(/\{\{LAYOUT_CLASS\}\}/g, 'layout-center');
+      
+      callback(null, html);
+    });
+  } catch (error) {
+    callback(error, null);
+  }
+}
+
+// Get layout class based on overlay name
+function getLayoutClass(overlayName) {
+  // Simple mapping for now - could be enhanced with stored configurations
+  if (overlayName.includes('fullscreen') || overlayName.includes('full-screen')) {
+    return 'fullscreen-media';
+  } else if (overlayName.includes('text-only')) {
+    return 'text-only';
+  } else {
+    return 'center-media'; // Default layout
+  }
+}
+
+// Function to broadcast messages to overlay clients
+// If targetOverlay is specified, only send to that overlay
+// If targetOverlay is null/undefined, send to all overlays (backward compatibility)
+function broadcastToOverlay(message, targetOverlay = null) {
   const messageStr = JSON.stringify(message);
-  overlayClients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(messageStr);
+  let sentCount = 0;
+  
+  if (targetOverlay) {
+    // Use registry for targeted messaging
+    const overlayClients = overlayRegistry.get(targetOverlay);
+    
+    if (overlayClients && overlayClients.size > 0) {
+      overlayClients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(messageStr);
+          sentCount++;
+        }
+      });
+      console.log(`📤 Message sent to ${sentCount} client(s) on overlay: "${targetOverlay}"`);
+    } else {
+      console.warn(`⚠️ WARNING: No clients found for overlay "${targetOverlay}"! Is the overlay open in OBS?`);
+      console.log(`📊 Available overlays:`, Array.from(overlayRegistry.keys()));
     }
-  });
+  } else {
+    // No target specified - send to all overlays (broadcast mode)
+    overlayClients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(messageStr);
+        sentCount++;
+      }
+    });
+    console.log(`📤 Broadcast message sent to ${sentCount} client(s) across all overlays`);
+  }
+  
+  // Log registry status for debugging
+  console.log(`📊 Registry status:`, Array.from(overlayRegistry.entries()).map(([name, clients]) => `${name}:${clients.size}`));
 }
 
 // Function to get the current overlay server URL
@@ -2764,8 +2924,16 @@ app.whenReady().then(() => {
   // Overlay communication handlers - now using WebSocket broadcast
   ipcMain.on('overlay-message', (event, message) => {
     try {
-      console.log('Overlay message received:', message);
-      broadcastToOverlay(message);
+      console.log('📨 Overlay message received:', message);
+      console.log('🎯 Message type:', message.type);
+      console.log('🎯 Target overlay:', message.targetOverlay);
+      console.log('🎯 Available overlays in registry:', Array.from(overlayRegistry.keys()));
+      
+      // Extract target overlay from message (if specified)
+      const targetOverlay = message.targetOverlay || null;
+      console.log('🎯 Broadcasting to overlay:', targetOverlay);
+      
+      broadcastToOverlay(message, targetOverlay);
     } catch (e) { 
       console.warn('overlay-message failed', e); 
     }
@@ -2817,6 +2985,22 @@ app.whenReady().then(() => {
     } catch (e) { 
       console.warn('overlay-video failed', e); 
     }
+  });
+
+  // IPC handler to get connected overlays
+  ipcMain.handle('get-connected-overlays', () => {
+    const connections = [];
+    overlayRegistry.forEach((clients, overlayName) => {
+      const activeClients = Array.from(clients).filter(client => client.readyState === WebSocket.OPEN);
+      if (activeClients.length > 0) {
+        connections.push({
+          name: overlayName,
+          connected: true,
+          clientCount: activeClients.length
+        });
+      }
+    });
+    return connections;
   });
 
   // Overlay is now a browser source - no window management needed

@@ -892,14 +892,21 @@ class AddEditButtonForm {
     // Get chat command settings
     const chatCommandEnabled = document.getElementById('multi-media-chat-command-enabled')?.checked || false;
     const chatCommandKeyword = document.getElementById('multi-media-chat-command-keyword')?.value?.trim() || '';
+    
+    // Get overlay selection
+    const overlaySelect = document.getElementById('multi-media-overlay-select')?.value || 'main';
+    console.log('🔍 Overlay select element:', document.getElementById('multi-media-overlay-select'));
+    console.log('🔍 Overlay select value:', overlaySelect);
 
     const buttonData = {
       id: this.editingId || `multi-media-${Date.now()}`,
       name: name,
       type: 'multi-media',
       hotkey: hotkey,
+      overlay: overlaySelect,
       slots,
       centerMedia,
+      fullscreenMedia: [], // New: fullscreen media support
       textStyling: textStyling,
       animation: animation,
       audio: await Promise.all(this.audio.filter(item => item.src).map(async (item, index) => {
@@ -936,6 +943,8 @@ class AddEditButtonForm {
       };
     }
 
+    console.log('🔍 Final button data before saving:', buttonData);
+    console.log('🔍 Button overlay property:', buttonData.overlay);
     return buttonData;
   }
 
@@ -1062,6 +1071,13 @@ class AddEditButtonForm {
     // Set hotkey
     const hotkeyInput = document.getElementById('multi-media-hotkey-input');
     if (hotkeyInput) hotkeyInput.value = buttonData.hotkey || '';
+    
+    // Set overlay selection
+    const overlaySelect = document.getElementById('multi-media-overlay-select');
+    if (overlaySelect && buttonData.overlay) {
+      overlaySelect.value = buttonData.overlay;
+      console.log(`📝 [Edit] Setting overlay to: ${buttonData.overlay}`);
+    }
 
     // Set duration (convert from milliseconds to seconds)
     const durationInput = document.getElementById('multi-media-duration-input');
