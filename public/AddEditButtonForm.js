@@ -427,7 +427,9 @@ class AddEditButtonForm {
       name: name || `Media ${Date.now()}`,
       loop: type === 'video' ? false : undefined,
       volume: type === 'audio' ? 100 : undefined,
-      widthPct: type === 'image' || type === 'video' ? 100 : undefined
+      widthPct: type === 'image' || type === 'video' ? 100 : undefined,
+      // Initialize chroma key settings for videos
+      chromaKey: type === 'video' ? { enabled: false, color: '#00ff00', tolerance: 0.4 } : undefined
     };
 
     if (type === 'image') {
@@ -487,6 +489,27 @@ class AddEditButtonForm {
             <label><input type="checkbox" class="loop-toggle" ${item.loop ? 'checked' : ''} /> Loop</label>
             <input type="range" class="width-slider" min="10" max="100" value="${item.widthPct}" />
             <span class="width-value">${item.widthPct}%</span>
+          ` : type === 'video' ? `
+            <label><input type="checkbox" class="loop-toggle" ${item.loop ? 'checked' : ''} /> Loop</label>
+            <div class="chroma-key-settings">
+              <label>
+                <input type="checkbox" class="video-chroma-enabled" data-id="${item.id}" ${item.chromaKey?.enabled ? 'checked' : ''}>
+                Enable Chroma Key
+              </label>
+              <div class="chroma-key-controls" style="display: ${item.chromaKey?.enabled ? 'block' : 'none'};">
+                <label>
+                  Key Color:
+                  <input type="color" class="video-chroma-color" data-id="${item.id}" value="${item.chromaKey?.color || '#00ff00'}">
+                </label>
+                <label>
+                  Tolerance:
+                  <input type="range" class="video-chroma-tolerance" data-id="${item.id}" 
+                         min="0" max="1" step="0.01" value="${item.chromaKey?.tolerance || 0.4}">
+                  <span class="tolerance-value">${Math.round((item.chromaKey?.tolerance || 0.4) * 100)}%</span>
+                  <small class="tolerance-help">Higher values remove more similar colors. Lower values only remove exact matches.</small>
+                </label>
+              </div>
+            </div>
           ` : `
             <input type="range" class="volume-slider" min="0" max="100" value="${item.volume || 100}" />
             <span class="volume-value">${item.volume || 100}%</span>
@@ -531,14 +554,67 @@ class AddEditButtonForm {
           widthValue.textContent = `${item.widthPct}%`;
           this.updatePreview();
         });
+      } else if (type === 'video') {
+        // Video-specific controls
+        const loopToggle = mediaItem.querySelector('.loop-toggle');
+        const chromaEnabled = mediaItem.querySelector('.video-chroma-enabled');
+        const chromaControls = mediaItem.querySelector('.chroma-key-controls');
+        const chromaColor = mediaItem.querySelector('.video-chroma-color');
+        const chromaTolerance = mediaItem.querySelector('.video-chroma-tolerance');
+        const toleranceValue = mediaItem.querySelector('.tolerance-value');
+
+        if (loopToggle) {
+          loopToggle.addEventListener('change', (e) => {
+            item.loop = e.target.checked;
+          });
+        }
+
+        if (chromaEnabled && chromaControls) {
+          // Debug: Log initial chroma key state
+          console.log('🎬 Setting up chroma key controls for video:', {
+            id: item.id,
+            chromaKey: item.chromaKey,
+            enabled: chromaEnabled.checked
+          });
+          
+          chromaEnabled.addEventListener('change', (e) => {
+            chromaControls.style.display = e.target.checked ? 'block' : 'none';
+            if (!item.chromaKey) item.chromaKey = {};
+            item.chromaKey.enabled = e.target.checked;
+            console.log('🎬 Chroma key enabled changed:', item.chromaKey);
+            this.updatePreview();
+          });
+        }
+
+        if (chromaColor) {
+          chromaColor.addEventListener('change', (e) => {
+            if (!item.chromaKey) item.chromaKey = {};
+            item.chromaKey.color = e.target.value;
+            console.log('🎬 Chroma key color changed:', item.chromaKey);
+            this.updatePreview();
+          });
+        }
+
+        if (chromaTolerance && toleranceValue) {
+          chromaTolerance.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            if (!item.chromaKey) item.chromaKey = {};
+            item.chromaKey.tolerance = value;
+            toleranceValue.textContent = `${Math.round(value * 100)}%`;
+            console.log('🎬 Chroma key tolerance changed:', item.chromaKey);
+            this.updatePreview();
+          });
+        }
       } else {
         const volumeSlider = mediaItem.querySelector('.volume-slider');
         const volumeValue = mediaItem.querySelector('.volume-value');
 
-        volumeSlider.addEventListener('input', (e) => {
-          item.volume = parseInt(e.target.value);
-          volumeValue.textContent = `${item.volume}%`;
-        });
+        if (volumeSlider && volumeValue) {
+          volumeSlider.addEventListener('input', (e) => {
+            item.volume = parseInt(e.target.value);
+            volumeValue.textContent = `${item.volume}%`;
+          });
+        }
       }
 
       removeBtn.addEventListener('click', () => {
@@ -863,6 +939,13 @@ class AddEditButtonForm {
             src = await saveMediaFile(item.src, 'video', buttonId);
           }
         }
+        // Debug: Log what's being saved for this video
+        console.log('💾 Saving video to centerMedia:', {
+          id: `v${index + 1}`,
+          src: src,
+          chromaKey: item.chromaKey
+        });
+        
         centerMedia.push({
           id: `v${index + 1}`,
           type: 'video',
@@ -870,7 +953,13 @@ class AddEditButtonForm {
           loop: item.loop || false,
           widthPct: item.widthPct || 100,
           align: 'center',
-          extraStyle: { zIndex: index + 1 }
+          extraStyle: { zIndex: index + 1 },
+          // Chroma key settings
+          chromaKey: item.chromaKey || {
+            enabled: false,
+            color: '#00ff00',
+            tolerance: 0.4
+          }
         });
       }
     }
@@ -1176,7 +1265,9 @@ class AddEditButtonForm {
       src: item.src,
       name: 'Video',
       loop: item.loop || false,
-      widthPct: item.widthPct || 100
+      widthPct: item.widthPct || 100,
+      // Preserve chroma key settings
+      chromaKey: item.chromaKey || { enabled: false, color: '#00ff00', tolerance: 0.4 }
     }));
     
     this.audio = (buttonData.audio || []).map(item => ({

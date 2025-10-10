@@ -14,28 +14,51 @@ window.electronAPI.onRefreshUI(() => {
 // Audio should only play in OBS browser source
 function muteOverlayIframeAudio() {
   const overlayIframe = document.getElementById('overlay-iframe');
-  if (!overlayIframe) return;
+  if (!overlayIframe) {
+    console.warn('🔇 Overlay iframe not found, retrying in 1 second...');
+    setTimeout(muteOverlayIframeAudio, 1000);
+    return;
+  }
   
   try {
-    // Wait for iframe to load
-    overlayIframe.addEventListener('load', () => {
-      const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow.document;
-      
-      // Mute all existing audio and video elements
-      const muteElements = () => {
+    // Mute all existing audio and video elements in the iframe
+    const muteElements = () => {
+      try {
+        const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow?.document;
+        if (!iframeDoc) return;
+        
         const audios = iframeDoc.querySelectorAll('audio');
         const videos = iframeDoc.querySelectorAll('video');
         
+        let mutedCount = 0;
         audios.forEach(audio => {
-          audio.muted = true;
-          audio.volume = 0;
+          if (!audio.muted || audio.volume !== 0) {
+            audio.muted = true;
+            audio.volume = 0;
+            mutedCount++;
+          }
         });
         
         videos.forEach(video => {
-          video.muted = true;
-          video.volume = 0;
+          if (!video.muted || video.volume !== 0) {
+            video.muted = true;
+            video.volume = 0;
+            mutedCount++;
+          }
         });
-      };
+        
+        if (mutedCount > 0) {
+          console.log(`🔇 Muted ${mutedCount} media element(s) in dashboard overlay`);
+        }
+      } catch (error) {
+        console.warn('Error in muteElements:', error);
+      }
+    };
+    
+    // Set up muting when iframe loads
+    overlayIframe.addEventListener('load', () => {
+      const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow?.document;
+      if (!iframeDoc) return;
       
       // Mute immediately
       muteElements();
@@ -50,8 +73,19 @@ function muteOverlayIframeAudio() {
         subtree: true
       });
       
-      console.log('🔇 Dashboard overlay preview muted (audio plays in OBS only)');
+      console.log('✅ Dashboard overlay preview muted (audio plays in OBS only)');
     });
+    
+    // Also try to mute immediately if iframe is already loaded
+    if (overlayIframe.contentDocument) {
+      muteElements();
+    }
+    
+    // Continuously check and mute (failsafe for any edge cases)
+    setInterval(() => {
+      muteElements();
+    }, 500); // Check every 500ms to ensure dashboard overlay stays muted
+    
   } catch (error) {
     console.warn('Could not mute overlay iframe:', error);
   }
@@ -2583,6 +2617,13 @@ async function handleMultiMediaTrigger(button) {
     return audioItem;
   }));
 
+  // Debug: Log chroma key data
+  console.log('🔍 Processed center media with chroma key data:', processedCenterMedia.map(item => ({
+    type: item.type,
+    src: item.src,
+    chromaKey: item.chromaKey
+  })));
+
   const overlayPayload = {
     type: 'buttonTrigger',
     options: optionsData,
@@ -4230,6 +4271,14 @@ document.addEventListener('DOMContentLoaded', () => {
     setupLeftAppMenu();
   } else {
     console.log('🔧 setupLeftAppMenu function not found');
+  }
+  
+  // initialize preferences modal
+  if (typeof initializePreferencesModal === 'function') {
+    console.log('🔧 Setting up preferences modal');
+    initializePreferencesModal();
+  } else {
+    console.log('🔧 initializePreferencesModal function not found');
   }
 });
 
@@ -6872,11 +6921,7 @@ function setupLeftAppMenu() {
   if (prefBtn) {
     prefBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (window.electronAPI && typeof window.electronAPI.openPreferences === 'function') {
-        window.electronAPI.openPreferences();
-      } else {
-        try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('open-preferences'); } catch (e) {}
-      }
+      openPreferencesModal();
     });
   }
 }
@@ -9469,6 +9514,10 @@ function openAudioForm() {
   const settingsForm = document.getElementById('settings-form');
   settingsForm.reset();
   
+  // Set the form type to 'audio'
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'audio';
+  
   // Stop any active hotkey recording and clear displayed status/value
   if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
   const hkIn = document.getElementById('hotkey-input'); 
@@ -9515,5 +9564,102 @@ function openAudioForm() {
   document.getElementById('settings-modal').classList.remove('hidden');
   if (window.electronAPI && window.electronAPI.disableHotkeys) {
     window.electronAPI.disableHotkeys();
+  }
+}
+
+// Preferences Modal Functions
+function openPreferencesModal() {
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.classList.remove('hidden');
+    loadPreferences();
+  }
+}
+
+function closePreferencesModal() {
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.classList.add('hidden');
+  }
+}
+
+function loadPreferences() {
+  // Load preferences from localStorage
+  const preferences = JSON.parse(localStorage.getItem('vdPreferences') || '{}');
+  
+  // Update checkboxes
+  document.getElementById('auto-update-checkbox').checked = preferences.autoUpdate !== false; // default to true
+}
+
+function savePreferences() {
+  const preferences = {
+    autoUpdate: document.getElementById('auto-update-checkbox').checked
+  };
+  
+  // Save to localStorage
+  localStorage.setItem('vdPreferences', JSON.stringify(preferences));
+  
+  // Send preferences to main process if available
+  if (window.electronAPI && window.electronAPI.savePreferences) {
+    window.electronAPI.savePreferences(preferences);
+  }
+  
+  // Show success message
+  if (window.notificationManager) {
+    window.notificationManager.show('Preferences saved successfully!', 'success');
+  }
+  
+  // Close modal
+  closePreferencesModal();
+}
+
+function checkForUpdatesFromPreferences() {
+  // Send check for updates request to main process
+  if (window.electronAPI && window.electronAPI.checkForUpdates) {
+    window.electronAPI.checkForUpdates();
+    if (window.notificationManager) {
+      window.notificationManager.show('Checking for updates...', 'info');
+    }
+  } else {
+    if (window.notificationManager) {
+      window.notificationManager.show('Update checking not available in development mode', 'warning');
+    }
+  }
+}
+
+// Initialize preferences modal event listeners
+function initializePreferencesModal() {
+  // Close button
+  const closeBtn = document.getElementById('preferences-modal-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closePreferencesModal);
+  }
+  
+  // Save button
+  const saveBtn = document.getElementById('save-preferences');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', savePreferences);
+  }
+  
+  // Cancel button
+  const cancelBtn = document.getElementById('cancel-preferences');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', closePreferencesModal);
+  }
+  
+  // Check for updates button
+  const checkUpdatesBtn = document.getElementById('check-updates-button');
+  if (checkUpdatesBtn) {
+    checkUpdatesBtn.addEventListener('click', checkForUpdatesFromPreferences);
+  }
+  
+  // Close modal when clicking outside
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.addEventListener('click', (e) => {
+      if (e.target === preferencesModal) {
+        closePreferencesModal();
+      }
+    });
   }
 }

@@ -11,6 +11,11 @@ const tmi = require('tmi.js'); // Import tmi.js for Twitch chat
 const WebSocket = require('ws');
 const fetch = require('node-fetch');
 const http = require('http');
+const { autoUpdater } = require('electron-updater');
+
+// Configure auto-updater
+autoUpdater.autoDownload = false; // Don't auto-download, ask user first
+autoUpdater.autoInstallOnAppQuit = true;
 
 // Use Electron's userData directory for config and user files
 const userDataPath = app.getPath('userData');
@@ -2300,11 +2305,141 @@ function registerHotkeys() {
   });
 }
 
+// Preferences management
+function getStoredPreferences() {
+  try {
+    const preferencesPath = path.join(app.getPath('userData'), 'preferences.json');
+    if (fs.existsSync(preferencesPath)) {
+      const data = fs.readFileSync(preferencesPath, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Error reading preferences:', error);
+  }
+  return {}; // Return empty object if no preferences file exists
+}
+
+function saveStoredPreferences(preferences) {
+  try {
+    const preferencesPath = path.join(app.getPath('userData'), 'preferences.json');
+    fs.writeFileSync(preferencesPath, JSON.stringify(preferences, null, 2));
+    console.log('Preferences saved to:', preferencesPath);
+  } catch (error) {
+    console.error('Error saving preferences:', error);
+  }
+}
+
+// Auto-updater event handlers
+function setupAutoUpdater() {
+  // Detect platform
+  const isMac = process.platform === 'darwin';
+  const isWindows = process.platform === 'win32';
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('Checking for updates...');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version);
+    
+    if (isMac) {
+      // macOS: unsigned builds can't auto-update, show download link
+      dialog.showMessageBox(win, {
+        type: 'info',
+        title: 'Update Available',
+        message: `A new version (${info.version}) is available!`,
+        detail: 'Please visit the GitHub releases page to download the latest version.',
+        buttons: ['Open GitHub Releases', 'Later'],
+        defaultId: 0
+      }).then(result => {
+        if (result.response === 0) {
+          require('electron').shell.openExternal('https://github.com/jontslater/VirtualDeck/releases/latest');
+        }
+      });
+    } else if (isWindows) {
+      // Windows: can auto-update even unsigned
+      dialog.showMessageBox(win, {
+        type: 'info',
+        title: 'Update Available',
+        message: `A new version (${info.version}) is available!`,
+        detail: 'Would you like to download it now?',
+        buttons: ['Download', 'Later'],
+        defaultId: 0
+      }).then(result => {
+        if (result.response === 0) {
+          autoUpdater.downloadUpdate();
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('update-downloading');
+          }
+        }
+      });
+    }
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('Update not available. Current version is latest:', info.version);
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    const msg = `Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`;
+    console.log(msg);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded:', info.version);
+    
+    dialog.showMessageBox(win, {
+      type: 'info',
+      title: 'Update Ready',
+      message: 'Update downloaded successfully!',
+      detail: 'The application will restart to apply the update.',
+      buttons: ['Restart Now', 'Later'],
+      defaultId: 0
+    }).then(result => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('Update error:', err);
+    dialog.showMessageBox(win, {
+      type: 'error',
+      title: 'Update Error',
+      message: 'Failed to check for updates',
+      detail: err.message || 'Please try again later.',
+      buttons: ['OK']
+    });
+  });
+}
+
+// Manual update check function
+function checkForUpdates() {
+  setupAutoUpdater();
+  autoUpdater.checkForUpdates();
+}
+
 app.whenReady().then(() => {
   ensureUserData();
   createWindow();
   registerHotkeys();
   startOverlayServer();
+  
+  // Setup and check for updates on startup (delay by 3 seconds to let app initialize)
+  setTimeout(() => {
+    setupAutoUpdater();
+    
+    // Check if auto-update is enabled in preferences
+    const preferences = getStoredPreferences();
+    if (preferences.autoUpdate !== false) { // default to true if not set
+      autoUpdater.checkForUpdates().catch(err => {
+        console.log('Auto-update check failed (expected if not installed from installer):', err.message);
+      });
+    } else {
+      console.log('Auto-update disabled in preferences');
+    }
+  }, 3000);
   
   // Build application menu: Edit contains Preferences, View & Window removed, Tools added
   const menuTemplate = [
@@ -2325,6 +2460,8 @@ app.whenReady().then(() => {
   { id: 'view_sound_controls', label: 'Sound Controls', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-controls', checked: menuItem.checked }); } }
     ] },
     { label: 'Tools', submenu: [
+      { label: 'Check for Updates...', click: () => { checkForUpdates(); } },
+      { type: 'separator' },
       { label: 'Developer Tools', accelerator: 'F12', click: () => { if (win && !win.isDestroyed()) win.webContents.toggleDevTools(); } },
       { label: 'Twitch Setup', submenu: [
           { label: 'View Twitch Events / Test Events', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-twitch-activity'); } },
@@ -2337,9 +2474,11 @@ app.whenReady().then(() => {
       { label: 'Themes', submenu: [] }, // Will be populated dynamically with themes and skins
       { role: 'reload' }
     ] },
-    { label: 'Help', submenu: [ { label: 'About', click: () => {
+    { label: 'Help', submenu: [ 
+      { label: 'About', click: () => {
         if (win && !win.isDestroyed()) win.webContents.send('show-about');
-      } } ] }
+      } } 
+    ] }
   ];
   // Function to rebuild menu with integrated themes and skins
   async function rebuildMenu() {
@@ -2413,11 +2552,35 @@ app.whenReady().then(() => {
       // Find and replace the themes submenu in menuTemplate
       const toolsMenu = menuTemplate.find(item => item.label === 'Tools');
       if (toolsMenu && toolsMenu.submenu) {
+        console.log('Tools menu found, current submenu items:', toolsMenu.submenu.map(item => item.label || item.type));
+        
         const themesMenuIndex = toolsMenu.submenu.findIndex(item => item.label === 'Themes');
         if (themesMenuIndex !== -1) {
           toolsMenu.submenu[themesMenuIndex].submenu = themesSubmenu;
         }
+        
+        // Ensure "Check for Updates" is preserved at the top of Tools menu
+        const checkUpdatesIndex = toolsMenu.submenu.findIndex(item => item.label === 'Check for Updates...');
+        console.log('Check for Updates index:', checkUpdatesIndex);
+        
+        if (checkUpdatesIndex === -1) {
+          console.log('Adding Check for Updates to Tools menu');
+          // Add "Check for Updates" at the beginning if it's missing
+          toolsMenu.submenu.unshift(
+            { label: 'Check for Updates...', click: () => { checkForUpdates(); } },
+            { type: 'separator' }
+          );
+        } else {
+          console.log('Check for Updates already exists at index:', checkUpdatesIndex);
+        }
+        
+        console.log('Final Tools submenu items:', toolsMenu.submenu.map(item => item.label || item.type));
+      } else {
+        console.log('Tools menu not found or has no submenu');
       }
+      
+      // Preserve the Help menu with "Check for Updates" from original template
+      const originalHelpMenu = menuTemplate.find(item => item.label === 'Help');
       
       const appMenu = Menu.buildFromTemplate(menuTemplate);
       Menu.setApplicationMenu(appMenu);
@@ -2556,6 +2719,22 @@ app.whenReady().then(() => {
   // Allow renderer to get the current overlay server URL
   ipcMain.handle('get-overlay-url', async () => {
     return getOverlayServerUrl();
+  });
+
+  // Handle preferences save from renderer
+  ipcMain.on('save-preferences', (event, preferences) => {
+    try {
+      console.log('Saving preferences:', preferences);
+      saveStoredPreferences(preferences);
+    } catch (e) { console.warn('save-preferences failed', e); }
+  });
+
+  // Handle manual check for updates from renderer
+  ipcMain.on('check-for-updates', () => {
+    try {
+      console.log('Manual update check requested from preferences');
+      checkForUpdates();
+    } catch (e) { console.warn('check-for-updates failed', e); }
   });
 
   // Overlay communication handlers - now using WebSocket broadcast
