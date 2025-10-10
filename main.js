@@ -11,6 +11,11 @@ const tmi = require('tmi.js'); // Import tmi.js for Twitch chat
 const WebSocket = require('ws');
 const fetch = require('node-fetch');
 const http = require('http');
+const { autoUpdater } = require('electron-updater');
+
+// Configure auto-updater
+autoUpdater.autoDownload = false; // Don't auto-download, ask user first
+autoUpdater.autoInstallOnAppQuit = true;
 
 // Use Electron's userData directory for config and user files
 const userDataPath = app.getPath('userData');
@@ -2189,11 +2194,110 @@ function registerHotkeys() {
   });
 }
 
+// Auto-updater event handlers
+function setupAutoUpdater() {
+  // Detect platform
+  const isMac = process.platform === 'darwin';
+  const isWindows = process.platform === 'win32';
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('Checking for updates...');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version);
+    
+    if (isMac) {
+      // macOS: unsigned builds can't auto-update, show download link
+      dialog.showMessageBox(win, {
+        type: 'info',
+        title: 'Update Available',
+        message: `A new version (${info.version}) is available!`,
+        detail: 'Please visit the GitHub releases page to download the latest version.',
+        buttons: ['Open GitHub Releases', 'Later'],
+        defaultId: 0
+      }).then(result => {
+        if (result.response === 0) {
+          require('electron').shell.openExternal('https://github.com/jontslater/VirtualDeck/releases/latest');
+        }
+      });
+    } else if (isWindows) {
+      // Windows: can auto-update even unsigned
+      dialog.showMessageBox(win, {
+        type: 'info',
+        title: 'Update Available',
+        message: `A new version (${info.version}) is available!`,
+        detail: 'Would you like to download it now?',
+        buttons: ['Download', 'Later'],
+        defaultId: 0
+      }).then(result => {
+        if (result.response === 0) {
+          autoUpdater.downloadUpdate();
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('update-downloading');
+          }
+        }
+      });
+    }
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('Update not available. Current version is latest:', info.version);
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    const msg = `Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`;
+    console.log(msg);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded:', info.version);
+    
+    dialog.showMessageBox(win, {
+      type: 'info',
+      title: 'Update Ready',
+      message: 'Update downloaded successfully!',
+      detail: 'The application will restart to apply the update.',
+      buttons: ['Restart Now', 'Later'],
+      defaultId: 0
+    }).then(result => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('Update error:', err);
+    dialog.showMessageBox(win, {
+      type: 'error',
+      title: 'Update Error',
+      message: 'Failed to check for updates',
+      detail: err.message || 'Please try again later.',
+      buttons: ['OK']
+    });
+  });
+}
+
+// Manual update check function
+function checkForUpdates() {
+  setupAutoUpdater();
+  autoUpdater.checkForUpdates();
+}
+
 app.whenReady().then(() => {
   ensureUserData();
   createWindow();
   registerHotkeys();
   startOverlayServer();
+  
+  // Setup and check for updates on startup (delay by 3 seconds to let app initialize)
+  setTimeout(() => {
+    setupAutoUpdater();
+    autoUpdater.checkForUpdates().catch(err => {
+      console.log('Auto-update check failed (expected if not installed from installer):', err.message);
+    });
+  }, 3000);
   
   // Build application menu: Edit contains Preferences, View & Window removed, Tools added
   const menuTemplate = [
@@ -2226,9 +2330,13 @@ app.whenReady().then(() => {
       { label: 'Themes', submenu: [] }, // Will be populated dynamically with themes and skins
       { role: 'reload' }
     ] },
-    { label: 'Help', submenu: [ { label: 'About', click: () => {
+    { label: 'Help', submenu: [ 
+      { label: 'Check for Updates...', click: () => { checkForUpdates(); } },
+      { type: 'separator' },
+      { label: 'About', click: () => {
         if (win && !win.isDestroyed()) win.webContents.send('show-about');
-      } } ] }
+      } } 
+    ] }
   ];
   // Function to rebuild menu with integrated themes and skins
   async function rebuildMenu() {
