@@ -580,6 +580,40 @@
     </div>
   </div>
 
+  <!-- Preferences Modal -->
+  <div id="preferences-modal" class="hidden">
+    <div class="modal-content preferences-modal-content">
+      <div class="modal-header">
+        <h2>Preferences</h2>
+        <button id="preferences-modal-close" class="modal-close">✕</button>
+      </div>
+      <div class="preferences-content">
+        
+        <!-- Updates Section -->
+        <div class="preferences-section">
+          <h3>Updates</h3>
+          <div class="preference-item">
+            <label for="auto-update-checkbox">
+              <input type="checkbox" id="auto-update-checkbox" />
+              Automatically check for updates on startup
+            </label>
+            <small>When enabled, VirtualDeck will check for updates when the app starts</small>
+          </div>
+          <div class="preference-item">
+            <button id="check-updates-button" class="preference-button">Check for Updates Now</button>
+            <small>Manually check if a new version is available</small>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="preferences-actions">
+          <button type="button" id="save-preferences" class="preference-button primary">Save Preferences</button>
+          <button type="button" id="cancel-preferences" class="preference-button">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Overlay Preview Iframe -->
   <div id="overlay-preview" class="overlay-preview hidden">
     <div class="overlay-preview-header">

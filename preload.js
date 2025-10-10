@@ -108,4 +108,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendOverlayText: (data) => ipcRenderer.send('overlay-text', data),
   sendOverlayImage: (data) => ipcRenderer.send('overlay-image', data),
   sendOverlayVideo: (data) => ipcRenderer.send('overlay-video', data),
+  // Preferences and updates
+  savePreferences: (preferences) => ipcRenderer.send('save-preferences', preferences),
+  checkForUpdates: () => ipcRenderer.send('check-for-updates'),
 });
