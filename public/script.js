@@ -2439,9 +2439,13 @@ async function handleTrigger(button) {
     // when saving; the main process persists it into the button config.
     try {
       const vol = (typeof button.volume === 'number') ? button.volume : (button.volume ? parseFloat(button.volume) : 1.0);
-      if (!isNaN(vol)) audio.volume = Math.max(0, Math.min(1, vol));
+      // Set volume immediately to prevent loud burst
+      audio.volume = 0; // Start muted
+      audio.volume = Math.max(0, Math.min(1, !isNaN(vol) ? vol : 1.0)); // Then set to desired volume
     } catch (err) {
       // ignore and use default
+      audio.volume = 0;
+      audio.volume = 1.0;
     }
     
     // Set up overlay clearing when audio finishes
@@ -4773,11 +4777,6 @@ function setupAlertWidget() {
   const alertVideoLoop = document.getElementById('alert-video-loop');
   const alertVideoVolume = document.getElementById('alert-video-volume');
   const alertVideoVolumeValue = document.getElementById('alert-video-volume-value');
-  const alertVideoChromaEnabled = document.getElementById('alert-video-chroma-enabled');
-  const alertVideoChromaControls = document.getElementById('alert-video-chroma-controls');
-  const alertVideoChromaColor = document.getElementById('alert-video-chroma-color');
-  const alertVideoChromaTolerance = document.getElementById('alert-video-chroma-tolerance');
-  const alertVideoChromaToleranceValue = document.getElementById('alert-video-chroma-tolerance-value');
   const saveAlertBtn = document.getElementById('save-alert');
   const clearAlertsBtn = document.getElementById('clear-alerts');
   const alertPreviewArea = document.getElementById('alert-preview-area');
@@ -5194,19 +5193,6 @@ function setupAlertWidget() {
     });
   }
   
-  // Video chroma key enable/disable
-  if (alertVideoChromaEnabled && alertVideoChromaControls) {
-    alertVideoChromaEnabled.addEventListener('change', () => {
-      alertVideoChromaControls.style.display = alertVideoChromaEnabled.checked ? 'block' : 'none';
-    });
-  }
-  
-  // Video chroma tolerance slider
-  if (alertVideoChromaTolerance && alertVideoChromaToleranceValue) {
-    alertVideoChromaTolerance.addEventListener('input', () => {
-      alertVideoChromaToleranceValue.textContent = alertVideoChromaTolerance.value + '%';
-    });
-  }
   
   // Save alert
   if (saveAlertBtn) {
@@ -5349,12 +5335,7 @@ function setupAlertWidget() {
           type: videoFile.type,
           path: videoFilePath, // Store file path instead of base64
           loop: alertVideoLoop ? alertVideoLoop.checked : false,
-          volume: alertVideoVolume ? parseInt(alertVideoVolume.value) : 100,
-          chromaKey: (alertVideoChromaEnabled && alertVideoChromaEnabled.checked) ? {
-            enabled: true,
-            color: alertVideoChromaColor ? alertVideoChromaColor.value : '#00ff00',
-            tolerance: alertVideoChromaTolerance ? parseInt(alertVideoChromaTolerance.value) / 100 : 0.4
-          } : null
+          volume: alertVideoVolume ? parseInt(alertVideoVolume.value) : 100
         } : null,
         variations: [],
         randomMode: false,
@@ -5462,21 +5443,6 @@ function setupAlertWidget() {
       alertVideoVolume.value = '100';
       if (alertVideoVolumeValue) {
         alertVideoVolumeValue.textContent = '100%';
-      }
-    }
-    if (alertVideoChromaEnabled) {
-      alertVideoChromaEnabled.checked = false;
-    }
-    if (alertVideoChromaControls) {
-      alertVideoChromaControls.style.display = 'none';
-    }
-    if (alertVideoChromaColor) {
-      alertVideoChromaColor.value = '#00ff00';
-    }
-    if (alertVideoChromaTolerance) {
-      alertVideoChromaTolerance.value = '40';
-      if (alertVideoChromaToleranceValue) {
-        alertVideoChromaToleranceValue.textContent = '40%';
       }
     }
     
@@ -5726,29 +5692,6 @@ function setupAlertWidget() {
         }
       }
       
-      const videoChromaEnabled = document.getElementById('alert-video-chroma-enabled');
-      const videoChromaControls = document.getElementById('alert-video-chroma-controls');
-      if (videoChromaEnabled && videoFile.chromaKey) {
-        videoChromaEnabled.checked = videoFile.chromaKey.enabled;
-        if (videoChromaControls) {
-          videoChromaControls.style.display = videoFile.chromaKey.enabled ? 'block' : 'none';
-        }
-        
-        const videoChromaColor = document.getElementById('alert-video-chroma-color');
-        if (videoChromaColor && videoFile.chromaKey.color) {
-          videoChromaColor.value = videoFile.chromaKey.color;
-        }
-        
-        const videoChromaTolerance = document.getElementById('alert-video-chroma-tolerance');
-        const videoChromaToleranceValue = document.getElementById('alert-video-chroma-tolerance-value');
-        if (videoChromaTolerance && videoFile.chromaKey.tolerance !== undefined) {
-          const tolerancePercent = Math.round(videoFile.chromaKey.tolerance * 100);
-          videoChromaTolerance.value = tolerancePercent;
-          if (videoChromaToleranceValue) {
-            videoChromaToleranceValue.textContent = tolerancePercent + '%';
-          }
-        }
-      }
     }
   }
 
@@ -6331,15 +6274,6 @@ let alertQueue = {
               muted: false
             };
             
-            // Add chroma key if enabled
-            if (alertData.videoFile.chromaKey && alertData.videoFile.chromaKey.enabled) {
-              videoItem.chromaKey = {
-                enabled: true,
-                color: alertData.videoFile.chromaKey.color || '#00ff00',
-                tolerance: alertData.videoFile.chromaKey.tolerance || 0.4
-              };
-              console.log('🎬 Alert video has chroma key:', videoItem.chromaKey);
-            }
             
             payload.centerMedia.push(videoItem);
           } catch (error) {
@@ -6356,14 +6290,6 @@ let alertQueue = {
             muted: false
           };
           
-          // Add chroma key if enabled
-          if (alertData.videoFile.chromaKey && alertData.videoFile.chromaKey.enabled) {
-            videoItem.chromaKey = {
-              enabled: true,
-              color: alertData.videoFile.chromaKey.color || '#00ff00',
-              tolerance: alertData.videoFile.chromaKey.tolerance || 0.4
-            };
-          }
           
           payload.centerMedia.push(videoItem);
         } else {
@@ -6393,7 +6319,9 @@ let alertQueue = {
         if (alertData.soundFile instanceof File) {
           // Fresh file upload
           this.currentAudio = new Audio(URL.createObjectURL(alertData.soundFile));
-          this.currentAudio.volume = volume;
+          // Set volume immediately to prevent loud burst
+          this.currentAudio.volume = 0; // Start muted
+          this.currentAudio.volume = volume; // Then set to desired volume
           this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
         } else if (alertData.soundFile.path) {
           // Saved alert with file path - load from disk for audio playback
@@ -6405,7 +6333,9 @@ let alertQueue = {
                 const sizeKB = (result.data.length / 1024).toFixed(2);
                 console.log(`✅ Alert sound loaded: ${alertData.soundFile.path} (${sizeKB} KB)`);
                 this.currentAudio = new Audio(result.data);
-                this.currentAudio.volume = volume;
+                // Set volume immediately to prevent loud burst
+                this.currentAudio.volume = 0; // Start muted
+                this.currentAudio.volume = volume; // Then set to desired volume
                 this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
               } else {
                 console.error('Failed to load alert sound:', result.error);
@@ -6418,7 +6348,9 @@ let alertQueue = {
           // Legacy: saved alert with base64 data (backwards compatibility)
           console.log('🎵 Using legacy base64 data for alert sound');
           this.currentAudio = new Audio(alertData.soundFile.data);
-          this.currentAudio.volume = volume;
+          // Set volume immediately to prevent loud burst
+          this.currentAudio.volume = 0; // Start muted
+          this.currentAudio.volume = volume; // Then set to desired volume
           this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
         }
       }

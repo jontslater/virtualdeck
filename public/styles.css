@@ -3672,20 +3672,6 @@ body.resizing-chat * {
   margin: 0 8px;
 }
 
-.tolerance-value {
-  font-weight: 600;
-  color: var(--accent-color);
-}
-
-.tolerance-help {
-  display: block;
-  margin-top: 4px;
-  font-size: 10px;
-  color: var(--text-muted);
-  font-style: italic;
-  line-height: 1.3;
-  opacity: 0.8;
-}
 
 /* Responsive design for smaller screens */
 @media (max-width: 900px) {
