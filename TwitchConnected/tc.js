@@ -288,6 +288,7 @@ function pushTwitchEvent(evt) {
         else if (rt.includes('subscription.gift') || rt.includes('channel.subscription.gift')) displayType = 'subgift';
         else if (rt.includes('channel.cheer') || rt.includes('bits')) displayType = 'bits';
         else if (rt.includes('channel.raid')) displayType = 'raid';
+        else if (rt.includes('channel.ban')) displayType = 'ban';
       }
       if (e.event && e.event.type && typeof e.event.type === 'string') {
         const et = e.event.type.toLowerCase();
@@ -297,6 +298,7 @@ function pushTwitchEvent(evt) {
         else if (et.includes('subscription.gift') || et.includes('channel.subscription.gift')) displayType = 'subgift';
         else if (et.includes('channel.cheer') || et.includes('bits')) displayType = 'bits';
         else if (et.includes('channel.raid')) displayType = 'raid';
+        else if (et.includes('channel.ban')) displayType = 'ban';
       }
       const shouldShow = (f === 'all') || (displayType === f) || (f === 'command' && e.type === 'chat' && e.message && e.message.startsWith('!'));
       if (shouldShow) {
@@ -516,8 +518,10 @@ if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
   // Normalize eventsub redemption topics to 'redeem' for cleaner rendering
   let t = e.type || 'eventsub';
   if (typeof t === 'string' && t.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
+  if (typeof t === 'string' && t.includes('channel.ban')) t = 'ban';
   // Some payloads nest the topic under event.type
   if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
+  if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.ban')) t = 'ban';
   pushTwitchEvent({ type: t, event: e.event });
   });
 } else if (window.ipcRenderer) {
@@ -525,7 +529,9 @@ if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
     console.debug('renderer received twitch-eventsub:', e);
   let t = e.type || 'eventsub';
   if (typeof t === 'string' && t.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
+  if (typeof t === 'string' && t.includes('channel.ban')) t = 'ban';
   if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
+  if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.ban')) t = 'ban';
   pushTwitchEvent({ type: t, event: e.event });
   });
 }
@@ -598,6 +604,7 @@ function matchMappingForEvent(evt) {
       continue;
     }
     if (t === 'raid' && rawType && rawType.includes('raid')) return m;
+    if (t === 'ban' && rawType && rawType.includes('ban')) return m;
     if (t === 'bits' && rawType && (rawType.includes('cheer') || rawType.includes('bits'))) {
   // Collect candidate bit mappings elsewhere (see below). Here, skip; we'll handle after loop
   // (keep placeholder)
@@ -919,6 +926,7 @@ function showTwitchActivityModal() {
         <option value="subgift">Test Sub Gift</option>
         <option value="bits">Test Bits/Cheer</option>
         <option value="raid">Test Raid</option>
+        <option value="ban">Test Ban</option>
       </select>
       <select id="twitch-test-req" style="padding:6px;border-radius:6px;border:1px solid #333;background:#222;color:#fff;">
         <option value="none">No Requirement</option>
@@ -1030,6 +1038,12 @@ function showTwitchActivityModal() {
       // msg = viewer count
       const v = parseInt(msg, 10) || 5;
   pushTwitchEvent({ type: 'raid', user: user, user_name: user, event: { from_broadcaster_user_name: user, viewers: v }, _testRequirement: req });
+    } else if (t === 'ban') {
+      // msg = optional reason
+      const bannedUser = msg || 'TestBannedUser';
+      const moderator = userInput || 'TestModerator';
+      const reason = msg && msg.length > 20 ? msg : 'Test ban reason';
+  pushTwitchEvent({ type: 'ban', event: { user_name: bannedUser, moderator_user_name: moderator, reason: reason }, _testRequirement: req });
     }
     renderList();
   };
@@ -1048,6 +1062,7 @@ function showTwitchActivityModal() {
       case 'subgift': testInput.placeholder = 'Recipient username'; break;
       case 'bits': testInput.placeholder = 'Amount (e.g. 100)'; break;
       case 'raid': testInput.placeholder = 'Viewer count (e.g. 10)'; break;
+      case 'ban': testInput.placeholder = 'Banned username'; break;
       default: testInput.placeholder = 'Optional message or value';
     }
   };
@@ -1272,6 +1287,7 @@ function showTwitchConnectedMenu() {
           <option value="sub_tier3" title="Subscribe Tier 3">Subscribe — Tier 3</option>
           <option value="sub_prime" title="Subscribe Prime">Subscribe — Prime</option>
           <option value="raid">Raid</option>
+          <option value="ban">User Ban</option>
         </select>
         <div id="map-event-context" style="margin-top:10px"></div>
   <!-- subscribe tier selector removed; tiers are separate event types now -->
