@@ -1295,6 +1295,31 @@
                 });
             }
             
+            // Add video file if present
+            if (alertConfig.videoFile && alertConfig.videoFile.data) {
+                console.log('🎬 Adding video file to alert');
+                const videoItem = {
+                    type: 'video',
+                    src: alertConfig.videoFile.data,
+                    duration: alertConfig.duration || 5,
+                    loop: alertConfig.videoFile.loop || false,
+                    volume: (alertConfig.videoFile.volume || 100) / 100, // Convert percentage to 0-1
+                    muted: false
+                };
+                
+                // Add chroma key if enabled
+                if (alertConfig.videoFile.chromaKey && alertConfig.videoFile.chromaKey.enabled) {
+                    videoItem.chromaKey = {
+                        enabled: true,
+                        color: alertConfig.videoFile.chromaKey.color || '#00ff00',
+                        tolerance: alertConfig.videoFile.chromaKey.tolerance || 0.4
+                    };
+                    console.log('🎬 Video has chroma key:', videoItem.chromaKey);
+                }
+                
+                payload.centerMedia.push(videoItem);
+            }
+            
             console.log('🎭 Final payload:', payload);
             renderPayload(payload);
         }

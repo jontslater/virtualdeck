@@ -4768,6 +4768,15 @@ function setupAlertWidget() {
   const alertSoundInput = document.getElementById('alert-sound');
   const alertImageInput = document.getElementById('alert-image');
   const alertVideoInput = document.getElementById('alert-video');
+  const alertVideoSettings = document.getElementById('alert-video-settings');
+  const alertVideoLoop = document.getElementById('alert-video-loop');
+  const alertVideoVolume = document.getElementById('alert-video-volume');
+  const alertVideoVolumeValue = document.getElementById('alert-video-volume-value');
+  const alertVideoChromaEnabled = document.getElementById('alert-video-chroma-enabled');
+  const alertVideoChromaControls = document.getElementById('alert-video-chroma-controls');
+  const alertVideoChromaColor = document.getElementById('alert-video-chroma-color');
+  const alertVideoChromaTolerance = document.getElementById('alert-video-chroma-tolerance');
+  const alertVideoChromaToleranceValue = document.getElementById('alert-video-chroma-tolerance-value');
   const saveAlertBtn = document.getElementById('save-alert');
   const clearAlertsBtn = document.getElementById('clear-alerts');
   const alertPreviewArea = document.getElementById('alert-preview-area');
@@ -5157,13 +5166,44 @@ function setupAlertWidget() {
     alertVideoInput.addEventListener('change', async () => {
       const file = alertVideoInput.files[0];
       if (file) {
+        // Show video settings panel
+        if (alertVideoSettings) {
+          alertVideoSettings.style.display = 'block';
+        }
+        
         const duration = await getMediaDuration(file);
         if (duration && duration > parseInt(alertDurationInput.value)) {
           alertDurationInput.value = duration;
           console.log(`🎬 Auto-updated duration to ${duration}s for video file`);
           updatePreview().catch(console.error);
         }
+      } else {
+        // Hide video settings panel if no file
+        if (alertVideoSettings) {
+          alertVideoSettings.style.display = 'none';
+        }
       }
+    });
+  }
+  
+  // Video volume slider
+  if (alertVideoVolume && alertVideoVolumeValue) {
+    alertVideoVolume.addEventListener('input', () => {
+      alertVideoVolumeValue.textContent = alertVideoVolume.value + '%';
+    });
+  }
+  
+  // Video chroma key enable/disable
+  if (alertVideoChromaEnabled && alertVideoChromaControls) {
+    alertVideoChromaEnabled.addEventListener('change', () => {
+      alertVideoChromaControls.style.display = alertVideoChromaEnabled.checked ? 'block' : 'none';
+    });
+  }
+  
+  // Video chroma tolerance slider
+  if (alertVideoChromaTolerance && alertVideoChromaToleranceValue) {
+    alertVideoChromaTolerance.addEventListener('input', () => {
+      alertVideoChromaToleranceValue.textContent = alertVideoChromaTolerance.value + '%';
     });
   }
   
@@ -5306,7 +5346,14 @@ function setupAlertWidget() {
           name: videoFile.name,
           size: videoFile.size,
           type: videoFile.type,
-          path: videoFilePath // Store file path instead of base64
+          path: videoFilePath, // Store file path instead of base64
+          loop: alertVideoLoop ? alertVideoLoop.checked : false,
+          volume: alertVideoVolume ? parseInt(alertVideoVolume.value) : 100,
+          chromaKey: (alertVideoChromaEnabled && alertVideoChromaEnabled.checked) ? {
+            enabled: true,
+            color: alertVideoChromaColor ? alertVideoChromaColor.value : '#00ff00',
+            tolerance: alertVideoChromaTolerance ? parseInt(alertVideoChromaTolerance.value) / 100 : 0.4
+          } : null
         } : null,
         variations: [],
         randomMode: false,
@@ -5402,6 +5449,35 @@ function setupAlertWidget() {
     alertSoundInput.value = '';
     alertImageInput.value = '';
     alertVideoInput.value = '';
+    
+    // Reset video settings
+    if (alertVideoSettings) {
+      alertVideoSettings.style.display = 'none';
+    }
+    if (alertVideoLoop) {
+      alertVideoLoop.checked = false;
+    }
+    if (alertVideoVolume) {
+      alertVideoVolume.value = '100';
+      if (alertVideoVolumeValue) {
+        alertVideoVolumeValue.textContent = '100%';
+      }
+    }
+    if (alertVideoChromaEnabled) {
+      alertVideoChromaEnabled.checked = false;
+    }
+    if (alertVideoChromaControls) {
+      alertVideoChromaControls.style.display = 'none';
+    }
+    if (alertVideoChromaColor) {
+      alertVideoChromaColor.value = '#00ff00';
+    }
+    if (alertVideoChromaTolerance) {
+      alertVideoChromaTolerance.value = '40';
+      if (alertVideoChromaToleranceValue) {
+        alertVideoChromaToleranceValue.textContent = '40%';
+      }
+    }
     
     // Reset volume slider
     if (alertSoundVolumeRange) {
@@ -5626,6 +5702,51 @@ function setupAlertWidget() {
         videoFileLabel.textContent = `Video File: ${fileName}`;
         videoFileLabel.style.color = 'var(--accent-color)';
         videoFileLabel.style.fontWeight = 'bold';
+      }
+      
+      // Show video settings panel
+      const videoSettings = document.getElementById('alert-video-settings');
+      if (videoSettings) {
+        videoSettings.style.display = 'block';
+      }
+      
+      // Populate video settings
+      const videoLoop = document.getElementById('alert-video-loop');
+      if (videoLoop && videoFile.loop !== undefined) {
+        videoLoop.checked = videoFile.loop;
+      }
+      
+      const videoVolume = document.getElementById('alert-video-volume');
+      const videoVolumeValue = document.getElementById('alert-video-volume-value');
+      if (videoVolume && videoFile.volume !== undefined) {
+        videoVolume.value = videoFile.volume;
+        if (videoVolumeValue) {
+          videoVolumeValue.textContent = videoFile.volume + '%';
+        }
+      }
+      
+      const videoChromaEnabled = document.getElementById('alert-video-chroma-enabled');
+      const videoChromaControls = document.getElementById('alert-video-chroma-controls');
+      if (videoChromaEnabled && videoFile.chromaKey) {
+        videoChromaEnabled.checked = videoFile.chromaKey.enabled;
+        if (videoChromaControls) {
+          videoChromaControls.style.display = videoFile.chromaKey.enabled ? 'block' : 'none';
+        }
+        
+        const videoChromaColor = document.getElementById('alert-video-chroma-color');
+        if (videoChromaColor && videoFile.chromaKey.color) {
+          videoChromaColor.value = videoFile.chromaKey.color;
+        }
+        
+        const videoChromaTolerance = document.getElementById('alert-video-chroma-tolerance');
+        const videoChromaToleranceValue = document.getElementById('alert-video-chroma-tolerance-value');
+        if (videoChromaTolerance && videoFile.chromaKey.tolerance !== undefined) {
+          const tolerancePercent = Math.round(videoFile.chromaKey.tolerance * 100);
+          videoChromaTolerance.value = tolerancePercent;
+          if (videoChromaToleranceValue) {
+            videoChromaToleranceValue.textContent = tolerancePercent + '%';
+          }
+        }
       }
     }
   }
@@ -6152,6 +6273,80 @@ let alertQueue = {
           });
         } else {
           console.warn('🖼️ Unknown image file format:', alertData.imageFile);
+        }
+      }
+      
+      // Add video file if present
+      if (alertData.videoFile) {
+        if (alertData.videoFile instanceof File) {
+          // Fresh file upload - convert to base64
+          const videoUrl = URL.createObjectURL(alertData.videoFile);
+          payload.centerMedia.push({
+            type: 'video',
+            src: videoUrl,
+            loop: false,
+            volume: 1.0,
+            muted: false
+          });
+        } else if (alertData.videoFile.path) {
+          // This is a saved alert with file path - load from disk like multi-media buttons
+          console.log('🎬 Loading alert video from disk:', alertData.videoFile.path);
+          try {
+            if (window.electronAPI && window.electronAPI.getMediaFile) {
+              const result = await window.electronAPI.getMediaFile(alertData.videoFile.path);
+              if (result.success) {
+                const sizeKB = (result.data.length / 1024).toFixed(2);
+                console.log(`✅ Alert video loaded: ${alertData.videoFile.path} (${sizeKB} KB)`);
+                
+                const videoItem = {
+                  type: 'video',
+                  src: result.data, // Send base64 data URI like multi-media buttons
+                  loop: alertData.videoFile.loop || false,
+                  volume: (alertData.videoFile.volume || 100) / 100, // Convert percentage to 0-1
+                  muted: false
+                };
+                
+                // Add chroma key if enabled
+                if (alertData.videoFile.chromaKey && alertData.videoFile.chromaKey.enabled) {
+                  videoItem.chromaKey = {
+                    enabled: true,
+                    color: alertData.videoFile.chromaKey.color || '#00ff00',
+                    tolerance: alertData.videoFile.chromaKey.tolerance || 0.4
+                  };
+                  console.log('🎬 Alert video has chroma key:', videoItem.chromaKey);
+                }
+                
+                payload.centerMedia.push(videoItem);
+              } else {
+                console.error('Failed to load alert video:', result.error);
+              }
+            }
+          } catch (error) {
+            console.error('Error loading alert video:', error);
+          }
+        } else if (alertData.videoFile.data) {
+          // Legacy: saved alert with base64 data (backwards compatibility)
+          console.log('🎬 Using legacy base64 data for alert video');
+          const videoItem = {
+            type: 'video',
+            src: alertData.videoFile.data, // Use base64 data directly
+            loop: alertData.videoFile.loop || false,
+            volume: (alertData.videoFile.volume || 100) / 100,
+            muted: false
+          };
+          
+          // Add chroma key if enabled
+          if (alertData.videoFile.chromaKey && alertData.videoFile.chromaKey.enabled) {
+            videoItem.chromaKey = {
+              enabled: true,
+              color: alertData.videoFile.chromaKey.color || '#00ff00',
+              tolerance: alertData.videoFile.chromaKey.tolerance || 0.4
+            };
+          }
+          
+          payload.centerMedia.push(videoItem);
+        } else {
+          console.warn('🎬 Unknown video file format:', alertData.videoFile);
         }
       }
       
