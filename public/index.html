@@ -964,6 +964,43 @@
             <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
               Supports MP4, WebM, MOV, AVI
             </small>
+            
+            <!-- Video Settings (shown when video is selected) -->
+            <div id="alert-video-settings" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
+              <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--text-secondary);">Video Settings</h4>
+              
+              <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                <input type="checkbox" id="alert-video-loop" />
+                <span style="margin-left: 6px;">Loop Video</span>
+              </label>
+              
+              <label for="alert-video-volume" class="volume-label" style="display: block; margin-bottom: 8px;">
+                Volume: <span id="alert-video-volume-value">100%</span>
+              </label>
+              <input type="range" id="alert-video-volume" name="alert-video-volume" min="0" max="100" value="100" style="width: 100%;" />
+              
+              <div class="chroma-key-settings" style="margin-top: 12px;">
+                <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                  <input type="checkbox" id="alert-video-chroma-enabled" />
+                  <span style="margin-left: 6px;">Enable Chroma Key (Green Screen)</span>
+                </label>
+                
+                <div id="alert-video-chroma-controls" style="display: none; padding-left: 20px;">
+                  <label style="display: block; margin-bottom: 8px;">
+                    Key Color:
+                    <input type="color" id="alert-video-chroma-color" value="#00ff00" style="margin-left: 8px; width: 50px; height: 30px; border: none; cursor: pointer;" />
+                  </label>
+                  
+                  <label style="display: block; margin-bottom: 8px;">
+                    Tolerance: <span id="alert-video-chroma-tolerance-value">40%</span>
+                  </label>
+                  <input type="range" id="alert-video-chroma-tolerance" min="0" max="100" value="40" style="width: 100%;" />
+                  <small style="display: block; margin-top: 4px; font-size: 10px; color: var(--text-muted); font-style: italic;">
+                    Higher values remove more similar colors. Lower values only remove exact matches.
+                  </small>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
