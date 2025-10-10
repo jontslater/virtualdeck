@@ -188,6 +188,17 @@ function startOverlayServer() {
   
   // Create HTTP server to serve overlay HTML and media files
   overlayServer = http.createServer((req, res) => {
+    // Handle CORS preflight requests
+    if (req.method === 'OPTIONS') {
+      res.writeHead(200, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      });
+      res.end();
+      return;
+    }
+    
     if (req.url === '/overlay' || req.url === '/') {
       // Serve the overlay HTML file
       const overlayPath = path.join(__dirname, 'public/overlay.html');
@@ -197,7 +208,12 @@ function startOverlayServer() {
           res.end('Error loading overlay');
           return;
         }
-        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.writeHead(200, { 
+          'Content-Type': 'text/html',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        });
         res.end(data);
       });
     } else if (req.url.startsWith('/media/')) {
@@ -249,7 +265,12 @@ function startOverlayServer() {
             res.end('Error reading file');
             return;
           }
-          res.writeHead(200, { 'Content-Type': contentType });
+          res.writeHead(200, { 
+            'Content-Type': contentType,
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          });
           res.end(data);
         });
       });
