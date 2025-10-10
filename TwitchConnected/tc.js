@@ -1042,8 +1042,20 @@ function showTwitchActivityModal() {
       // msg = optional reason
       const bannedUser = msg || 'TestBannedUser';
       const moderator = userInput || 'TestModerator';
-      const reason = msg && msg.length > 20 ? msg : 'Test ban reason';
-  pushTwitchEvent({ type: 'ban', event: { user_name: bannedUser, moderator_user_name: moderator, reason: reason }, _testRequirement: req });
+      const reason = 'Spam and harassment';
+      pushTwitchEvent({ 
+        type: 'ban', 
+        event: { 
+          user_name: bannedUser, 
+          user_login: bannedUser.toLowerCase(),
+          moderator_user_name: moderator,
+          moderator_user_login: moderator.toLowerCase(),
+          reason: reason,
+          expires_at: null,
+          created_at: new Date().toISOString()
+        }, 
+        _testRequirement: req 
+      });
     }
     renderList();
   };

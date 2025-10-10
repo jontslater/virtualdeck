@@ -4767,6 +4767,7 @@ function setupAlertWidget() {
   const bitsThresholdGroup = document.getElementById('bits-threshold-group');
   const alertSoundInput = document.getElementById('alert-sound');
   const alertImageInput = document.getElementById('alert-image');
+  const alertVideoInput = document.getElementById('alert-video');
   const saveAlertBtn = document.getElementById('save-alert');
   const clearAlertsBtn = document.getElementById('clear-alerts');
   const alertPreviewArea = document.getElementById('alert-preview-area');
@@ -4992,6 +4993,7 @@ function setupAlertWidget() {
     // Check for new files first, then existing media when editing
     let soundFile = alertSoundInput.files[0];
     let imageFile = alertImageInput.files[0];
+    let videoFile = alertVideoInput.files[0];
     
     // If no new files and we're editing, use existing media
     if (!soundFile && window.editingAlertMedia?.soundFile) {
@@ -4999,6 +5001,9 @@ function setupAlertWidget() {
     }
     if (!imageFile && window.editingAlertMedia?.imageFile) {
       imageFile = window.editingAlertMedia.imageFile;
+    }
+    if (!videoFile && window.editingAlertMedia?.videoFile) {
+      videoFile = window.editingAlertMedia.videoFile;
     }
     
     if (!text.trim()) {
@@ -5112,7 +5117,7 @@ function setupAlertWidget() {
   }
   
   // Event listeners for form changes
-  [alertTypeSelect, alertTextInput, alertDurationInput, alertSoundInput, alertImageInput].forEach(element => {
+  [alertTypeSelect, alertTextInput, alertDurationInput, alertSoundInput, alertImageInput, alertVideoInput].forEach(element => {
     if (element) {
       element.addEventListener('change', () => updatePreview().catch(console.error));
       element.addEventListener('input', () => updatePreview().catch(console.error));
@@ -5141,7 +5146,21 @@ function setupAlertWidget() {
         const duration = await getMediaDuration(file);
         if (duration && duration > parseInt(alertDurationInput.value)) {
           alertDurationInput.value = duration;
-          console.log(`🎵 Auto-updated duration to ${duration}s for image/video file`);
+          console.log(`🎵 Auto-updated duration to ${duration}s for image file`);
+          updatePreview().catch(console.error);
+        }
+      }
+    });
+  }
+  
+  if (alertVideoInput) {
+    alertVideoInput.addEventListener('change', async () => {
+      const file = alertVideoInput.files[0];
+      if (file) {
+        const duration = await getMediaDuration(file);
+        if (duration && duration > parseInt(alertDurationInput.value)) {
+          alertDurationInput.value = duration;
+          console.log(`🎬 Auto-updated duration to ${duration}s for video file`);
           updatePreview().catch(console.error);
         }
       }
@@ -5156,6 +5175,7 @@ function setupAlertWidget() {
       let duration = parseInt(alertDurationInput.value) || 5;
       const soundFile = alertSoundInput.files[0];
       const imageFile = alertImageInput.files[0];
+      const videoFile = alertVideoInput.files[0];
       
       if (!text) {
         alert('Please enter alert text');
@@ -5165,10 +5185,11 @@ function setupAlertWidget() {
       // Auto-detect duration from media files
       const soundDuration = await getMediaDuration(soundFile);
       const imageDuration = await getMediaDuration(imageFile);
+      const videoDuration = await getMediaDuration(videoFile);
       
       // Use the longer duration if media is present
-      if (soundDuration || imageDuration) {
-        const mediaDuration = Math.max(soundDuration || 0, imageDuration || 0);
+      if (soundDuration || imageDuration || videoDuration) {
+        const mediaDuration = Math.max(soundDuration || 0, imageDuration || 0, videoDuration || 0);
         if (mediaDuration > duration) {
           duration = mediaDuration;
           alertDurationInput.value = duration;
@@ -5182,6 +5203,7 @@ function setupAlertWidget() {
       // Save media files to disk instead of base64
       let soundFilePath = null;
       let imageFilePath = null;
+      let videoFilePath = null;
       
       if (soundFile && window.electronAPI && window.electronAPI.saveMediaFile) {
         try {
@@ -5216,6 +5238,24 @@ function setupAlertWidget() {
           }
         } catch (error) {
           console.error('Error saving alert image:', error);
+        }
+      }
+      
+      if (videoFile && window.electronAPI && window.electronAPI.saveMediaFile) {
+        try {
+          const base64Data = await fileToBase64(videoFile);
+          const result = await window.electronAPI.saveMediaFile({
+            base64Data: base64Data,
+            buttonId: alertId,
+            mediaType: 'video',
+            originalName: videoFile.name
+          });
+          if (result.success) {
+            videoFilePath = result.filePath;
+            console.log(`💾 Alert video saved to: ${videoFilePath}`);
+          }
+        } catch (error) {
+          console.error('Error saving alert video:', error);
         }
       }
       
@@ -5261,6 +5301,12 @@ function setupAlertWidget() {
           size: imageFile.size,
           type: imageFile.type,
           path: imageFilePath // Store file path instead of base64
+        } : null,
+        videoFile: videoFilePath ? {
+          name: videoFile.name,
+          size: videoFile.size,
+          type: videoFile.type,
+          path: videoFilePath // Store file path instead of base64
         } : null,
         variations: [],
         randomMode: false,
@@ -5355,6 +5401,7 @@ function setupAlertWidget() {
     alertDurationInput.value = '5';
     alertSoundInput.value = '';
     alertImageInput.value = '';
+    alertVideoInput.value = '';
     
     // Reset volume slider
     if (alertSoundVolumeRange) {
@@ -5548,7 +5595,7 @@ function setupAlertWidget() {
   
   // Delete alert
   // Display existing media files in the form
-  function displayExistingMedia(soundFile, imageFile) {
+  function displayExistingMedia(soundFile, imageFile, videoFile) {
     // Display existing sound file
     if (soundFile) {
       const soundFileLabel = document.querySelector('label[for="alert-sound"]');
@@ -5568,6 +5615,17 @@ function setupAlertWidget() {
         imageFileLabel.textContent = `Image File: ${fileName}`;
         imageFileLabel.style.color = 'var(--accent-color)';
         imageFileLabel.style.fontWeight = 'bold';
+      }
+    }
+    
+    // Display existing video file
+    if (videoFile) {
+      const videoFileLabel = document.querySelector('label[for="alert-video"]');
+      if (videoFileLabel) {
+        const fileName = videoFile.name || 'Existing Video File';
+        videoFileLabel.textContent = `Video File: ${fileName}`;
+        videoFileLabel.style.color = 'var(--accent-color)';
+        videoFileLabel.style.fontWeight = 'bold';
       }
     }
   }
@@ -5672,11 +5730,12 @@ function setupAlertWidget() {
     window.editingAlertId = alertId;
     window.editingAlertMedia = {
       soundFile: alertToEdit.soundFile,
-      imageFile: alertToEdit.imageFile
+      imageFile: alertToEdit.imageFile,
+      videoFile: alertToEdit.videoFile
     };
     
     // Display existing media files in the form
-    displayExistingMedia(alertToEdit.soundFile, alertToEdit.imageFile);
+    displayExistingMedia(alertToEdit.soundFile, alertToEdit.imageFile, alertToEdit.videoFile);
     
     // Update preview
     updatePreview().catch(console.error);
