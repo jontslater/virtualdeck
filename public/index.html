@@ -332,6 +332,15 @@
             </label>
           </div>
 
+          <!-- Overlay Selection -->
+          <div class="form-section">
+            <label for="multi-media-overlay-select">Target Overlay:</label>
+            <select id="multi-media-overlay-select" name="overlay">
+              <option value="main">Main Overlay</option>
+            </select>
+            <small style="display: block; margin-top: 5px; color: #888;">Choose which overlay this button will send content to</small>
+          </div>
+
           <!-- Chat Command -->
           <div class="form-section">
             <label>
@@ -724,10 +733,52 @@
       </div>
       
       <div class="overlay-section">
-        <h4>Overlay URL</h4>
-        <div class="url-display">
-          <code>http://localhost:8080/overlay</code>
-          <button id="copy-overlay-url" class="copy-btn" title="Copy URL">📋</button>
+        <h4>Available Overlays</h4>
+        <div class="overlay-grid">
+          <div class="overlay-card" data-overlay="main">
+            <h5>Main Overlay</h5>
+            <p>Default center-media layout</p>
+            <div class="overlay-actions">
+              <button class="preview-btn" data-overlay="main">Preview</button>
+              <button class="copy-url-btn" data-overlay="main">Copy URL</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="overlay-section">
+        <h4>Custom Overlay Management</h4>
+        <div class="overlay-management">
+          <div class="overlay-create">
+            <input type="text" id="new-overlay-name" placeholder="New overlay name..." class="custom-input">
+            <select id="overlay-template" class="custom-select">
+              <option value="center-media">Center Media (Current)</option>
+              <option value="fullscreen-media">Full Screen Media</option>
+              <option value="text-only">Text Only</option>
+              <option value="custom">Custom Layout</option>
+            </select>
+            <button id="create-overlay" class="overlay-action-btn">Create Overlay</button>
+          </div>
+          <div class="overlay-list">
+            <label for="overlay-select">Select Overlay:</label>
+            <select id="overlay-select" class="custom-select">
+              <option value="main">Main Overlay</option>
+            </select>
+            <button id="delete-overlay" class="overlay-action-btn danger">Delete Selected</button>
+          </div>
+          <div class="overlay-url-display">
+            <label>Overlay URL:</label>
+            <div class="url-display">
+              <code id="overlay-url-display">http://localhost:8080/overlay</code>
+              <button id="copy-overlay-url" class="copy-btn" title="Copy URL">📋</button>
+            </div>
+          </div>
+          <div class="overlay-connection-status">
+            <label>Connection Status:</label>
+            <div id="overlay-connections-list" style="margin-top: 8px; padding: 8px; background: var(--bg-secondary); border-radius: 4px; font-size: 12px;">
+              <div style="color: var(--text-tertiary);">Waiting for overlay connections...</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -760,6 +811,14 @@
             <option value="bits">Bits Donation</option>
             <option value="ban">User Ban</option>
           </select>
+        </div>
+
+        <div class="alert-overlay-selector">
+          <label for="alert-overlay-select">Target Overlay:</label>
+          <select id="alert-overlay-select">
+            <option value="main">Main Overlay</option>
+          </select>
+          <small style="display: block; margin-top: 5px; color: #888;">Choose which overlay this alert will display on</small>
         </div>
 
         <div class="alert-settings">
@@ -968,6 +1027,17 @@
             <!-- Video Settings (shown when video is selected) -->
             <div id="alert-video-settings" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
               <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--text-secondary);">Video Settings</h4>
+              
+              <div style="margin-bottom: 10px;">
+                <label for="alert-video-display-mode">Display Mode:</label>
+                <select id="alert-video-display-mode" style="width: 100%; margin-top: 4px;">
+                  <option value="center">Center Media (Text can overlay)</option>
+                  <option value="fullscreen">Full Screen (Text overlays video)</option>
+                </select>
+                <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                  Full screen mode allows text to appear over the video
+                </small>
+              </div>
               
               <label style="display: flex; align-items: center; margin-bottom: 8px;">
                 <input type="checkbox" id="alert-video-loop" />

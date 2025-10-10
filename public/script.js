@@ -22,7 +22,7 @@ function muteOverlayIframeAudio() {
   
   try {
     // Mute all existing audio and video elements in the iframe
-    const muteElements = () => {
+      const muteElements = () => {
       try {
         const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow?.document;
         if (!iframeDoc) return;
@@ -35,6 +35,10 @@ function muteOverlayIframeAudio() {
           if (!audio.muted || audio.volume !== 0) {
             audio.muted = true;
             audio.volume = 0;
+            // Force pause any playing audio in dashboard iframe
+            if (!audio.paused) {
+              audio.pause();
+            }
             mutedCount++;
           }
         });
@@ -43,6 +47,10 @@ function muteOverlayIframeAudio() {
           if (!video.muted || video.volume !== 0) {
             video.muted = true;
             video.volume = 0;
+            // Force pause any playing video in dashboard iframe
+            if (!video.paused) {
+              video.pause();
+            }
             mutedCount++;
           }
         });
@@ -51,7 +59,10 @@ function muteOverlayIframeAudio() {
           console.log(`🔇 Muted ${mutedCount} media element(s) in dashboard overlay`);
         }
       } catch (error) {
-        console.warn('Error in muteElements:', error);
+        // Silently ignore CORS errors when iframe is from different origin
+        if (!error.message?.includes('cross-origin')) {
+          console.warn('Error in muteElements:', error);
+        }
       }
     };
     
@@ -93,6 +104,42 @@ function muteOverlayIframeAudio() {
 
 // Initialize muting when page loads
 muteOverlayIframeAudio();
+
+// Additional safety: Ensure dashboard iframe never plays audio
+// This is a failsafe in case the dashboard iframe somehow receives WebSocket messages
+function preventDashboardAudio() {
+  const overlayIframe = document.getElementById('overlay-iframe');
+  if (overlayIframe && overlayIframe.contentWindow) {
+    try {
+      // Send a message to the iframe to disable all audio
+      overlayIframe.contentWindow.postMessage({
+        type: 'disableAudio',
+        source: 'dashboard'
+      }, '*');
+      console.log('🔇 Sent disableAudio message to dashboard iframe');
+    } catch (error) {
+      // Ignore cross-origin errors
+    }
+  }
+}
+
+// Send disable audio message periodically to ensure dashboard iframe stays silent
+// Only send if iframe is visible/active to reduce console spam
+let lastDisableAudioTime = 0;
+setInterval(() => {
+  const overlayIframe = document.getElementById('overlay-iframe');
+  const overlayPreview = document.getElementById('overlay-preview');
+  
+  // Only send disable message if overlay preview is visible and not hidden
+  if (overlayIframe && overlayPreview && !overlayPreview.classList.contains('hidden')) {
+    const now = Date.now();
+    // Only send every 5 seconds to reduce spam
+    if (now - lastDisableAudioTime > 5000) {
+      preventDashboardAudio();
+      lastDisableAudioTime = now;
+    }
+  }
+}, 2000); // Check every 2 seconds instead of sending every second
 
 // Chat display variables
 let chatMessages = [];
@@ -1033,7 +1080,11 @@ async function loadButtons() {
         // Read fresh soundData from the DOM so edits/reorders take effect
         try {
           const sd = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
-          if (sd) handleTrigger(sd);
+          if (sd) {
+            console.log('🔍 Raw button data from storage:', sd);
+            console.log('🔍 Button overlay property from storage:', sd.overlay);
+            handleTrigger(sd);
+          }
         } catch (err) {
           console.error('Failed to parse soundData on click:', err);
         }
@@ -2503,12 +2554,19 @@ const audioCache = new Map();
 
 async function handleMultiMediaTrigger(button) {
   console.log('Triggering multi-media button:', button);
+  console.log('🔍 Button overlay property:', button.overlay);
+  console.log('🔍 Button object keys:', Object.keys(button));
   
   // Use the new schema directly (no nested data object)
   const audioData = button.audio || [];
   const slotsData = button.slots || {};
   const centerMediaData = button.centerMedia || [];
   const optionsData = button.options || { clearPrevious: true };
+  
+  // Debug: Log the button options to see what we're working with
+  console.log('🔍 Button options:', button.options);
+  console.log('🔍 OptionsData:', optionsData);
+  console.log('🔍 DurationMs in options:', optionsData.durationMs);
   
   // 1. Audio handling for multi-media buttons
   // NOTE: Audio plays ONLY in the overlay, not in the dashboard, to prevent double audio
@@ -2630,6 +2688,7 @@ async function handleMultiMediaTrigger(button) {
 
   const overlayPayload = {
     type: 'buttonTrigger',
+    targetOverlay: button.overlay || 'main', // Route to specific overlay
     options: optionsData,
     slots: slotsData,
     centerMedia: [...processedCenterMedia, ...processedAudio] // Include audio in centerMedia
@@ -2638,6 +2697,7 @@ async function handleMultiMediaTrigger(button) {
   // Log payload summary without full base64 data
   console.log('📤 Sending overlay payload:', {
     type: overlayPayload.type,
+    targetOverlay: overlayPayload.targetOverlay,
     slots: Object.keys(overlayPayload.slots || {}),
     centerMedia: overlayPayload.centerMedia.map(item => ({
       type: item.type,
@@ -2648,12 +2708,16 @@ async function handleMultiMediaTrigger(button) {
     imageCount: processedCenterMedia.filter(i => i.type === 'image').length,
     options: overlayPayload.options
   });
+  console.log(`🎯 Sending to overlay: ${overlayPayload.targetOverlay}`);
 
   // Send via WebSocket (primary method for OBS overlay) - immediately
   if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
     try {
+    console.log(`🎯 SENDING TO OVERLAY: "${overlayPayload.targetOverlay}"`);
+    console.log(`📊 Button overlay setting: ${button.overlay || 'NOT SET (defaulting to main)'}`);
+    console.log(`🔍 Full button object:`, button);
       window.electronAPI.sendOverlayMessage(overlayPayload);
-      console.log('📤 Message sent to overlay via WebSocket');
+    console.log(`✅ Message sent via WebSocket to overlay: "${overlayPayload.targetOverlay}"`);
     } catch (error) {
       console.warn('Failed to send message via WebSocket:', error);
     }
@@ -4312,6 +4376,13 @@ function setupOverlayWidget() {
   const sendCustomTextBtn = document.getElementById('send-custom-text');
   const copyUrlBtn = document.getElementById('copy-overlay-url');
   
+  // Overlay management elements
+  const newOverlayNameInput = document.getElementById('new-overlay-name');
+  const createOverlayBtn = document.getElementById('create-overlay');
+  const overlaySelect = document.getElementById('overlay-select');
+  const deleteOverlayBtn = document.getElementById('delete-overlay');
+  const overlayUrlDisplay = document.getElementById('overlay-url-display');
+  
   // Position mapping for overlay IDs (old format for backward compatibility)
   const positionMap = {
     1: 'text-top-left',
@@ -4473,20 +4544,27 @@ function setupOverlayWidget() {
   // Copy URL button
   if (copyUrlBtn) {
     copyUrlBtn.addEventListener('click', () => {
-      const overlayUrl = 'http://localhost:8080/overlay';
+      // Get the URL from the display element instead of hardcoding
+      const overlayUrlDisplay = document.getElementById('overlay-url-display');
+      const overlayUrl = overlayUrlDisplay ? overlayUrlDisplay.textContent : 'http://localhost:8080/overlay';
       
       if (navigator.clipboard) {
         navigator.clipboard.writeText(overlayUrl).then(() => {
-          console.log('Overlay URL copied to clipboard');
+          console.log('Overlay URL copied to clipboard:', overlayUrl);
           // Show brief feedback
           const originalText = copyUrlBtn.textContent;
-          copyUrlBtn.textContent = '✓';
+          copyUrlBtn.textContent = '✓ Copied';
           setTimeout(() => {
             copyUrlBtn.textContent = originalText;
-          }, 1000);
+          }, 1500);
         }).catch(err => {
           console.log('Failed to copy to clipboard:', err);
+          // Fallback for older browsers
+          alert(`Copy this URL: ${overlayUrl}`);
         });
+      } else {
+        // Fallback for browsers without clipboard API
+        alert(`Copy this URL: ${overlayUrl}`);
       }
     });
   }
@@ -4685,6 +4763,295 @@ function setupOverlayWidget() {
       }
     });
   }
+  
+  // Overlay Management Functionality
+  if (createOverlayBtn && newOverlayNameInput) {
+    createOverlayBtn.addEventListener('click', () => {
+      const overlayName = newOverlayNameInput.value.trim();
+      const templateSelect = document.getElementById('overlay-template');
+      const template = templateSelect ? templateSelect.value : 'center-media';
+      
+      if (!overlayName) {
+        alert('Please enter a name for the overlay');
+        return;
+      }
+      
+      if (overlayName === 'main') {
+        alert('Cannot use "main" as overlay name - it is reserved');
+        return;
+      }
+      
+      // Create overlay name that includes template info
+      const overlayId = overlayName.toLowerCase().replace(/\s+/g, '-');
+      const displayName = `${overlayName} (${getTemplateDisplayName(template)})`;
+      
+      // Save overlay to localStorage
+      const savedOverlays = getSavedOverlays();
+      savedOverlays.push({
+        id: overlayId,
+        name: overlayName,
+        displayName: displayName,
+        template: template,
+        createdAt: new Date().toISOString()
+      });
+      saveOverlays(savedOverlays);
+      
+      // Create new overlay option
+      const option = document.createElement('option');
+      option.value = overlayId;
+      option.textContent = displayName;
+      option.dataset.template = template;
+      overlaySelect.appendChild(option);
+      
+      // Clear input
+      newOverlayNameInput.value = '';
+      
+      // Update all overlay selects in forms
+      updateAllOverlaySelects();
+      
+      console.log(`✅ Created and saved new overlay: ${overlayName} with template: ${template}`);
+    });
+  }
+  
+  if (deleteOverlayBtn && overlaySelect) {
+    deleteOverlayBtn.addEventListener('click', () => {
+      const selectedValue = overlaySelect.value;
+      if (selectedValue === 'main') {
+        alert('Cannot delete the main overlay');
+        return;
+      }
+      
+      if (confirm(`Are you sure you want to delete the "${selectedValue}" overlay?`)) {
+        // Remove from localStorage
+        const savedOverlays = getSavedOverlays();
+        const updatedOverlays = savedOverlays.filter(o => o.id !== selectedValue);
+        saveOverlays(updatedOverlays);
+        
+        // Remove from select
+        const option = overlaySelect.querySelector(`option[value="${selectedValue}"]`);
+        if (option) {
+          option.remove();
+        }
+        
+        // Update all overlay selects in forms
+        updateAllOverlaySelects();
+        
+        console.log(`✅ Deleted overlay: ${selectedValue}`);
+      }
+    });
+  }
+  
+  if (overlaySelect) {
+    overlaySelect.addEventListener('change', () => {
+      updateOverlayUrl();
+      updatePreviewIframe();
+    });
+  }
+  
+  // Initialize overlay management - load saved overlays first
+  loadSavedOverlaysIntoUI();
+  updateAllOverlaySelects();
+  updateOverlayUrl();
+  
+  // Start periodic connection status updates
+  updateOverlayConnectionStatus();
+  setInterval(updateOverlayConnectionStatus, 3000); // Update every 3 seconds
+  
+  // Predefined overlay cards removed - only user-created overlays will be shown
+  
+  // Ensure overlay selects are updated after a short delay to catch any late-loading forms
+  setTimeout(() => {
+    updateAllOverlaySelects();
+    console.log('🔄 Refreshed overlay selects after delay');
+  }, 1000);
+}
+
+// Predefined overlay cards function removed - only user-created overlays are supported
+
+// Get overlay URL
+function getOverlayUrl(overlayName) {
+  if (overlayName === 'main') {
+    return 'http://localhost:8080/overlay';
+  } else {
+    return `http://localhost:8080/overlay?name=${overlayName}`;
+  }
+}
+
+// Helper functions for overlay management
+function updateAllOverlaySelects() {
+  // Get all overlay options from the main overlay select
+  const mainOverlaySelect = document.getElementById('overlay-select');
+  if (!mainOverlaySelect) return;
+  
+  const options = Array.from(mainOverlaySelect.options).map(option => ({
+    value: option.value,
+    text: option.textContent
+  }));
+  
+  // Update multi-media form overlay select
+  const multiMediaOverlaySelect = document.getElementById('multi-media-overlay-select');
+  if (multiMediaOverlaySelect) {
+    const currentValue = multiMediaOverlaySelect.value;
+    console.log('🔄 Updating multi-media overlay select. Current value:', currentValue);
+    console.log('🔄 Available options:', options);
+    multiMediaOverlaySelect.innerHTML = '';
+    
+    options.forEach(option => {
+      const optionElement = document.createElement('option');
+      optionElement.value = option.value;
+      optionElement.textContent = option.text;
+      if (option.value === currentValue) {
+        optionElement.selected = true;
+      }
+      multiMediaOverlaySelect.appendChild(optionElement);
+    });
+    console.log('✅ Multi-media overlay select updated with', options.length, 'options');
+  } else {
+    console.log('⚠️ Multi-media overlay select not found');
+  }
+  
+  // Update alert form overlay select
+  const alertOverlaySelect = document.getElementById('alert-overlay-select');
+  if (alertOverlaySelect) {
+    const currentValue = alertOverlaySelect.value;
+    alertOverlaySelect.innerHTML = '';
+    
+    options.forEach(option => {
+      const optionElement = document.createElement('option');
+      optionElement.value = option.value;
+      optionElement.textContent = option.text;
+      if (option.value === currentValue) {
+        optionElement.selected = true;
+      }
+      alertOverlaySelect.appendChild(optionElement);
+    });
+  }
+}
+
+function updateOverlayUrl() {
+  const overlaySelect = document.getElementById('overlay-select');
+  const overlayUrlDisplay = document.getElementById('overlay-url-display');
+  
+  if (overlaySelect && overlayUrlDisplay) {
+    const selectedOverlay = overlaySelect.value;
+    const baseUrl = 'http://localhost:8080/overlay';
+    const url = selectedOverlay === 'main' ? baseUrl : `${baseUrl}?name=${selectedOverlay}`;
+    overlayUrlDisplay.textContent = url;
+  }
+}
+
+function getTemplateDisplayName(template) {
+  const templateNames = {
+    'center-media': 'Center Media',
+    'fullscreen-media': 'Full Screen',
+    'text-only': 'Text Only',
+    'custom': 'Custom'
+  };
+  return templateNames[template] || 'Center Media';
+}
+
+// Overlay persistence functions
+function getSavedOverlays() {
+  try {
+    const saved = localStorage.getItem('customOverlays');
+    return saved ? JSON.parse(saved) : [];
+  } catch (error) {
+    console.error('Error loading saved overlays:', error);
+    return [];
+  }
+}
+
+function saveOverlays(overlays) {
+  try {
+    localStorage.setItem('customOverlays', JSON.stringify(overlays));
+    console.log('✅ Saved overlays to localStorage:', overlays.length);
+  } catch (error) {
+    console.error('Error saving overlays:', error);
+  }
+}
+
+function loadSavedOverlaysIntoUI() {
+  const overlaySelect = document.getElementById('overlay-select');
+  if (!overlaySelect) return;
+  
+  const savedOverlays = getSavedOverlays();
+  console.log(`📂 Loading ${savedOverlays.length} saved overlays...`);
+  
+  // Remove all options except 'main'
+  Array.from(overlaySelect.options).forEach(option => {
+    if (option.value !== 'main') {
+      option.remove();
+    }
+  });
+  
+  // Predefined overlays removed - only user-created overlays will be shown
+  
+  // Add saved overlays
+  savedOverlays.forEach(overlay => {
+    const option = document.createElement('option');
+    option.value = overlay.id;
+    option.textContent = overlay.displayName;
+    option.dataset.template = overlay.template;
+    overlaySelect.appendChild(option);
+    console.log(`✅ Loaded custom overlay: ${overlay.displayName}`);
+  });
+}
+
+function updatePreviewIframe(overlayName = null) {
+  const overlaySelect = document.getElementById('overlay-select');
+  const overlayIframe = document.getElementById('overlay-iframe');
+  
+  if (!overlayIframe) return;
+  
+  const selectedOverlay = overlayName || (overlaySelect ? overlaySelect.value : 'main');
+  
+  // Determine the correct URL for the iframe
+  let iframeUrl;
+  if (selectedOverlay === 'main') {
+    iframeUrl = 'overlay.html';
+  } else {
+    iframeUrl = `http://localhost:8080/overlay?name=${selectedOverlay}`;
+  }
+  
+  console.log(`🔄 Updating preview iframe to: ${iframeUrl}`);
+  
+  // Only update if the src is different to avoid unnecessary reloads
+  if (overlayIframe.src !== iframeUrl && !overlayIframe.src.endsWith(iframeUrl)) {
+    overlayIframe.src = iframeUrl;
+    console.log(`✅ Preview iframe updated to ${selectedOverlay} overlay`);
+  }
+}
+
+async function updateOverlayConnectionStatus() {
+  const connectionsList = document.getElementById('overlay-connections-list');
+  if (!connectionsList) return;
+  
+  try {
+    if (window.electronAPI && window.electronAPI.getConnectedOverlays) {
+      const connections = await window.electronAPI.getConnectedOverlays();
+      
+      if (connections.length === 0) {
+        connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">⚠️ No overlays connected. Open overlay in OBS to connect.</div>';
+      } else {
+        const html = connections.map(conn => 
+          `<div style="color: var(--accent-color); margin: 4px 0;">
+            ✅ <strong>${conn.name}</strong> - Connected
+          </div>`
+        ).join('');
+        connectionsList.innerHTML = html;
+      }
+    } else {
+      connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">Connection status unavailable. Restart app to enable.</div>';
+    }
+  } catch (error) {
+    // Handler not registered yet - needs app restart
+    if (error.message?.includes('No handler registered')) {
+      connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">⚠️ Restart app to see connection status</div>';
+    } else {
+      console.error('Error updating overlay connection status:', error);
+      connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">Error loading connections</div>';
+    }
+  }
 }
 
 
@@ -4777,6 +5144,7 @@ function setupAlertWidget() {
   const alertVideoLoop = document.getElementById('alert-video-loop');
   const alertVideoVolume = document.getElementById('alert-video-volume');
   const alertVideoVolumeValue = document.getElementById('alert-video-volume-value');
+  const alertVideoDisplayMode = document.getElementById('alert-video-display-mode');
   const saveAlertBtn = document.getElementById('save-alert');
   const clearAlertsBtn = document.getElementById('clear-alerts');
   const alertPreviewArea = document.getElementById('alert-preview-area');
@@ -5308,11 +5676,15 @@ function setupAlertWidget() {
       // Get volume value
       const soundVolume = alertSoundVolumeRange ? parseInt(alertSoundVolumeRange.value) : 100;
       
+      // Get overlay selection
+      const overlaySelect = document.getElementById('alert-overlay-select')?.value || 'main';
+      
       const alertData = {
         id: alertId,
         type: type,
         text: text,
         duration: duration,
+        overlay: overlaySelect,
         bitsThreshold: type === 'bits' ? (parseInt(alertBitsThresholdInput.value) || 10) : null,
         textStyling: textStyling,
         animation: animation,
@@ -5335,7 +5707,8 @@ function setupAlertWidget() {
           type: videoFile.type,
           path: videoFilePath, // Store file path instead of base64
           loop: alertVideoLoop ? alertVideoLoop.checked : false,
-          volume: alertVideoVolume ? parseInt(alertVideoVolume.value) : 100
+          volume: alertVideoVolume ? parseInt(alertVideoVolume.value) : 100,
+          displayMode: alertVideoDisplayMode ? alertVideoDisplayMode.value : 'center'
         } : null,
         variations: [],
         randomMode: false,
@@ -5444,6 +5817,9 @@ function setupAlertWidget() {
       if (alertVideoVolumeValue) {
         alertVideoVolumeValue.textContent = '100%';
       }
+    }
+    if (alertVideoDisplayMode) {
+      alertVideoDisplayMode.value = 'center';
     }
     
     // Reset volume slider
@@ -5692,6 +6068,11 @@ function setupAlertWidget() {
         }
       }
       
+      const videoDisplayMode = document.getElementById('alert-video-display-mode');
+      if (videoDisplayMode && videoFile.displayMode !== undefined) {
+        videoDisplayMode.value = videoFile.displayMode;
+      }
+      
     }
   }
 
@@ -5718,6 +6099,13 @@ function setupAlertWidget() {
     
     if (alertDurationInput) {
       alertDurationInput.value = alertToEdit.duration || 5;
+    }
+    
+    // Set overlay selection
+    const alertOverlaySelect = document.getElementById('alert-overlay-select');
+    if (alertOverlaySelect && alertToEdit.overlay) {
+      alertOverlaySelect.value = alertToEdit.overlay;
+      console.log(`📝 [Edit Alert] Setting overlay to: ${alertToEdit.overlay}`);
     }
     
     // Populate bits threshold if it's a bits alert
@@ -6144,6 +6532,7 @@ let alertQueue = {
       
       const payload = {
         type: 'buttonTrigger',
+        targetOverlay: alertData.overlay || 'main', // Route to specific overlay
         options: {
           clearPrevious: true,
           durationMs: alertData.duration * 1000
@@ -6170,7 +6559,8 @@ let alertQueue = {
             } : null
           }
         },
-        centerMedia: []
+        centerMedia: [],
+        fullscreenMedia: [] // New: fullscreen media support for alerts
       };
       
       // Add image if present
@@ -6209,11 +6599,11 @@ let alertQueue = {
               }
             }
             
-            payload.centerMedia.push({
-              type: 'image',
+                payload.centerMedia.push({
+                  type: 'image',
               src: imageSrc, // Use HTTP URL instead of base64
-              alt: 'Alert Image'
-            });
+                  alt: 'Alert Image'
+                });
           } catch (error) {
             console.error('Error loading alert image:', error);
           }
@@ -6236,13 +6626,16 @@ let alertQueue = {
           // Fresh file upload - use blob URL (video settings not available for unsaved alerts)
           const videoUrl = URL.createObjectURL(alertData.videoFile);
           console.log('🎬 Created blob URL for fresh video file:', videoUrl);
-          payload.centerMedia.push({
+          const videoItem = {
             type: 'video',
             src: videoUrl,
             loop: false,
             volume: 1.0,
             muted: false
-          });
+          };
+          
+          // For fresh uploads, use center media by default
+          payload.centerMedia.push(videoItem);
         } else if (alertData.videoFile.path) {
           // This is a saved alert with file path - serve via HTTP like multi-media buttons
           console.log('🎬 Converting alert video path to HTTP URL:', alertData.videoFile.path);
@@ -6274,8 +6667,15 @@ let alertQueue = {
               muted: false
             };
             
-            
-            payload.centerMedia.push(videoItem);
+            // Add to appropriate media array based on display mode
+            const displayMode = alertData.videoFile.displayMode || 'center';
+            if (displayMode === 'fullscreen') {
+              payload.fullscreenMedia.push(videoItem);
+              console.log('🎬 Added video to fullscreenMedia');
+            } else {
+              payload.centerMedia.push(videoItem);
+              console.log('🎬 Added video to centerMedia');
+            }
           } catch (error) {
             console.error('Error loading alert video:', error);
           }
@@ -6308,7 +6708,10 @@ let alertQueue = {
         })) : 'none'
       };
       console.log('📤 Sending overlay message with payload:', payloadSummary);
+      console.log(`🎯 SENDING ALERT TO OVERLAY: "${payload.targetOverlay}"`);
+      console.log(`📊 Alert overlay setting: ${alertData.overlay || 'NOT SET (defaulting to main)'}`);
       window.electronAPI.sendOverlayMessage(payload);
+      console.log(`✅ Alert sent via WebSocket to overlay: "${payload.targetOverlay}"`);
       
       // Play sound if present - store reference for hard stop
       if (alertData.soundFile) {
@@ -7336,6 +7739,7 @@ document.addEventListener('DOMContentLoaded', () => {
           name: buttonData.name,
           hotkey: buttonData.hotkey,
           type: 'multi-media',
+          overlay: buttonData.overlay || 'main', // Preserve overlay selection
           slots: buttonData.slots,
           centerMedia: buttonData.centerMedia,
           audio: buttonData.audio,
