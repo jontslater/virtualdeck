@@ -10,6 +10,90 @@ window.electronAPI.onRefreshUI(() => {
   loadButtons();
 });
 
+// Mute overlay iframe in dashboard to prevent double audio
+// Audio should only play in OBS browser source
+function muteOverlayIframeAudio() {
+  const overlayIframe = document.getElementById('overlay-iframe');
+  if (!overlayIframe) {
+    console.warn('🔇 Overlay iframe not found, retrying in 1 second...');
+    setTimeout(muteOverlayIframeAudio, 1000);
+    return;
+  }
+  
+  try {
+    // Mute all existing audio and video elements in the iframe
+    const muteElements = () => {
+      try {
+        const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow?.document;
+        if (!iframeDoc) return;
+        
+        const audios = iframeDoc.querySelectorAll('audio');
+        const videos = iframeDoc.querySelectorAll('video');
+        
+        let mutedCount = 0;
+        audios.forEach(audio => {
+          if (!audio.muted || audio.volume !== 0) {
+            audio.muted = true;
+            audio.volume = 0;
+            mutedCount++;
+          }
+        });
+        
+        videos.forEach(video => {
+          if (!video.muted || video.volume !== 0) {
+            video.muted = true;
+            video.volume = 0;
+            mutedCount++;
+          }
+        });
+        
+        if (mutedCount > 0) {
+          console.log(`🔇 Muted ${mutedCount} media element(s) in dashboard overlay`);
+        }
+      } catch (error) {
+        console.warn('Error in muteElements:', error);
+      }
+    };
+    
+    // Set up muting when iframe loads
+    overlayIframe.addEventListener('load', () => {
+      const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow?.document;
+      if (!iframeDoc) return;
+      
+      // Mute immediately
+      muteElements();
+      
+      // Set up mutation observer to mute any new audio/video elements
+      const observer = new MutationObserver(() => {
+        muteElements();
+      });
+      
+      observer.observe(iframeDoc.body, {
+        childList: true,
+        subtree: true
+      });
+      
+      console.log('✅ Dashboard overlay preview muted (audio plays in OBS only)');
+    });
+    
+    // Also try to mute immediately if iframe is already loaded
+    if (overlayIframe.contentDocument) {
+      muteElements();
+    }
+    
+    // Continuously check and mute (failsafe for any edge cases)
+    setInterval(() => {
+      muteElements();
+    }, 500); // Check every 500ms to ensure dashboard overlay stays muted
+    
+  } catch (error) {
+    console.warn('Could not mute overlay iframe:', error);
+  }
+}
+
+// Initialize muting when page loads
+muteOverlayIframeAudio();
+
 // Chat display variables
 let chatMessages = [];
 const MAX_CHAT_MESSAGES = 50;
@@ -2092,9 +2176,40 @@ function addRecentSubscriber(subscriber) {
   updateRecentSubscribersDisplay();
 }
 
+// Deduplication for chat messages (similar to overlay)
+const processedChatMessages = new Set();
+const CHAT_DEDUP_WINDOW = 5000; // 5 seconds
+
+// Generate hash for chat message deduplication
+function getChatMessageHash(user, message, timestamp) {
+  // Group messages within 100ms for deduplication
+  const timeGroup = Math.floor(timestamp / 100);
+  return `${user}:${message}:${timeGroup}`;
+}
+
 // Listen for Twitch chat events
 window.electronAPI.onTwitchChatEvent((eventData) => {
+  console.log('📨 Twitch chat event received:', eventData);
+  console.log('📨 Event source:', eventData.source || 'unknown');
+  
   if (eventData.type === 'chat') {
+    // Generate hash for deduplication
+    const messageHash = getChatMessageHash(eventData.user, eventData.message, Date.now());
+    
+    // Check for duplicates
+    if (processedChatMessages.has(messageHash)) {
+      console.log('🚫 Duplicate chat message detected, skipping');
+      return;
+    }
+    
+    // Add to processed set
+    processedChatMessages.add(messageHash);
+    
+    // Remove after deduplication window
+    setTimeout(() => {
+      processedChatMessages.delete(messageHash);
+    }, CHAT_DEDUP_WINDOW);
+    
     // Check if it's a command (starts with !)
     if (eventData.message && eventData.message.startsWith('!')) {
       addTwitchEvent('command', {
@@ -2391,66 +2506,23 @@ async function handleMultiMediaTrigger(button) {
   const centerMediaData = button.centerMedia || [];
   const optionsData = button.options || { clearPrevious: true };
   
-  // 1. Play audio(s) in dashboard - start immediately
-  const audioPromises = [];
-  if (Array.isArray(audioData)) {
-    for (const audioEntry of audioData) {
-      if (audioEntry.src) {
-        // Create async function to load and play audio
-        const playAudio = (async () => {
-          try {
-            let audioSrc = audioEntry.src;
-            
-            // Load audio from disk if it's a file path
-            if (typeof audioSrc === 'string' && 
-                !audioSrc.startsWith('data:') && 
-                !audioSrc.startsWith('blob:') && 
-                !audioSrc.startsWith('http')) {
-              console.log('🎵 Loading audio file from disk:', audioSrc);
-              try {
-                if (window.electronAPI && window.electronAPI.getMediaFile) {
-                  const result = await window.electronAPI.getMediaFile(audioSrc);
-                  if (result.success) {
-                    const sizeKB = (result.data.length / 1024).toFixed(2);
-                    console.log(`✅ Audio file loaded: ${audioSrc} (${sizeKB} KB)`);
-                    audioSrc = result.data; // Use base64 data URI
-                  } else {
-                    console.error('Failed to load audio file:', result.error);
-                  }
-                }
-              } catch (error) {
-                console.error('Error loading audio file:', error);
-              }
-            }
-            
-            // Use cached audio or create new one
-            let audio = audioCache.get(audioSrc);
-            if (!audio) {
-              audio = new Audio(audioSrc);
-              audioCache.set(audioSrc, audio);
-            }
-            
-            // Reset and configure audio
-            audio.currentTime = 0;
-            audio.volume = audioEntry.volume || 1.0; // Volume is already 0-1 in new schema
-            audio.loop = audioEntry.loop || false;
-            
-            // Start playing
-            return audio.play();
-          } catch (error) {
-            console.warn('Failed to play audio:', error);
-          }
-        })();
-        
-        audioPromises.push(playAudio);
-      }
-    }
-  }
+  // 1. Audio handling for multi-media buttons
+  // NOTE: Audio plays ONLY in the overlay, not in the dashboard, to prevent double audio
+  console.log('🎵 Audio will play in overlay only (preventing double audio)');
+  const audioPromises = []; // Keep empty for overlay-only playback
 
   // 2. Send overlay payload - immediately after starting audio
+  // Check if we have separate audio files - if so, mute videos to avoid double audio
+  const hasSeparateAudio = audioData && audioData.length > 0;
+  
   // Process center media similar to alert system
   const processedCenterMedia = await Promise.all(centerMediaData.map(async (item) => {
     if (item.src) {
+      // Mute videos if there are separate audio files to prevent double audio
+      if (item.type === 'video' && hasSeparateAudio) {
+        console.log('🔇 Muting video because separate audio files are present');
+        item.muted = true;
+      }
       // Handle different image source types like alert system
       if (item.src instanceof File) {
         // Fresh file upload - create blob URL
@@ -2464,28 +2536,37 @@ async function handleMultiMediaTrigger(button) {
         console.log('🖼️ Using base64/blob data for multi-media');
         return item;
       } else if (typeof item.src === 'string' && !item.src.startsWith('http')) {
-        // File path (relative to userDataPath) - load from disk
-        console.log('🖼️ Loading media file from disk:', item.src);
+        // File path (relative to userDataPath) - serve via HTTP to avoid base64 conversion
+        console.log('🖼️ Converting file path to HTTP URL:', item.src);
         try {
-          if (window.electronAPI && window.electronAPI.getMediaFile) {
-            const result = await window.electronAPI.getMediaFile(item.src);
+          // Get absolute path for the file
+          if (window.electronAPI && window.electronAPI.getMediaFilePath) {
+            const result = await window.electronAPI.getMediaFilePath(item.src);
             if (result.success) {
-              const sizeKB = (result.data.length / 1024).toFixed(2);
-              console.log(`✅ Media file loaded: ${item.src} (${sizeKB} KB)`);
+              // Serve via HTTP instead of loading entire file into memory as base64
+              const httpUrl = `http://localhost:8080/media/${encodeURIComponent(result.absolutePath)}`;
+              console.log(`✅ Serving media via HTTP: ${httpUrl}`);
               return {
                 ...item,
-                src: result.data // Base64 data URI
+                src: httpUrl
               };
-            } else {
-              console.error('Failed to load media file:', result.error);
-              return item; // Return as-is, might be URL
             }
-          } else {
-            console.warn('getMediaFile API not available, using path directly');
-            return item;
           }
+          // Fallback: try to get userDataPath and construct absolute path
+          const config = await window.electronAPI.getConfig();
+          if (config && config.userDataPath) {
+            // Assume item.src is relative to userDataPath
+            const absolutePath = item.src.includes(':') ? item.src : config.userDataPath + '/' + item.src.replace(/\\/g, '/');
+            const httpUrl = `http://localhost:8080/media/${encodeURIComponent(absolutePath)}`;
+            console.log(`✅ Serving media via HTTP (fallback): ${httpUrl}`);
+            return {
+              ...item,
+              src: httpUrl
+            };
+          }
+          return item;
         } catch (error) {
-          console.error('Error loading media file:', error);
+          console.error('Error constructing HTTP URL for media:', error);
           return item;
         }
       } else {
@@ -2496,73 +2577,94 @@ async function handleMultiMediaTrigger(button) {
     return item;
   }));
 
+  // Process audio files for overlay (convert paths to HTTP URLs)
+  const processedAudio = await Promise.all(audioData.map(async (audioItem) => {
+    if (audioItem.src) {
+      let audioSrc = audioItem.src;
+      
+      // Convert file paths to HTTP URLs
+      if (typeof audioSrc === 'string' && 
+          !audioSrc.startsWith('data:') && 
+          !audioSrc.startsWith('blob:') && 
+          !audioSrc.startsWith('http')) {
+        console.log('🎵 Converting audio file path to HTTP URL:', audioSrc);
+        try {
+          if (window.electronAPI && window.electronAPI.getMediaFilePath) {
+            const result = await window.electronAPI.getMediaFilePath(audioSrc);
+            if (result.success) {
+              audioSrc = `http://localhost:8080/media/${encodeURIComponent(result.absolutePath)}`;
+              console.log(`✅ Serving audio via HTTP: ${audioSrc}`);
+            }
+          } else {
+            const config = await window.electronAPI.getConfig();
+            if (config && config.userDataPath) {
+              const absolutePath = audioSrc.includes(':') ? audioSrc : config.userDataPath + '/' + audioSrc.replace(/\\/g, '/');
+              audioSrc = `http://localhost:8080/media/${encodeURIComponent(absolutePath)}`;
+              console.log(`✅ Serving audio via HTTP (fallback): ${audioSrc}`);
+            }
+          }
+        } catch (error) {
+          console.error('Error constructing HTTP URL for audio:', error);
+        }
+      }
+      
+      return {
+        ...audioItem,
+        src: audioSrc,
+        type: 'audio'
+      };
+    }
+    return audioItem;
+  }));
+
+  // Debug: Log chroma key data
+  console.log('🔍 Processed center media with chroma key data:', processedCenterMedia.map(item => ({
+    type: item.type,
+    src: item.src,
+    chromaKey: item.chromaKey
+  })));
+
   const overlayPayload = {
     type: 'buttonTrigger',
     options: optionsData,
     slots: slotsData,
-    centerMedia: processedCenterMedia
+    centerMedia: [...processedCenterMedia, ...processedAudio] // Include audio in centerMedia
   };
 
   // Log payload summary without full base64 data
   console.log('📤 Sending overlay payload:', {
     type: overlayPayload.type,
     slots: Object.keys(overlayPayload.slots || {}),
-    centerMedia: centerMediaData.map(item => ({
+    centerMedia: overlayPayload.centerMedia.map(item => ({
       type: item.type,
-      src: item.src // Shows file path from config
+      volume: item.volume
     })),
+    audioCount: processedAudio.length,
+    videoCount: processedCenterMedia.filter(i => i.type === 'video').length,
+    imageCount: processedCenterMedia.filter(i => i.type === 'image').length,
     options: overlayPayload.options
   });
 
-  // Send to overlay iframe (if exists) - immediately
-  const overlayIframe = document.getElementById('overlay-iframe');
-  if (overlayIframe && overlayIframe.contentWindow) {
-    try {
-      overlayIframe.contentWindow.postMessage(overlayPayload, '*');
-      console.log('Message sent to overlay iframe');
-    } catch (error) {
-      console.warn('Failed to send message to overlay iframe:', error);
-    }
-  }
-
-  // Send to overlay widget (if exists) - immediately
-  const overlayWidget = document.getElementById('overlay-widget');
-  if (overlayWidget && !overlayWidget.classList.contains('hidden')) {
-    try {
-      // Trigger the overlay widget's test function
-      if (window.testMultiSource) {
-        window.testMultiSource(overlayPayload);
-      }
-      console.log('Message sent to overlay widget');
-    } catch (error) {
-      console.warn('Failed to send message to overlay widget:', error);
-    }
-  }
-
-  // Send via WebSocket (if available) - immediately
+  // Send via WebSocket (primary method for OBS overlay) - immediately
   if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
     try {
       window.electronAPI.sendOverlayMessage(overlayPayload);
-      console.log('Message sent via WebSocket');
+      console.log('📤 Message sent to overlay via WebSocket');
     } catch (error) {
       console.warn('Failed to send message via WebSocket:', error);
     }
-  }
-
-  // Wait for audio to start (non-blocking - overlay message already sent)
-  if (audioPromises.length > 0) {
-    try {
-      await Promise.all(audioPromises);
-      console.log('All audio started successfully');
-    } catch (error) {
-      console.warn('Some audio failed to start:', error);
-    }
+  } else {
+    console.warn('⚠️ WebSocket not available, overlay message not sent');
   }
   
-  // Set up overlay clearing based on media duration
-  // Check if button has custom duration in options
-  const customDuration = button.options && button.options.durationMs ? button.options.durationMs / 1000 : null;
-  setupOverlayClearing(audioData, centerMediaData, customDuration);
+  // Note: Removed duplicate iframe and widget sending to prevent double-triggering
+  // The overlay receives messages via WebSocket only
+  
+  // Note: Audio plays in overlay only (not in dashboard) to prevent double audio
+  
+  // Note: Overlay handles its own reset timer based on payload.options.durationMs
+  // No need to call setupOverlayClearing from dashboard - it would conflict with overlay's timer
+  console.log('✅ Overlay will handle auto-clear based on duration:', optionsData.durationMs, 'ms');
 }
 
 // Function to clear overlay content
@@ -2751,7 +2853,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   e.preventDefault();
   const form = e.target;
   const label = form.label.value.trim();
-  const type = form.type.value;
+  
+  // Determine type based on which section is visible
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  const type = audioFileSection && audioFileSection.style.display !== 'none' ? 'audio' : 'app';
+  
   // Ensure we reference the hotkey input element safely
   const hotkeyInput = document.getElementById('hotkey-input');
   const hotkey = hotkeyInput && hotkeyInput.value ? hotkeyInput.value.trim() : '';
@@ -2762,6 +2869,22 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   if (!label) return alert("Please fill in the label field.");
   // Use the recorded hotkey directly (accumulative recorder populates hotkeyInput.value)
   const completeHotkey = (hotkeyInput && hotkeyInput.value && hotkeyInput.value.trim()) ? hotkeyInput.value.trim() : hotkey;
+
+  // Get chat command settings
+  const chatCommandCheckbox = document.getElementById('chat-command-enabled');
+  const chatCommandInput = document.getElementById('chat-command-keyword');
+  
+  console.log('Chat command elements found:');
+  console.log('- Checkbox element:', chatCommandCheckbox);
+  console.log('- Input element:', chatCommandInput);
+  
+  const chatCommandEnabled = chatCommandCheckbox?.checked || false;
+  const chatCommandKeyword = chatCommandInput?.value?.trim() || '';
+  
+  const chatCommand = (chatCommandEnabled && chatCommandKeyword) ? {
+    enabled: true,
+    keyword: chatCommandKeyword.toLowerCase()
+  } : undefined;
 
   // Get the appropriate file input based on type
   const fileInput = type === 'app' ? document.getElementById('app-file-input') : document.getElementById('file-input');
@@ -2782,6 +2905,9 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   console.log('- File input files length:', fileInput.files.length);
   console.log('- Resolved path:', resolvedPath);
   console.log('- Resolved args:', resolvedArgs);
+  console.log('- Chat command enabled:', chatCommandEnabled);
+  console.log('- Chat command keyword:', chatCommandKeyword);
+  console.log('- Chat command object:', chatCommand);
 
   // Prevent dangerous system shortcuts like Alt+F4 from being saved
   if (completeHotkey && (completeHotkey.includes('Alt') && completeHotkey.includes('F4'))) {
@@ -2801,7 +2927,8 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
       targetPath: existingFile,
       originalPath: existingFile,
-      editingIndex: parseInt(form.dataset.editingIndex)
+      editingIndex: parseInt(form.dataset.editingIndex),
+      chatCommand: chatCommand
     });
     window.electronAPI.refreshHotkeys();
     // Update the displayed card in-place to avoid full re-render flash
@@ -2856,11 +2983,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       hotkey: completeHotkey,
       targetPath,
       originalPath: filePath,
-      args
+      args,
+      chatCommand: chatCommand
     });
 
     // Send file path and data to main
-    window.electronAPI.addMedia({
+    const addMediaData = {
       label,
       type,
       hotkey: completeHotkey,
@@ -2868,8 +2996,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       targetPath,
       originalPath: filePath,
       args,
-      editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined
-    });
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined,
+      chatCommand: chatCommand
+    };
+    
+    console.log('Final addMediaData object:', addMediaData);
+    window.electronAPI.addMedia(addMediaData);
     window.electronAPI.refreshHotkeys();
     // If editing (with new file), update in-place using the computed targetPath
     if (isEditing) {
@@ -2955,9 +3087,6 @@ window.editButton = async (index) => {
   labelInput.value = btn.name || btn.label || ''; // Support both new and old schema
   labelInput.readOnly = false;
   labelInput.disabled = false;
-  // Set the type selection
-  const typeSelect = document.querySelector(`input[name="button-type"][value="${btn.type}"]`);
-  if (typeSelect) typeSelect.checked = true;
   // Toggle file input sections and required states based on type
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
@@ -2982,6 +3111,24 @@ window.editButton = async (index) => {
   } else {
     hotkeyInput.value = '';
   }
+  
+  // Set chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  
+  if (chatCommandEnabled && chatCommandKeyword && chatCommandSettings) {
+    if (btn.chatCommand && btn.chatCommand.enabled) {
+      chatCommandEnabled.checked = true;
+      chatCommandKeyword.value = btn.chatCommand.keyword || '';
+      chatCommandSettings.style.display = 'block';
+    } else {
+      chatCommandEnabled.checked = false;
+      chatCommandKeyword.value = '';
+      chatCommandSettings.style.display = 'none';
+    }
+  }
+  
   // Store the existing file path and args for editing
   settingsForm.dataset.existingFile = btn.src;
   if (btn.args) {
@@ -3180,6 +3327,20 @@ window.addEventListener('DOMContentLoaded', () => {
   // Make the hotkey input read-only to force use of the recorder button
   if (hotkeyInput) hotkeyInput.readOnly = true;
 
+  // Setup chat command checkbox toggle for regular form
+  const chatCommandCheckbox = document.getElementById('chat-command-enabled');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  
+  if (chatCommandCheckbox && chatCommandSettings) {
+    chatCommandCheckbox.addEventListener('change', () => {
+      if (chatCommandCheckbox.checked) {
+        chatCommandSettings.style.display = 'block';
+      } else {
+        chatCommandSettings.style.display = 'none';
+      }
+    });
+  }
+
   if (recordHotkeyBtn) {
     recordHotkeyBtn.addEventListener('click', () => {
       // Button click animation
@@ -3349,6 +3510,15 @@ function handleFileDrop(file) {
   hotkeyStatus.textContent = '';
   delete settingsForm.dataset.editingIndex;
   delete settingsForm.dataset.editingId;
+  
+  // Clear chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  if (chatCommandEnabled) chatCommandEnabled.checked = false;
+  if (chatCommandKeyword) chatCommandKeyword.value = '';
+  if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+  
   document.querySelector('#settings-modal h2').textContent = 'Add New ' + (type === 'audio' ? 'Sound' : 'App');
   
   // Since we're using the modal-based approach, we need to directly open the audio form
@@ -4101,6 +4271,14 @@ document.addEventListener('DOMContentLoaded', () => {
     setupLeftAppMenu();
   } else {
     console.log('🔧 setupLeftAppMenu function not found');
+  }
+  
+  // initialize preferences modal
+  if (typeof initializePreferencesModal === 'function') {
+    console.log('🔧 Setting up preferences modal');
+    initializePreferencesModal();
+  } else {
+    console.log('🔧 initializePreferencesModal function not found');
   }
 });
 
@@ -6743,11 +6921,7 @@ function setupLeftAppMenu() {
   if (prefBtn) {
     prefBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (window.electronAPI && typeof window.electronAPI.openPreferences === 'function') {
-        window.electronAPI.openPreferences();
-      } else {
-        try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('open-preferences'); } catch (e) {}
-      }
+      openPreferencesModal();
     });
   }
 }
@@ -6936,7 +7110,9 @@ document.addEventListener('DOMContentLoaded', () => {
           slots: buttonData.slots,
           centerMedia: buttonData.centerMedia,
           audio: buttonData.audio,
-          options: buttonData.options
+          options: buttonData.options,
+          // Include chat command data if provided
+          chatCommand: buttonData.chatCommand || undefined
         };
 
         // Check if Electron API is available
@@ -9356,6 +9532,14 @@ function openAudioForm() {
   delete settingsForm.dataset.resolvedArgs;
   delete settingsForm.dataset.existingFile;
   
+  // Clear chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  if (chatCommandEnabled) chatCommandEnabled.checked = false;
+  if (chatCommandKeyword) chatCommandKeyword.value = '';
+  if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+  
   // Replace file inputs to clear previous file references
   const oldFileInput = document.getElementById('file-input');
   if (oldFileInput) {
@@ -9380,5 +9564,102 @@ function openAudioForm() {
   document.getElementById('settings-modal').classList.remove('hidden');
   if (window.electronAPI && window.electronAPI.disableHotkeys) {
     window.electronAPI.disableHotkeys();
+  }
+}
+
+// Preferences Modal Functions
+function openPreferencesModal() {
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.classList.remove('hidden');
+    loadPreferences();
+  }
+}
+
+function closePreferencesModal() {
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.classList.add('hidden');
+  }
+}
+
+function loadPreferences() {
+  // Load preferences from localStorage
+  const preferences = JSON.parse(localStorage.getItem('vdPreferences') || '{}');
+  
+  // Update checkboxes
+  document.getElementById('auto-update-checkbox').checked = preferences.autoUpdate !== false; // default to true
+}
+
+function savePreferences() {
+  const preferences = {
+    autoUpdate: document.getElementById('auto-update-checkbox').checked
+  };
+  
+  // Save to localStorage
+  localStorage.setItem('vdPreferences', JSON.stringify(preferences));
+  
+  // Send preferences to main process if available
+  if (window.electronAPI && window.electronAPI.savePreferences) {
+    window.electronAPI.savePreferences(preferences);
+  }
+  
+  // Show success message
+  if (window.notificationManager) {
+    window.notificationManager.show('Preferences saved successfully!', 'success');
+  }
+  
+  // Close modal
+  closePreferencesModal();
+}
+
+function checkForUpdatesFromPreferences() {
+  // Send check for updates request to main process
+  if (window.electronAPI && window.electronAPI.checkForUpdates) {
+    window.electronAPI.checkForUpdates();
+    if (window.notificationManager) {
+      window.notificationManager.show('Checking for updates...', 'info');
+    }
+  } else {
+    if (window.notificationManager) {
+      window.notificationManager.show('Update checking not available in development mode', 'warning');
+    }
+  }
+}
+
+// Initialize preferences modal event listeners
+function initializePreferencesModal() {
+  // Close button
+  const closeBtn = document.getElementById('preferences-modal-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closePreferencesModal);
+  }
+  
+  // Save button
+  const saveBtn = document.getElementById('save-preferences');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', savePreferences);
+  }
+  
+  // Cancel button
+  const cancelBtn = document.getElementById('cancel-preferences');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', closePreferencesModal);
+  }
+  
+  // Check for updates button
+  const checkUpdatesBtn = document.getElementById('check-updates-button');
+  if (checkUpdatesBtn) {
+    checkUpdatesBtn.addEventListener('click', checkForUpdatesFromPreferences);
+  }
+  
+  // Close modal when clicking outside
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.addEventListener('click', (e) => {
+      if (e.target === preferencesModal) {
+        closePreferencesModal();
+      }
+    });
   }
 }

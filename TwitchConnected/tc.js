@@ -491,14 +491,23 @@ function renderEventRow(ev) {
 }
 
 // IPC listeners to receive events from main
+// Note: Chat messages are now handled by script.js to avoid duplication
+// This listener is kept for potential future use or other event types
 if (window.electronAPI && window.electronAPI.onTwitchChatEvent) {
   window.electronAPI.onTwitchChatEvent((e) => {
-    pushTwitchEvent({ type: 'chat', user: e.user, message: e.message });
+    // Only handle non-chat events or special chat events to avoid duplication
+    // Regular chat messages are handled by script.js
+    if (e.type !== 'chat') {
+      pushTwitchEvent({ type: e.type, user: e.user, message: e.message });
+    }
   });
 } else if (window.ipcRenderer) {
   window.ipcRenderer.on('twitch-chat-event', (event, e) => {
-  console.debug('renderer received twitch-chat-event:', e);
-  pushTwitchEvent({ type: 'chat', user: e.user, message: e.message });
+    console.debug('renderer received twitch-chat-event:', e);
+    // Only handle non-chat events or special chat events to avoid duplication
+    if (e.type !== 'chat') {
+      pushTwitchEvent({ type: e.type, user: e.user, message: e.message });
+    }
   });
 }
 

@@ -264,6 +264,16 @@
           <div id="hotkey-status"></div>
           <!-- modifier checkboxes removed — recorder captures modifiers live -->
         </label><br>
+        <label>
+          <input type="checkbox" id="chat-command-enabled" />
+          Enable Twitch Chat Command
+        </label>
+        <div id="chat-command-settings" style="margin-top: 10px; padding-left: 20px; display: none;">
+          <label for="chat-command-keyword">Command Keyword:
+            <input type="text" id="chat-command-keyword" placeholder="e.g., rizz" style="margin-left: 10px; width: 120px;" />
+            <small style="display: block; margin-top: 5px; color: #888;">Viewers will type !keyword in chat to trigger this button</small>
+          </label>
+        </div><br>
         <div id="audio-file-section">
           <label>File:
             <input type="file" name="file" id="file-input" accept="audio/*" required />
@@ -320,6 +330,20 @@
               <button type="button" id="multi-media-record-hotkey">Record Hotkey</button>
               <div id="multi-media-hotkey-status"></div>
             </label>
+          </div>
+
+          <!-- Chat Command -->
+          <div class="form-section">
+            <label>
+              <input type="checkbox" id="multi-media-chat-command-enabled" />
+              Enable Twitch Chat Command
+            </label>
+            <div id="multi-media-chat-command-settings" style="margin-top: 10px; padding-left: 20px;">
+              <label for="multi-media-chat-command-keyword">Command Keyword:
+                <input type="text" id="multi-media-chat-command-keyword" placeholder="e.g., rizz" style="margin-left: 10px; width: 120px;" />
+                <small style="display: block; margin-top: 5px; color: #888;">Viewers will type !keyword in chat to trigger this button</small>
+              </label>
+            </div>
           </div>
 
           <!-- Duration -->
@@ -576,6 +600,40 @@
             <button type="button" id="cancel-multi-media-button">Cancel</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preferences Modal -->
+  <div id="preferences-modal" class="hidden">
+    <div class="modal-content preferences-modal-content">
+      <div class="modal-header">
+        <h2>Preferences</h2>
+        <button id="preferences-modal-close" class="modal-close">✕</button>
+      </div>
+      <div class="preferences-content">
+        
+        <!-- Updates Section -->
+        <div class="preferences-section">
+          <h3>Updates</h3>
+          <div class="preference-item">
+            <label for="auto-update-checkbox">
+              <input type="checkbox" id="auto-update-checkbox" />
+              Automatically check for updates on startup
+            </label>
+            <small>When enabled, VirtualDeck will check for updates when the app starts</small>
+          </div>
+          <div class="preference-item">
+            <button id="check-updates-button" class="preference-button">Check for Updates Now</button>
+            <small>Manually check if a new version is available</small>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="preferences-actions">
+          <button type="button" id="save-preferences" class="preference-button primary">Save Preferences</button>
+          <button type="button" id="cancel-preferences" class="preference-button">Cancel</button>
+        </div>
       </div>
     </div>
   </div>

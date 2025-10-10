@@ -111,6 +111,9 @@ class AddEditButtonForm {
 
     // Hotkey recording
     this.setupHotkeyRecording();
+
+    // Chat command toggle
+    this.setupChatCommandToggle();
   }
 
   setupTabSwitching() {
@@ -424,7 +427,9 @@ class AddEditButtonForm {
       name: name || `Media ${Date.now()}`,
       loop: type === 'video' ? false : undefined,
       volume: type === 'audio' ? 100 : undefined,
-      widthPct: type === 'image' || type === 'video' ? 100 : undefined
+      widthPct: type === 'image' || type === 'video' ? 100 : undefined,
+      // Initialize chroma key settings for videos
+      chromaKey: type === 'video' ? { enabled: false, color: '#00ff00', tolerance: 0.4 } : undefined
     };
 
     if (type === 'image') {
@@ -484,6 +489,27 @@ class AddEditButtonForm {
             <label><input type="checkbox" class="loop-toggle" ${item.loop ? 'checked' : ''} /> Loop</label>
             <input type="range" class="width-slider" min="10" max="100" value="${item.widthPct}" />
             <span class="width-value">${item.widthPct}%</span>
+          ` : type === 'video' ? `
+            <label><input type="checkbox" class="loop-toggle" ${item.loop ? 'checked' : ''} /> Loop</label>
+            <div class="chroma-key-settings">
+              <label>
+                <input type="checkbox" class="video-chroma-enabled" data-id="${item.id}" ${item.chromaKey?.enabled ? 'checked' : ''}>
+                Enable Chroma Key
+              </label>
+              <div class="chroma-key-controls" style="display: ${item.chromaKey?.enabled ? 'block' : 'none'};">
+                <label>
+                  Key Color:
+                  <input type="color" class="video-chroma-color" data-id="${item.id}" value="${item.chromaKey?.color || '#00ff00'}">
+                </label>
+                <label>
+                  Tolerance:
+                  <input type="range" class="video-chroma-tolerance" data-id="${item.id}" 
+                         min="0" max="1" step="0.01" value="${item.chromaKey?.tolerance || 0.4}">
+                  <span class="tolerance-value">${Math.round((item.chromaKey?.tolerance || 0.4) * 100)}%</span>
+                  <small class="tolerance-help">Higher values remove more similar colors. Lower values only remove exact matches.</small>
+                </label>
+              </div>
+            </div>
           ` : `
             <input type="range" class="volume-slider" min="0" max="100" value="${item.volume || 100}" />
             <span class="volume-value">${item.volume || 100}%</span>
@@ -528,14 +554,67 @@ class AddEditButtonForm {
           widthValue.textContent = `${item.widthPct}%`;
           this.updatePreview();
         });
+      } else if (type === 'video') {
+        // Video-specific controls
+        const loopToggle = mediaItem.querySelector('.loop-toggle');
+        const chromaEnabled = mediaItem.querySelector('.video-chroma-enabled');
+        const chromaControls = mediaItem.querySelector('.chroma-key-controls');
+        const chromaColor = mediaItem.querySelector('.video-chroma-color');
+        const chromaTolerance = mediaItem.querySelector('.video-chroma-tolerance');
+        const toleranceValue = mediaItem.querySelector('.tolerance-value');
+
+        if (loopToggle) {
+          loopToggle.addEventListener('change', (e) => {
+            item.loop = e.target.checked;
+          });
+        }
+
+        if (chromaEnabled && chromaControls) {
+          // Debug: Log initial chroma key state
+          console.log('🎬 Setting up chroma key controls for video:', {
+            id: item.id,
+            chromaKey: item.chromaKey,
+            enabled: chromaEnabled.checked
+          });
+          
+          chromaEnabled.addEventListener('change', (e) => {
+            chromaControls.style.display = e.target.checked ? 'block' : 'none';
+            if (!item.chromaKey) item.chromaKey = {};
+            item.chromaKey.enabled = e.target.checked;
+            console.log('🎬 Chroma key enabled changed:', item.chromaKey);
+            this.updatePreview();
+          });
+        }
+
+        if (chromaColor) {
+          chromaColor.addEventListener('change', (e) => {
+            if (!item.chromaKey) item.chromaKey = {};
+            item.chromaKey.color = e.target.value;
+            console.log('🎬 Chroma key color changed:', item.chromaKey);
+            this.updatePreview();
+          });
+        }
+
+        if (chromaTolerance && toleranceValue) {
+          chromaTolerance.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            if (!item.chromaKey) item.chromaKey = {};
+            item.chromaKey.tolerance = value;
+            toleranceValue.textContent = `${Math.round(value * 100)}%`;
+            console.log('🎬 Chroma key tolerance changed:', item.chromaKey);
+            this.updatePreview();
+          });
+        }
       } else {
         const volumeSlider = mediaItem.querySelector('.volume-slider');
         const volumeValue = mediaItem.querySelector('.volume-value');
 
-        volumeSlider.addEventListener('input', (e) => {
-          item.volume = parseInt(e.target.value);
-          volumeValue.textContent = `${item.volume}%`;
-        });
+        if (volumeSlider && volumeValue) {
+          volumeSlider.addEventListener('input', (e) => {
+            item.volume = parseInt(e.target.value);
+            volumeValue.textContent = `${item.volume}%`;
+          });
+        }
       }
 
       removeBtn.addEventListener('click', () => {
@@ -555,12 +634,19 @@ class AddEditButtonForm {
     const preview = document.getElementById('button-preview');
     if (!preview) return;
 
-    try {
-      const payload = await this.getFormData();
-      preview.innerHTML = this.renderPreview(payload);
-    } catch (error) {
-      preview.innerHTML = `<div class="error">${error.message}</div>`;
+    // Debounce preview updates to avoid lag on every keystroke
+    if (this.previewTimeout) {
+      clearTimeout(this.previewTimeout);
     }
+    
+    this.previewTimeout = setTimeout(async () => {
+      try {
+        const payload = await this.getFormData(true); // Pass true to skip file processing for preview
+        preview.innerHTML = this.renderPreview(payload);
+      } catch (error) {
+        preview.innerHTML = `<div class="error">${error.message}</div>`;
+      }
+    }, 300); // Wait 300ms after user stops typing
   }
 
   renderPreview(payload) {
@@ -669,7 +755,7 @@ class AddEditButtonForm {
     return overlay.outerHTML;
   }
 
-  async getFormData() {
+  async getFormData(isPreview = false) {
     const name = document.getElementById('multi-media-button-name')?.value || '';
     const hotkey = document.getElementById('multi-media-hotkey-input')?.value || '';
     const durationInput = document.getElementById('multi-media-duration-input');
@@ -750,12 +836,43 @@ class AddEditButtonForm {
 
     // Helper function to save media file and get path
     const saveMediaFile = async (file, mediaType, buttonId) => {
-      if (!window.electronAPI || !window.electronAPI.saveMediaFile) {
-        console.warn('saveMediaFile API not available, falling back to base64');
+      if (!window.electronAPI) {
+        console.warn('electronAPI not available, falling back to base64');
         return await fileToBase64(file);
       }
 
       try {
+        // For video files (which can be large), use path-based copying if available
+        // This avoids converting large files to base64 in the renderer process
+        const isLargeFile = file.size > 10 * 1024 * 1024; // Files larger than 10MB
+        const isVideo = mediaType === 'video';
+        
+        if ((isVideo || isLargeFile) && file.path && window.electronAPI.saveMediaFileByPath) {
+          console.log(`Using efficient path-based copy for ${mediaType} file (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+          
+          const result = await window.electronAPI.saveMediaFileByPath({
+            sourcePath: file.path,
+            buttonId: buttonId,
+            mediaType: mediaType,
+            originalName: file.name
+          });
+
+          if (result.success) {
+            console.log(`Media file copied to: ${result.filePath}`);
+            return result.filePath; // Return relative path
+          } else {
+            console.error('Failed to copy media file:', result.error);
+            // Fall through to base64 method
+          }
+        }
+        
+        // For smaller files or if path-based method fails, use base64 method
+        if (!window.electronAPI.saveMediaFile) {
+          console.warn('saveMediaFile API not available, falling back to base64');
+          return await fileToBase64(file);
+        }
+        
+        console.log(`Using base64 method for ${mediaType} file (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
         const base64Data = await fileToBase64(file);
         const result = await window.electronAPI.saveMediaFile({
           base64Data: base64Data,
@@ -789,8 +906,13 @@ class AddEditButtonForm {
       if (item.src) {
         let src = item.src;
         if (item.src instanceof File) {
-          // Save file to media folder
-          src = await saveMediaFile(item.src, 'image', buttonId);
+          if (isPreview) {
+            // For preview, just use a placeholder instead of processing the file
+            src = 'preview-placeholder';
+          } else {
+            // Save file to media folder
+            src = await saveMediaFile(item.src, 'image', buttonId);
+          }
         }
         centerMedia.push({
           id: `m${index + 1}`,
@@ -809,9 +931,21 @@ class AddEditButtonForm {
       if (item.src) {
         let src = item.src;
         if (item.src instanceof File) {
-          // Save file to media folder
-          src = await saveMediaFile(item.src, 'video', buttonId);
+          if (isPreview) {
+            // For preview, just use a placeholder instead of processing the file
+            src = 'preview-placeholder';
+          } else {
+            // Save file to media folder
+            src = await saveMediaFile(item.src, 'video', buttonId);
+          }
         }
+        // Debug: Log what's being saved for this video
+        console.log('💾 Saving video to centerMedia:', {
+          id: `v${index + 1}`,
+          src: src,
+          chromaKey: item.chromaKey
+        });
+        
         centerMedia.push({
           id: `v${index + 1}`,
           type: 'video',
@@ -819,12 +953,22 @@ class AddEditButtonForm {
           loop: item.loop || false,
           widthPct: item.widthPct || 100,
           align: 'center',
-          extraStyle: { zIndex: index + 1 }
+          extraStyle: { zIndex: index + 1 },
+          // Chroma key settings
+          chromaKey: item.chromaKey || {
+            enabled: false,
+            color: '#00ff00',
+            tolerance: 0.4
+          }
         });
       }
     }
 
-    return {
+    // Get chat command settings
+    const chatCommandEnabled = document.getElementById('multi-media-chat-command-enabled')?.checked || false;
+    const chatCommandKeyword = document.getElementById('multi-media-chat-command-keyword')?.value?.trim() || '';
+
+    const buttonData = {
       id: this.editingId || `multi-media-${Date.now()}`,
       name: name,
       type: 'multi-media',
@@ -836,8 +980,13 @@ class AddEditButtonForm {
       audio: await Promise.all(this.audio.filter(item => item.src).map(async (item, index) => {
         let src = item.src;
         if (item.src instanceof File) {
-          // Save file to media folder
-          src = await saveMediaFile(item.src, 'audio', buttonId);
+          if (isPreview) {
+            // For preview, just use a placeholder instead of processing the file
+            src = 'preview-placeholder';
+          } else {
+            // Save file to media folder
+            src = await saveMediaFile(item.src, 'audio', buttonId);
+          }
         }
         return {
           id: `a${index + 1}`,
@@ -853,11 +1002,21 @@ class AddEditButtonForm {
       isEditing: this.isEditing,
       editingId: this.editingId
     };
+
+    // Add chat command data if enabled
+    if (chatCommandEnabled && chatCommandKeyword) {
+      buttonData.chatCommand = {
+        enabled: true,
+        keyword: chatCommandKeyword.toLowerCase()
+      };
+    }
+
+    return buttonData;
   }
 
   async previewInOverlay() {
     try {
-      const payload = await this.getFormData();
+      const payload = await this.getFormData(true); // Use preview mode to avoid processing large files
       
       if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
         window.electronAPI.sendOverlayMessage(payload);
@@ -921,6 +1080,15 @@ class AddEditButtonForm {
         if (textInput) textInput.value = '';
       }
     });
+
+    // Reset chat command fields
+    const chatCommandEnabled = document.getElementById('multi-media-chat-command-enabled');
+    const chatCommandKeyword = document.getElementById('multi-media-chat-command-keyword');
+    const chatCommandSettings = document.getElementById('multi-media-chat-command-settings');
+    
+    if (chatCommandEnabled) chatCommandEnabled.checked = false;
+    if (chatCommandKeyword) chatCommandKeyword.value = '';
+    if (chatCommandSettings) chatCommandSettings.style.display = 'none';
 
     // Update UI
     document.getElementById('multi-media-modal-title').textContent = 'Create Multi-Media Button';
@@ -1065,6 +1233,23 @@ class AddEditButtonForm {
       }
     }
 
+    // Set chat command settings
+    const chatCommandEnabled = document.getElementById('multi-media-chat-command-enabled');
+    const chatCommandKeyword = document.getElementById('multi-media-chat-command-keyword');
+    const chatCommandSettings = document.getElementById('multi-media-chat-command-settings');
+    
+    if (chatCommandEnabled && chatCommandKeyword && chatCommandSettings) {
+      if (buttonData.chatCommand && buttonData.chatCommand.enabled) {
+        chatCommandEnabled.checked = true;
+        chatCommandKeyword.value = buttonData.chatCommand.keyword || '';
+        chatCommandSettings.style.display = 'block';
+      } else {
+        chatCommandEnabled.checked = false;
+        chatCommandKeyword.value = '';
+        chatCommandSettings.style.display = 'none';
+      }
+    }
+
     // Set media - separate images and videos from centerMedia using new schema
     this.images = (buttonData.centerMedia || []).filter(item => item.type === 'image').map(item => ({
       id: Date.now() + Math.random(),
@@ -1080,7 +1265,9 @@ class AddEditButtonForm {
       src: item.src,
       name: 'Video',
       loop: item.loop || false,
-      widthPct: item.widthPct || 100
+      widthPct: item.widthPct || 100,
+      // Preserve chroma key settings
+      chromaKey: item.chromaKey || { enabled: false, color: '#00ff00', tolerance: 0.4 }
     }));
     
     this.audio = (buttonData.audio || []).map(item => ({
@@ -1331,6 +1518,21 @@ class AddEditButtonForm {
       }
     } catch (e) {
       console.error('Error stopping multi-media hotkey recorder:', e);
+    }
+  }
+
+  setupChatCommandToggle() {
+    const checkbox = document.getElementById('multi-media-chat-command-enabled');
+    const settings = document.getElementById('multi-media-chat-command-settings');
+    
+    if (checkbox && settings) {
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          settings.style.display = 'block';
+        } else {
+          settings.style.display = 'none';
+        }
+      });
     }
   }
 }

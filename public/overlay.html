@@ -360,6 +360,10 @@
 
     <script>
         let messageCount = 0;
+        
+        // Message deduplication - track recently processed messages
+        const processedMessages = new Set();
+        const MESSAGE_DEDUP_WINDOW = 1000; // 1 second window for deduplication
 
         // Update debug info
         function updateDebugInfo(message = null) {
@@ -369,12 +373,51 @@
                 document.getElementById('last-message').textContent = new Date().toLocaleTimeString();
             }
         }
+        
+        // Generate message hash for deduplication
+        function getMessageHash(payload) {
+            if (!payload) return null;
+            // Create a simple hash based on message content
+            const hashContent = JSON.stringify({
+                type: payload.type,
+                slots: payload.slots,
+                centerMediaCount: payload.centerMedia ? payload.centerMedia.length : 0,
+                timestamp: Math.floor(Date.now() / 100) // Group messages within 100ms
+            });
+            return hashContent;
+        }
+        
+        // Check if message was recently processed
+        function isDuplicateMessage(payload) {
+            const hash = getMessageHash(payload);
+            if (!hash) return false;
+            
+            if (processedMessages.has(hash)) {
+                console.log('🚫 Duplicate message detected, skipping');
+                return true;
+            }
+            
+            // Add to processed set
+            processedMessages.add(hash);
+            
+            // Remove after deduplication window
+            setTimeout(() => {
+                processedMessages.delete(hash);
+            }, MESSAGE_DEDUP_WINDOW);
+            
+            return false;
+        }
 
         // Render payload function
         function renderPayload(payload) {
             // Safety check for undefined payload
             if (!payload) {
                 console.error('❌ renderPayload called with undefined payload');
+                return;
+            }
+            
+            // Check for duplicate messages (prevents double-processing from multiple channels)
+            if (isDuplicateMessage(payload)) {
                 return;
             }
             
@@ -443,10 +486,11 @@
             };
             console.log('🎯 Processing button trigger payload:', payloadSummary);
             
-            // Clear any existing reset timer
+            // Clear any existing reset timer (will be recreated by setupResetTimer)
             if (overlayResetTimer) {
                 clearTimeout(overlayResetTimer);
                 overlayResetTimer = null;
+                console.log('🔄 Cleared existing timer for new trigger');
             }
             
             // Clear previous content if requested
@@ -592,8 +636,53 @@
                     // Handle video content
                     const videoSrc = item.src || item.url || item.path || item;
                     const loopAttr = item.loop !== false ? 'loop' : '';
-                    contentHTML += `<video src="${videoSrc}" ${loopAttr} muted autoplay></video>`;
-                    console.log(`Added video: ${videoSrc}`);
+                    // Only mute if explicitly requested, otherwise allow sound
+                    const mutedAttr = item.muted === true ? 'muted' : '';
+                    const videoId = 'video-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                    const volume = item.volume !== undefined ? item.volume : 1.0;
+                    
+                    // Debug: Log chroma key data received by overlay
+                    console.log('🎬 Overlay received video item with chroma key:', {
+                        type: item.type,
+                        src: videoSrc,
+                        chromaKey: item.chromaKey
+                    });
+                    
+                    // Debug: Log the complete chroma key object
+                    console.log('🎬 Chroma key object details:', {
+                        hasChromaKey: !!item.chromaKey,
+                        enabled: item.chromaKey?.enabled,
+                        color: item.chromaKey?.color,
+                        tolerance: item.chromaKey?.tolerance,
+                        fullObject: item.chromaKey
+                    });
+                    
+                    // Check if chroma key is enabled
+                    if (item.chromaKey && item.chromaKey.enabled) {
+                        // Debug: Log exact values being used for canvas attributes
+                        console.log('🎬 Creating canvas with chroma key attributes:', {
+                            color: item.chromaKey.color,
+                            tolerance: item.chromaKey.tolerance,
+                            colorType: typeof item.chromaKey.color,
+                            toleranceType: typeof item.chromaKey.tolerance
+                        });
+                        
+                        // Use canvas for chroma key effect
+                        const canvasId = 'canvas-' + videoId;
+                        contentHTML += `
+                            <video id="${videoId}" src="${videoSrc}" ${loopAttr} ${mutedAttr} autoplay playsinline 
+                                   data-volume="${volume}" style="display:none;" crossorigin="anonymous"></video>
+                            <canvas id="${canvasId}" class="chroma-video" 
+                                    data-video-id="${videoId}" 
+                                    data-chroma-color="${item.chromaKey.color || '#00ff00'}" 
+                                    data-chroma-tolerance="${item.chromaKey.tolerance || 0.4}"></canvas>
+                        `;
+                        console.log(`🎬 Added video with chroma key: ${videoSrc} (color: ${item.chromaKey.color}, tolerance: ${item.chromaKey.tolerance})`);
+                    } else {
+                        // Regular video without chroma key
+                        contentHTML += `<video id="${videoId}" src="${videoSrc}" ${loopAttr} ${mutedAttr} autoplay playsinline data-volume="${volume}"></video>`;
+                        console.log(`🎬 Added video: ${videoSrc}${item.muted === true ? ' (muted)' : ' (with sound)'} at volume ${Math.round(volume * 100)}%`);
+                    }
                 } else if (item.type === 'audio') {
                     // Handle audio content
                     const audioSrc = item.src || item.url || item.path || item;
@@ -626,7 +715,136 @@
             // Show the content (duration handled by reset timer)
             showCenterMedia(contentHTML);
             
+            // Set volume for videos after insertion (autoplay attribute handles playing)
+            setTimeout(() => {
+                const videos = centerMedia.querySelectorAll('video');
+                videos.forEach(video => {
+                    // Set volume from data attribute
+                    const volume = parseFloat(video.getAttribute('data-volume')) || 1.0;
+                    video.volume = volume;
+                    console.log(`🎬 Video volume set to ${volume} (${Math.round(volume * 100)}%)`);
+                    
+                    // Listen for play event to confirm autoplay worked
+                    video.addEventListener('play', () => {
+                        console.log('🎬 Video autoplay successful');
+                    }, { once: true });
+                    
+                    // Listen for error event in case autoplay fails
+                    video.addEventListener('error', (error) => {
+                        console.error('❌ Video playback error:', error);
+                    }, { once: true });
+                });
+                
+                // Process chroma key videos after content is inserted
+                const canvases = centerMedia.querySelectorAll('canvas.chroma-video');
+                console.log(`🎬 Found ${canvases.length} chroma key canvases to process`);
+                
+                canvases.forEach(canvas => {
+                    const videoId = canvas.dataset.videoId;
+                    const video = document.getElementById(videoId);
+                    const chromaColor = canvas.dataset.chromaColor || '#00ff00';
+                    const tolerance = parseFloat(canvas.dataset.chromaTolerance) || 0.4;
+                    
+                    console.log(`🎬 Processing chroma key canvas:`, {
+                        videoId: videoId,
+                        videoFound: !!video,
+                        chromaColor: chromaColor,
+                        tolerance: tolerance
+                    });
+                    
+                    if (!video) {
+                        console.error(`❌ Video element not found for ID: ${videoId}`);
+                        return;
+                    }
+                    
+                    // Set canvas size to match video
+                    video.addEventListener('loadedmetadata', () => {
+                        console.log(`🎬 Video metadata loaded, setting up chroma key:`, {
+                            videoWidth: video.videoWidth,
+                            videoHeight: video.videoHeight,
+                            chromaColor: chromaColor,
+                            tolerance: tolerance
+                        });
+                        
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        canvas.style.width = '100%';
+                        canvas.style.height = '100%';
+                        canvas.style.objectFit = 'contain';
+                        
+                        // Start chroma key processing
+                        processChromaKey(video, canvas, chromaColor, tolerance);
+                    });
+                });
+            }, 100);
+            
             console.log('🎯 Center media update completed');
+        }
+        
+        // Chroma key processing function
+        function processChromaKey(video, canvas, keyColorHex, tolerance) {
+            console.log(`🎬 Starting chroma key processing:`, {
+                videoId: video.id,
+                keyColorHex: keyColorHex,
+                tolerance: tolerance,
+                canvasWidth: canvas.width,
+                canvasHeight: canvas.height
+            });
+            
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            
+            // Convert hex color to RGB
+            const r = parseInt(keyColorHex.slice(1, 3), 16);
+            const g = parseInt(keyColorHex.slice(3, 5), 16);
+            const b = parseInt(keyColorHex.slice(5, 7), 16);
+            
+            console.log(`🎬 Chroma key RGB values:`, { r, g, b });
+            console.log(`🎬 Chroma key settings:`, { keyColorHex, tolerance, toleranceRange: tolerance * 100 });
+            
+            function processFrame() {
+                if (video.paused || video.ended) return;
+                
+                // Draw video frame to canvas
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Get image data
+                const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = frame.data;
+                
+                // Process pixels for chroma key
+                for (let i = 0; i < data.length; i += 4) {
+                    const pr = data[i];
+                    const pg = data[i + 1];
+                    const pb = data[i + 2];
+                    
+                    // Calculate color distance (more precise algorithm)
+                    const dr = Math.abs(pr - r);
+                    const dg = Math.abs(pg - g);
+                    const db = Math.abs(pb - b);
+                    
+                    // Use a more conservative approach - only remove very close matches
+                    // Convert tolerance to a more intuitive range (0-100 instead of 0-1)
+                    const toleranceRange = tolerance * 100;
+                    
+                    // Only remove pixels that are very close to the key color
+                    // This prevents removing similar colors that aren't actually the key color
+                    if (dr < toleranceRange && dg < toleranceRange && db < toleranceRange) {
+                        data[i + 3] = 0; // Set alpha to 0
+                    }
+                }
+                
+                // Put processed frame back
+                ctx.putImageData(frame, 0, 0);
+                
+                // Continue processing
+                requestAnimationFrame(processFrame);
+            }
+            
+            // Start processing when video plays
+            video.addEventListener('play', () => {
+                console.log(`🎬 Video started playing, beginning chroma key processing`);
+                processFrame();
+            });
         }
         
         // Set up reset timer based on payload options or default
@@ -634,21 +852,22 @@
             let resetDelay = 60000; // Default 1 minute (60 seconds)
             
             // Check for custom duration in options
-            if (payload.options && payload.options.durationMs) {
+            if (payload && payload.options && payload.options.durationMs) {
                 resetDelay = payload.options.durationMs;
-                console.log('🔄 Using custom duration:', resetDelay, 'ms');
+                console.log('✅ Using button duration:', resetDelay, 'ms', `(${(resetDelay/1000).toFixed(1)}s)`);
             } else {
-                console.log('🔄 Using default duration:', resetDelay, 'ms');
+                console.warn('⚠️ No duration in payload, using default:', resetDelay, 'ms', `(${(resetDelay/1000).toFixed(1)}s)`);
+                console.log('   Payload options:', payload?.options);
             }
             
             // Set the reset timer
             overlayResetTimer = setTimeout(() => {
-                console.log('🔄 Auto-resetting overlay after', resetDelay, 'ms');
+                console.log('⏰ Auto-clear triggered after', resetDelay, 'ms', `(${(resetDelay/1000).toFixed(1)}s)`);
                 clearSlots();
                 overlayResetTimer = null;
             }, resetDelay);
             
-            console.log('🔄 Reset timer set for', resetDelay, 'ms');
+            console.log('✅ Reset timer armed for', resetDelay, 'ms', `(${(resetDelay/1000).toFixed(1)}s)`);
         }
         
         // Show play overlay for autoplay-blocked videos
@@ -1080,51 +1299,10 @@
             renderPayload(payload);
         }
         
-        // Listen for messages from parent window (OBS Browser Source)
+        // Listen for messages from parent window (DISABLED - using WebSocket only)
         window.addEventListener('message', function(event) {
-            console.log('🔔 Overlay received message:', event);
-            console.log('🔔 Event data:', event.data);
-            console.log('🔔 Event data type:', typeof event.data);
-            console.log('🔔 Event data keys:', event.data ? Object.keys(event.data) : 'No data');
-            
-            // Safety check for event.data
-            if (!event.data) {
-                console.error('❌ Received message event with no data');
-                return;
-            }
-            
-            // Handle the message structure: { type: 'buttonTrigger', payload: overlayPayload }
-            if (event.data && event.data.type === 'buttonTrigger' && event.data.payload) {
-                console.log('🔔 Processing wrapped payload:', event.data.payload);
-                renderPayload(event.data.payload);
-            } else if (event.data && event.data.type === 'buttonTrigger') {
-                console.log('🔔 Processing direct payload:', event.data);
-                renderPayload(event.data);
-            } else if (event.data && event.data.type === 'processAlert') {
-                // Handle direct alert processing
-                console.log('🔔 Processing direct alert:', event.data.alertConfig?.type || 'unknown');
-                console.log('🔔 Alert config:', event.data.alertConfig);
-                console.log('🔔 User data:', event.data.userData);
-                
-                // Validate parameters before processing
-                if (validateAlertParameters(event.data.alertConfig, event.data.userData)) {
-                    processAlertWithMedia(event.data.alertConfig, event.data.userData);
-                } else {
-                    console.error('❌ Invalid or missing alertConfig/userData in processAlert message');
-                    console.error('   alertConfig:', event.data.alertConfig);
-                    console.error('   userData:', event.data.userData);
-                }
-            } else if (event.data && event.data.type && event.data.event) {
-                // Handle Twitch EventSub events
-                console.log('🔔 Processing Twitch event:', event.data.type);
-                handleTwitchEvent(event.data);
-                return; // Don't fall through to renderPayload
-            } else if (event.data) {
-                console.log('🔔 Processing fallback payload:', event.data);
-                renderPayload(event.data);
-            } else {
-                console.log('🔔 No valid data in message');
-            }
+            // Disabled to prevent duplicate triggering - overlay receives via WebSocket only
+            console.log('⚠️ Received postMessage (ignored - using WebSocket only):', event.data?.type);
         });
 
         // Also listen for WebSocket messages (for our current implementation)
@@ -1145,36 +1323,30 @@
                 overlayWS.onmessage = function(event) {
                     try {
                         const message = JSON.parse(event.data);
-                        console.log('🔔 WebSocket received message:', message);
+                        console.log('🔔 WebSocket received message:', message.type);
                         
-                        // Use the same message handling logic as window message listener
-                        if (message && message.type === 'buttonTrigger' && message.payload) {
-                            console.log('🔔 WebSocket processing wrapped payload:', message.payload);
-                            renderPayload(message.payload);
-                        } else if (message && message.type === 'buttonTrigger') {
-                            console.log('🔔 WebSocket processing direct payload:', message);
+                        // Handle different message types
+                        if (message.type === 'buttonTrigger') {
+                            // Button trigger with centerMedia, slots, options
+                            console.log('🎬 Processing button trigger');
                             renderPayload(message);
-                        } else if (message && message.type === 'processAlert') {
-                            console.log('🔔 WebSocket processing direct alert:', message.alertConfig?.type || 'unknown');
-                            
-                            // Validate parameters before processing
+                        } else if (message.type === 'processAlert') {
+                            // Twitch alert processing
+                            console.log('🎭 Processing Twitch alert:', message.alertConfig?.type);
                             if (validateAlertParameters(message.alertConfig, message.userData)) {
                                 processAlertWithMedia(message.alertConfig, message.userData);
                             } else {
-                                console.error('❌ Invalid or missing alertConfig/userData in WebSocket processAlert message');
-                                console.error('   alertConfig:', message.alertConfig);
-                                console.error('   userData:', message.userData);
+                                console.error('❌ Invalid alert parameters');
                             }
-                        } else if (message && message.type && message.event) {
-                            console.log('🔔 WebSocket processing Twitch event:', message.type);
+                        } else if (message.type && message.event) {
+                            // Twitch EventSub event
+                            console.log('📡 Processing Twitch event:', message.type);
                             handleTwitchEvent(message);
-                            return; // Don't fall through to renderPayload
                         } else {
-                            console.log('🔔 WebSocket processing fallback payload:', message);
-                            renderPayload(message);
+                            console.log('⚠️ Unknown message type:', message.type);
                         }
                     } catch (e) {
-                        console.error('Error parsing WebSocket message:', e);
+                        console.error('❌ Error parsing WebSocket message:', e);
                     }
                 };
                 
