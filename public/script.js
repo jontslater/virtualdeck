@@ -6243,23 +6243,33 @@ let alertQueue = {
             alt: 'Alert Image'
           });
         } else if (alertData.imageFile.path) {
-          // This is a saved alert with file path - load from disk like multi-media buttons
-          console.log('🖼️ Loading alert image from disk:', alertData.imageFile.path);
+          // This is a saved alert with file path - serve via HTTP like multi-media buttons
+          console.log('🖼️ Converting alert image path to HTTP URL:', alertData.imageFile.path);
           try {
-            if (window.electronAPI && window.electronAPI.getMediaFile) {
-              const result = await window.electronAPI.getMediaFile(alertData.imageFile.path);
+            let imageSrc = alertData.imageFile.path;
+            
+            // Convert file path to HTTP URL (avoids long base64 strings)
+            if (window.electronAPI && window.electronAPI.getMediaFilePath) {
+              const result = await window.electronAPI.getMediaFilePath(alertData.imageFile.path);
               if (result.success) {
-                const sizeKB = (result.data.length / 1024).toFixed(2);
-                console.log(`✅ Alert image loaded: ${alertData.imageFile.path} (${sizeKB} KB)`);
-                payload.centerMedia.push({
-                  type: 'image',
-                  src: result.data, // Send base64 data URI like multi-media buttons
-                  alt: 'Alert Image'
-                });
-              } else {
-                console.error('Failed to load alert image:', result.error);
+                imageSrc = `http://localhost:8080/media/${encodeURIComponent(result.absolutePath)}`;
+                console.log(`✅ Serving alert image via HTTP: ${imageSrc}`);
+              }
+            } else {
+              // Fallback: construct HTTP URL manually
+              const config = await window.electronAPI.getConfig();
+              if (config && config.userDataPath) {
+                const absolutePath = imageSrc.includes(':') ? imageSrc : config.userDataPath + '/' + imageSrc.replace(/\\/g, '/');
+                imageSrc = `http://localhost:8080/media/${encodeURIComponent(absolutePath)}`;
+                console.log(`✅ Serving alert image via HTTP (fallback): ${imageSrc}`);
               }
             }
+            
+            payload.centerMedia.push({
+              type: 'image',
+              src: imageSrc, // Use HTTP URL instead of base64
+              alt: 'Alert Image'
+            });
           } catch (error) {
             console.error('Error loading alert image:', error);
           }
@@ -6279,8 +6289,9 @@ let alertQueue = {
       // Add video file if present
       if (alertData.videoFile) {
         if (alertData.videoFile instanceof File) {
-          // Fresh file upload - convert to base64
+          // Fresh file upload - use blob URL (video settings not available for unsaved alerts)
           const videoUrl = URL.createObjectURL(alertData.videoFile);
+          console.log('🎬 Created blob URL for fresh video file:', videoUrl);
           payload.centerMedia.push({
             type: 'video',
             src: videoUrl,
@@ -6289,38 +6300,47 @@ let alertQueue = {
             muted: false
           });
         } else if (alertData.videoFile.path) {
-          // This is a saved alert with file path - load from disk like multi-media buttons
-          console.log('🎬 Loading alert video from disk:', alertData.videoFile.path);
+          // This is a saved alert with file path - serve via HTTP like multi-media buttons
+          console.log('🎬 Converting alert video path to HTTP URL:', alertData.videoFile.path);
           try {
-            if (window.electronAPI && window.electronAPI.getMediaFile) {
-              const result = await window.electronAPI.getMediaFile(alertData.videoFile.path);
+            let videoSrc = alertData.videoFile.path;
+            
+            // Convert file path to HTTP URL (more efficient than base64 for videos)
+            if (window.electronAPI && window.electronAPI.getMediaFilePath) {
+              const result = await window.electronAPI.getMediaFilePath(alertData.videoFile.path);
               if (result.success) {
-                const sizeKB = (result.data.length / 1024).toFixed(2);
-                console.log(`✅ Alert video loaded: ${alertData.videoFile.path} (${sizeKB} KB)`);
-                
-                const videoItem = {
-                  type: 'video',
-                  src: result.data, // Send base64 data URI like multi-media buttons
-                  loop: alertData.videoFile.loop || false,
-                  volume: (alertData.videoFile.volume || 100) / 100, // Convert percentage to 0-1
-                  muted: false
-                };
-                
-                // Add chroma key if enabled
-                if (alertData.videoFile.chromaKey && alertData.videoFile.chromaKey.enabled) {
-                  videoItem.chromaKey = {
-                    enabled: true,
-                    color: alertData.videoFile.chromaKey.color || '#00ff00',
-                    tolerance: alertData.videoFile.chromaKey.tolerance || 0.4
-                  };
-                  console.log('🎬 Alert video has chroma key:', videoItem.chromaKey);
-                }
-                
-                payload.centerMedia.push(videoItem);
-              } else {
-                console.error('Failed to load alert video:', result.error);
+                videoSrc = `http://localhost:8080/media/${encodeURIComponent(result.absolutePath)}`;
+                console.log(`✅ Serving alert video via HTTP: ${videoSrc}`);
+              }
+            } else {
+              // Fallback: construct HTTP URL manually
+              const config = await window.electronAPI.getConfig();
+              if (config && config.userDataPath) {
+                const absolutePath = videoSrc.includes(':') ? videoSrc : config.userDataPath + '/' + videoSrc.replace(/\\/g, '/');
+                videoSrc = `http://localhost:8080/media/${encodeURIComponent(absolutePath)}`;
+                console.log(`✅ Serving alert video via HTTP (fallback): ${videoSrc}`);
               }
             }
+            
+            const videoItem = {
+              type: 'video',
+              src: videoSrc, // Use HTTP URL instead of base64
+              loop: alertData.videoFile.loop || false,
+              volume: (alertData.videoFile.volume || 100) / 100, // Convert percentage to 0-1
+              muted: false
+            };
+            
+            // Add chroma key if enabled
+            if (alertData.videoFile.chromaKey && alertData.videoFile.chromaKey.enabled) {
+              videoItem.chromaKey = {
+                enabled: true,
+                color: alertData.videoFile.chromaKey.color || '#00ff00',
+                tolerance: alertData.videoFile.chromaKey.tolerance || 0.4
+              };
+              console.log('🎬 Alert video has chroma key:', videoItem.chromaKey);
+            }
+            
+            payload.centerMedia.push(videoItem);
           } catch (error) {
             console.error('Error loading alert video:', error);
           }
