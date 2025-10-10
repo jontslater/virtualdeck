@@ -799,7 +799,7 @@
             const b = parseInt(keyColorHex.slice(5, 7), 16);
             
             console.log(`🎬 Chroma key RGB values:`, { r, g, b });
-            console.log(`🎬 Chroma key settings:`, { keyColorHex, tolerance, toleranceRange: tolerance * 100 });
+            console.log(`🎬 Chroma key settings:`, { keyColorHex, tolerance, toleranceRange: tolerance * 255 });
             
             function processFrame() {
                 if (video.paused || video.ended) return;
@@ -822,9 +822,9 @@
                     const dg = Math.abs(pg - g);
                     const db = Math.abs(pb - b);
                     
-                    // Use a more conservative approach - only remove very close matches
-                    // Convert tolerance to a more intuitive range (0-100 instead of 0-1)
-                    const toleranceRange = tolerance * 100;
+                    // Convert tolerance to a more intuitive range (0-255 instead of 0-1)
+                    // Default tolerance of 0.4 should allow reasonable color matching
+                    const toleranceRange = tolerance * 255;
                     
                     // Only remove pixels that are very close to the key color
                     // This prevents removing similar colors that aren't actually the key color
