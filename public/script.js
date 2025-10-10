@@ -4761,6 +4761,7 @@ function setupAlertWidget() {
   const alertWidget = document.getElementById('alert-widget');
   const closeBtn = document.getElementById('close-alert-widget');
   const alertTypeSelect = document.getElementById('alert-type');
+  const selectedAlertTypeName = document.getElementById('selected-alert-type-name');
   const alertTextInput = document.getElementById('alert-text');
   const alertDurationInput = document.getElementById('alert-duration');
   const alertBitsThresholdInput = document.getElementById('alert-bits-threshold');
