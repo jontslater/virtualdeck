@@ -171,3 +171,4 @@ When code signing is implemented:
 - electron-updater verifies file integrity using blockmap files
 - Users can always verify releases on GitHub before installing
 - HTTPS is used for all update communications
+

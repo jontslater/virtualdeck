@@ -2194,6 +2194,30 @@ function registerHotkeys() {
   });
 }
 
+// Preferences management
+function getStoredPreferences() {
+  try {
+    const preferencesPath = path.join(app.getPath('userData'), 'preferences.json');
+    if (fs.existsSync(preferencesPath)) {
+      const data = fs.readFileSync(preferencesPath, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Error reading preferences:', error);
+  }
+  return {}; // Return empty object if no preferences file exists
+}
+
+function saveStoredPreferences(preferences) {
+  try {
+    const preferencesPath = path.join(app.getPath('userData'), 'preferences.json');
+    fs.writeFileSync(preferencesPath, JSON.stringify(preferences, null, 2));
+    console.log('Preferences saved to:', preferencesPath);
+  } catch (error) {
+    console.error('Error saving preferences:', error);
+  }
+}
+
 // Auto-updater event handlers
 function setupAutoUpdater() {
   // Detect platform
@@ -2294,9 +2318,16 @@ app.whenReady().then(() => {
   // Setup and check for updates on startup (delay by 3 seconds to let app initialize)
   setTimeout(() => {
     setupAutoUpdater();
-    autoUpdater.checkForUpdates().catch(err => {
-      console.log('Auto-update check failed (expected if not installed from installer):', err.message);
-    });
+    
+    // Check if auto-update is enabled in preferences
+    const preferences = getStoredPreferences();
+    if (preferences.autoUpdate !== false) { // default to true if not set
+      autoUpdater.checkForUpdates().catch(err => {
+        console.log('Auto-update check failed (expected if not installed from installer):', err.message);
+      });
+    } else {
+      console.log('Auto-update disabled in preferences');
+    }
   }, 3000);
   
   // Build application menu: Edit contains Preferences, View & Window removed, Tools added
@@ -2318,6 +2349,8 @@ app.whenReady().then(() => {
   { id: 'view_sound_controls', label: 'Sound Controls', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-controls', checked: menuItem.checked }); } }
     ] },
     { label: 'Tools', submenu: [
+      { label: 'Check for Updates...', click: () => { checkForUpdates(); } },
+      { type: 'separator' },
       { label: 'Developer Tools', accelerator: 'F12', click: () => { if (win && !win.isDestroyed()) win.webContents.toggleDevTools(); } },
       { label: 'Twitch Setup', submenu: [
           { label: 'View Twitch Events / Test Events', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-twitch-activity'); } },
@@ -2331,8 +2364,6 @@ app.whenReady().then(() => {
       { role: 'reload' }
     ] },
     { label: 'Help', submenu: [ 
-      { label: 'Check for Updates...', click: () => { checkForUpdates(); } },
-      { type: 'separator' },
       { label: 'About', click: () => {
         if (win && !win.isDestroyed()) win.webContents.send('show-about');
       } } 
@@ -2410,11 +2441,35 @@ app.whenReady().then(() => {
       // Find and replace the themes submenu in menuTemplate
       const toolsMenu = menuTemplate.find(item => item.label === 'Tools');
       if (toolsMenu && toolsMenu.submenu) {
+        console.log('Tools menu found, current submenu items:', toolsMenu.submenu.map(item => item.label || item.type));
+        
         const themesMenuIndex = toolsMenu.submenu.findIndex(item => item.label === 'Themes');
         if (themesMenuIndex !== -1) {
           toolsMenu.submenu[themesMenuIndex].submenu = themesSubmenu;
         }
+        
+        // Ensure "Check for Updates" is preserved at the top of Tools menu
+        const checkUpdatesIndex = toolsMenu.submenu.findIndex(item => item.label === 'Check for Updates...');
+        console.log('Check for Updates index:', checkUpdatesIndex);
+        
+        if (checkUpdatesIndex === -1) {
+          console.log('Adding Check for Updates to Tools menu');
+          // Add "Check for Updates" at the beginning if it's missing
+          toolsMenu.submenu.unshift(
+            { label: 'Check for Updates...', click: () => { checkForUpdates(); } },
+            { type: 'separator' }
+          );
+        } else {
+          console.log('Check for Updates already exists at index:', checkUpdatesIndex);
+        }
+        
+        console.log('Final Tools submenu items:', toolsMenu.submenu.map(item => item.label || item.type));
+      } else {
+        console.log('Tools menu not found or has no submenu');
       }
+      
+      // Preserve the Help menu with "Check for Updates" from original template
+      const originalHelpMenu = menuTemplate.find(item => item.label === 'Help');
       
       const appMenu = Menu.buildFromTemplate(menuTemplate);
       Menu.setApplicationMenu(appMenu);
@@ -2548,6 +2603,22 @@ app.whenReady().then(() => {
   // Allow renderer to request the Preferences view (forward to renderer)
   ipcMain.on('open-preferences', () => {
     try { if (win && !win.isDestroyed()) win.webContents.send('open-preferences'); } catch (e) { console.warn('open-preferences failed', e); }
+  });
+
+  // Handle preferences save from renderer
+  ipcMain.on('save-preferences', (event, preferences) => {
+    try {
+      console.log('Saving preferences:', preferences);
+      saveStoredPreferences(preferences);
+    } catch (e) { console.warn('save-preferences failed', e); }
+  });
+
+  // Handle manual check for updates from renderer
+  ipcMain.on('check-for-updates', () => {
+    try {
+      console.log('Manual update check requested from preferences');
+      checkForUpdates();
+    } catch (e) { console.warn('check-for-updates failed', e); }
   });
 
   // Overlay communication handlers - now using WebSocket broadcast
