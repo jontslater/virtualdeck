@@ -9338,6 +9338,10 @@ function openAudioForm() {
   const settingsForm = document.getElementById('settings-form');
   settingsForm.reset();
   
+  // Set the form type to 'audio'
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'audio';
+  
   // Stop any active hotkey recording and clear displayed status/value
   if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
   const hkIn = document.getElementById('hotkey-input'); 
