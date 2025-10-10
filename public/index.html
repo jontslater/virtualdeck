@@ -255,6 +255,7 @@
     <div class="modal-content">
       <h2 id="settings-modal-title">Add New Trigger</h2>
       <form id="settings-form">
+        <input type="hidden" name="type" id="type-input" value="audio" />
         <label for="label-input">Label:</label>
         <input type="text" id="label-input" name="label" required />
         <label>Hotkey: 
@@ -275,7 +276,7 @@
         </div><br>
         <div id="audio-file-section">
           <label>File:
-            <input type="file" name="file" id="file-input" required />
+            <input type="file" name="file" id="file-input" accept="audio/*" required />
             <div id="drop-zone">or drag file here</div>
           </label>
           <label for="volume-input" class="volume-label">Volume: <span id="volume-value">100%</span></label>
@@ -599,6 +600,40 @@
             <button type="button" id="cancel-multi-media-button">Cancel</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preferences Modal -->
+  <div id="preferences-modal" class="hidden">
+    <div class="modal-content preferences-modal-content">
+      <div class="modal-header">
+        <h2>Preferences</h2>
+        <button id="preferences-modal-close" class="modal-close">✕</button>
+      </div>
+      <div class="preferences-content">
+        
+        <!-- Updates Section -->
+        <div class="preferences-section">
+          <h3>Updates</h3>
+          <div class="preference-item">
+            <label for="auto-update-checkbox">
+              <input type="checkbox" id="auto-update-checkbox" />
+              Automatically check for updates on startup
+            </label>
+            <small>When enabled, VirtualDeck will check for updates when the app starts</small>
+          </div>
+          <div class="preference-item">
+            <button id="check-updates-button" class="preference-button">Check for Updates Now</button>
+            <small>Manually check if a new version is available</small>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="preferences-actions">
+          <button type="button" id="save-preferences" class="preference-button primary">Save Preferences</button>
+          <button type="button" id="cancel-preferences" class="preference-button">Cancel</button>
+        </div>
       </div>
     </div>
   </div>
