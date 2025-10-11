@@ -138,8 +138,8 @@
             position: relative;
             transition: all 0.3s ease;
             background: none;
-            border: 2px dotted red; /* Visual indicator of text position */
-            padding: 10px;
+            border: none;
+            padding: 0;
             margin: 0;
         }
 
@@ -1147,12 +1147,15 @@
             let alertText = alertConfig.text || 'Test alert!';
             alertText = alertText.replace(/{username}/g, userData.username || 'Unknown');
             alertText = alertText.replace(/{displayName}/g, userData.displayName || userData.display_name || 'Unknown');
-            alertText = alertText.replace(/{tier}/g, userData.tier || '');
-            alertText = alertText.replace(/{months}/g, userData.months || '');
-            alertText = alertText.replace(/{viewers}/g, userData.viewers || '');
-            alertText = alertText.replace(/{bits}/g, userData.bits || '');
-            alertText = alertText.replace(/{reward}/g, userData.reward || '');
-            alertText = alertText.replace(/{message}/g, userData.message || '');
+            alertText = alertText.replace(/{display_name}/g, userData.displayName || userData.display_name || 'Unknown');
+            alertText = alertText.replace(/{tier}/g, String(userData.tier || ''));
+            alertText = alertText.replace(/{months}/g, String(userData.months || ''));
+            alertText = alertText.replace(/{viewers}/g, String(userData.viewers || ''));
+            alertText = alertText.replace(/{bits}/g, String(userData.bits || ''));
+            alertText = alertText.replace(/{reward}/g, String(userData.reward || ''));
+            alertText = alertText.replace(/{message}/g, String(userData.message || ''));
+            alertText = alertText.replace(/{total_checkins}/g, String(userData.total_checkins || '0'));
+            alertText = alertText.replace(/{streak}/g, String(userData.streak || '0'));
             
             // Create payload for overlay
             const payload = {

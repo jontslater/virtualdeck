@@ -26,6 +26,7 @@ const defaultConfigPath = path.join(__dirname, 'config.json');
 const defaultSoundsDir = path.join(__dirname, 'public', 'assets', 'sounds');
 const defaultSkinsDir = path.join(__dirname, 'skins');
 const tcConfigPath = path.join(userDataPath, 'tc_config.json');
+const dailyCheckinsPath = path.join(userDataPath, 'checkins.json');
 
 // Ensure config and sounds exist in userData on first run
 function ensureUserData() {
@@ -941,6 +942,76 @@ ipcMain.handle('get-tc-config', async () => {
     return { topics: [], lastFollowerPoll: null };
   }
 });
+
+// ===============================
+// Daily Check-In IPC Handlers
+// ===============================
+
+// IPC: load daily check-ins data
+ipcMain.handle('loadDailyCheckins', async () => {
+  try {
+    if (fs.existsSync(dailyCheckinsPath)) {
+      const data = fs.readFileSync(dailyCheckinsPath, 'utf-8');
+      return JSON.parse(data);
+    }
+    // Return default structure if file doesn't exist
+    return {
+      viewers: {},
+      config: {
+        enabled: true,
+        rewardName: 'Daily Check-In',
+        chatResponse: 'Welcome back {username}! You\'ve checked in {total_checkins} times!',
+        alreadyCheckedMessage: 'You\'ve already checked in today, {username}! Come back tomorrow!',
+        showStreak: false,
+        sendToChat: true,
+        testMode: false
+      }
+    };
+  } catch (err) {
+    console.error('Error loading daily check-ins:', err);
+    return null;
+  }
+});
+
+// IPC: save daily check-ins data
+ipcMain.handle('saveDailyCheckins', async (event, data) => {
+  try {
+    fs.writeFileSync(dailyCheckinsPath, JSON.stringify(data, null, 2));
+    console.log('💾 Saved daily check-ins data');
+    return true;
+  } catch (err) {
+    console.error('Error saving daily check-ins:', err);
+    return false;
+  }
+});
+
+// IPC: send Twitch chat message
+ipcMain.handle('sendTwitchChatMessage', async (event, message) => {
+  try {
+    // Send message through TMI client if connected
+    if (twitchClient && twitchClient.readyState() === 'OPEN') {
+      const channels = twitchClient.getChannels();
+      if (channels && channels.length > 0) {
+        const channel = channels[0];
+        await twitchClient.say(channel, message);
+        console.log('💬 Sent chat message to', channel, ':', message);
+        return true;
+      } else {
+        console.warn('⚠️ Twitch chat client connected but no channels joined');
+        return false;
+      }
+    }
+    console.warn('⚠️ Twitch chat client not connected');
+    return false;
+  } catch (err) {
+    console.error('❌ Error sending Twitch chat message:', err);
+    return false;
+  }
+});
+
+// ===============================
+// End Daily Check-In IPC Handlers
+// ===============================
 
 // IPC: list current EventSub subscriptions (aggregated)
 ipcMain.handle('list-eventsub-subscriptions', async () => {
