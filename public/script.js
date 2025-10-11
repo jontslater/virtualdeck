@@ -1881,6 +1881,96 @@ if (window.electronAPI && window.electronAPI.onShowAbout) {
   });
 }
 
+// Placeholders Guide Modal
+function openPlaceholdersGuide() {
+  const modal = document.getElementById('placeholders-guide-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    
+    // Disable hotkeys when modal is open
+    if (window.electronAPI && window.electronAPI.disableHotkeys) {
+      window.electronAPI.disableHotkeys();
+    }
+  }
+}
+
+function closePlaceholdersGuide() {
+  const modal = document.getElementById('placeholders-guide-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    
+    // Re-enable hotkeys when modal is closed
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+}
+
+// Close button for placeholders guide
+const placeholdersGuideCloseBtn = document.getElementById('placeholders-guide-close');
+if (placeholdersGuideCloseBtn) {
+  placeholdersGuideCloseBtn.onclick = () => {
+    closePlaceholdersGuide();
+  };
+}
+
+// Close on backdrop click
+const placeholdersGuideModal = document.getElementById('placeholders-guide-modal');
+if (placeholdersGuideModal) {
+  placeholdersGuideModal.addEventListener('click', (e) => {
+    if (e.target === placeholdersGuideModal) {
+      closePlaceholdersGuide();
+    }
+  });
+}
+
+// Help button in Alert Widget
+const alertPlaceholdersHelp = document.getElementById('alert-placeholders-help');
+if (alertPlaceholdersHelp) {
+  alertPlaceholdersHelp.addEventListener('click', () => {
+    openPlaceholdersGuide();
+  });
+}
+
+// Check-In Stats Modal Handlers
+const checkinStatsCloseBtn = document.getElementById('checkin-stats-close');
+if (checkinStatsCloseBtn) {
+  checkinStatsCloseBtn.onclick = () => {
+    const modal = document.getElementById('checkin-stats-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      // Re-enable hotkeys
+      if (window.electronAPI && window.electronAPI.enableHotkeys) {
+        window.electronAPI.enableHotkeys();
+      }
+    }
+  };
+}
+
+// Close on backdrop click
+const checkinStatsModal = document.getElementById('checkin-stats-modal');
+if (checkinStatsModal) {
+  checkinStatsModal.addEventListener('click', (e) => {
+    if (e.target === checkinStatsModal) {
+      checkinStatsModal.classList.add('hidden');
+      // Re-enable hotkeys
+      if (window.electronAPI && window.electronAPI.enableHotkeys) {
+        window.electronAPI.enableHotkeys();
+      }
+    }
+  });
+}
+
+// Stats filter and sort listeners
+const statsSort = document.getElementById('stats-sort');
+const statsFilter = document.getElementById('stats-filter');
+if (statsSort) {
+  statsSort.addEventListener('change', renderCheckinStats);
+}
+if (statsFilter) {
+  statsFilter.addEventListener('change', renderCheckinStats);
+}
+
 // Open settings modal when Preferences menu item is clicked
 if (window.electronAPI && window.electronAPI.onOpenPreferences) {
   window.electronAPI.onOpenPreferences(() => {
@@ -2277,8 +2367,53 @@ window.electronAPI.onTwitchChatEvent((eventData) => {
 });
 
 // Listen for Twitch EventSub events (follows, subs, raids, etc.)
-window.electronAPI.onTwitchEventSub((eventData) => {
+window.electronAPI.onTwitchEventSub(async (eventData) => {
   console.log('📡 Twitch EventSub received:', eventData);
+  
+  // Check for Daily Check-In channel point redemption FIRST
+  if (eventData.type === 'channel.channel_points_custom_reward_redemption.add') {
+    const rewardTitle = eventData.event.reward?.title || eventData.event.reward_title || '';
+    const configuredRewardName = dailyCheckinData.config.rewardName || 'Daily Check-In';
+    
+    console.log('🎁 Channel Point Redemption:', rewardTitle);
+    console.log('🔍 Configured Daily Check-In Reward:', configuredRewardName);
+    
+    // Check if this matches our daily check-in reward
+    if (rewardTitle.toLowerCase() === configuredRewardName.toLowerCase()) {
+      console.log('✅ Daily Check-In redemption detected!');
+      
+      // Process the daily check-in
+      const checkinResult = await processDailyCheckin({
+        user_id: eventData.event.user_id,
+        user_name: eventData.event.user_name || eventData.event.user_login,
+        display_name: eventData.event.user_login || eventData.event.user_name
+      });
+      
+      // If check-in was successful, trigger any configured daily-checkin alerts
+      if (checkinResult) {
+        // Get the updated viewer data
+        const viewer = dailyCheckinData.viewers[eventData.event.user_id];
+        
+        // Create user data with actual check-in counts
+        const userData = {
+          username: viewer.username,
+          display_name: viewer.display_name,
+          user_id: viewer.user_id,
+          total_checkins: viewer.total_checkins,
+          streak: viewer.streak || 0,
+          ...eventData.event
+        };
+        
+        console.log('👤 Daily check-in user data:', userData);
+        
+        // Trigger daily-checkin alert with actual data
+        alertSystem.triggerAlertForEvent('daily-checkin', userData);
+      }
+      
+      // Don't process this as a regular channel-points alert
+      return;
+    }
+  }
   
   // Update alerts from storage in case they changed
   alertSystem.updateAlerts();
@@ -4333,6 +4468,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupOverlayControls();
   setupOverlayWidget();
   setupAlertWidget();
+  initDailyCheckinSystem();
   // initialize left app menu
   if (typeof setupLeftAppMenu === 'function') {
     console.log('🔧 Setting up left app menu');
@@ -5105,7 +5241,8 @@ function setupAlertTypeFilter() {
         'gift-sub-received': 'Gift Received',
         'raid': 'Raid',
         'bits': 'Bits',
-        'ban': 'Ban'
+        'ban': 'Ban',
+        'daily-checkin': 'Daily Checkin'
       };
       
       selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
@@ -5123,6 +5260,7 @@ function setupAlertTypeFilter() {
       'raid': 'Raid',
       'bits': 'Bits',
       'ban': 'Ban',
+      'daily-checkin': 'Daily Checkin'
     };
     selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
   }
@@ -5281,6 +5419,12 @@ function setupAlertWidget() {
         bitsThresholdGroup.style.display = selectedType === 'bits' ? 'block' : 'none';
       }
       
+      // Show/hide daily check-in settings based on alert type
+      const dailyCheckinSettings = document.getElementById('daily-checkin-settings');
+      if (dailyCheckinSettings) {
+        dailyCheckinSettings.style.display = selectedType === 'daily-checkin' ? 'block' : 'none';
+      }
+      
       // Update alert list to show only matching alerts
       updateAlertList();
       
@@ -5295,6 +5439,7 @@ function setupAlertWidget() {
           'raid': 'Raid',
           'bits': 'Bits',
           'ban': 'Ban',
+          'daily-checkin': 'Daily Checkin'
         };
         selectedAlertTypeName.textContent = typeNames[selectedType] || 'Unknown';
       }
@@ -5309,7 +5454,8 @@ function setupAlertWidget() {
           'gift-sub-received': '{username} received a gift sub!',
           'raid': '{username} raided with {viewers} viewers!',
           'bits': '{username} cheered {bits} bits!',
-          'ban': '{username} has been banned by {moderator}!'
+          'ban': '{username} has been banned by {moderator}!',
+          'daily-checkin': '{username} checked in! Total: {total_checkins}'
         };
         alertTextInput.placeholder = placeholderTexts[selectedType] || 'Welcome {username}!';
       }
@@ -5754,6 +5900,16 @@ function setupAlertWidget() {
           volume: alertVideoVolume ? parseInt(alertVideoVolume.value) : 100,
           displayMode: alertVideoDisplayMode ? alertVideoDisplayMode.value : 'center'
         } : null,
+        // Include daily check-in config if this is a daily-checkin alert
+        dailyCheckinConfig: type === 'daily-checkin' ? {
+          enabled: document.getElementById('daily-checkin-enabled')?.checked ?? true,
+          rewardName: document.getElementById('daily-checkin-reward-name')?.value || 'Daily Check-In',
+          chatResponse: document.getElementById('daily-checkin-chat-response')?.value || 'Welcome back {username}!',
+          alreadyCheckedMessage: document.getElementById('daily-checkin-already-checked-message')?.value || 'You\'ve already checked in today!',
+          showStreak: document.getElementById('daily-checkin-show-streak')?.checked ?? false,
+          sendToChat: document.getElementById('daily-checkin-send-to-chat')?.checked ?? true,
+          testMode: document.getElementById('daily-checkin-test-mode')?.checked ?? false
+        } : null,
         variations: [],
         randomMode: false,
         createdAt: new Date().toISOString()
@@ -5783,8 +5939,13 @@ function setupAlertWidget() {
             }
             
             if (!videoFilePath && window.editingAlertMedia?.videoFile) {
-              alertData.videoFile = window.editingAlertMedia.videoFile;
-              console.log('Preserved existing video file:', window.editingAlertMedia.videoFile.name);
+              alertData.videoFile = {
+                ...window.editingAlertMedia.videoFile,
+                loop: alertVideoLoop ? alertVideoLoop.checked : window.editingAlertMedia.videoFile.loop,
+                volume: alertVideoVolume ? parseInt(alertVideoVolume.value) : window.editingAlertMedia.videoFile.volume,
+                displayMode: alertVideoDisplayMode ? alertVideoDisplayMode.value : window.editingAlertMedia.videoFile.displayMode
+              };
+              console.log('Preserved existing video file with updated settings:', window.editingAlertMedia.videoFile.name, 'volume:', alertData.videoFile.volume + '%');
             }
             
             // Preserve existing text styling and animation if they weren't explicitly changed
@@ -6252,6 +6413,51 @@ function setupAlertWidget() {
       }
     }
     
+    // Populate video settings if video file exists
+    if (alertToEdit.videoFile) {
+      if (alertVideoVolume && alertToEdit.videoFile.volume !== undefined) {
+        alertVideoVolume.value = alertToEdit.videoFile.volume;
+        if (alertVideoVolumeValue) {
+          alertVideoVolumeValue.textContent = alertToEdit.videoFile.volume + '%';
+        }
+      }
+      if (alertVideoLoop && alertToEdit.videoFile.loop !== undefined) {
+        alertVideoLoop.checked = alertToEdit.videoFile.loop;
+      }
+      if (alertVideoDisplayMode && alertToEdit.videoFile.displayMode) {
+        alertVideoDisplayMode.value = alertToEdit.videoFile.displayMode;
+      }
+      console.log('Loaded video settings - volume:', alertToEdit.videoFile.volume, 'loop:', alertToEdit.videoFile.loop);
+    }
+    
+    // Populate daily check-in config if this is a daily-checkin alert
+    if (alertToEdit.type === 'daily-checkin' && alertToEdit.dailyCheckinConfig) {
+      const config = alertToEdit.dailyCheckinConfig;
+      
+      const enabledCheckbox = document.getElementById('daily-checkin-enabled');
+      if (enabledCheckbox) enabledCheckbox.checked = config.enabled ?? true;
+      
+      const rewardNameInput = document.getElementById('daily-checkin-reward-name');
+      if (rewardNameInput) rewardNameInput.value = config.rewardName || 'Daily Check-In';
+      
+      const chatResponseInput = document.getElementById('daily-checkin-chat-response');
+      if (chatResponseInput) chatResponseInput.value = config.chatResponse || 'Welcome back {username}!';
+      
+      const alreadyCheckedInput = document.getElementById('daily-checkin-already-checked-message');
+      if (alreadyCheckedInput) alreadyCheckedInput.value = config.alreadyCheckedMessage || 'You\'ve already checked in today!';
+      
+      const showStreakCheckbox = document.getElementById('daily-checkin-show-streak');
+      if (showStreakCheckbox) showStreakCheckbox.checked = config.showStreak ?? false;
+      
+      const sendToChatCheckbox = document.getElementById('daily-checkin-send-to-chat');
+      if (sendToChatCheckbox) sendToChatCheckbox.checked = config.sendToChat ?? true;
+      
+      const testModeCheckbox = document.getElementById('daily-checkin-test-mode');
+      if (testModeCheckbox) testModeCheckbox.checked = config.testMode ?? false;
+      
+      console.log('Loaded daily check-in config for editing');
+    }
+    
     // Store the alert ID and existing media for editing
     window.editingAlertId = alertId;
     window.editingAlertMedia = {
@@ -6448,12 +6654,19 @@ function replacePlaceholders(text, userData) {
   // Replace common placeholders
   processedText = processedText.replace(/\{username\}/g, userData.username || userData.user_name || userData.user || 'Unknown');
   processedText = processedText.replace(/\{display_name\}/g, userData.display_name || userData.user_name || userData.user || 'Unknown');
-  processedText = processedText.replace(/\{tier\}/g, userData.tier || userData.sub_plan || '');
-  processedText = processedText.replace(/\{viewers\}/g, userData.viewers || userData.view_count || userData.viewer_count || '');
-  processedText = processedText.replace(/\{bits\}/g, userData.bits || userData.bits_used || userData.bits_amount || userData.amount || '');
-  processedText = processedText.replace(/\{months\}/g, userData.cumulative_months || userData.months || '');
-  processedText = processedText.replace(/\{message\}/g, userData.message || userData.user_input || '');
-  processedText = processedText.replace(/\{reward\}/g, userData.reward || userData.reward_title || '');
+  processedText = processedText.replace(/\{displayName\}/g, userData.displayName || userData.display_name || userData.user_name || userData.user || 'Unknown');
+  processedText = processedText.replace(/\{tier\}/g, String(userData.tier || userData.sub_plan || ''));
+  processedText = processedText.replace(/\{viewers\}/g, String(userData.viewers || userData.view_count || userData.viewer_count || ''));
+  processedText = processedText.replace(/\{bits\}/g, String(userData.bits || userData.bits_used || userData.bits_amount || userData.amount || ''));
+  processedText = processedText.replace(/\{months\}/g, String(userData.cumulative_months || userData.months || ''));
+  processedText = processedText.replace(/\{message\}/g, String(userData.message || userData.user_input || ''));
+  processedText = processedText.replace(/\{reward\}/g, String(userData.reward || userData.reward_title || ''));
+  processedText = processedText.replace(/\{moderator\}/g, String(userData.moderator || ''));
+  processedText = processedText.replace(/\{reason\}/g, String(userData.reason || ''));
+  
+  // Daily Check-In specific placeholders
+  processedText = processedText.replace(/\{total_checkins\}/g, String(userData.total_checkins || '0'));
+  processedText = processedText.replace(/\{streak\}/g, String(userData.streak || '0'));
   
   return processedText;
 }
@@ -7070,12 +7283,22 @@ function showAlertWidget() {
     // Ensure bits threshold is hidden unless alert type is 'bits'
     const alertTypeSelect = document.getElementById('alert-type');
     const bitsThresholdGroup = document.getElementById('bits-threshold-group');
+    const dailyCheckinSettings = document.getElementById('daily-checkin-settings');
     
     if (alertTypeSelect && bitsThresholdGroup) {
       if (alertTypeSelect.value === 'bits') {
         bitsThresholdGroup.style.display = 'block';
       } else {
         bitsThresholdGroup.style.display = 'none';
+      }
+    }
+    
+    // Ensure daily check-in settings are hidden unless alert type is 'daily-checkin'
+    if (alertTypeSelect && dailyCheckinSettings) {
+      if (alertTypeSelect.value === 'daily-checkin') {
+        dailyCheckinSettings.style.display = 'block';
+      } else {
+        dailyCheckinSettings.style.display = 'none';
       }
     }
     
@@ -7109,6 +7332,464 @@ function hideOverlayWidget() {
     overlayWidget.classList.add('hidden');
   }
 }
+
+// ===============================
+// Daily Check-In System
+// ===============================
+
+// In-memory storage for check-ins (will be persisted to file)
+let dailyCheckinData = {
+  viewers: {},
+  config: {
+    enabled: true,
+    rewardName: 'Daily Check-In',
+    chatResponse: 'Welcome back {username}! You\'ve checked in {total_checkins} times!',
+    alreadyCheckedMessage: 'You\'ve already checked in today, {username}! Come back tomorrow!',
+    showStreak: false,
+    sendToChat: true,
+    testMode: false
+  }
+};
+
+// Load daily check-in data
+async function loadDailyCheckinData() {
+  try {
+    if (window.electronAPI && window.electronAPI.loadDailyCheckins) {
+      const data = await window.electronAPI.loadDailyCheckins();
+      if (data) {
+        dailyCheckinData = data;
+        console.log('📊 Loaded daily check-in data:', Object.keys(dailyCheckinData.viewers).length, 'viewers');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error loading daily check-in data:', error);
+  }
+}
+
+// Save daily check-in data
+async function saveDailyCheckinData() {
+  try {
+    if (window.electronAPI && window.electronAPI.saveDailyCheckins) {
+      await window.electronAPI.saveDailyCheckins(dailyCheckinData);
+      console.log('💾 Saved daily check-in data');
+    }
+  } catch (error) {
+    console.error('❌ Error saving daily check-in data:', error);
+  }
+}
+
+// Check if user has already checked in today
+function hasCheckedInToday(userId) {
+  const viewer = dailyCheckinData.viewers[userId];
+  if (!viewer) return false;
+  
+  const lastCheckin = new Date(viewer.last_checkin);
+  const today = new Date();
+  
+  // Check if last check-in was today (same date)
+  return lastCheckin.toDateString() === today.toDateString();
+}
+
+// Process a daily check-in
+async function processDailyCheckin(userData, testMode = false) {
+  const { user_id, user_name, display_name } = userData;
+  
+  // Check test mode setting
+  const testModeCheckbox = document.getElementById('daily-checkin-test-mode');
+  const isTestMode = testMode || (testModeCheckbox && testModeCheckbox.checked);
+  
+  // Check if user already checked in today (skip in test mode)
+  if (!isTestMode && hasCheckedInToday(user_id)) {
+    console.log('⚠️ User', user_name, 'already checked in today');
+    
+    // Send already checked message if enabled
+    if (dailyCheckinData.config.sendToChat) {
+      const message = dailyCheckinData.config.alreadyCheckedMessage
+        .replace(/{username}/g, user_name)
+        .replace(/{display_name}/g, display_name || user_name);
+      
+      await sendTwitchChatMessage(message);
+    }
+    
+    return false;
+  }
+  
+  // Initialize or update viewer data
+  if (!dailyCheckinData.viewers[user_id]) {
+    dailyCheckinData.viewers[user_id] = {
+      user_id: user_id,
+      username: user_name,
+      display_name: display_name || user_name,
+      total_checkins: 0,
+      last_checkin: null,
+      streak: 0
+    };
+  }
+  
+  const viewer = dailyCheckinData.viewers[user_id];
+  
+  // Update check-in data
+  viewer.total_checkins++;
+  viewer.last_checkin = new Date().toISOString();
+  viewer.username = user_name; // Update in case username changed
+  viewer.display_name = display_name || user_name;
+  
+  // Calculate streak if enabled
+  if (dailyCheckinData.config.showStreak) {
+    // TODO: Implement streak calculation
+    // For now, just increment (will need to check if consecutive days)
+  }
+  
+  // Save data
+  await saveDailyCheckinData();
+  
+  console.log('✅ Check-in processed for', user_name, '- Total:', viewer.total_checkins);
+  
+  // Send chat response if enabled
+  if (dailyCheckinData.config.sendToChat) {
+    let message = dailyCheckinData.config.chatResponse;
+    message = message.replace(/{username}/g, viewer.username);
+    message = message.replace(/{display_name}/g, viewer.display_name);
+    message = message.replace(/{total_checkins}/g, String(viewer.total_checkins));
+    message = message.replace(/{streak}/g, String(viewer.streak || 0));
+    
+    await sendTwitchChatMessage(message);
+  }
+  
+  return true;
+}
+
+// Send message to Twitch chat
+async function sendTwitchChatMessage(message) {
+  try {
+    if (window.electronAPI && window.electronAPI.sendTwitchChatMessage) {
+      await window.electronAPI.sendTwitchChatMessage(message);
+      console.log('💬 Sent chat message:', message);
+    }
+  } catch (error) {
+    console.error('❌ Error sending chat message:', error);
+  }
+}
+
+// Update daily check-in config from UI
+function updateDailyCheckinConfig() {
+  const enabled = document.getElementById('daily-checkin-enabled')?.checked ?? true;
+  const rewardName = document.getElementById('daily-checkin-reward-name')?.value || 'Daily Check-In';
+  const chatResponse = document.getElementById('daily-checkin-chat-response')?.value || 'Welcome back {username}!';
+  const alreadyCheckedMessage = document.getElementById('daily-checkin-already-checked-message')?.value || 'You\'ve already checked in today!';
+  const showStreak = document.getElementById('daily-checkin-show-streak')?.checked ?? false;
+  const sendToChat = document.getElementById('daily-checkin-send-to-chat')?.checked ?? true;
+  const testMode = document.getElementById('daily-checkin-test-mode')?.checked ?? false;
+  
+  dailyCheckinData.config = {
+    enabled,
+    rewardName,
+    chatResponse,
+    alreadyCheckedMessage,
+    showStreak,
+    sendToChat,
+    testMode
+  };
+  
+  saveDailyCheckinData();
+  console.log('⚙️ Updated daily check-in config:', dailyCheckinData.config);
+}
+
+// Load daily check-in config into UI
+function loadDailyCheckinConfigToUI() {
+  const config = dailyCheckinData.config;
+  
+  const enabledCheckbox = document.getElementById('daily-checkin-enabled');
+  if (enabledCheckbox) enabledCheckbox.checked = config.enabled ?? true;
+  
+  const rewardNameInput = document.getElementById('daily-checkin-reward-name');
+  if (rewardNameInput) rewardNameInput.value = config.rewardName || 'Daily Check-In';
+  
+  const chatResponseInput = document.getElementById('daily-checkin-chat-response');
+  if (chatResponseInput) chatResponseInput.value = config.chatResponse || 'Welcome back {username}!';
+  
+  const alreadyCheckedInput = document.getElementById('daily-checkin-already-checked-message');
+  if (alreadyCheckedInput) alreadyCheckedInput.value = config.alreadyCheckedMessage || 'You\'ve already checked in today!';
+  
+  const showStreakCheckbox = document.getElementById('daily-checkin-show-streak');
+  if (showStreakCheckbox) showStreakCheckbox.checked = config.showStreak ?? false;
+  
+  const sendToChatCheckbox = document.getElementById('daily-checkin-send-to-chat');
+  if (sendToChatCheckbox) sendToChatCheckbox.checked = config.sendToChat ?? true;
+  
+  const testModeCheckbox = document.getElementById('daily-checkin-test-mode');
+  if (testModeCheckbox) testModeCheckbox.checked = config.testMode ?? false;
+}
+
+// Initialize daily check-in system
+async function initDailyCheckinSystem() {
+  console.log('🚀 Initializing Daily Check-In System...');
+  
+  // Load data
+  await loadDailyCheckinData();
+  
+  // Load config to UI
+  loadDailyCheckinConfigToUI();
+  
+  // Add change listeners to update config
+  const fields = [
+    'daily-checkin-enabled',
+    'daily-checkin-reward-name',
+    'daily-checkin-chat-response',
+    'daily-checkin-already-checked-message',
+    'daily-checkin-show-streak',
+    'daily-checkin-send-to-chat',
+    'daily-checkin-test-mode'
+  ];
+  
+  fields.forEach(fieldId => {
+    const element = document.getElementById(fieldId);
+    if (element) {
+      element.addEventListener('change', updateDailyCheckinConfig);
+      if (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT') {
+        element.addEventListener('input', updateDailyCheckinConfig);
+      }
+    }
+  });
+  
+  // Add button listeners
+  const viewStatsBtn = document.getElementById('view-checkin-stats');
+  if (viewStatsBtn) {
+    viewStatsBtn.addEventListener('click', showDailyCheckinStats);
+  }
+  
+  const testCheckinBtn = document.getElementById('test-checkin');
+  if (testCheckinBtn) {
+    testCheckinBtn.addEventListener('click', testDailyCheckin);
+  }
+  
+  const clearTodayBtn = document.getElementById('clear-today-checkins');
+  if (clearTodayBtn) {
+    clearTodayBtn.addEventListener('click', clearTodayCheckins);
+  }
+  
+  const clearAllBtn = document.getElementById('clear-all-checkins');
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', clearAllCheckins);
+  }
+  
+  console.log('✅ Daily Check-In System initialized');
+}
+
+// Show daily check-in statistics
+function showDailyCheckinStats() {
+  const modal = document.getElementById('checkin-stats-modal');
+  if (!modal) {
+    console.error('❌ Check-in stats modal not found');
+    return;
+  }
+  
+  // Show the modal
+  modal.classList.remove('hidden');
+  
+  // Disable hotkeys when modal is open
+  if (window.electronAPI && window.electronAPI.disableHotkeys) {
+    window.electronAPI.disableHotkeys();
+  }
+  
+  // Populate and render the stats
+  renderCheckinStats();
+}
+
+// Render check-in statistics data
+function renderCheckinStats() {
+  const viewers = dailyCheckinData.viewers;
+  const viewerList = Object.values(viewers);
+  
+  // Calculate summary stats
+  const totalViewers = viewerList.length;
+  const totalCheckins = viewerList.reduce((sum, v) => sum + v.total_checkins, 0);
+  const today = new Date().toDateString();
+  const todayCheckins = viewerList.filter(v => {
+    if (!v.last_checkin) return false;
+    return new Date(v.last_checkin).toDateString() === today;
+  }).length;
+  
+  // Update summary cards
+  document.getElementById('total-checkin-viewers').textContent = totalViewers;
+  document.getElementById('total-checkins-all').textContent = totalCheckins;
+  document.getElementById('total-checkins-today').textContent = todayCheckins;
+  
+  // Get filter and sort values
+  const sortBy = document.getElementById('stats-sort')?.value || 'total';
+  const filterBy = document.getElementById('stats-filter')?.value || 'all';
+  
+  // Filter viewers
+  let filteredViewers = [...viewerList];
+  if (filterBy === 'today') {
+    filteredViewers = filteredViewers.filter(v => {
+      if (!v.last_checkin) return false;
+      return new Date(v.last_checkin).toDateString() === today;
+    });
+  }
+  
+  // Sort viewers
+  if (sortBy === 'total') {
+    filteredViewers.sort((a, b) => b.total_checkins - a.total_checkins);
+  } else if (sortBy === 'recent') {
+    filteredViewers.sort((a, b) => {
+      const dateA = a.last_checkin ? new Date(a.last_checkin) : new Date(0);
+      const dateB = b.last_checkin ? new Date(b.last_checkin) : new Date(0);
+      return dateB - dateA;
+    });
+  } else if (sortBy === 'username') {
+    filteredViewers.sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+  }
+  
+  // Populate table
+  const tbody = document.getElementById('checkin-stats-tbody');
+  if (!tbody) return;
+  
+  if (filteredViewers.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-tertiary);">
+          No check-in data available yet
+        </td>
+      </tr>
+    `;
+    return;
+  }
+  
+  let rowsHTML = '';
+  filteredViewers.forEach((viewer, index) => {
+    const lastCheckin = viewer.last_checkin ? new Date(viewer.last_checkin).toLocaleDateString() : 'Never';
+    const lastCheckinTime = viewer.last_checkin ? new Date(viewer.last_checkin).toLocaleTimeString() : '';
+    const streak = viewer.streak || 0;
+    
+    rowsHTML += `
+      <tr>
+        <td style="text-align: center; font-weight: 600;">${index + 1}</td>
+        <td>${viewer.display_name || viewer.username}</td>
+        <td style="text-align: center; font-weight: 600; color: var(--accent);">${viewer.total_checkins}</td>
+        <td>${lastCheckin}<br><small style="color: var(--text-tertiary); font-size: 11px;">${lastCheckinTime}</small></td>
+        <td style="text-align: center;">${streak}</td>
+      </tr>
+    `;
+  });
+  
+  tbody.innerHTML = rowsHTML;
+  
+  console.log('📊 Rendered check-in statistics:', filteredViewers.length, 'viewers');
+}
+
+// Test check-in function (simulate a check-in)
+async function testDailyCheckin() {
+  // Create fake test user data
+  const testUser = {
+    user_id: 'test_user_' + Date.now(),
+    user_name: 'TestUser' + Math.floor(Math.random() * 1000),
+    display_name: 'TestUser' + Math.floor(Math.random() * 1000)
+  };
+  
+  console.log('🧪 Testing check-in with test user:', testUser);
+  
+  // Process the check-in
+  const result = await processDailyCheckin(testUser, true);
+  
+  if (result) {
+    // Get the viewer data
+    const viewer = dailyCheckinData.viewers[testUser.user_id];
+    
+    // Create user data with actual check-in counts
+    const userData = {
+      username: viewer.username,
+      display_name: viewer.display_name,
+      user_id: viewer.user_id,
+      total_checkins: viewer.total_checkins,
+      streak: viewer.streak || 0
+    };
+    
+    console.log('🧪 Triggering test alert with data:', userData);
+    
+    // Trigger alert
+    alertSystem.triggerAlertForEvent('daily-checkin', userData);
+    
+    alert(`✅ Test check-in successful!\n\nUsername: ${viewer.username}\nTotal Check-Ins: ${viewer.total_checkins}`);
+  } else {
+    alert('❌ Test check-in failed - check console for details');
+  }
+}
+
+// Clear today's check-ins
+async function clearTodayCheckins() {
+  if (!confirm('Clear all check-ins from today? This will allow users to check in again today.')) {
+    return;
+  }
+  
+  const today = new Date().toDateString();
+  let clearedCount = 0;
+  
+  Object.values(dailyCheckinData.viewers).forEach(viewer => {
+    if (viewer.last_checkin) {
+      const lastCheckinDate = new Date(viewer.last_checkin).toDateString();
+      if (lastCheckinDate === today) {
+        // Set last check-in to yesterday so they can check in again
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        viewer.last_checkin = yesterday.toISOString();
+        clearedCount++;
+      }
+    }
+  });
+  
+  await saveDailyCheckinData();
+  console.log(`🔄 Cleared ${clearedCount} check-ins from today`);
+  alert(`✅ Cleared ${clearedCount} check-ins from today!\n\nUsers can now check in again.`);
+  
+  // Refresh stats if modal is open
+  if (!document.getElementById('checkin-stats-modal')?.classList.contains('hidden')) {
+    renderCheckinStats();
+  }
+}
+
+// Clear all check-in data
+async function clearAllCheckins() {
+  if (!confirm('⚠️ WARNING: This will permanently delete ALL check-in data!\n\nThis includes:\n- All viewer check-in counts\n- All check-in history\n- All streaks\n\nAre you sure?')) {
+    return;
+  }
+  
+  // Double confirmation
+  if (!confirm('This action cannot be undone. Are you absolutely sure?')) {
+    return;
+  }
+  
+  const viewerCount = Object.keys(dailyCheckinData.viewers).length;
+  
+  // Reset viewer data
+  dailyCheckinData.viewers = {};
+  
+  await saveDailyCheckinData();
+  console.log(`🗑️ Cleared all check-in data for ${viewerCount} viewers`);
+  alert(`✅ All check-in data cleared!\n\n${viewerCount} viewers reset.`);
+  
+  // Refresh stats if modal is open
+  if (!document.getElementById('checkin-stats-modal')?.classList.contains('hidden')) {
+    renderCheckinStats();
+  }
+}
+
+// ===============================
+// End Daily Check-In System
+// ===============================
+
+// TODO: Integrate with Twitch Channel Point Redemptions
+// When a Channel Point redemption event is received that matches the reward name
+// configured in Daily Check-In settings, call:
+// 
+// processDailyCheckin({
+//   user_id: event.user_id,
+//   user_name: event.user_name,
+//   display_name: event.user_login
+// });
+//
+// Example integration location: TwitchConnected/tc.js or wherever Twitch EventSub
+// events are processed. Look for 'channel.channel_points_custom_reward_redemption' events.
 
 // Left app menu wiring: toggles File dropdown and wires Quit
 function setupLeftAppMenu() {
@@ -7254,6 +7935,17 @@ function setupLeftAppMenu() {
       }
       // Fallback: call local helper directly
       try { openAboutModal(); } catch (err) {}
+      if (helpDropdown) helpDropdown.classList.add('hidden');
+      if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  
+  // Placeholders Guide menu item
+  const helpPlaceholders = document.getElementById('menu-help-placeholders');
+  if (helpPlaceholders) {
+    helpPlaceholders.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openPlaceholdersGuide();
       if (helpDropdown) helpDropdown.classList.add('hidden');
       if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
     });

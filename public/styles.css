@@ -1054,6 +1054,233 @@ body.vd-dragging .sound-card.draggable:hover {
   padding: 10px 0;
 }
 
+/* Placeholders Guide Modal Styles */
+#placeholders-guide-modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 11000;
+  background: rgba(0,0,0,0.6);
+}
+
+#placeholders-guide-modal.hidden {
+  display: none;
+}
+
+.placeholders-guide-content {
+  width: 900px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.placeholders-guide-body {
+  padding: 20px;
+  max-height: 75vh;
+  overflow-y: auto;
+}
+
+.placeholders-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0 20px 0;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.placeholders-table thead {
+  background: var(--accent);
+  color: white;
+}
+
+.placeholders-table th,
+.placeholders-table td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid var(--bg-tertiary);
+}
+
+.placeholders-table th {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.placeholders-table td {
+  font-size: 13px;
+}
+
+.placeholders-table code {
+  background: var(--bg-tertiary);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.placeholders-table tbody tr:hover {
+  background: var(--bg-tertiary);
+}
+
+.usage-examples {
+  margin: 15px 0;
+}
+
+.example-item {
+  margin-bottom: 15px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  border-left: 3px solid var(--accent);
+}
+
+.example-item strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+
+.example-item code {
+  display: block;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  margin: 6px 0;
+  font-family: 'Courier New', monospace;
+  color: var(--accent);
+}
+
+.example-result {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Daily Check-In Statistics Modal */
+#checkin-stats-modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 11000;
+  background: rgba(0,0,0,0.6);
+}
+
+#checkin-stats-modal.hidden {
+  display: none;
+}
+
+.checkin-stats-content {
+  width: 900px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.checkin-stats-body {
+  padding: 20px;
+}
+
+.stats-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  background: var(--bg-secondary);
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+  border: 2px solid var(--accent);
+}
+
+.stat-card .stat-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.stat-card .stat-value {
+  font-size: 32px;
+  font-weight: bold;
+  color: var(--accent);
+}
+
+.checkin-stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.checkin-stats-table thead {
+  background: var(--accent);
+  color: white;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.checkin-stats-table th,
+.checkin-stats-table td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid var(--bg-tertiary);
+}
+
+.checkin-stats-table th {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.checkin-stats-table td {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.checkin-stats-table tbody tr:hover {
+  background: var(--bg-tertiary);
+}
+
+.checkin-stats-table tbody tr:nth-child(1) td:first-child {
+  color: #FFD700;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.checkin-stats-table tbody tr:nth-child(2) td:first-child {
+  color: #C0C0C0;
+  font-weight: bold;
+  font-size: 15px;
+}
+
+.checkin-stats-table tbody tr:nth-child(3) td:first-child {
+  color: #CD7F32;
+  font-weight: bold;
+  font-size: 14px;
+}
+
 .preferences-section {
   margin-bottom: 20px;
 }

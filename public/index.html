@@ -76,6 +76,8 @@
     <div class="menu-item" id="menu-help" aria-haspopup="true">
       <button id="menu-help-btn" class="menu-button" aria-expanded="false" aria-controls="menu-help-dropdown">Help</button>
       <div id="menu-help-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Help menu">
+        <button id="menu-help-placeholders" class="menu-dropdown-item" role="menuitem">Twitch Placeholders Guide</button>
+        <div class="menu-divider"></div>
         <button id="menu-help-about" class="menu-dropdown-item" role="menuitem">About</button>
       </div>
     </div>
@@ -304,6 +306,212 @@
         <img src="logo.png" alt="VirtualDeck" class="about-logo">
         <div id="about-version" class="about-version">Version: ...</div>
         <p id="about-desc" class="about-desc">Loading description...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Twitch Placeholders Guide Modal -->
+  <div id="placeholders-guide-modal" class="hidden">
+    <div class="modal-content placeholders-guide-content">
+      <div class="modal-header">
+        <h2>Twitch Placeholders Guide</h2>
+        <button id="placeholders-guide-close" class="modal-close">✕</button>
+      </div>
+      <div class="placeholders-guide-body">
+        <p style="margin-bottom: 15px; color: var(--text-secondary);">
+          Use these placeholders in your alert text and chat messages. They will be automatically replaced with real data when triggered.
+        </p>
+        
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">📺 All Twitch Events</h3>
+        <table class="placeholders-table">
+          <thead>
+            <tr>
+              <th>Placeholder</th>
+              <th>Description</th>
+              <th>Example</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Twitch username (lowercase)</td>
+              <td>tehchno</td>
+            </tr>
+            <tr>
+              <td><code>{display_name}</code> or <code>{displayName}</code></td>
+              <td>Display name (proper casing)</td>
+              <td>TehChno</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">👥 New Follower</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Username of new follower</td>
+              <td>coolviewer99</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">⭐ Subscriber / Resubscriber</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Subscriber username</td>
+              <td>loyalfan</td>
+            </tr>
+            <tr>
+              <td><code>{tier}</code></td>
+              <td>Subscription tier</td>
+              <td>1000 (Tier 1), 2000 (Tier 2), 3000 (Tier 3)</td>
+            </tr>
+            <tr>
+              <td><code>{months}</code></td>
+              <td>Cumulative months subscribed</td>
+              <td>12</td>
+            </tr>
+            <tr>
+              <td><code>{message}</code></td>
+              <td>Resub message (if provided)</td>
+              <td>Love this stream!</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">🎁 Gifted Subscription</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Username of gift giver</td>
+              <td>generousfan</td>
+            </tr>
+            <tr>
+              <td><code>{tier}</code></td>
+              <td>Subscription tier gifted</td>
+              <td>1000, 2000, 3000</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">🎯 Raid</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Username of raider</td>
+              <td>friendlystreamer</td>
+            </tr>
+            <tr>
+              <td><code>{viewers}</code></td>
+              <td>Number of raiders</td>
+              <td>250</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">💎 Bits / Cheer</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Username who cheered</td>
+              <td>bitsmaster</td>
+            </tr>
+            <tr>
+              <td><code>{bits}</code></td>
+              <td>Number of bits cheered</td>
+              <td>500</td>
+            </tr>
+            <tr>
+              <td><code>{message}</code></td>
+              <td>Cheer message (if provided)</td>
+              <td>Keep up the great work!</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">🚫 User Ban</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Username who was banned</td>
+              <td>baduser123</td>
+            </tr>
+            <tr>
+              <td><code>{moderator}</code></td>
+              <td>Moderator who issued the ban</td>
+              <td>modname</td>
+            </tr>
+            <tr>
+              <td><code>{reason}</code></td>
+              <td>Ban reason (if provided)</td>
+              <td>Spam</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">✅ Daily Check-In</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Username who checked in</td>
+              <td>dailyviewer</td>
+            </tr>
+            <tr>
+              <td><code>{display_name}</code></td>
+              <td>Display name</td>
+              <td>DailyViewer</td>
+            </tr>
+            <tr>
+              <td><code>{total_checkins}</code></td>
+              <td><strong>Total times checked in (all time)</strong></td>
+              <td>42</td>
+            </tr>
+            <tr>
+              <td><code>{streak}</code></td>
+              <td>Consecutive days checked in</td>
+              <td>7</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">💡 Usage Examples</h3>
+        <div class="usage-examples">
+          <div class="example-item">
+            <strong>Follower Alert:</strong>
+            <code>Welcome {username}! Thanks for following!</code>
+            <div class="example-result">→ Welcome coolviewer99! Thanks for following!</div>
+          </div>
+          
+          <div class="example-item">
+            <strong>Subscriber Alert:</strong>
+            <code>{username} subscribed for {months} months!</code>
+            <div class="example-result">→ loyalfan subscribed for 12 months!</div>
+          </div>
+          
+          <div class="example-item">
+            <strong>Raid Alert:</strong>
+            <code>{username} raided with {viewers} viewers!</code>
+            <div class="example-result">→ friendlystreamer raided with 250 viewers!</div>
+          </div>
+          
+          <div class="example-item">
+            <strong>Daily Check-In:</strong>
+            <code>Welcome back {username}! You've checked in {total_checkins} times!</code>
+            <div class="example-result">→ Welcome back dailyviewer! You've checked in 42 times!</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 8px; border-left: 4px solid var(--accent);">
+          <strong>💡 Pro Tip:</strong> Placeholders are case-sensitive! Use exactly as shown above for them to work properly.
+        </div>
       </div>
     </div>
   </div>
@@ -790,7 +998,10 @@
     <div class="alert-widget-content">
       <div class="widget-header">
         <h3>Twitch Alert Widget</h3>
-        <button id="close-alert-widget" class="close-btn" title="Close Alert Widget">✕</button>
+        <div style="display: flex; gap: 8px;">
+          <button id="alert-placeholders-help" class="help-btn" title="View Placeholders Guide" style="background: var(--accent); color: white; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;">?</button>
+          <button id="close-alert-widget" class="close-btn" title="Close Alert Widget">✕</button>
+        </div>
       </div>
     
     <div class="widget-content">
@@ -810,6 +1021,7 @@
             <option value="raid">Raid</option>
             <option value="bits">Bits Donation</option>
             <option value="ban">User Ban</option>
+            <option value="daily-checkin">Daily Checkin</option>
           </select>
         </div>
 
@@ -1006,6 +1218,85 @@
             </small>
           </div>
           
+          <!-- Daily Check-In Settings -->
+          <div id="daily-checkin-settings" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
+            <h4 style="margin: 0 0 10px 0; font-size: 14px; color: var(--text-primary);">Daily Check-In Configuration</h4>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label style="display: flex; align-items: center;">
+                <input type="checkbox" id="daily-checkin-enabled" checked />
+                <span style="margin-left: 6px;">Enable Daily Check-In Tracking</span>
+              </label>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                When enabled, tracks viewer check-ins and prevents duplicate check-ins on the same day
+              </small>
+            </div>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label for="daily-checkin-reward-name">Channel Point Reward Name:</label>
+              <input type="text" id="daily-checkin-reward-name" placeholder="Daily Check-In" value="Daily Check-In" style="width: 100%; margin-top: 4px;" />
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                The name of your Twitch Channel Point reward for daily check-ins
+              </small>
+            </div>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label for="daily-checkin-chat-response">Chat Response Message:</label>
+              <textarea id="daily-checkin-chat-response" rows="3" style="width: 100%; margin-top: 4px; resize: vertical;" placeholder="Welcome back {username}! You've checked in {total_checkins} times!">Welcome back {username}! You've checked in {total_checkins} times!</textarea>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                Available placeholders: {username}, {display_name}, {total_checkins}, {streak}
+              </small>
+            </div>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label for="daily-checkin-already-checked-message">Already Checked In Message:</label>
+              <textarea id="daily-checkin-already-checked-message" rows="2" style="width: 100%; margin-top: 4px; resize: vertical;" placeholder="You've already checked in today, {username}!">You've already checked in today, {username}! Come back tomorrow!</textarea>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                Message sent when someone tries to check in twice in one day
+              </small>
+            </div>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                <input type="checkbox" id="daily-checkin-show-streak" />
+                <span style="margin-left: 6px;">Track & Display Streaks</span>
+              </label>
+              <small style="color: var(--text-tertiary); font-size: 11px; display: block;">
+                Keep track of consecutive days checked in (coming soon)
+              </small>
+            </div>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                <input type="checkbox" id="daily-checkin-send-to-chat" checked />
+                <span style="margin-left: 6px;">Send Response to Chat</span>
+              </label>
+              <small style="color: var(--text-tertiary); font-size: 11px; display: block;">
+                Automatically respond in Twitch chat when someone checks in
+              </small>
+            </div>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                <input type="checkbox" id="daily-checkin-test-mode" />
+                <span style="margin-left: 6px;">Enable Test Mode</span>
+              </label>
+              <small style="color: var(--text-tertiary); font-size: 11px; display: block;">
+                Allows multiple check-ins per day for testing (bypasses duplicate prevention)
+              </small>
+            </div>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <button id="view-checkin-stats" class="action-btn secondary" style="width: 100%; margin-bottom: 8px;">📊 View Check-In Statistics</button>
+              <button id="test-checkin" class="action-btn secondary" style="width: 100%; margin-bottom: 8px;">🧪 Test Check-In (Simulate)</button>
+              <button id="clear-today-checkins" class="action-btn" style="width: 100%; margin-bottom: 8px; background: var(--warning, #ff9800); color: white;">🔄 Clear Today's Check-Ins</button>
+              <button id="clear-all-checkins" class="action-btn danger" style="width: 100%;">🗑️ Clear All Check-In Data</button>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 8px; display: block;">
+                Use these tools to test and manage check-in data
+              </small>
+            </div>
+          </div>
+          
           <div class="setting-group">
             <label for="alert-sound">Sound File:</label>
             <input type="file" id="alert-sound" accept="audio/*" />
@@ -1088,6 +1379,69 @@
           </div>
         </div>
         
+      </div>
+    </div>
+  </div>
+
+  <!-- Daily Check-In Statistics Modal -->
+  <div id="checkin-stats-modal" class="hidden">
+    <div class="modal-content checkin-stats-content">
+      <div class="modal-header">
+        <h2>Daily Check-In Statistics</h2>
+        <button id="checkin-stats-close" class="modal-close">✕</button>
+      </div>
+      <div class="checkin-stats-body">
+        <div class="stats-summary">
+          <div class="stat-card">
+            <div class="stat-label">Total Viewers</div>
+            <div class="stat-value" id="total-checkin-viewers">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Total Check-Ins (All Time)</div>
+            <div class="stat-value" id="total-checkins-all">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Today's Check-Ins</div>
+            <div class="stat-value" id="total-checkins-today">0</div>
+          </div>
+        </div>
+        
+        <div class="stats-filters" style="margin: 20px 0; display: flex; gap: 10px; align-items: center;">
+          <label>Sort by:
+            <select id="stats-sort" style="margin-left: 8px; padding: 6px;">
+              <option value="total">Total Check-Ins</option>
+              <option value="recent">Most Recent</option>
+              <option value="username">Username (A-Z)</option>
+            </select>
+          </label>
+          <label>Show:
+            <select id="stats-filter" style="margin-left: 8px; padding: 6px;">
+              <option value="all">All Viewers</option>
+              <option value="today">Checked In Today</option>
+            </select>
+          </label>
+        </div>
+        
+        <div class="checkin-stats-table-container" style="max-height: 500px; overflow-y: auto;">
+          <table class="checkin-stats-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Username</th>
+                <th>Total Check-Ins</th>
+                <th>Last Check-In</th>
+                <th>Streak</th>
+              </tr>
+            </thead>
+            <tbody id="checkin-stats-tbody">
+              <tr>
+                <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-tertiary);">
+                  No check-in data available yet
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
