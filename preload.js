@@ -14,7 +14,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateConfig: async (configUpdate) => ipcRenderer.invoke('update-config', configUpdate),
   // Media file storage for multi-media buttons
   saveMediaFile: async (mediaData) => ipcRenderer.invoke('save-media-file', mediaData),
+  saveMediaFileByPath: async (mediaData) => ipcRenderer.invoke('save-media-file-by-path', mediaData),
   getMediaFile: async (relativePath) => ipcRenderer.invoke('get-media-file', relativePath),
+  getMediaFilePath: async (relativePath) => ipcRenderer.invoke('get-media-file-path', relativePath),
+  getConnectedOverlays: async () => ipcRenderer.invoke('get-connected-overlays'),
   // Return persisted Twitch Client config (tc_config.json in userData)
   getTwitchConfig: async () => ipcRenderer.invoke('get-tc-config'),
   getSoundPath: async (relativePath) => ipcRenderer.invoke('get-sound-path', relativePath),
@@ -108,4 +111,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendOverlayText: (data) => ipcRenderer.send('overlay-text', data),
   sendOverlayImage: (data) => ipcRenderer.send('overlay-image', data),
   sendOverlayVideo: (data) => ipcRenderer.send('overlay-video', data),
+  getOverlayUrl: async () => ipcRenderer.invoke('get-overlay-url'),
+  // Preferences and updates
+  savePreferences: (preferences) => ipcRenderer.send('save-preferences', preferences),
+  checkForUpdates: () => ipcRenderer.send('check-for-updates'),
+  // Daily Check-In System
+  loadDailyCheckins: async () => ipcRenderer.invoke('loadDailyCheckins'),
+  saveDailyCheckins: async (data) => ipcRenderer.invoke('saveDailyCheckins', data),
+  sendTwitchChatMessage: async (message) => ipcRenderer.invoke('sendTwitchChatMessage', message),
 });

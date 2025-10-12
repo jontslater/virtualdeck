@@ -11,6 +11,41 @@ const tmi = require('tmi.js'); // Import tmi.js for Twitch chat
 const WebSocket = require('ws');
 const fetch = require('node-fetch');
 const http = require('http');
+const { autoUpdater } = require('electron-updater');
+
+// Configure auto-updater
+autoUpdater.autoDownload = false; // Don't auto-download, ask user first
+autoUpdater.autoInstallOnAppQuit = true;
+
+// Global debouncing mechanism to prevent duplicate button triggers
+const recentButtonTriggers = new Map();
+const BUTTON_TRIGGER_DEBOUNCE_MS = 500; // 500ms debounce window
+
+function isRecentButtonTrigger(label) {
+  const now = Date.now();
+  const lastTrigger = recentButtonTriggers.get(label);
+  if (lastTrigger && (now - lastTrigger) < BUTTON_TRIGGER_DEBOUNCE_MS) {
+    return true;
+  }
+  recentButtonTriggers.set(label, now);
+  return false;
+}
+
+function triggerButtonWithDebounce(label, source = 'unknown') {
+  console.log(`🔍 triggerButtonWithDebounce called for "${label}" from ${source}`);
+  if (isRecentButtonTrigger(label)) {
+    console.log(`🚫 Skipping duplicate trigger for "${label}" from ${source} (within ${BUTTON_TRIGGER_DEBOUNCE_MS}ms)`);
+    return false;
+  }
+  
+  if (win && win.webContents) {
+    console.log(`🚀 Sending trigger-media event for "${label}" from ${source}`);
+    win.webContents.send('trigger-media', label);
+    return true;
+  }
+  console.log(`❌ No window available to trigger button "${label}" from ${source}`);
+  return false;
+}
 
 // Use Electron's userData directory for config and user files
 const userDataPath = app.getPath('userData');
@@ -21,6 +56,7 @@ const defaultConfigPath = path.join(__dirname, 'config.json');
 const defaultSoundsDir = path.join(__dirname, 'public', 'assets', 'sounds');
 const defaultSkinsDir = path.join(__dirname, 'skins');
 const tcConfigPath = path.join(userDataPath, 'tc_config.json');
+const dailyCheckinsPath = path.join(userDataPath, 'checkins.json');
 
 // Ensure config and sounds exist in userData on first run
 function ensureUserData() {
@@ -50,7 +86,8 @@ function ensureUserData() {
         'channel.subscription.message',
         'channel.follow',
         'channel.raid',
-        'channel.cheer'
+        'channel.cheer',
+        'channel.ban'
       ]
       ,
       // ISO string for last time we polled followers; used to detect new followers since last run
@@ -116,6 +153,8 @@ let overlayWindow;
 let overlayServer;
 let overlayWSS;
 let overlayClients = new Set();
+let overlayRegistry = new Map(); // overlayName -> Set of WebSocket connections
+let overlayServerPort;
 
 function createWindow() {
   win = new BrowserWindow({
@@ -181,8 +220,19 @@ function startOverlayServer() {
   
   // Create HTTP server to serve overlay HTML and media files
   overlayServer = http.createServer((req, res) => {
+    // Handle CORS preflight requests
+    if (req.method === 'OPTIONS') {
+      res.writeHead(200, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      });
+      res.end();
+      return;
+    }
+    
     if (req.url === '/overlay' || req.url === '/') {
-      // Serve the overlay HTML file
+      // Serve the main overlay HTML file
       const overlayPath = path.join(__dirname, 'public/overlay.html');
       fs.readFile(overlayPath, (err, data) => {
         if (err) {
@@ -190,9 +240,65 @@ function startOverlayServer() {
           res.end('Error loading overlay');
           return;
         }
-        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.writeHead(200, { 
+          'Content-Type': 'text/html',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        });
         res.end(data);
       });
+    } else if (req.url.startsWith('/overlay/') || req.url.startsWith('/overlay?')) {
+      // Handle custom overlays - /overlay/name or /overlay?name=name
+      let overlayName = 'main';
+      
+      // Parse overlay name from URL
+      if (req.url.includes('?')) {
+        const url = new URL(req.url, `http://localhost:${port}`);
+        overlayName = url.searchParams.get('name') || 'main';
+      } else {
+        // Extract from path like /overlay/custom-name
+        overlayName = req.url.substring(9); // Remove '/overlay/'
+      }
+      
+      console.log(`🎯 Serving overlay: ${overlayName}`);
+      
+      // Check if it's a predefined overlay
+      const predefinedOverlays = ['hudOverlay', 'cameraFrameOverlay', 'chatOverlay'];
+      if (predefinedOverlays.includes(overlayName)) {
+        // Serve predefined overlay
+        const overlayPath = path.join(__dirname, 'overlays', overlayName, 'index.html');
+        fs.readFile(overlayPath, (err, data) => {
+          if (err) {
+            res.writeHead(500);
+            res.end('Error loading overlay');
+            return;
+          }
+          res.writeHead(200, { 
+            'Content-Type': 'text/html',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          });
+          res.end(data);
+        });
+      } else {
+        // Generate custom overlay from base template
+        generateOverlayHTML(overlayName, (err, html) => {
+          if (err) {
+            res.writeHead(500);
+            res.end('Error generating overlay');
+            return;
+          }
+          res.writeHead(200, { 
+            'Content-Type': 'text/html',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          });
+          res.end(html);
+        });
+      }
     } else if (req.url.startsWith('/media/')) {
       // Serve media files from file paths
       const filePath = decodeURIComponent(req.url.substring(7)); // Remove '/media/' prefix
@@ -242,7 +348,12 @@ function startOverlayServer() {
             res.end('Error reading file');
             return;
           }
-          res.writeHead(200, { 'Content-Type': contentType });
+          res.writeHead(200, { 
+            'Content-Type': contentType,
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          });
           res.end(data);
         });
       });
@@ -255,39 +366,176 @@ function startOverlayServer() {
   // Create WebSocket server for real-time communication
   overlayWSS = new WebSocket.Server({ server: overlayServer });
   
-  overlayWSS.on('connection', (ws) => {
-    console.log('Overlay client connected');
+  overlayWSS.on('connection', (ws, req) => {
+    console.log('Overlay client connected - URL:', req.url);
+    
+    // Extract overlay name from URL query parameters
+    const url = new URL(req.url || '/', `http://localhost:${port}`);
+    const overlayName = url.searchParams.get('overlay') || 'main';
+    ws.overlayName = overlayName; // Store overlay name on the WebSocket connection
+    
+    // Add to global clients set
     overlayClients.add(ws);
     
+    // Register in overlay registry
+    if (!overlayRegistry.has(overlayName)) {
+      overlayRegistry.set(overlayName, new Set());
+    }
+    overlayRegistry.get(overlayName).add(ws);
+    
+    console.log(`✅ WebSocket connected for overlay: "${overlayName}"`);
+    console.log(`📊 Registry status:`, Array.from(overlayRegistry.entries()).map(([name, clients]) => `${name}:${clients.size}`));
+    
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message);
+        console.log(`📨 Message from overlay ${overlayName}:`, data);
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
+    });
+    
     ws.on('close', () => {
-      console.log('Overlay client disconnected');
+      console.log(`Overlay client disconnected: ${overlayName}`);
       overlayClients.delete(ws);
+      
+      // Remove from overlay registry
+      if (overlayRegistry.has(overlayName)) {
+        overlayRegistry.get(overlayName).delete(ws);
+        if (overlayRegistry.get(overlayName).size === 0) {
+          overlayRegistry.delete(overlayName);
+        }
+      }
+      
+      console.log(`📊 Registry status after disconnect:`, Array.from(overlayRegistry.entries()).map(([name, clients]) => `${name}:${clients.size}`));
     });
     
     ws.on('error', (error) => {
       console.log('Overlay WebSocket error:', error);
       overlayClients.delete(ws);
+      
+      // Remove from overlay registry
+      if (overlayRegistry.has(overlayName)) {
+        overlayRegistry.get(overlayName).delete(ws);
+        if (overlayRegistry.get(overlayName).size === 0) {
+          overlayRegistry.delete(overlayName);
+        }
+      }
     });
   });
 
-  overlayServer.listen(port, () => {
-    console.log(`Overlay server running at http://localhost:${port}/overlay`);
-    console.log(`Use this URL in OBS Browser Source: http://localhost:${port}/overlay`);
-  });
+  // Try to start server with automatic port fallback
+  function tryStartServer(port, attempt = 1) {
+    overlayServer.listen(port, (err) => {
+      if (err) {
+        if (err.code === 'EADDRINUSE') {
+          console.log(`Port ${port} is already in use, trying next port...`);
+          if (attempt < 10) { // Try up to 10 different ports
+            // Try next port
+            tryStartServer(port + 1, attempt + 1);
+          } else {
+            console.error(`Failed to start overlay server after trying ${attempt} ports`);
+            console.error('Please check if another VirtualDeck instance is running or free up some ports');
+          }
+        } else {
+          console.error('Failed to start overlay server:', err);
+        }
+      } else {
+        console.log(`✅ Overlay server running at http://localhost:${port}/overlay`);
+        console.log(`📺 Use this URL in OBS Browser Source: http://localhost:${port}/overlay`);
+        
+        // Store the actual port used for reference
+        overlayServerPort = port;
+      }
+    });
+  }
+
+  tryStartServer(port);
 }
 
-// Function to broadcast messages to all overlay clients
-function broadcastToOverlay(message) {
+// Generate overlay HTML based on overlay name and template
+function generateOverlayHTML(overlayName, callback) {
+  try {
+    // Use the base overlay template for custom overlays
+    const templatePath = path.join(__dirname, 'overlays/baseOverlay/index.html');
+    
+    fs.readFile(templatePath, 'utf8', (err, template) => {
+      if (err) {
+        callback(err, null);
+        return;
+      }
+      
+      // Replace template variables
+      let html = template.replace(/\{\{OVERLAY_NAME\}\}/g, overlayName);
+      html = html.replace(/\{\{BACKGROUND_MODE\}\}/g, 'transparent');
+      html = html.replace(/\{\{CHROMA_COLOR\}\}/g, '#00ff00');
+      html = html.replace(/\{\{LAYOUT_CLASS\}\}/g, 'layout-center');
+      
+      callback(null, html);
+    });
+  } catch (error) {
+    callback(error, null);
+  }
+}
+
+// Get layout class based on overlay name
+function getLayoutClass(overlayName) {
+  // Simple mapping for now - could be enhanced with stored configurations
+  if (overlayName.includes('fullscreen') || overlayName.includes('full-screen')) {
+    return 'fullscreen-media';
+  } else if (overlayName.includes('text-only')) {
+    return 'text-only';
+  } else {
+    return 'center-media'; // Default layout
+  }
+}
+
+// Function to broadcast messages to overlay clients
+// If targetOverlay is specified, only send to that overlay
+// If targetOverlay is null/undefined, send to all overlays (backward compatibility)
+function broadcastToOverlay(message, targetOverlay = null) {
   const messageStr = JSON.stringify(message);
-  overlayClients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(messageStr);
+  let sentCount = 0;
+  
+  if (targetOverlay) {
+    // Use registry for targeted messaging
+    const overlayClients = overlayRegistry.get(targetOverlay);
+    
+    if (overlayClients && overlayClients.size > 0) {
+      overlayClients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(messageStr);
+          sentCount++;
+        }
+      });
+      console.log(`📤 Message sent to ${sentCount} client(s) on overlay: "${targetOverlay}"`);
+    } else {
+      console.warn(`⚠️ WARNING: No clients found for overlay "${targetOverlay}"! Is the overlay open in OBS?`);
+      console.log(`📊 Available overlays:`, Array.from(overlayRegistry.keys()));
     }
-  });
+  } else {
+    // No target specified - send to all overlays (broadcast mode)
+    overlayClients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(messageStr);
+        sentCount++;
+      }
+    });
+    console.log(`📤 Broadcast message sent to ${sentCount} client(s) across all overlays`);
+  }
+  
+  // Log registry status for debugging
+  console.log(`📊 Registry status:`, Array.from(overlayRegistry.entries()).map(([name, clients]) => `${name}:${clients.size}`));
+}
+
+// Function to get the current overlay server URL
+function getOverlayServerUrl() {
+  return `http://localhost:${overlayServerPort || 8080}/overlay`;
 }
 
 ipcMain.on('add-media', (event, data) => {
   console.log('add-media received:', data);
+  console.log('Chat command data:', data.chatCommand);
   const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 
   // Handle app files differently than audio files
@@ -351,7 +599,9 @@ ipcMain.on('add-media', (event, data) => {
     // Persist volume if provided (expected 0.0 - 1.0). This value is only
     // meaningful for `type: 'audio'` buttons; the renderer will set the
     // Audio element's `volume` property when a button is triggered.
-    volume: (typeof data.volume === 'number') ? data.volume : (data.volume ? parseFloat(data.volume) : undefined)
+    volume: (typeof data.volume === 'number') ? data.volume : (data.volume ? parseFloat(data.volume) : undefined),
+    // Include chat command data if provided
+    chatCommand: data.chatCommand || undefined
   };
 
   // Ensure each button has a stable unique id
@@ -418,9 +668,12 @@ ipcMain.on('enable-hotkeys', () => {
 // IPC handler to get config
 ipcMain.handle('get-config', async () => {
   try {
-    return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    // Include userDataPath for constructing absolute paths in renderer
+    config.userDataPath = userDataPath;
+    return config;
   } catch (e) {
-    return { buttons: [] };
+    return { buttons: [], userDataPath: userDataPath };
   }
 });
 
@@ -443,7 +696,40 @@ if (!fs.existsSync(mediaStoragePath)) {
   fs.mkdirSync(mediaStoragePath, { recursive: true });
 }
 
-// IPC handler to save media file from base64 data
+// IPC handler to save media file by copying directly from source path (efficient for large files)
+ipcMain.handle('save-media-file-by-path', async (event, { sourcePath, buttonId, mediaType, originalName }) => {
+  try {
+    console.log('Saving media file by path:', { sourcePath, buttonId, mediaType, originalName });
+    
+    // Create button-specific directory
+    const buttonMediaDir = path.join(mediaStoragePath, buttonId);
+    if (!fs.existsSync(buttonMediaDir)) {
+      fs.mkdirSync(buttonMediaDir, { recursive: true });
+    }
+
+    // Extract extension from original name
+    const extension = path.extname(originalName || sourcePath);
+
+    // Generate unique filename
+    const timestamp = Date.now();
+    const filename = `${mediaType}_${timestamp}${extension}`;
+    const destPath = path.join(buttonMediaDir, filename);
+
+    // Copy file directly (much faster for large video files)
+    fse.copySync(sourcePath, destPath);
+    
+    console.log('Media file copied successfully:', destPath);
+    
+    // Return relative path from userDataPath for storage in config
+    const relativePath = path.relative(userDataPath, destPath);
+    return { success: true, filePath: relativePath };
+  } catch (error) {
+    console.error('Error copying media file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC handler to save media file from base64 data (for backwards compatibility and small files)
 ipcMain.handle('save-media-file', async (event, { base64Data, buttonId, mediaType, originalName }) => {
   try {
     // Create button-specific directory
@@ -500,7 +786,24 @@ ipcMain.handle('save-media-file', async (event, { base64Data, buttonId, mediaTyp
   }
 });
 
-// IPC handler to get media file as base64 (for serving to overlay)
+// IPC handler to get absolute path for media file (for HTTP serving)
+ipcMain.handle('get-media-file-path', async (event, relativePath) => {
+  try {
+    const fullPath = path.join(userDataPath, relativePath);
+    if (!fs.existsSync(fullPath)) {
+      return { success: false, error: 'File not found' };
+    }
+    return { 
+      success: true, 
+      absolutePath: fullPath
+    };
+  } catch (error) {
+    console.error('Error getting media file path:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC handler to get media file as base64 (for serving to overlay) - DEPRECATED, use HTTP serving instead
 ipcMain.handle('get-media-file', async (event, relativePath) => {
   try {
     const fullPath = path.join(userDataPath, relativePath);
@@ -669,6 +972,76 @@ ipcMain.handle('get-tc-config', async () => {
     return { topics: [], lastFollowerPoll: null };
   }
 });
+
+// ===============================
+// Daily Check-In IPC Handlers
+// ===============================
+
+// IPC: load daily check-ins data
+ipcMain.handle('loadDailyCheckins', async () => {
+  try {
+    if (fs.existsSync(dailyCheckinsPath)) {
+      const data = fs.readFileSync(dailyCheckinsPath, 'utf-8');
+      return JSON.parse(data);
+    }
+    // Return default structure if file doesn't exist
+    return {
+      viewers: {},
+      config: {
+        enabled: true,
+        rewardName: 'Daily Check-In',
+        chatResponse: 'Welcome back {username}! You\'ve checked in {total_checkins} times!',
+        alreadyCheckedMessage: 'You\'ve already checked in today, {username}! Come back tomorrow!',
+        showStreak: false,
+        sendToChat: true,
+        testMode: false
+      }
+    };
+  } catch (err) {
+    console.error('Error loading daily check-ins:', err);
+    return null;
+  }
+});
+
+// IPC: save daily check-ins data
+ipcMain.handle('saveDailyCheckins', async (event, data) => {
+  try {
+    fs.writeFileSync(dailyCheckinsPath, JSON.stringify(data, null, 2));
+    console.log('💾 Saved daily check-ins data');
+    return true;
+  } catch (err) {
+    console.error('Error saving daily check-ins:', err);
+    return false;
+  }
+});
+
+// IPC: send Twitch chat message
+ipcMain.handle('sendTwitchChatMessage', async (event, message) => {
+  try {
+    // Send message through TMI client if connected
+    if (twitchClient && twitchClient.readyState() === 'OPEN') {
+      const channels = twitchClient.getChannels();
+      if (channels && channels.length > 0) {
+        const channel = channels[0];
+        await twitchClient.say(channel, message);
+        console.log('💬 Sent chat message to', channel, ':', message);
+        return true;
+      } else {
+        console.warn('⚠️ Twitch chat client connected but no channels joined');
+        return false;
+      }
+    }
+    console.warn('⚠️ Twitch chat client not connected');
+    return false;
+  } catch (err) {
+    console.error('❌ Error sending Twitch chat message:', err);
+    return false;
+  }
+});
+
+// ===============================
+// End Daily Check-In IPC Handlers
+// ===============================
 
 // IPC: list current EventSub subscriptions (aggregated)
 ipcMain.handle('list-eventsub-subscriptions', async () => {
@@ -1440,18 +1813,32 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
         type: 'chat',
         user: tags.username,
         message,
-        badges: tags.badges || {}
+        badges: tags.badges || {},
+        source: 'real-twitch' // Debug: identify event source
       });
     }
-    // Trigger command type buttons if message starts with '!'
+    // Trigger buttons with chat commands enabled if message starts with '!'
     if (message.startsWith('!')) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       const commandText = message.split(' ')[0].substring(1).toLowerCase();
       config.buttons.forEach((btn) => {
-        if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
-          if (win && win.webContents) {
-            win.webContents.send('trigger-media', btn.label);
+        // Check if button has chat command enabled and keyword matches
+        if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword === commandText) {
+          const triggerMethod = btn.chatCommand.triggerMethod || 'command';
+          console.log(`🔍 main.js checking button "${btn.label || btn.name}" with chatCommand:`, btn.chatCommand);
+          console.log(`🔍 main.js checking button "${btn.label || btn.name}" with triggerMethod: "${triggerMethod}" for command: "${commandText}"`);
+          
+          // Only trigger if the button is configured to accept chat commands
+          if (triggerMethod === 'command' || triggerMethod === 'both') {
+            console.log(`🚀 main.js triggering button "${btn.label || btn.name}" (triggerMethod: ${triggerMethod} allows chat commands)`);
+            triggerButtonWithDebounce(btn.label || btn.name, `chat command !${commandText}`);
+          } else {
+            console.log(`⏭️ main.js skipping chat command "${commandText}" for button "${btn.label || btn.name}" (triggerMethod: ${triggerMethod} - redeem only)`);
           }
+        }
+        // Legacy support: Only check old 'command' type buttons if no modern chatCommand exists
+        else if (!btn.chatCommand && btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+          triggerButtonWithDebounce(btn.label, `legacy chat command !${commandText}`);
         }
       });
     }
@@ -1912,6 +2299,8 @@ function buildSubscriptionFromKey(key, userId) {
     case 'channel.cheer':
     case 'channel.bits':
       return { type: 'channel.cheer', condition: { broadcaster_user_id: userId } };
+    case 'channel.ban':
+      return { type: 'channel.ban', condition: { broadcaster_user_id: userId } };
     default:
       return null;
   }
@@ -2108,15 +2497,24 @@ ipcMain.on('twitch-fake-event', (event, evt) => {
         type: 'chat', 
         user: evt.user, 
         message: evt.message,
-        badges: evt.badges || {}
+        badges: evt.badges || {},
+        source: 'fake-event-ipc' // Debug: identify event source
       });
       // also run command matching logic to trigger media
       if (evt.message && evt.message.startsWith('!')) {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         const commandText = evt.message.split(' ')[0].substring(1).toLowerCase();
         config.buttons.forEach((btn) => {
-          if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
-            win.webContents.send('trigger-media', btn.label);
+          // Check if button has chat command enabled and keyword matches
+          if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword === commandText) {
+            const triggerMethod = btn.chatCommand.triggerMethod || 'command';
+            if (triggerMethod === 'command' || triggerMethod === 'both') {
+              triggerButtonWithDebounce(btn.label || btn.name, `fake chat command !${commandText}`);
+            }
+          }
+          // Legacy support: Only check old 'command' type buttons if no modern chatCommand exists
+          else if (!btn.chatCommand && btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+            triggerButtonWithDebounce(btn.label, `fake legacy chat command !${commandText}`);
           }
         });
       }
@@ -2136,15 +2534,24 @@ ipcMain.handle('send-fake-twitch-event', async (event, evt) => {
         type: 'chat', 
         user: evt.user, 
         message: evt.message,
-        badges: evt.badges || {}
+        badges: evt.badges || {},
+        source: 'fake-event-handle' // Debug: identify event source
       });
       // also run command matching logic to trigger media
       if (evt.message && evt.message.startsWith('!')) {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         const commandText = evt.message.split(' ')[0].substring(1).toLowerCase();
         config.buttons.forEach((btn) => {
-          if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
-            win.webContents.send('trigger-media', btn.label);
+          // Check if button has chat command enabled and keyword matches
+          if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword === commandText) {
+            const triggerMethod = btn.chatCommand.triggerMethod || 'command';
+            if (triggerMethod === 'command' || triggerMethod === 'both') {
+              triggerButtonWithDebounce(btn.label || btn.name, `fake event handle chat command !${commandText}`);
+            }
+          }
+          // Legacy support: Only check old 'command' type buttons if no modern chatCommand exists
+          else if (!btn.chatCommand && btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+            triggerButtonWithDebounce(btn.label, `fake event handle legacy chat command !${commandText}`);
           }
         });
       }
@@ -2158,10 +2565,7 @@ ipcMain.handle('send-fake-twitch-event', async (event, evt) => {
 // Allow renderer to request a media trigger by label (used by event->sound mappings)
 ipcMain.on('trigger-media-to-main', (event, label) => {
   try {
-    if (win && !win.isDestroyed()) {
-      console.log('Triggering media from renderer mapping:', label);
-      win.webContents.send('trigger-media', label);
-    }
+    triggerButtonWithDebounce(label, 'renderer mapping');
   } catch (e) {
     console.error('Error handling trigger-media-to-main:', e);
   }
@@ -2189,11 +2593,141 @@ function registerHotkeys() {
   });
 }
 
+// Preferences management
+function getStoredPreferences() {
+  try {
+    const preferencesPath = path.join(app.getPath('userData'), 'preferences.json');
+    if (fs.existsSync(preferencesPath)) {
+      const data = fs.readFileSync(preferencesPath, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Error reading preferences:', error);
+  }
+  return {}; // Return empty object if no preferences file exists
+}
+
+function saveStoredPreferences(preferences) {
+  try {
+    const preferencesPath = path.join(app.getPath('userData'), 'preferences.json');
+    fs.writeFileSync(preferencesPath, JSON.stringify(preferences, null, 2));
+    console.log('Preferences saved to:', preferencesPath);
+  } catch (error) {
+    console.error('Error saving preferences:', error);
+  }
+}
+
+// Auto-updater event handlers
+function setupAutoUpdater() {
+  // Detect platform
+  const isMac = process.platform === 'darwin';
+  const isWindows = process.platform === 'win32';
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('Checking for updates...');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version);
+    
+    if (isMac) {
+      // macOS: unsigned builds can't auto-update, show download link
+      dialog.showMessageBox(win, {
+        type: 'info',
+        title: 'Update Available',
+        message: `A new version (${info.version}) is available!`,
+        detail: 'Please visit the GitHub releases page to download the latest version.',
+        buttons: ['Open GitHub Releases', 'Later'],
+        defaultId: 0
+      }).then(result => {
+        if (result.response === 0) {
+          require('electron').shell.openExternal('https://github.com/jontslater/VirtualDeck/releases/latest');
+        }
+      });
+    } else if (isWindows) {
+      // Windows: can auto-update even unsigned
+      dialog.showMessageBox(win, {
+        type: 'info',
+        title: 'Update Available',
+        message: `A new version (${info.version}) is available!`,
+        detail: 'Would you like to download it now?',
+        buttons: ['Download', 'Later'],
+        defaultId: 0
+      }).then(result => {
+        if (result.response === 0) {
+          autoUpdater.downloadUpdate();
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('update-downloading');
+          }
+        }
+      });
+    }
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('Update not available. Current version is latest:', info.version);
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    const msg = `Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`;
+    console.log(msg);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded:', info.version);
+    
+    dialog.showMessageBox(win, {
+      type: 'info',
+      title: 'Update Ready',
+      message: 'Update downloaded successfully!',
+      detail: 'The application will restart to apply the update.',
+      buttons: ['Restart Now', 'Later'],
+      defaultId: 0
+    }).then(result => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('Update error:', err);
+    dialog.showMessageBox(win, {
+      type: 'error',
+      title: 'Update Error',
+      message: 'Failed to check for updates',
+      detail: err.message || 'Please try again later.',
+      buttons: ['OK']
+    });
+  });
+}
+
+// Manual update check function
+function checkForUpdates() {
+  setupAutoUpdater();
+  autoUpdater.checkForUpdates();
+}
+
 app.whenReady().then(() => {
   ensureUserData();
   createWindow();
   registerHotkeys();
   startOverlayServer();
+  
+  // Setup and check for updates on startup (delay by 3 seconds to let app initialize)
+  setTimeout(() => {
+    setupAutoUpdater();
+    
+    // Check if auto-update is enabled in preferences
+    const preferences = getStoredPreferences();
+    if (preferences.autoUpdate !== false) { // default to true if not set
+      autoUpdater.checkForUpdates().catch(err => {
+        console.log('Auto-update check failed (expected if not installed from installer):', err.message);
+      });
+    } else {
+      console.log('Auto-update disabled in preferences');
+    }
+  }, 3000);
   
   // Build application menu: Edit contains Preferences, View & Window removed, Tools added
   const menuTemplate = [
@@ -2214,6 +2748,8 @@ app.whenReady().then(() => {
   { id: 'view_sound_controls', label: 'Sound Controls', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-controls', checked: menuItem.checked }); } }
     ] },
     { label: 'Tools', submenu: [
+      { label: 'Check for Updates...', click: () => { checkForUpdates(); } },
+      { type: 'separator' },
       { label: 'Developer Tools', accelerator: 'F12', click: () => { if (win && !win.isDestroyed()) win.webContents.toggleDevTools(); } },
       { label: 'Twitch Setup', submenu: [
           { label: 'View Twitch Events / Test Events', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-twitch-activity'); } },
@@ -2226,9 +2762,11 @@ app.whenReady().then(() => {
       { label: 'Themes', submenu: [] }, // Will be populated dynamically with themes and skins
       { role: 'reload' }
     ] },
-    { label: 'Help', submenu: [ { label: 'About', click: () => {
+    { label: 'Help', submenu: [ 
+      { label: 'About', click: () => {
         if (win && !win.isDestroyed()) win.webContents.send('show-about');
-      } } ] }
+      } } 
+    ] }
   ];
   // Function to rebuild menu with integrated themes and skins
   async function rebuildMenu() {
@@ -2302,11 +2840,35 @@ app.whenReady().then(() => {
       // Find and replace the themes submenu in menuTemplate
       const toolsMenu = menuTemplate.find(item => item.label === 'Tools');
       if (toolsMenu && toolsMenu.submenu) {
+        console.log('Tools menu found, current submenu items:', toolsMenu.submenu.map(item => item.label || item.type));
+        
         const themesMenuIndex = toolsMenu.submenu.findIndex(item => item.label === 'Themes');
         if (themesMenuIndex !== -1) {
           toolsMenu.submenu[themesMenuIndex].submenu = themesSubmenu;
         }
+        
+        // Ensure "Check for Updates" is preserved at the top of Tools menu
+        const checkUpdatesIndex = toolsMenu.submenu.findIndex(item => item.label === 'Check for Updates...');
+        console.log('Check for Updates index:', checkUpdatesIndex);
+        
+        if (checkUpdatesIndex === -1) {
+          console.log('Adding Check for Updates to Tools menu');
+          // Add "Check for Updates" at the beginning if it's missing
+          toolsMenu.submenu.unshift(
+            { label: 'Check for Updates...', click: () => { checkForUpdates(); } },
+            { type: 'separator' }
+          );
+        } else {
+          console.log('Check for Updates already exists at index:', checkUpdatesIndex);
+        }
+        
+        console.log('Final Tools submenu items:', toolsMenu.submenu.map(item => item.label || item.type));
+      } else {
+        console.log('Tools menu not found or has no submenu');
       }
+      
+      // Preserve the Help menu with "Check for Updates" from original template
+      const originalHelpMenu = menuTemplate.find(item => item.label === 'Help');
       
       const appMenu = Menu.buildFromTemplate(menuTemplate);
       Menu.setApplicationMenu(appMenu);
@@ -2442,11 +3004,40 @@ app.whenReady().then(() => {
     try { if (win && !win.isDestroyed()) win.webContents.send('open-preferences'); } catch (e) { console.warn('open-preferences failed', e); }
   });
 
+  // Allow renderer to get the current overlay server URL
+  ipcMain.handle('get-overlay-url', async () => {
+    return getOverlayServerUrl();
+  });
+
+  // Handle preferences save from renderer
+  ipcMain.on('save-preferences', (event, preferences) => {
+    try {
+      console.log('Saving preferences:', preferences);
+      saveStoredPreferences(preferences);
+    } catch (e) { console.warn('save-preferences failed', e); }
+  });
+
+  // Handle manual check for updates from renderer
+  ipcMain.on('check-for-updates', () => {
+    try {
+      console.log('Manual update check requested from preferences');
+      checkForUpdates();
+    } catch (e) { console.warn('check-for-updates failed', e); }
+  });
+
   // Overlay communication handlers - now using WebSocket broadcast
   ipcMain.on('overlay-message', (event, message) => {
     try {
-      console.log('Overlay message received:', message);
-      broadcastToOverlay(message);
+      console.log('📨 Overlay message received:', message);
+      console.log('🎯 Message type:', message.type);
+      console.log('🎯 Target overlay:', message.targetOverlay);
+      console.log('🎯 Available overlays in registry:', Array.from(overlayRegistry.keys()));
+      
+      // Extract target overlay from message (if specified)
+      const targetOverlay = message.targetOverlay || null;
+      console.log('🎯 Broadcasting to overlay:', targetOverlay);
+      
+      broadcastToOverlay(message, targetOverlay);
     } catch (e) { 
       console.warn('overlay-message failed', e); 
     }
@@ -2498,6 +3089,22 @@ app.whenReady().then(() => {
     } catch (e) { 
       console.warn('overlay-video failed', e); 
     }
+  });
+
+  // IPC handler to get connected overlays
+  ipcMain.handle('get-connected-overlays', () => {
+    const connections = [];
+    overlayRegistry.forEach((clients, overlayName) => {
+      const activeClients = Array.from(clients).filter(client => client.readyState === WebSocket.OPEN);
+      if (activeClients.length > 0) {
+        connections.push({
+          name: overlayName,
+          connected: true,
+          clientCount: activeClients.length
+        });
+      }
+    });
+    return connections;
   });
 
   // Overlay is now a browser source - no window management needed

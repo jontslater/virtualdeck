@@ -1,12 +1,12 @@
 {
   "name": "virtualdeck",
-  "version": "1.1.00",
+  "version": "1.1.0",
   "description": "A virtual deck application built with Electron",
   "main": "main.js",
   "scripts": {
-  "start": "electron .",
-  "dist": "electron-builder",
-  "build:win": "electron-builder --win"
+    "start": "electron .",
+    "dist": "electron-builder",
+    "build:win": "electron-builder --win"
   },
   "keywords": [
     "electron",
@@ -23,6 +23,11 @@
   "build": {
     "appId": "com.virtualdeck.app",
     "productName": "VirtualDeck",
+    "publish": {
+      "provider": "github",
+      "owner": "jontslater",
+      "repo": "VirtualDeck"
+    },
     "directories": {
       "output": "dist"
     },
@@ -30,8 +35,8 @@
       "main.js",
       "preload.js",
       "config.json",
-  "public/**/*",
-  "TwitchConnected/**/*",
+      "public/**/*",
+      "TwitchConnected/**/*",
       "node_modules/**/*"
     ],
     "mac": {
@@ -58,6 +63,7 @@
     }
   },
   "dependencies": {
+    "electron-updater": "^6.6.2",
     "extract-file-icon": "^0.3.2",
     "fs-extra": "^11.3.0",
     "tmi.js": "^1.8.5",

@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VirtualDeck HUD Overlay</title>
+    <style>
+        :root {
+            --overlay-width: 1920px;
+            --overlay-height: 1080px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            width: var(--overlay-width);
+            height: var(--overlay-height);
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: transparent;
+        }
+
+        /* HUD Elements */
+        .hud-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .hud-element {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .hud-top-left {
+            top: 20px;
+            left: 20px;
+        }
+
+        .hud-top-right {
+            top: 20px;
+            right: 20px;
+        }
+
+        .hud-bottom-left {
+            bottom: 20px;
+            left: 20px;
+        }
+
+        .hud-bottom-right {
+            bottom: 20px;
+            right: 20px;
+        }
+
+        .hud-center {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        /* Scoreboard */
+        .scoreboard {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+            border: 3px solid #00ff00;
+        }
+
+        /* Timer */
+        .timer {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        /* Player Info */
+        .player-info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        /* Connection Status */
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 9999;
+            pointer-events: none;
+            display: none;
+        }
+
+        #connection-status.error {
+            color: #ff0000;
+        }
+
+        #connection-status.warning {
+            color: #ffaa00;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .hud-element {
+            animation: slideIn 0.5s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div id="connection-status">Connecting...</div>
+    <div class="hud-container">
+        <!-- HUD elements will be dynamically added here -->
+    </div>
+
+    <script>
+        // HUD Overlay Configuration
+        const HUD_CONFIG = {
+            name: 'hudOverlay',
+            backgroundMode: 'transparent',
+            layout: 'hud'
+        };
+
+        // Global variables
+        let overlayWS = null;
+        let messageCount = 0;
+        let overlayResetTimer = null;
+        let messageHistory = new Map();
+        const MESSAGE_DEDUP_WINDOW = 5000;
+
+        // Initialize HUD overlay
+        function initHUD() {
+            console.log('🚀 Initializing HUD overlay');
+            connectWebSocket();
+            showConnectionStatus('🔄 Connecting...', 'warning');
+        }
+
+        // WebSocket connection
+        function connectWebSocket() {
+            try {
+                const wsUrl = `ws://localhost:8080?overlay=${HUD_CONFIG.name}`;
+                console.log('🔗 Connecting to:', wsUrl);
+                
+                overlayWS = new WebSocket(wsUrl);
+                
+                overlayWS.onopen = function() {
+                    console.log('✅ HUD WebSocket connected');
+                    showConnectionStatus('✅ Connected', 'success');
+                };
+                
+                overlayWS.onmessage = function(event) {
+                    try {
+                        const payload = JSON.parse(event.data);
+                        
+                        if (isDuplicateMessage(payload)) {
+                            return;
+                        }
+                        
+                        addToMessageHistory(payload);
+                        messageCount++;
+                        
+                        console.log('📨 HUD received message:', payload.type);
+                        renderHUDPayload(payload);
+                    } catch (error) {
+                        console.error('❌ Error parsing HUD message:', error);
+                    }
+                };
+                
+                overlayWS.onclose = function(event) {
+                    console.log('🔌 HUD WebSocket disconnected');
+                    showConnectionStatus('❌ Disconnected', 'error');
+                };
+                
+                overlayWS.onerror = function(error) {
+                    console.error('❌ HUD WebSocket error:', error);
+                    showConnectionStatus('❌ Connection Error', 'error');
+                };
+                
+            } catch (error) {
+                console.error('❌ Failed to create HUD WebSocket:', error);
+                showConnectionStatus('❌ Connection Failed', 'error');
+            }
+        }
+
+        // Show connection status
+        function showConnectionStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('connection-status');
+            if (!statusDiv) return;
+            
+            statusDiv.textContent = `${message} - HUD`;
+            statusDiv.className = type === 'success' ? '' : type;
+            statusDiv.style.display = 'block';
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // Message deduplication
+        function isDuplicateMessage(payload) {
+            const messageId = generateMessageId(payload);
+            const now = Date.now();
+            
+            if (messageHistory.has(messageId)) {
+                const lastSeen = messageHistory.get(messageId);
+                if (now - lastSeen < MESSAGE_DEDUP_WINDOW) {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+
+        function addToMessageHistory(payload) {
+            const messageId = generateMessageId(payload);
+            messageHistory.set(messageId, Date.now());
+            
+            const now = Date.now();
+            for (const [id, timestamp] of messageHistory.entries()) {
+                if (now - timestamp > MESSAGE_DEDUP_WINDOW) {
+                    messageHistory.delete(id);
+                }
+            }
+        }
+
+        function generateMessageId(payload) {
+            return JSON.stringify({
+                type: payload.type,
+                timestamp: payload.timestamp || 0,
+                id: payload.id || ''
+            });
+        }
+
+        // Render HUD-specific payload
+        function renderHUDPayload(payload) {
+            console.log('🎯 Rendering HUD payload:', payload.type);
+            
+            if (payload.type === 'buttonTrigger') {
+                handleHUDButtonTrigger(payload);
+            } else if (payload.type === 'clear') {
+                clearHUD();
+            } else if (payload.type === 'hudUpdate') {
+                handleHUDUpdate(payload);
+            }
+        }
+
+        // Handle HUD button trigger
+        function handleHUDButtonTrigger(payload) {
+            console.log('🎮 HUD button triggered:', payload.options?.name || 'Unknown');
+            
+            if (overlayResetTimer) {
+                clearTimeout(overlayResetTimer);
+                overlayResetTimer = null;
+            }
+            
+            clearHUD();
+            
+            // Process HUD-specific data
+            if (payload.hudData) {
+                renderHUDData(payload.hudData);
+            }
+            
+            // Process center media for HUD
+            if (payload.centerMedia && payload.centerMedia.length > 0) {
+                payload.centerMedia.forEach((media, index) => {
+                    setTimeout(() => {
+                        renderHUDMedia(media, index);
+                    }, index * 100);
+                });
+            }
+            
+            // Use standard durationMs format (milliseconds) or fallback to duration (seconds)
+            const durationMs = payload.options?.durationMs || (payload.options?.duration ? payload.options.duration * 1000 : 60000);
+            if (durationMs > 0) {
+                overlayResetTimer = setTimeout(() => {
+                    console.log('⏰ HUD auto-clear triggered after', durationMs, 'ms');
+                    clearHUD();
+                }, durationMs);
+                console.log('✅ HUD reset timer armed for', durationMs, 'ms');
+            }
+        }
+
+        // Handle HUD data update
+        function handleHUDUpdate(payload) {
+            console.log('📊 HUD update:', payload.data);
+            
+            if (payload.data) {
+                renderHUDData(payload.data);
+            }
+        }
+
+        // Render HUD data
+        function renderHUDData(data) {
+            const container = document.querySelector('.hud-container');
+            
+            // Scoreboard
+            if (data.scoreboard) {
+                const scoreboard = document.createElement('div');
+                scoreboard.className = 'scoreboard';
+                scoreboard.innerHTML = `
+                    <div>${data.scoreboard.team1 || 'Team 1'}: ${data.scoreboard.score1 || 0}</div>
+                    <div>${data.scoreboard.team2 || 'Team 2'}: ${data.scoreboard.score2 || 0}</div>
+                `;
+                container.appendChild(scoreboard);
+            }
+            
+            // Timer
+            if (data.timer) {
+                const timer = document.createElement('div');
+                timer.className = 'timer';
+                timer.textContent = data.timer;
+                container.appendChild(timer);
+            }
+            
+            // Player info
+            if (data.playerInfo) {
+                const playerInfo = document.createElement('div');
+                playerInfo.className = 'player-info';
+                playerInfo.innerHTML = `
+                    <div>Player: ${data.playerInfo.name || 'Unknown'}</div>
+                    <div>Level: ${data.playerInfo.level || 1}</div>
+                    <div>Score: ${data.playerInfo.score || 0}</div>
+                `;
+                container.appendChild(playerInfo);
+            }
+            
+            // Custom HUD elements
+            if (data.elements) {
+                data.elements.forEach((element, index) => {
+                    const hudElement = document.createElement('div');
+                    hudElement.className = `hud-element ${element.position || 'hud-top-left'}`;
+                    hudElement.textContent = element.text || '';
+                    hudElement.style.cssText = element.style || '';
+                    container.appendChild(hudElement);
+                });
+            }
+        }
+
+        // Render HUD media
+        function renderHUDMedia(media, index) {
+            console.log('🎨 Rendering HUD media:', media.type);
+            
+            if (media.type === 'image') {
+                const img = document.createElement('img');
+                img.src = media.src || media.url || '';
+                img.style.cssText = `
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    max-width: 200px;
+                    max-height: 200px;
+                    object-fit: contain;
+                    animation: fadeIn 0.5s ease-in-out;
+                `;
+                document.querySelector('.hud-container').appendChild(img);
+            }
+        }
+
+        // Clear HUD
+        function clearHUD() {
+            console.log('🧹 Clearing HUD');
+            
+            const container = document.querySelector('.hud-container');
+            if (container) {
+                container.innerHTML = '';
+            }
+            
+            if (overlayResetTimer) {
+                clearTimeout(overlayResetTimer);
+                overlayResetTimer = null;
+            }
+        }
+
+        // Initialize HUD
+        document.addEventListener('DOMContentLoaded', initHUD);
+        
+        window.addEventListener('beforeunload', () => {
+            if (overlayWS) {
+                overlayWS.close();
+            }
+        });
+    </script>
+</body>
+</html>
