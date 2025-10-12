@@ -1022,6 +1022,21 @@ async function loadButtons() {
 
   // Load buttons from config
   const data = await window.electronAPI.getConfig();
+  console.log('🔍 Loaded config data:', data);
+  console.log('🔍 Number of buttons:', data.buttons?.length || 0);
+  
+  // Debug: Check for Donut button specifically
+  const donutButton = data.buttons?.find(btn => btn.name === 'Donut' || btn.label === 'Donut');
+  if (donutButton) {
+    console.log('🔍 Found Donut button:', donutButton);
+    console.log('🔍 Donut button audio:', donutButton.audio);
+    if (donutButton.audio && donutButton.audio.length > 0) {
+      console.log('🔍 Donut button audio[0]:', donutButton.audio[0]);
+      console.log('🔍 Donut button audio[0].src:', donutButton.audio[0].src);
+    }
+  } else {
+    console.log('🔍 Donut button not found in config');
+  }
   
   // Check for saved order
   const savedOrder = loadButtonOrder();
@@ -2370,13 +2385,10 @@ window.electronAPI.onTwitchChatEvent((eventData) => {
 window.electronAPI.onTwitchEventSub(async (eventData) => {
   console.log('📡 Twitch EventSub received:', eventData);
   
-  // Check for Daily Check-In channel point redemption FIRST
+  // Handle daily check-in redemptions first
   if (eventData.type === 'channel.channel_points_custom_reward_redemption.add') {
-    const rewardTitle = eventData.event.reward?.title || eventData.event.reward_title || '';
+    const rewardTitle = eventData.event.reward?.title || eventData.event.reward?.name || eventData.event.reward_title || '';
     const configuredRewardName = dailyCheckinData.config.rewardName || 'Daily Check-In';
-    
-    console.log('🎁 Channel Point Redemption:', rewardTitle);
-    console.log('🔍 Configured Daily Check-In Reward:', configuredRewardName);
     
     // Check if this matches our daily check-in reward
     if (rewardTitle.toLowerCase() === configuredRewardName.toLowerCase()) {
@@ -2401,6 +2413,7 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
           user_id: viewer.user_id,
           total_checkins: viewer.total_checkins,
           streak: viewer.streak || 0,
+          reward: rewardTitle,
           ...eventData.event
         };
         
@@ -2412,6 +2425,31 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
       
       // Don't process this as a regular channel-points alert
       return;
+    }
+    
+    // For non-daily-checkin redemptions, let the TwitchConnected system handle button matching
+    // The TwitchConnected system will check for buttons with matching keywords
+    console.log('🎁 Non-daily-checkin redemption, letting TwitchConnected system handle button matching');
+    
+    // Send the event to TwitchConnected system for button matching
+    // We need to send it as a 'redeem' type event for the TwitchConnected system to process it
+    if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
+      // The TwitchConnected system expects events with type 'redeem'
+      const redeemEvent = {
+        type: 'redeem',
+        event: eventData.event
+      };
+      console.log('📤 Sending redemption event to TwitchConnected system:', redeemEvent);
+      
+      // Trigger the TwitchConnected system directly
+      if (window.checkRedemptionAgainstButtonKeywords) {
+        window.checkRedemptionAgainstButtonKeywords(redeemEvent).then(matchingButtonLabel => {
+          if (matchingButtonLabel && window.electronAPI && window.electronAPI.sendTrigger) {
+            console.log(`🚀 Triggering button "${matchingButtonLabel}" from channel point redemption`);
+            window.electronAPI.sendTrigger(matchingButtonLabel);
+          }
+        });
+      }
     }
   }
   
@@ -2438,7 +2476,7 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
       bits: eventData.event.bits || eventData.event.bits_used || eventData.event.bits_amount || eventData.event.amount || '',
       months: eventData.event.cumulative_months || eventData.event.months || '',
       message: eventData.event.message || eventData.event.user_input || '',
-      reward: eventData.event.reward || eventData.event.reward_title || '',
+      reward: eventData.event.reward?.title || eventData.event.reward?.name || eventData.event.reward_title || eventData.event.reward || '',
       ...eventData.event // Include all event data
     };
     
@@ -2616,10 +2654,18 @@ async function handleTrigger(button) {
   if (isDragMode) return;
   // If caller passed a DOM element instead of button object, normalize
   if (button && button._vdJustDragged) return;
+  
+  // Clear audio cache before triggering to ensure fresh audio files
+  audioCache.clear();
+  console.log('🧹 Audio cache cleared before button trigger');
 
   if (button.type === "audio") {
     const audioPath = await window.electronAPI.getSoundPath(button.src);
-    const audio = new Audio(audioPath);
+    // Add cache-busting parameter to ensure fresh audio files are loaded
+    const cacheBuster = `?t=${Date.now()}`;
+    const audioUrl = audioPath + (audioPath.includes('?') ? '&' : '?') + cacheBuster;
+    const audio = new Audio(audioUrl);
+    console.log(`🔊 Loading audio with cache-busting URL: ${audioUrl}`);
     // Apply saved volume if present (expect 0.0 - 1.0). Fallback to 1.0
     // Note: volume is stored per-button in `config.json` and only applied for
     // audio-type buttons. The renderer sends `volume` as a float (0.0-1.0)
@@ -2692,6 +2738,10 @@ async function handleMultiMediaTrigger(button) {
   console.log('Triggering multi-media button:', button);
   console.log('🔍 Button overlay property:', button.overlay);
   console.log('🔍 Button object keys:', Object.keys(button));
+  console.log('🔍 Button audio data:', button.audio);
+  console.log('🔍 Button ID:', button.id);
+  console.log('🔍 Button name:', button.name);
+  console.log('🔍 Full button config:', JSON.stringify(button, null, 2));
   
   // Use the new schema directly (no nested data object)
   const audioData = button.audio || [];
@@ -2737,32 +2787,16 @@ async function handleMultiMediaTrigger(button) {
         // File path (relative to userDataPath) - serve via HTTP to avoid base64 conversion
         console.log('🖼️ Converting file path to HTTP URL:', item.src);
         try {
-          // Get absolute path for the file
-          if (window.electronAPI && window.electronAPI.getMediaFilePath) {
-            const result = await window.electronAPI.getMediaFilePath(item.src);
-            if (result.success) {
-              // Serve via HTTP instead of loading entire file into memory as base64
-              const httpUrl = `http://localhost:8080/media/${encodeURIComponent(result.absolutePath)}`;
-              console.log(`✅ Serving media via HTTP: ${httpUrl}`);
-              return {
-                ...item,
-                src: httpUrl
-              };
-            }
-          }
-          // Fallback: try to get userDataPath and construct absolute path
-          const config = await window.electronAPI.getConfig();
-          if (config && config.userDataPath) {
-            // Assume item.src is relative to userDataPath
-            const absolutePath = item.src.includes(':') ? item.src : config.userDataPath + '/' + item.src.replace(/\\/g, '/');
-            const httpUrl = `http://localhost:8080/media/${encodeURIComponent(absolutePath)}`;
-            console.log(`✅ Serving media via HTTP (fallback): ${httpUrl}`);
-            return {
-              ...item,
-              src: httpUrl
-            };
-          }
-          return item;
+          // Use the original relative path in the URL
+          // The media server expects relative paths (from userDataPath) and will join them
+          const relativePath = item.src.replace(/\\/g, '/'); // Normalize path separators
+          const httpUrl = `http://localhost:8080/media/${encodeURIComponent(relativePath)}`;
+          console.log(`✅ Serving media via HTTP: ${httpUrl}`);
+          console.log(`🔍 Media relative path: ${relativePath}`);
+          return {
+            ...item,
+            src: httpUrl
+          };
         } catch (error) {
           console.error('Error constructing HTTP URL for media:', error);
           return item;
@@ -2779,6 +2813,7 @@ async function handleMultiMediaTrigger(button) {
   const processedAudio = await Promise.all(audioData.map(async (audioItem) => {
     if (audioItem.src) {
       let audioSrc = audioItem.src;
+      console.log('🎵 Processing audio item:', audioItem);
       
       // Convert file paths to HTTP URLs
       if (typeof audioSrc === 'string' && 
@@ -2787,20 +2822,12 @@ async function handleMultiMediaTrigger(button) {
           !audioSrc.startsWith('http')) {
         console.log('🎵 Converting audio file path to HTTP URL:', audioSrc);
         try {
-          if (window.electronAPI && window.electronAPI.getMediaFilePath) {
-            const result = await window.electronAPI.getMediaFilePath(audioSrc);
-            if (result.success) {
-              audioSrc = `http://localhost:8080/media/${encodeURIComponent(result.absolutePath)}`;
-              console.log(`✅ Serving audio via HTTP: ${audioSrc}`);
-            }
-          } else {
-            const config = await window.electronAPI.getConfig();
-            if (config && config.userDataPath) {
-              const absolutePath = audioSrc.includes(':') ? audioSrc : config.userDataPath + '/' + audioSrc.replace(/\\/g, '/');
-              audioSrc = `http://localhost:8080/media/${encodeURIComponent(absolutePath)}`;
-              console.log(`✅ Serving audio via HTTP (fallback): ${audioSrc}`);
-            }
-          }
+          // Use the original relative path (audioSrc) in the URL
+          // The media server expects relative paths (from userDataPath) and will join them
+          const relativePath = audioSrc.replace(/\\/g, '/'); // Normalize path separators
+          audioSrc = `http://localhost:8080/media/${encodeURIComponent(relativePath)}?t=${Date.now()}`;
+          console.log(`✅ Serving audio via HTTP with cache-busting: ${audioSrc}`);
+          console.log(`🔍 Audio relative path: ${relativePath}`);
         } catch (error) {
           console.error('Error constructing HTTP URL for audio:', error);
         }
@@ -2809,7 +2836,9 @@ async function handleMultiMediaTrigger(button) {
       return {
         ...audioItem,
         src: audioSrc,
-        type: 'audio'
+        type: 'audio',
+        volume: audioItem.volume !== undefined ? audioItem.volume : 1.0,
+        loop: audioItem.loop || false
       };
     }
     return audioItem;
@@ -3076,14 +3105,17 @@ document.getElementById('settings-form').onsubmit = async (e) => {
 
   // Get chat command settings
   const chatCommandCheckbox = document.getElementById('chat-command-enabled');
-  const chatCommandInput = document.getElementById('chat-command-keyword');
+  const chatCommandKeywordInput = document.getElementById('chat-command-keyword');
+  const redeemNameInput = document.getElementById('redeem-name');
   
   console.log('Chat command elements found:');
   console.log('- Checkbox element:', chatCommandCheckbox);
-  console.log('- Input element:', chatCommandInput);
+  console.log('- Keyword input element:', chatCommandKeywordInput);
+  console.log('- Redeem name input element:', redeemNameInput);
   
   const chatCommandEnabled = chatCommandCheckbox?.checked || false;
-  const chatCommandKeyword = chatCommandInput?.value?.trim() || '';
+  const chatCommandKeyword = chatCommandKeywordInput?.value?.trim() || '';
+  const redeemName = redeemNameInput?.value?.trim() || '';
   
   // Get trigger method selection
   const triggerMethodRadio = document.querySelector('input[name="trigger-method"]:checked');
@@ -3091,13 +3123,15 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   console.log(`🔍 Selected trigger method radio:`, triggerMethodRadio);
   console.log(`🔍 Selected trigger method value:`, triggerMethod);
   
-  const chatCommand = (chatCommandEnabled && chatCommandKeyword) ? {
+  const chatCommand = (chatCommandEnabled && (chatCommandKeyword || redeemName)) ? {
     enabled: true,
     keyword: chatCommandKeyword.toLowerCase(),
+    redeemName: redeemName,
     triggerMethod: triggerMethod
   } : undefined;
   
   console.log(`🔍 Saving button with chatCommand:`, chatCommand);
+  console.log(`🔍 Form values - enabled: ${chatCommandEnabled}, keyword: "${chatCommandKeyword}", redeemName: "${redeemName}", triggerMethod: "${triggerMethod}"`);
 
   // Get the appropriate file input based on type
   const fileInput = type === 'app' ? document.getElementById('app-file-input') : document.getElementById('file-input');
@@ -3144,28 +3178,17 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       chatCommand: chatCommand
     });
     window.electronAPI.refreshHotkeys();
-    // Update the displayed card in-place to avoid full re-render flash
-    try {
-      const editingId = form.dataset.editingId;
-      const updated = {
-        id: editingId,
-        label,
-        type,
-        src: existingFile,
-        hotkey: completeHotkey || undefined,
-        volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
-        args: form.dataset.resolvedArgs || undefined
-      };
-      if (editingId) {
-        const card = document.querySelector(`.sound-card[data-button-id="${editingId}"]`);
-        if (card) {
-          card.dataset.soundData = JSON.stringify(updated);
-          const nameEl = card.querySelector('.sound-name'); if (nameEl) nameEl.textContent = updated.label;
-          const hotkeyEl = card.querySelector('.sound-hotkey'); if (hotkeyEl) hotkeyEl.textContent = updated.hotkey || 'No hotkey';
-          const typeEl = card.querySelector('.sound-type'); if (typeEl) typeEl.textContent = updated.type;
-        }
-      }
-    } catch (err) { console.error('In-place update failed:', err); }
+    
+    // Clear audio cache to ensure new audio files are loaded
+    audioCache.clear();
+    console.log('🧹 Audio cache cleared after button edit');
+    
+    // Refresh the entire button list to show updated data
+    setTimeout(() => {
+      loadButtons();
+      console.log('🔄 Buttons reloaded after edit');
+    }, 100);
+    
     skipReload = true;
   } else if (fileInput.files.length || resolvedPath) {
     // New file selected or resolved path from drag-and-drop
@@ -3216,31 +3239,18 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     console.log('Final addMediaData object:', addMediaData);
     window.electronAPI.addMedia(addMediaData);
     window.electronAPI.refreshHotkeys();
-    // If editing (with new file), update in-place using the computed targetPath
-    if (isEditing) {
-      try {
-        const editingId = form.dataset.editingId;
-        const updated = {
-          id: editingId,
-          label,
-          type,
-          src: targetPath,
-          hotkey: completeHotkey || undefined,
-          volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
-          args: args || undefined
-        };
-        if (editingId) {
-          const card = document.querySelector(`.sound-card[data-button-id="${editingId}"]`);
-          if (card) {
-            card.dataset.soundData = JSON.stringify(updated);
-            const nameEl = card.querySelector('.sound-name'); if (nameEl) nameEl.textContent = updated.label;
-            const hotkeyEl = card.querySelector('.sound-hotkey'); if (hotkeyEl) hotkeyEl.textContent = updated.hotkey || 'No hotkey';
-            const typeEl = card.querySelector('.sound-type'); if (typeEl) typeEl.textContent = updated.type;
-          }
-        }
-      } catch (err) { console.error('In-place update failed:', err); }
-      skipReload = true;
-    }
+    
+    // Clear audio cache to ensure new audio files are loaded
+    audioCache.clear();
+    console.log('🧹 Audio cache cleared after button add/edit with new file');
+    
+    // Refresh the entire button list to show updated data
+    setTimeout(() => {
+      loadButtons();
+      console.log('🔄 Buttons reloaded after add/edit with new file');
+    }, 100);
+    
+    skipReload = true;
   } else if (!isEditing) {
     // Only require file selection for new buttons, not when editing
     console.log('No file found and not editing - showing alert');
@@ -3270,6 +3280,8 @@ document.getElementById('settings-form').onsubmit = async (e) => {
 window.editButton = async (index) => {
   const config = await window.electronAPI.getConfig();
   const btn = config.buttons[index];
+  console.log(`🔍 editButton: Editing button at index ${index}:`, btn);
+  console.log(`🔍 editButton: Button chatCommand data:`, btn.chatCommand);
   const settingsForm = document.getElementById('settings-form');
   // Always set editingIndex for edit, and clear resolvedPath/existingFile for safety
   settingsForm.dataset.editingIndex = index;
@@ -3328,12 +3340,14 @@ window.editButton = async (index) => {
   // Set chat command fields
   const chatCommandEnabled = document.getElementById('chat-command-enabled');
   const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const redeemName = document.getElementById('redeem-name');
   const chatCommandSettings = document.getElementById('chat-command-settings');
   
   if (chatCommandEnabled && chatCommandKeyword && chatCommandSettings) {
     if (btn.chatCommand && btn.chatCommand.enabled) {
       chatCommandEnabled.checked = true;
       chatCommandKeyword.value = btn.chatCommand.keyword || '';
+      redeemName.value = btn.chatCommand.redeemName || '';
       chatCommandSettings.style.display = 'block';
       
       // Set trigger method selection
@@ -3345,6 +3359,7 @@ window.editButton = async (index) => {
     } else {
       chatCommandEnabled.checked = false;
       chatCommandKeyword.value = '';
+      redeemName.value = '';
       chatCommandSettings.style.display = 'none';
       
       // Reset to default trigger method
@@ -3844,9 +3859,11 @@ function handleFileDrop(file) {
   // Clear chat command fields
   const chatCommandEnabled = document.getElementById('chat-command-enabled');
   const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const redeemName = document.getElementById('redeem-name');
   const chatCommandSettings = document.getElementById('chat-command-settings');
   if (chatCommandEnabled) chatCommandEnabled.checked = false;
   if (chatCommandKeyword) chatCommandKeyword.value = '';
+  if (redeemName) redeemName.value = '';
   if (chatCommandSettings) chatCommandSettings.style.display = 'none';
   
   document.querySelector('#settings-modal h2').textContent = 'Add New ' + (type === 'audio' ? 'Sound' : 'App');
@@ -5387,6 +5404,7 @@ function setupAlertTypeFilter() {
       'raid': 'Raid',
       'bits': 'Bits',
       'ban': 'Ban',
+      'channel-points': 'Channel Point Redemption',
       'daily-checkin': 'Daily Checkin'
     };
     selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
@@ -5566,6 +5584,7 @@ function setupAlertWidget() {
           'raid': 'Raid',
           'bits': 'Bits',
           'ban': 'Ban',
+          'channel-points': 'Channel Point Redemption',
           'daily-checkin': 'Daily Checkin'
         };
         selectedAlertTypeName.textContent = typeNames[selectedType] || 'Unknown';
@@ -5803,7 +5822,8 @@ function setupAlertWidget() {
       'resubscriber': 'Resubscriber',
       'raid': 'Raid',
       'gift-sub': 'Gifted Subscription',
-      'bits': 'Bits Donation'
+      'bits': 'Bits Donation',
+      'daily-checkin': 'Daily Checkin'
     };
     return typeNames[type] || type;
   }
@@ -6112,6 +6132,10 @@ function setupAlertWidget() {
           console.error('❌ Alert not found in localStorage after save');
         }
         
+        // Update alertSystem's in-memory cache
+        alertSystem.updateAlerts();
+        console.log('✅ Updated alertSystem cache with new alerts');
+        
         updateAlertList();
         clearForm();
       } catch (error) {
@@ -6128,6 +6152,7 @@ function setupAlertWidget() {
       if (confirm('Are you sure you want to clear all saved alerts?')) {
         savedAlerts = [];
         localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+        alertSystem.updateAlerts();
         updateAlertList();
         console.log('All alerts cleared');
       }
@@ -6261,6 +6286,8 @@ function setupAlertWidget() {
       'gift-sub-received': 'Gift Received',
       'raid': 'Raid',
       'bits': 'Bits',
+      'channel-points': 'Channel Point Redemption',
+      'daily-checkin': 'Daily Checkin'
     };
     return typeNames[alertType] || alertType;
   }
@@ -6613,6 +6640,7 @@ function setupAlertWidget() {
     if (confirm('Are you sure you want to delete this alert?')) {
       savedAlerts = savedAlerts.filter(a => a.id !== alertId);
       localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+      alertSystem.updateAlerts();
       updateAlertList();
       console.log('Alert deleted:', alertId);
     }
@@ -6758,6 +6786,7 @@ window.toggleAlert = function(alertId, enabled) {
   if (alert) {
     alert.enabled = enabled;
     localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+    alertSystem.updateAlerts();
     updateAlertList();
     console.log('Toggled alert:', alertId, 'enabled:', enabled);
   }
@@ -6772,6 +6801,7 @@ window.toggleRandomModeForType = function(alertType, randomMode) {
   });
   
   localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+  alertSystem.updateAlerts();
   updateAlertList();
   console.log('Toggled random mode for type:', alertType, 'random:', randomMode);
 };
@@ -7015,24 +7045,11 @@ let alertQueue = {
           // This is a saved alert with file path - serve via HTTP like multi-media buttons
           console.log('🖼️ Converting alert image path to HTTP URL:', alertData.imageFile.path);
           try {
-            let imageSrc = alertData.imageFile.path;
-            
-            // Convert file path to HTTP URL (avoids long base64 strings)
-            if (window.electronAPI && window.electronAPI.getMediaFilePath) {
-              const result = await window.electronAPI.getMediaFilePath(alertData.imageFile.path);
-              if (result.success) {
-                imageSrc = `http://localhost:8080/media/${encodeURIComponent(result.absolutePath)}`;
-                console.log(`✅ Serving alert image via HTTP: ${imageSrc}`);
-              }
-            } else {
-              // Fallback: construct HTTP URL manually
-              const config = await window.electronAPI.getConfig();
-              if (config && config.userDataPath) {
-                const absolutePath = imageSrc.includes(':') ? imageSrc : config.userDataPath + '/' + imageSrc.replace(/\\/g, '/');
-                imageSrc = `http://localhost:8080/media/${encodeURIComponent(absolutePath)}`;
-                console.log(`✅ Serving alert image via HTTP (fallback): ${imageSrc}`);
-              }
-            }
+            // Use the relative path directly (same as multimedia buttons)
+            const relativePath = alertData.imageFile.path.replace(/\\/g, '/');
+            const imageSrc = `http://localhost:8080/media/${encodeURIComponent(relativePath)}`;
+            console.log(`✅ Serving alert image via HTTP: ${imageSrc}`);
+            console.log(`🔍 Image relative path: ${relativePath}`);
             
                 payload.centerMedia.push({
                   type: 'image',
@@ -7076,24 +7093,11 @@ let alertQueue = {
           console.log('🎬 Converting alert video path to HTTP URL:', alertData.videoFile.path);
           console.log('🎬 Video file object:', alertData.videoFile);
           try {
-            let videoSrc = alertData.videoFile.path;
-            
-            // Convert file path to HTTP URL (more efficient than base64 for videos)
-            if (window.electronAPI && window.electronAPI.getMediaFilePath) {
-              const result = await window.electronAPI.getMediaFilePath(alertData.videoFile.path);
-              if (result.success) {
-                videoSrc = `http://localhost:8080/media/${encodeURIComponent(result.absolutePath)}`;
-                console.log(`✅ Serving alert video via HTTP: ${videoSrc}`);
-              }
-            } else {
-              // Fallback: construct HTTP URL manually
-              const config = await window.electronAPI.getConfig();
-              if (config && config.userDataPath) {
-                const absolutePath = videoSrc.includes(':') ? videoSrc : config.userDataPath + '/' + videoSrc.replace(/\\/g, '/');
-                videoSrc = `http://localhost:8080/media/${encodeURIComponent(absolutePath)}`;
-                console.log(`✅ Serving alert video via HTTP (fallback): ${videoSrc}`);
-              }
-            }
+            // Use the relative path directly (same as multimedia buttons)
+            const relativePath = alertData.videoFile.path.replace(/\\/g, '/');
+            const videoSrc = `http://localhost:8080/media/${encodeURIComponent(relativePath)}`;
+            console.log(`✅ Serving alert video via HTTP: ${videoSrc}`);
+            console.log(`🔍 Video relative path: ${relativePath}`);
             
             const videoItem = {
               type: 'video',
@@ -7312,9 +7316,12 @@ let alertSystem = {
   
   // Trigger alert for specific event type
   triggerAlertForEvent(eventType, userData) {
+    console.log(`🔍 Looking for alerts of type: ${eventType}`);
+    console.log(`📋 Available alert types:`, this.alerts.map(a => a.type));
     const alertsOfType = this.alerts.filter(a => a.type === eventType);
     if (alertsOfType.length === 0) {
       console.log(`⚠️ No alerts found for event type: ${eventType}`);
+      console.log(`💡 Create a "${eventType}" alert in Tools → Alerts to fix this`);
       return;
     }
     
@@ -8707,6 +8714,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (saveResult && saveResult.success) {
           // Refresh hotkeys to register the new hotkey
           window.electronAPI.refreshHotkeys();
+          
+          // Clear audio cache to ensure new audio files are loaded
+          audioCache.clear();
+          console.log('🧹 Audio cache cleared after multi-media button save');
           
           // Reload buttons
           await loadButtons();
@@ -11089,9 +11100,11 @@ function openAudioForm() {
   // Clear chat command fields
   const chatCommandEnabled = document.getElementById('chat-command-enabled');
   const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const redeemName = document.getElementById('redeem-name');
   const chatCommandSettings = document.getElementById('chat-command-settings');
   if (chatCommandEnabled) chatCommandEnabled.checked = false;
   if (chatCommandKeyword) chatCommandKeyword.value = '';
+  if (redeemName) redeemName.value = '';
   if (chatCommandSettings) chatCommandSettings.style.display = 'none';
   
   // Replace file inputs to clear previous file references
