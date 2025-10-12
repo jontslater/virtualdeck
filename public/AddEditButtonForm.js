@@ -489,6 +489,8 @@ class AddEditButtonForm {
             <span class="width-value">${item.widthPct}%</span>
           ` : type === 'video' ? `
             <label><input type="checkbox" class="loop-toggle" ${item.loop ? 'checked' : ''} /> Loop</label>
+          ` : type === 'image' ? `
+            <!-- No audio controls for images -->
           ` : `
             <input type="range" class="volume-slider" min="0" max="100" value="${item.volume || 100}" />
             <span class="volume-value">${item.volume || 100}%</span>
@@ -543,7 +545,11 @@ class AddEditButtonForm {
           });
         }
 
+      } else if (type === 'image') {
+        // Images don't have any additional controls
+
       } else {
+        // Audio controls
         const volumeSlider = mediaItem.querySelector('.volume-slider');
         const volumeValue = mediaItem.querySelector('.volume-value');
 
@@ -893,6 +899,12 @@ class AddEditButtonForm {
     const chatCommandEnabled = document.getElementById('multi-media-chat-command-enabled')?.checked || false;
     const chatCommandKeyword = document.getElementById('multi-media-chat-command-keyword')?.value?.trim() || '';
     
+    // Get trigger method selection
+    const triggerMethodRadio = document.querySelector('input[name="multi-media-trigger-method"]:checked');
+    const triggerMethod = triggerMethodRadio?.value || 'command';
+    console.log(`🔍 AddEditButtonForm selected trigger method radio:`, triggerMethodRadio);
+    console.log(`🔍 AddEditButtonForm selected trigger method value:`, triggerMethod);
+    
     // Get overlay selection
     const overlaySelect = document.getElementById('multi-media-overlay-select')?.value || 'main';
     console.log('🔍 Overlay select element:', document.getElementById('multi-media-overlay-select'));
@@ -939,8 +951,10 @@ class AddEditButtonForm {
     if (chatCommandEnabled && chatCommandKeyword) {
       buttonData.chatCommand = {
         enabled: true,
-        keyword: chatCommandKeyword.toLowerCase()
+        keyword: chatCommandKeyword.toLowerCase(),
+        triggerMethod: triggerMethod
       };
+      console.log(`🔍 AddEditButtonForm saving button with chatCommand:`, buttonData.chatCommand);
     }
 
     console.log('🔍 Final button data before saving:', buttonData);
@@ -1184,10 +1198,23 @@ class AddEditButtonForm {
         chatCommandEnabled.checked = true;
         chatCommandKeyword.value = buttonData.chatCommand.keyword || '';
         chatCommandSettings.style.display = 'block';
+        
+        // Set trigger method selection
+        const triggerMethod = buttonData.chatCommand.triggerMethod || 'command';
+        const triggerMethodRadio = document.querySelector(`input[name="multi-media-trigger-method"][value="${triggerMethod}"]`);
+        if (triggerMethodRadio) {
+          triggerMethodRadio.checked = true;
+        }
       } else {
         chatCommandEnabled.checked = false;
         chatCommandKeyword.value = '';
         chatCommandSettings.style.display = 'none';
+        
+        // Reset to default trigger method
+        const defaultRadio = document.querySelector('input[name="multi-media-trigger-method"][value="command"]');
+        if (defaultRadio) {
+          defaultRadio.checked = true;
+        }
       }
     }
 

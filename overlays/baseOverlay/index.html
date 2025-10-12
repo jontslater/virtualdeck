@@ -60,16 +60,19 @@
             width: 100%;
             height: 100%;
             position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            /* Remove flexbox centering to avoid conflicts with absolute positioning */
         }
 
         /* Media Elements */
         .media-element {
-            max-width: 100%;
-            max-height: 100%;
+            max-width: 90%;
+            max-height: 90%;
+            width: auto;
+            height: auto;
             object-fit: contain;
+            /* Enhanced visibility for streaming */
+            filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.6));
+            border-radius: 8px;
         }
 
         .media-element.hidden {
@@ -80,11 +83,13 @@
         .text-element {
             position: absolute;
             color: white;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
-            font-size: 24px;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.9);
+            font-size: 64px;
             font-weight: bold;
             text-align: center;
             white-space: nowrap;
+            /* Enhanced visibility for streaming */
+            filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.8));
         }
 
         /* Animation Keyframes */
@@ -135,6 +140,49 @@
             0%, 100% { transform: translateX(0); }
             10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
             20%, 40%, 60%, 80% { transform: translateX(10px); }
+        }
+        
+        @keyframes rotateIn {
+            from { transform: rotate(-200deg); opacity: 0; }
+            to { transform: rotate(0deg); opacity: 1; }
+        }
+        
+        @keyframes flipInX {
+            from { transform: perspective(400px) rotateX(90deg); opacity: 0; }
+            to { transform: perspective(400px) rotateX(0deg); opacity: 1; }
+        }
+        
+        @keyframes flipInY {
+            from { transform: perspective(400px) rotateY(90deg); opacity: 0; }
+            to { transform: perspective(400px) rotateY(0deg); opacity: 1; }
+        }
+        
+        @keyframes wobble {
+            0% { transform: translateX(0%); }
+            15% { transform: translateX(-25%) rotate(-5deg); }
+            30% { transform: translateX(20%) rotate(3deg); }
+            45% { transform: translateX(-15%) rotate(-3deg); }
+            60% { transform: translateX(10%) rotate(2deg); }
+            75% { transform: translateX(-5%) rotate(-1deg); }
+            100% { transform: translateX(0%); }
+        }
+        
+        @keyframes rubberBand {
+            0% { transform: scale(1); }
+            30% { transform: scaleX(1.25) scaleY(0.75); }
+            40% { transform: scaleX(0.75) scaleY(1.25); }
+            50% { transform: scaleX(1.15) scaleY(0.85); }
+            65% { transform: scaleX(0.95) scaleY(1.05); }
+            75% { transform: scaleX(1.05) scaleY(0.95); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes tada {
+            0% { transform: scale(1) rotate(0deg); }
+            10%, 20% { transform: scale(0.9) rotate(-3deg); }
+            30%, 50%, 70%, 90% { transform: scale(1.1) rotate(3deg); }
+            40%, 60%, 80% { transform: scale(1.1) rotate(-3deg); }
+            100% { transform: scale(1) rotate(0deg); }
         }
 
         /* Layout Classes */
@@ -346,7 +394,7 @@
             // Clear existing content
             clearOverlay();
             
-            // Process text slots first
+            // Process text slots FIRST (so text is added first and stays on top)
             console.log('📝 Payload slots:', payload.slots);
             console.log('📝 Slots type:', typeof payload.slots);
             console.log('📝 Slots keys:', payload.slots ? Object.keys(payload.slots) : 'no slots');
@@ -366,13 +414,11 @@
                 console.log('📝 No slots to process or slots is empty');
             }
             
-            // Process center media
+            // Process center media SECOND (after text is already in DOM)
             if (payload.centerMedia && payload.centerMedia.length > 0) {
                 console.log('🎬 Processing centerMedia:', payload.centerMedia.length, 'items');
                 payload.centerMedia.forEach((media, index) => {
-                    setTimeout(() => {
-                        renderMedia(media, index);
-                    }, index * 100); // Stagger media appearance
+                    renderMedia(media, index);
                 });
             }
             
@@ -465,14 +511,36 @@
             img.className = 'media-element';
             img.src = payload.src || payload.url || '';
             img.style.cssText = `
-                max-width: 100%;
-                max-height: 100%;
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                max-width: 80%;
+                max-height: 80%;
+                width: auto;
+                height: auto;
                 object-fit: contain;
                 animation: fadeIn 0.5s ease-in-out;
+                filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.6));
+                border-radius: 8px;
+                z-index: 1;
             `;
             
             img.onload = () => {
                 console.log('🖼️ Image loaded:', img.src);
+                // Force image to stay behind text when it loads
+                img.style.setProperty('z-index', '1', 'important');
+                console.log('🎯 Image z-index forced to 1 on load');
+                
+                // Also ensure all text elements are brought to front
+                const textElements = document.querySelectorAll('.text-element');
+                textElements.forEach(textEl => {
+                    textEl.style.setProperty('z-index', '100', 'important');
+                    console.log('🎯 Text element z-index boosted to 100');
+                });
+                
+                console.log('🎯 Image z-index:', img.style.zIndex);
+                console.log('🎯 Image computed style:', window.getComputedStyle(img).zIndex);
             };
             
             img.onerror = () => {
@@ -504,14 +572,26 @@
             });
             
             video.style.cssText = `
-                max-width: 100%;
-                max-height: 100%;
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                max-width: 80%;
+                max-height: 80%;
+                width: auto;
+                height: auto;
                 object-fit: contain;
                 animation: fadeIn 0.5s ease-in-out;
+                filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.6));
+                border-radius: 8px;
+                z-index: 1;
             `;
             
             video.onloadeddata = () => {
                 console.log('🎥 Video loaded successfully:', video.src);
+                // Force video to stay behind text when it loads
+                video.style.setProperty('z-index', '1', 'important');
+                console.log('🎯 Video z-index forced to 1 on load');
                 console.log('🎥 Attempting to play video...');
                 video.play().then(() => {
                     console.log('✅ Video playing successfully');
@@ -591,27 +671,73 @@
             // Apply webkit-text-stroke if specified
             const webkitTextStroke = style.webkitTextStroke || '';
             
+            // Build positioning styles based on position
+            let positioningStyles = '';
+            let flexDirection = 'row'; // Default for horizontal centering
+            
+            switch (position) {
+                case 'topCenter':
+                    positioningStyles = 'top: 10%; left: 0; right: 0; width: 100%;';
+                    flexDirection = 'row';
+                    break;
+                case 'topLeft':
+                    positioningStyles = 'top: 10%; left: 10%; width: auto;';
+                    flexDirection = 'row';
+                    break;
+                case 'topRight':
+                    positioningStyles = 'top: 10%; right: 10%; width: auto;';
+                    flexDirection = 'row';
+                    break;
+                case 'midLeft':
+                    positioningStyles = 'top: 50%; left: 10%; width: auto; transform: translateY(-50%);';
+                    flexDirection = 'row';
+                    break;
+                case 'center':
+                    positioningStyles = 'top: 50%; left: 0; right: 0; width: 100%; transform: translateY(-50%);';
+                    flexDirection = 'row';
+                    break;
+                case 'midRight':
+                    positioningStyles = 'top: 50%; right: 10%; width: auto; transform: translateY(-50%);';
+                    flexDirection = 'row';
+                    break;
+                case 'bottomCenter':
+                    positioningStyles = 'bottom: 10%; left: 0; right: 0; width: 100%;';
+                    flexDirection = 'row';
+                    break;
+                case 'bottomLeft':
+                    positioningStyles = 'bottom: 10%; left: 10%; width: auto;';
+                    flexDirection = 'row';
+                    break;
+                case 'bottomRight':
+                    positioningStyles = 'bottom: 10%; right: 10%; width: auto;';
+                    flexDirection = 'row';
+                    break;
+                default:
+                    positioningStyles = 'top: 50%; left: 0; right: 0; width: 100%; transform: translateY(-50%);';
+                    flexDirection = 'row';
+            }
+            
             textElement.style.cssText = `
                 position: absolute;
                 color: ${style.color || 'white'};
                 font-family: ${style.fontFamily || 'Arial, sans-serif'};
-                font-size: ${style.fontSize || '24px'};
+                font-size: ${style.fontSize || '64px'};
                 font-weight: ${style.fontWeight || 'bold'};
-                text-shadow: ${style.textShadow || '2px 2px 4px rgba(0, 0, 0, 0.8)'};
+                text-shadow: ${style.textShadow || '3px 3px 6px rgba(0, 0, 0, 0.9)'};
                 -webkit-text-stroke: ${webkitTextStroke};
                 text-align: center;
                 white-space: nowrap;
-                z-index: ${style.zIndex || '1'};
-                animation: fadeIn 0.5s ease-in-out;
-                ${position === 'topCenter' ? 'top: 10%; left: 50%; transform: translateX(-50%);' : ''}
-                ${position === 'topLeft' ? 'top: 10%; left: 10%;' : ''}
-                ${position === 'topRight' ? 'top: 10%; right: 10%;' : ''}
-                ${position === 'midLeft' ? 'top: 50%; left: 10%; transform: translateY(-50%);' : ''}
-                ${position === 'center' ? 'top: 50%; left: 50%; transform: translate(-50%, -50%);' : ''}
-                ${position === 'midRight' ? 'top: 50%; right: 10%; transform: translateY(-50%);' : ''}
-                ${position === 'bottomCenter' ? 'bottom: 10%; left: 50%; transform: translateX(-50%);' : ''}
-                ${position === 'bottomLeft' ? 'bottom: 10%; left: 10%;' : ''}
-                ${position === 'bottomRight' ? 'bottom: 10%; right: 10%;' : ''}
+                z-index: ${style.zIndex || '100'};
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-direction: ${flexDirection};
+                pointer-events: none;
+                margin: 0;
+                padding: 0;
+                /* Enhanced visibility for streaming */
+                filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.8));
+                ${positioningStyles}
             `;
             
             // Apply animation if specified
@@ -628,13 +754,23 @@
                 animationString += ' forwards';
                 
                 textElement.style.animation = animationString;
+                textElement.style.animationFillMode = 'both';
                 console.log('🎬 Animation string:', animationString);
             } else {
                 console.log('🎬 No animation or animation is "none"');
             }
             
             document.querySelector('.overlay-content').appendChild(textElement);
+            
+            // Force z-index to be applied after DOM insertion
+            setTimeout(() => {
+                textElement.style.setProperty('z-index', '100', 'important');
+                console.log('🎯 Forced text z-index to 100 with !important after DOM insertion');
+            }, 0);
+            
             console.log('✅ Text element added to DOM:', slotData.text);
+            console.log('🎯 Text element z-index:', textElement.style.zIndex);
+            console.log('🎯 Text element computed style:', window.getComputedStyle(textElement).zIndex);
         }
         
         // Render media element

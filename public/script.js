@@ -2611,6 +2611,7 @@ window.electronAPI.onTwitchCleared(() => {
 });
 
 async function handleTrigger(button) {
+  console.log(`🔍 handleTrigger called for button: "${button.name || button.label}" Type: ${button.type} Volume: ${button.volume}`);
   // Prevent accidental plays while editing/reordering
   if (isDragMode) return;
   // If caller passed a DOM element instead of button object, normalize
@@ -3084,10 +3085,19 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   const chatCommandEnabled = chatCommandCheckbox?.checked || false;
   const chatCommandKeyword = chatCommandInput?.value?.trim() || '';
   
+  // Get trigger method selection
+  const triggerMethodRadio = document.querySelector('input[name="trigger-method"]:checked');
+  const triggerMethod = triggerMethodRadio?.value || 'command';
+  console.log(`🔍 Selected trigger method radio:`, triggerMethodRadio);
+  console.log(`🔍 Selected trigger method value:`, triggerMethod);
+  
   const chatCommand = (chatCommandEnabled && chatCommandKeyword) ? {
     enabled: true,
-    keyword: chatCommandKeyword.toLowerCase()
+    keyword: chatCommandKeyword.toLowerCase(),
+    triggerMethod: triggerMethod
   } : undefined;
+  
+  console.log(`🔍 Saving button with chatCommand:`, chatCommand);
 
   // Get the appropriate file input based on type
   const fileInput = type === 'app' ? document.getElementById('app-file-input') : document.getElementById('file-input');
@@ -3325,10 +3335,23 @@ window.editButton = async (index) => {
       chatCommandEnabled.checked = true;
       chatCommandKeyword.value = btn.chatCommand.keyword || '';
       chatCommandSettings.style.display = 'block';
+      
+      // Set trigger method selection
+      const triggerMethod = btn.chatCommand.triggerMethod || 'command';
+      const triggerMethodRadio = document.querySelector(`input[name="trigger-method"][value="${triggerMethod}"]`);
+      if (triggerMethodRadio) {
+        triggerMethodRadio.checked = true;
+      }
     } else {
       chatCommandEnabled.checked = false;
       chatCommandKeyword.value = '';
       chatCommandSettings.style.display = 'none';
+      
+      // Reset to default trigger method
+      const defaultRadio = document.querySelector('input[name="trigger-method"][value="command"]');
+      if (defaultRadio) {
+        defaultRadio.checked = true;
+      }
     }
   }
   
@@ -3626,8 +3649,112 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // move-bar removed — menu bar is used instead for window controls
 
+// Close functions for modals
+function closeSettingsModal() {
+  const settingsModal = document.getElementById('settings-modal');
+  if (settingsModal) {
+    settingsModal.classList.add('hidden');
+    // Clear any form data if needed
+    clearSettingsForm();
+  }
+}
+
+function closeMultiMediaModal() {
+  const multiMediaModal = document.getElementById('multi-media-modal');
+  if (multiMediaModal) {
+    multiMediaModal.classList.add('hidden');
+    // Clear any form data if needed
+    if (window.addEditButtonForm) {
+      window.addEditButtonForm.resetForm();
+    }
+  }
+}
+
+function closeTwitchAlertWidget() {
+  const twitchAlertWidget = document.getElementById('twitch-alert-widget');
+  if (twitchAlertWidget) {
+    twitchAlertWidget.classList.add('hidden');
+  }
+}
+
+// Add event listeners for close buttons
+document.addEventListener('DOMContentLoaded', () => {
+  // Settings modal close button
+  const settingsCloseBtn = document.getElementById('settings-modal-close');
+  if (settingsCloseBtn) {
+    settingsCloseBtn.addEventListener('click', closeSettingsModal);
+  }
+  
+  // Multi-media modal close button
+  const multiMediaCloseBtn = document.getElementById('multi-media-modal-close');
+  if (multiMediaCloseBtn) {
+    multiMediaCloseBtn.addEventListener('click', closeMultiMediaModal);
+  }
+  
+  // Twitch alert widget close button
+  const twitchAlertCloseBtn = document.getElementById('twitch-alert-widget-close');
+  if (twitchAlertCloseBtn) {
+    twitchAlertCloseBtn.addEventListener('click', closeTwitchAlertWidget);
+  }
+  
+  // Add click-outside-to-close functionality
+  const settingsModal = document.getElementById('settings-modal');
+  if (settingsModal) {
+    settingsModal.addEventListener('click', (e) => {
+      if (e.target === settingsModal) {
+        closeSettingsModal();
+      }
+    });
+  }
+  
+  const multiMediaModal = document.getElementById('multi-media-modal');
+  if (multiMediaModal) {
+    multiMediaModal.addEventListener('click', (e) => {
+      if (e.target === multiMediaModal) {
+        closeMultiMediaModal();
+      }
+    });
+  }
+});
+
+// ESC key handling for closing modals and forms
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    // Close settings modal
+    const settingsModal = document.getElementById('settings-modal');
+    if (settingsModal && !settingsModal.classList.contains('hidden')) {
+      closeSettingsModal();
+      return;
+    }
+    
+    // Close multi-media modal
+    const multiMediaModal = document.getElementById('multi-media-modal');
+    if (multiMediaModal && !multiMediaModal.classList.contains('hidden')) {
+      closeMultiMediaModal();
+      return;
+    }
+    
+    // Close Twitch Alert Widget
+    const twitchAlertWidget = document.getElementById('twitch-alert-widget');
+    if (twitchAlertWidget && !twitchAlertWidget.classList.contains('hidden')) {
+      closeTwitchAlertWidget();
+      return;
+    }
+    
+    // Close any other visible modals
+    const visibleModals = document.querySelectorAll('.modal:not(.hidden), [class*="modal"]:not(.hidden)');
+    visibleModals.forEach(modal => {
+      if (modal.style.display !== 'none' && modal.offsetParent !== null) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
+    });
+  }
+});
+
 // Listen for trigger-media events from the main process
 window.electronAPI.onTriggerMedia(async (mediaId) => {
+  console.log(`🔍 onTriggerMedia called for: "${mediaId}"`);
   const config = await window.electronAPI.getConfig();
   if (!config || !Array.isArray(config.buttons)) return;
   const button = config.buttons.find(btn => {
@@ -3636,7 +3763,7 @@ window.electronAPI.onTriggerMedia(async (mediaId) => {
     return name.toLowerCase() === mediaId.toLowerCase();
   });
   if (button) {
-    console.log('🎯 Triggering mapped button:', button.name || button.label, 'Type:', button.type);
+    console.log(`🎯 Triggering mapped button: "${button.name || button.label}" Type: ${button.type} Volume: ${button.volume}`);
     handleTrigger(button);
   } else {
     console.warn('⚠️ No button found for mapping trigger:', mediaId);
@@ -5760,10 +5887,7 @@ function setupAlertWidget() {
       const imageFile = alertImageInput.files[0];
       const videoFile = alertVideoInput.files[0];
       
-      if (!text) {
-        alert('Please enter alert text');
-        return;
-      }
+      // Alert text is now optional - alerts can have just images/videos/sounds without text
       
       // Auto-detect duration from media files
       const soundDuration = await getMediaDuration(soundFile);
@@ -6187,7 +6311,10 @@ function setupAlertWidget() {
               <label class="variation-toggle">
                 <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
                        onchange="toggleAlert('${alert.id}', this.checked)" />
-                <span class="variation-text">${alert.text}</span>
+                <span class="variation-text">
+                  ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
+                  <span class="overlay-badge">${alert.overlay || 'main'}</span>
+                </span>
               </label>
               <div class="variation-actions">
                 <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
@@ -6217,6 +6344,7 @@ function setupAlertWidget() {
     if (alert) {
       console.log('🎭 Testing specific saved alert:', alertId, alert);
       console.log('🎯 Alert overlay setting:', alert.overlay || 'NOT SET (will default to main)');
+      console.log('🎬 Alert animation in saved data:', alert.animation);
       
       // Create sample user data for the alert
       const sampleUserData = {
@@ -6328,7 +6456,7 @@ function setupAlertWidget() {
     }
     
     if (alertTextInput) {
-      alertTextInput.value = alertToEdit.text;
+      alertTextInput.value = alertToEdit.text || '';
     }
     
     if (alertDurationInput) {
@@ -6596,7 +6724,10 @@ window.updateAlertList = function() {
             <label class="variation-toggle">
               <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
                      onchange="toggleAlert('${alert.id}', this.checked)" />
-              <span class="variation-text">${alert.text}</span>
+              <span class="variation-text">
+                ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
+                <span class="overlay-badge">${alert.overlay || 'main'}</span>
+              </span>
             </label>
             <div class="variation-actions">
               <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
@@ -6821,6 +6952,13 @@ let alertQueue = {
       
       console.log('🎯 Alert overlay from alertData:', alertData.overlay || 'NOT SET');
       console.log('🎯 Alert will be sent to overlay:', alertData.overlay || 'main');
+      console.log('🎬 Alert animation config:', alertData.animation);
+      console.log('📝 Alert text:', alertData.text);
+      console.log('📝 Processed text:', processedText);
+      console.log('📝 Processed text length:', processedText ? processedText.length : 'null/undefined');
+      console.log('📝 Processed text trim check:', processedText && processedText.trim() ? 'HAS CONTENT' : 'EMPTY OR NULL');
+      console.log('🎨 Alert textStyling:', alertData.textStyling);
+      console.log('📍 Text position:', alertData.textStyling?.position || 'topCenter');
       
       const payload = {
         type: 'buttonTrigger',
@@ -6829,7 +6967,7 @@ let alertQueue = {
           clearPrevious: true,
           durationMs: alertData.duration * 1000
         },
-        slots: {
+        slots: processedText && processedText.trim() ? {
           [alertData.textStyling?.position || 'topCenter']: {
             text: processedText,
             style: {
@@ -6842,18 +6980,23 @@ let alertQueue = {
               textAlign: 'center',
               zIndex: '1'
             },
-            animation: alertData.animation?.type !== 'none' ? {
+            animation: (alertData.animation && alertData.animation.type && alertData.animation.type !== 'none') ? {
               name: alertData.animation.type,
-              duration: alertData.animation.duration,
-              delay: alertData.animation.delay,
-              iterationCount: alertData.animation.iteration,
-              timingFunction: alertData.animation.easing
+              duration: alertData.animation.duration || '1s',
+              delay: alertData.animation.delay || '0s',
+              iterationCount: alertData.animation.iteration || '1',
+              timingFunction: alertData.animation.easing || 'ease'
             } : null
           }
-        },
+        } : {},
         centerMedia: [],
         fullscreenMedia: [] // New: fullscreen media support for alerts
       };
+      
+      console.log('🎬 Payload animation data:', payload.slots[alertData.textStyling?.position || 'topCenter']?.animation);
+      console.log('📦 Payload slots object:', payload.slots);
+      console.log('📦 Payload slots keys:', Object.keys(payload.slots));
+      console.log('📦 Payload slots topCenter:', payload.slots.topCenter);
       
       // Add image if present
       if (alertData.imageFile) {

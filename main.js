@@ -17,6 +17,36 @@ const { autoUpdater } = require('electron-updater');
 autoUpdater.autoDownload = false; // Don't auto-download, ask user first
 autoUpdater.autoInstallOnAppQuit = true;
 
+// Global debouncing mechanism to prevent duplicate button triggers
+const recentButtonTriggers = new Map();
+const BUTTON_TRIGGER_DEBOUNCE_MS = 500; // 500ms debounce window
+
+function isRecentButtonTrigger(label) {
+  const now = Date.now();
+  const lastTrigger = recentButtonTriggers.get(label);
+  if (lastTrigger && (now - lastTrigger) < BUTTON_TRIGGER_DEBOUNCE_MS) {
+    return true;
+  }
+  recentButtonTriggers.set(label, now);
+  return false;
+}
+
+function triggerButtonWithDebounce(label, source = 'unknown') {
+  console.log(`🔍 triggerButtonWithDebounce called for "${label}" from ${source}`);
+  if (isRecentButtonTrigger(label)) {
+    console.log(`🚫 Skipping duplicate trigger for "${label}" from ${source} (within ${BUTTON_TRIGGER_DEBOUNCE_MS}ms)`);
+    return false;
+  }
+  
+  if (win && win.webContents) {
+    console.log(`🚀 Sending trigger-media event for "${label}" from ${source}`);
+    win.webContents.send('trigger-media', label);
+    return true;
+  }
+  console.log(`❌ No window available to trigger button "${label}" from ${source}`);
+  return false;
+}
+
 // Use Electron's userData directory for config and user files
 const userDataPath = app.getPath('userData');
 const configPath = path.join(userDataPath, 'config.json');
@@ -1794,17 +1824,21 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
       config.buttons.forEach((btn) => {
         // Check if button has chat command enabled and keyword matches
         if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword === commandText) {
-          if (win && win.webContents) {
-            console.log(`[Twitch Chat] Triggering button "${btn.name || btn.label}" via chat command !${commandText}`);
-            win.webContents.send('trigger-media', btn.label || btn.name);
+          const triggerMethod = btn.chatCommand.triggerMethod || 'command';
+          console.log(`🔍 main.js checking button "${btn.label || btn.name}" with chatCommand:`, btn.chatCommand);
+          console.log(`🔍 main.js checking button "${btn.label || btn.name}" with triggerMethod: "${triggerMethod}" for command: "${commandText}"`);
+          
+          // Only trigger if the button is configured to accept chat commands
+          if (triggerMethod === 'command' || triggerMethod === 'both') {
+            console.log(`🚀 main.js triggering button "${btn.label || btn.name}" (triggerMethod: ${triggerMethod} allows chat commands)`);
+            triggerButtonWithDebounce(btn.label || btn.name, `chat command !${commandText}`);
+          } else {
+            console.log(`⏭️ main.js skipping chat command "${commandText}" for button "${btn.label || btn.name}" (triggerMethod: ${triggerMethod} - redeem only)`);
           }
         }
-        // Legacy support: Also check old 'command' type buttons
-        else if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
-          if (win && win.webContents) {
-            console.log(`[Twitch Chat] Triggering legacy command button "${btn.label}" via chat command !${commandText}`);
-            win.webContents.send('trigger-media', btn.label);
-          }
+        // Legacy support: Only check old 'command' type buttons if no modern chatCommand exists
+        else if (!btn.chatCommand && btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+          triggerButtonWithDebounce(btn.label, `legacy chat command !${commandText}`);
         }
       });
     }
@@ -2473,13 +2507,14 @@ ipcMain.on('twitch-fake-event', (event, evt) => {
         config.buttons.forEach((btn) => {
           // Check if button has chat command enabled and keyword matches
           if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword === commandText) {
-            console.log(`[Fake Event] Triggering button "${btn.name || btn.label}" via chat command !${commandText}`);
-            win.webContents.send('trigger-media', btn.label || btn.name);
+            const triggerMethod = btn.chatCommand.triggerMethod || 'command';
+            if (triggerMethod === 'command' || triggerMethod === 'both') {
+              triggerButtonWithDebounce(btn.label || btn.name, `fake chat command !${commandText}`);
+            }
           }
-          // Legacy support: Also check old 'command' type buttons
-          else if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
-            console.log(`[Fake Event] Triggering legacy command button "${btn.label}" via chat command !${commandText}`);
-            win.webContents.send('trigger-media', btn.label);
+          // Legacy support: Only check old 'command' type buttons if no modern chatCommand exists
+          else if (!btn.chatCommand && btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+            triggerButtonWithDebounce(btn.label, `fake legacy chat command !${commandText}`);
           }
         });
       }
@@ -2509,13 +2544,14 @@ ipcMain.handle('send-fake-twitch-event', async (event, evt) => {
         config.buttons.forEach((btn) => {
           // Check if button has chat command enabled and keyword matches
           if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword === commandText) {
-            console.log(`[Fake Event Handle] Triggering button "${btn.name || btn.label}" via chat command !${commandText}`);
-            win.webContents.send('trigger-media', btn.label || btn.name);
+            const triggerMethod = btn.chatCommand.triggerMethod || 'command';
+            if (triggerMethod === 'command' || triggerMethod === 'both') {
+              triggerButtonWithDebounce(btn.label || btn.name, `fake event handle chat command !${commandText}`);
+            }
           }
-          // Legacy support: Also check old 'command' type buttons
-          else if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
-            console.log(`[Fake Event Handle] Triggering legacy command button "${btn.label}" via chat command !${commandText}`);
-            win.webContents.send('trigger-media', btn.label);
+          // Legacy support: Only check old 'command' type buttons if no modern chatCommand exists
+          else if (!btn.chatCommand && btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+            triggerButtonWithDebounce(btn.label, `fake event handle legacy chat command !${commandText}`);
           }
         });
       }
@@ -2529,10 +2565,7 @@ ipcMain.handle('send-fake-twitch-event', async (event, evt) => {
 // Allow renderer to request a media trigger by label (used by event->sound mappings)
 ipcMain.on('trigger-media-to-main', (event, label) => {
   try {
-    if (win && !win.isDestroyed()) {
-      console.log('Triggering media from renderer mapping:', label);
-      win.webContents.send('trigger-media', label);
-    }
+    triggerButtonWithDebounce(label, 'renderer mapping');
   } catch (e) {
     console.error('Error handling trigger-media-to-main:', e);
   }
