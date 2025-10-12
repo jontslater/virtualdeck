@@ -300,11 +300,22 @@ function startOverlayServer() {
         });
       }
     } else if (req.url.startsWith('/media/')) {
-      // Serve media files from file paths
-      const filePath = decodeURIComponent(req.url.substring(7)); // Remove '/media/' prefix
+      // Serve media files from relative paths
+      let urlPath = req.url.substring(7); // Remove '/media/' prefix
+      
+      // Strip query parameters (e.g., ?t=timestamp for cache-busting)
+      const queryIndex = urlPath.indexOf('?');
+      if (queryIndex !== -1) {
+        urlPath = urlPath.substring(0, queryIndex);
+      }
+      
+      const relativePath = decodeURIComponent(urlPath);
+      
+      // Construct full path from relative path
+      const fullPath = path.join(userDataPath, relativePath);
+      const normalizedPath = path.normalize(fullPath);
       
       // Security check - ensure the file path is within allowed directories
-      const normalizedPath = path.normalize(filePath);
       const isAllowed = normalizedPath.startsWith(userDataPath) || 
                        normalizedPath.startsWith(__dirname) ||
                        normalizedPath.startsWith(path.join(__dirname, 'public'));
@@ -972,6 +983,7 @@ ipcMain.handle('get-tc-config', async () => {
     return { topics: [], lastFollowerPoll: null };
   }
 });
+
 
 // ===============================
 // Daily Check-In IPC Handlers
@@ -2721,9 +2733,11 @@ app.whenReady().then(() => {
     // Check if auto-update is enabled in preferences
     const preferences = getStoredPreferences();
     if (preferences.autoUpdate !== false) { // default to true if not set
-      autoUpdater.checkForUpdates().catch(err => {
-        console.log('Auto-update check failed (expected if not installed from installer):', err.message);
-      });
+      // Disabled auto-update check for private repository
+      console.log('Auto-update check disabled (private repository)');
+      // autoUpdater.checkForUpdates().catch(err => {
+      //   console.log('Auto-update check failed (expected if not installed from installer):', err.message);
+      // });
     } else {
       console.log('Auto-update disabled in preferences');
     }
