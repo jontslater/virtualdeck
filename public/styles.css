@@ -844,6 +844,8 @@ body.vd-dragging .sound-card.draggable:hover {
   justify-content: center;
   align-items: center;
   z-index: 10000; /* Make sure this is high */
+  padding: 20px;
+  box-sizing: border-box;
 }
 
 #settings-modal.hidden {
@@ -855,16 +857,44 @@ body.vd-dragging .sound-card.draggable:hover {
   padding: 20px;
   border-radius: 10px;
   color: var(--text-primary);
-  width: 400px;
+  width: min(90vw, 500px);
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
   z-index: 10001; /* Make sure this is higher than the overlay */
   position: relative;
   transition: background-color 0.3s ease, color 0.3s ease;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Responsive modal adjustments */
+@media (max-width: 768px) {
+  .modal-content {
+    width: 95vw;
+    max-width: 95vw;
+    padding: 15px;
+    margin: 10px;
+  }
+  
+  #settings-modal {
+    padding: 10px;
+  }
+}
+
+@media (max-height: 600px) {
+  .modal-content {
+    max-height: 95vh;
+    padding: 15px;
+  }
 }
 
 .modal-content input,
 .modal-content select {
   width: 100%;
   margin: 5px 0 10px 0;
+  box-sizing: border-box;
   padding: 6px;
 }
 
@@ -2562,10 +2592,23 @@ input[type="color"]::-webkit-color-swatch {
   font-weight: 600;
 }
 
+.overlay-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 6px;
+  background: var(--accent-primary);
+  color: white;
+  font-size: 0.75em;
+  font-weight: 500;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .alert-list-container {
   flex: 1;
   overflow-y: auto;
-  max-height: 400px;
+  max-height: 250px;
 }
 
 /* Alert Widget Tabs */
@@ -2790,7 +2833,7 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 .alert-list-container {
-  max-height: 200px;
+  max-height: 250px;
   overflow-y: auto;
   border: 1px solid var(--border-secondary);
   border-radius: 8px;
@@ -2964,6 +3007,9 @@ input[type="color"]::-webkit-color-swatch {
   color: var(--text-primary);
   font-size: 14px;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .variation-details {
@@ -3102,6 +3148,9 @@ input[type="color"]::-webkit-color-swatch {
   color: var(--text-primary);
   font-size: 12px;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .variation-actions {

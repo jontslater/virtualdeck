@@ -268,13 +268,29 @@
         </label><br>
         <label>
           <input type="checkbox" id="chat-command-enabled" />
-          Enable Twitch Chat Command
+          Enable Twitch Triggers
         </label>
         <div id="chat-command-settings" style="margin-top: 10px; padding-left: 20px; display: none;">
-          <label for="chat-command-keyword">Command Keyword:
-            <input type="text" id="chat-command-keyword" placeholder="e.g., rizz" style="margin-left: 10px; width: 120px;" />
-            <small style="display: block; margin-top: 5px; color: #888;">Viewers will type !keyword in chat to trigger this button</small>
+          <label for="chat-command-keyword">Keyword:
+            <input type="text" id="chat-command-keyword" placeholder="e.g., bob" style="margin-left: 10px; width: 120px;" />
+            <small style="display: block; margin-top: 5px; color: #888;">This keyword can be used for both chat commands (!keyword) and channel point redemptions</small>
           </label>
+          
+          <div style="margin-top: 15px;">
+            <label style="font-weight: 600; margin-bottom: 8px; display: block;">Trigger Methods:</label>
+            <label style="display: block; margin-bottom: 8px;">
+              <input type="radio" name="trigger-method" value="command" id="trigger-command-only" checked />
+              Chat Command Only (!keyword)
+            </label>
+            <label style="display: block; margin-bottom: 8px;">
+              <input type="radio" name="trigger-method" value="redeem" id="trigger-redeem-only" />
+              Channel Point Redemption Only
+            </label>
+            <label style="display: block; margin-bottom: 8px;">
+              <input type="radio" name="trigger-method" value="both" id="trigger-both" />
+              Both (Chat Command + Channel Point Redemption)
+            </label>
+          </div>
         </div><br>
         <div id="audio-file-section">
           <label>File:
@@ -553,13 +569,29 @@
           <div class="form-section">
             <label>
               <input type="checkbox" id="multi-media-chat-command-enabled" />
-              Enable Twitch Chat Command
+              Enable Twitch Triggers
             </label>
             <div id="multi-media-chat-command-settings" style="margin-top: 10px; padding-left: 20px;">
-              <label for="multi-media-chat-command-keyword">Command Keyword:
-                <input type="text" id="multi-media-chat-command-keyword" placeholder="e.g., rizz" style="margin-left: 10px; width: 120px;" />
-                <small style="display: block; margin-top: 5px; color: #888;">Viewers will type !keyword in chat to trigger this button</small>
+              <label for="multi-media-chat-command-keyword">Keyword:
+                <input type="text" id="multi-media-chat-command-keyword" placeholder="e.g., bob" style="margin-left: 10px; width: 120px;" />
+                <small style="display: block; margin-top: 5px; color: #888;">This keyword can be used for both chat commands (!keyword) and channel point redemptions</small>
               </label>
+              
+              <div style="margin-top: 15px;">
+                <label style="font-weight: 600; margin-bottom: 8px; display: block;">Trigger Methods:</label>
+                <label style="display: block; margin-bottom: 8px;">
+                  <input type="radio" name="multi-media-trigger-method" value="command" id="multi-media-trigger-command-only" checked />
+                  Chat Command Only (!keyword)
+                </label>
+                <label style="display: block; margin-bottom: 8px;">
+                  <input type="radio" name="multi-media-trigger-method" value="redeem" id="multi-media-trigger-redeem-only" />
+                  Channel Point Redemption Only
+                </label>
+                <label style="display: block; margin-bottom: 8px;">
+                  <input type="radio" name="multi-media-trigger-method" value="both" id="multi-media-trigger-both" />
+                  Both (Chat Command + Channel Point Redemption)
+                </label>
+              </div>
             </div>
           </div>
 
@@ -1035,10 +1067,10 @@
 
         <div class="alert-settings">
           <div class="setting-group">
-            <label for="alert-text">Alert Text:</label>
+            <label for="alert-text">Alert Text (Optional):</label>
             <input type="text" id="alert-text" placeholder="Welcome {username}!" />
             <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
-              Use placeholders: {username}, {display_name}, {tier}, {viewers}, {bits}, {months}, {moderator}, {reason}
+              Use placeholders: {username}, {display_name}, {tier}, {viewers}, {bits}, {months}, {moderator}, {reason}. Leave empty for media-only alerts.
             </small>
           </div>
           

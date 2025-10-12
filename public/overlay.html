@@ -136,7 +136,6 @@
             align-items: center;
             justify-content: center;
             position: relative;
-            transition: all 0.3s ease;
             background: none;
             border: none;
             padding: 0;
@@ -148,10 +147,9 @@
             display: flex;
         }
 
-        /* Child items fade in/out */
+        /* Child items - no transitions to avoid conflicting with animations */
         .text-slot > * {
             opacity: 1;
-            transition: opacity 0.4s ease; /* fade effect */
         }
 
         /* Fade-out state */
@@ -164,23 +162,6 @@
         #center-media:empty::before {
             content: '';
             display: none;
-        }
-        
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-
-        @keyframes fadeIn {
-            0% { 
-                opacity: 0; 
-                transform: scale(0.95);
-            }
-            100% { 
-                opacity: 1; 
-                transform: scale(1);
-            }
         }
 
         @keyframes fadeOut {
@@ -223,17 +204,20 @@
             margin: 0;
             padding: 0;
             color: white; /* or any color you want visible */
-            font-size: 2rem; /* adjust size */
+            font-size: 3rem; /* increased from 2rem for better visibility */
             text-align: center;
         }
 
         #center-media img,
         #center-media video {
-            max-width: 100%;
-            max-height: 100%;
+            max-width: 90%;
+            max-height: 90%;
             width: auto;
             height: auto;
             object-fit: contain;
+            /* Enhanced visibility for streaming */
+            filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.6));
+            border-radius: 8px;
         }
 
         /* Fade animation classes */
@@ -269,7 +253,7 @@
         #text-center {
             grid-column: 2;
             grid-row: 2;
-            z-index: 5; /* Above center media */
+            z-index: 20; /* Above center media */
         }
 
         /* Make center text slot completely transparent when empty */
@@ -319,7 +303,7 @@
         }
 
         /* Utility classes for text styling overrides */
-        .text-large { font-size: 24px; }
+        .text-large { font-size: 64px; }
         .text-small { font-size: 12px; }
         .text-bold { font-weight: bold; }
         .text-normal { font-weight: normal; }
@@ -566,6 +550,9 @@
                                     textEl.style.zIndex = slotData.style.zIndex;
                                 }
                                 
+                                // Add drop shadow for enhanced visibility
+                                textEl.style.filter = 'drop-shadow(0 0 8px rgba(0, 0, 0, 0.8))';
+                                
                                 // Legacy support
                                 if (slotData.style.bold !== undefined) {
                                     textEl.style.fontWeight = slotData.style.bold ? 'bold' : 'normal';
@@ -579,13 +566,29 @@
                             }
                             
                             // Apply animation to the text element if present
-                            if (slotData.animation && slotData.animation.name !== 'none') {
-                                textEl.style.animationName = slotData.animation.name;
-                                textEl.style.animationDuration = slotData.animation.duration;
-                                textEl.style.animationDelay = slotData.animation.delay;
-                                textEl.style.animationIterationCount = slotData.animation.iterationCount;
-                                textEl.style.animationTimingFunction = slotData.animation.timingFunction;
-                                console.log(`🎬 Applied animation: ${slotData.animation.name} for ${slotData.animation.duration}`);
+                            if (slotData.animation) {
+                                console.log('🎬 Animation data received:', slotData.animation);
+                                if (slotData.animation.name && slotData.animation.name !== 'none') {
+                                    const animName = slotData.animation.name;
+                                    const animDuration = slotData.animation.duration || '1s';
+                                    const animDelay = slotData.animation.delay || '0s';
+                                    const animIterCount = slotData.animation.iterationCount || '1';
+                                    const animTiming = slotData.animation.timingFunction || 'ease';
+                                    
+                                    textEl.style.animationName = animName;
+                                    textEl.style.animationDuration = animDuration;
+                                    textEl.style.animationDelay = animDelay;
+                                    textEl.style.animationIterationCount = animIterCount;
+                                    textEl.style.animationTimingFunction = animTiming;
+                                    textEl.style.animationFillMode = 'both'; // Keep animation state before and after
+                                    
+                                    console.log(`🎬 ✅ Applied animation: ${animName} ${animDuration} ${animTiming} ${animDelay} (repeat: ${animIterCount})`);
+                                    console.log('🎬 Element style:', textEl.style.cssText);
+                                } else {
+                                    console.log('🎬 Animation is "none" or missing name, skipping');
+                                }
+                            } else {
+                                console.log('🎬 No animation data in slot');
                             }
                         } else {
                             // Hide the text slot
@@ -885,55 +888,55 @@
                     text: 'Top Left Text',
                     style: {
                         fontFamily: 'Arial, sans-serif',
-                        fontSize: '24px',
+                        fontSize: '64px',
                         color: '#ff0000',
                         fontWeight: 'bold',
                         textAlign: 'left',
-                        zIndex: '1'
+                        zIndex: '15'
                     }
                 },
                 'text-top-center': {
                     text: 'Top Center Text',
                     style: {
                         fontFamily: 'Georgia, serif',
-                        fontSize: '20px',
+                        fontSize: '48px',
                         color: '#00ff00',
                         fontWeight: 'normal',
                         textAlign: 'center',
-                        zIndex: '2'
+                        zIndex: '16'
                     }
                 },
                 'text-top-right': {
                     text: 'Top Right Text',
                     style: {
                         fontFamily: 'Courier, monospace',
-                        fontSize: '18px',
+                        fontSize: '48px',
                         color: '#0000ff',
                         fontWeight: 'italic',
                         textAlign: 'right',
-                        zIndex: '3'
+                        zIndex: '17'
                     }
                 },
                 'text-bottom-left': {
                     text: 'Bottom Left Text',
                     style: {
                         fontFamily: 'Verdana, sans-serif',
-                        fontSize: '16px',
+                        fontSize: '40px',
                         color: '#ffff00',
                         fontWeight: 'bold',
                         textAlign: 'left',
-                        zIndex: '4'
+                        zIndex: '18'
                     }
                 },
                 'text-bottom-right': {
                     text: 'Bottom Right Text',
                     style: {
                         fontFamily: 'Times, serif',
-                        fontSize: '14px',
+                        fontSize: '36px',
                         color: '#ff00ff',
                         fontWeight: 'normal',
                         textAlign: 'right',
-                        zIndex: '5'
+                        zIndex: '19'
                     }
                 }
             },
@@ -964,39 +967,39 @@
                         text: '🎮 GAME START',
                         style: {
                             fontFamily: 'Arial, sans-serif',
-                            fontSize: '28px',
+                            fontSize: '56px',
                             color: '#00ff00',
                             fontWeight: 'bold',
                             textAlign: 'center',
-                            textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-                            zIndex: '10'
+                            textShadow: '3px 3px 6px rgba(0,0,0,0.9)',
+                            zIndex: '20'
                         }
                     },
                     'text-top-right': {
                         text: 'SCORE: 9999',
                         style: {
                             fontFamily: 'Courier, monospace',
-                            fontSize: '24px',
+                            fontSize: '64px',
                             color: '#ffff00',
                             fontWeight: 'bold',
                             textAlign: 'right',
-                            textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-                            zIndex: '10'
+                            textShadow: '3px 3px 6px rgba(0,0,0,0.9)',
+                            zIndex: '20'
                         }
                     },
                     'text-bottom-center': {
                         text: 'PRESS SPACE TO CONTINUE',
                         style: {
                             fontFamily: 'Arial, sans-serif',
-                            fontSize: '20px',
+                            fontSize: '48px',
                             color: '#ffffff',
                             fontWeight: 'bold',
                             textAlign: 'center',
-                            textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+                            textShadow: '3px 3px 6px rgba(0,0,0,0.9)',
                             animationName: 'pulse',
                             animationDuration: '1s',
                             animationIterationCount: 'infinite',
-                            zIndex: '10'
+                            zIndex: '20'
                         }
                     }
                 },
@@ -1143,19 +1146,21 @@
             
             console.log('🎭 Processing alert with media:', alertConfig.type);
             
-            // Replace placeholders in text
-            let alertText = alertConfig.text || 'Test alert!';
-            alertText = alertText.replace(/{username}/g, userData.username || 'Unknown');
-            alertText = alertText.replace(/{displayName}/g, userData.displayName || userData.display_name || 'Unknown');
-            alertText = alertText.replace(/{display_name}/g, userData.displayName || userData.display_name || 'Unknown');
-            alertText = alertText.replace(/{tier}/g, String(userData.tier || ''));
-            alertText = alertText.replace(/{months}/g, String(userData.months || ''));
-            alertText = alertText.replace(/{viewers}/g, String(userData.viewers || ''));
-            alertText = alertText.replace(/{bits}/g, String(userData.bits || ''));
-            alertText = alertText.replace(/{reward}/g, String(userData.reward || ''));
-            alertText = alertText.replace(/{message}/g, String(userData.message || ''));
-            alertText = alertText.replace(/{total_checkins}/g, String(userData.total_checkins || '0'));
-            alertText = alertText.replace(/{streak}/g, String(userData.streak || '0'));
+            // Replace placeholders in text (only if text exists)
+            let alertText = alertConfig.text || '';
+            if (alertText) {
+                alertText = alertText.replace(/{username}/g, userData.username || 'Unknown');
+                alertText = alertText.replace(/{displayName}/g, userData.displayName || userData.display_name || 'Unknown');
+                alertText = alertText.replace(/{display_name}/g, userData.displayName || userData.display_name || 'Unknown');
+                alertText = alertText.replace(/{tier}/g, String(userData.tier || ''));
+                alertText = alertText.replace(/{months}/g, String(userData.months || ''));
+                alertText = alertText.replace(/{viewers}/g, String(userData.viewers || ''));
+                alertText = alertText.replace(/{bits}/g, String(userData.bits || ''));
+                alertText = alertText.replace(/{reward}/g, String(userData.reward || ''));
+                alertText = alertText.replace(/{message}/g, String(userData.message || ''));
+                alertText = alertText.replace(/{total_checkins}/g, String(userData.total_checkins || '0'));
+                alertText = alertText.replace(/{streak}/g, String(userData.streak || '0'));
+            }
             
             // Create payload for overlay
             const payload = {
@@ -1163,30 +1168,38 @@
                 options: {
                     duration: alertConfig.duration || 5
                 },
-                slots: {
-                    [alertConfig.textStyling?.position || 'topCenter']: {
-                        type: 'text',
-                        text: alertText,
-                        style: {
-                            color: alertConfig.textStyling?.color || '#fff',
-                            fontFamily: alertConfig.textStyling?.fontFamily || 'Arial, sans-serif',
-                            fontSize: alertConfig.textStyling?.fontSize || '24px',
-                            fontWeight: alertConfig.textStyling?.fontWeight || 'bold',
-                            textShadow: alertConfig.textStyling?.textShadow || '2px 2px #000',
-                            webkitTextStroke: alertConfig.textStyling?.textStroke || '1px #000',
-                            zIndex: '1'
-                        },
-                        animation: alertConfig.animation?.type !== 'none' ? {
-                            name: alertConfig.animation.type,
-                            duration: alertConfig.animation.duration,
-                            delay: alertConfig.animation.delay,
-                            iterationCount: alertConfig.animation.iteration,
-                            timingFunction: alertConfig.animation.easing
-                        } : null
-                    }
-                },
+                slots: {},
                 centerMedia: []
             };
+            
+            // Only add text slot if there is text
+            if (alertText && alertText.trim()) {
+                console.log('🎬 Alert animation config:', alertConfig.animation);
+                const animationData = (alertConfig.animation && alertConfig.animation.type && alertConfig.animation.type !== 'none') ? {
+                    name: alertConfig.animation.type,
+                    duration: alertConfig.animation.duration || '1s',
+                    delay: alertConfig.animation.delay || '0s',
+                    iterationCount: alertConfig.animation.iteration || '1',
+                    timingFunction: alertConfig.animation.easing || 'ease'
+                } : null;
+                
+                console.log('🎬 Processed animation data:', animationData);
+                
+                payload.slots[alertConfig.textStyling?.position || 'topCenter'] = {
+                    type: 'text',
+                    text: alertText,
+                    style: {
+                        color: alertConfig.textStyling?.color || '#fff',
+                        fontFamily: alertConfig.textStyling?.fontFamily || 'Arial, sans-serif',
+                        fontSize: alertConfig.textStyling?.fontSize || '64px',
+                        fontWeight: alertConfig.textStyling?.fontWeight || 'bold',
+                        textShadow: alertConfig.textStyling?.textShadow || '3px 3px 6px rgba(0, 0, 0, 0.9)',
+                        webkitTextStroke: alertConfig.textStyling?.textStroke || '1px #000',
+                        zIndex: '15'
+                    },
+                    animation: animationData
+                };
+            }
             
             // Add sound file if present
             if (alertConfig.soundFile && alertConfig.soundFile.data) {

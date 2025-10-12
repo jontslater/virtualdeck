@@ -339,9 +339,60 @@ function triggerMapping(mapping) {
     // pick random
     const idx = Math.floor(Math.random() * choices.length);
     const label = choices[idx];
-    if (window.electronAPI && window.electronAPI.sendTrigger) window.electronAPI.sendTrigger(label);
+    
+    // Use the main.js debouncing mechanism by sending through the trigger system
+    if (window.electronAPI && window.electronAPI.sendTrigger) {
+      console.log(`🚀 Triggering button "${label}" from redemption keyword matching`);
+      window.electronAPI.sendTrigger(label);
+    }
   } catch (e) {
     console.error('Error in triggerMapping:', e);
+  }
+}
+
+// Helper to check if a redemption title matches any button's chat command keyword
+async function checkRedemptionAgainstButtonKeywords(evt) {
+  try {
+    if (!evt || evt.type !== 'redeem') return null;
+    
+    // Get reward title from redemption event
+    const title = (evt.event && (evt.event.reward && (evt.event.reward.title || evt.event.reward.name))) || 
+                  (evt.event && (evt.event.reward_title || evt.event.reward)) || '';
+    
+    if (!title) return null;
+    
+    // Get all buttons from config
+    const config = await window.electronAPI.getConfig();
+    const buttons = config.buttons || [];
+    
+    // Look for buttons with chat command keywords that match the redemption title
+    for (const button of buttons) {
+      if (button.chatCommand && 
+          button.chatCommand.enabled && 
+          button.chatCommand.keyword && 
+          button.label) {
+        
+        const keyword = String(button.chatCommand.keyword).toLowerCase();
+        const rewardTitle = String(title).toLowerCase();
+        const triggerMethod = button.chatCommand.triggerMethod || 'command';
+        
+        if (keyword === rewardTitle) {
+          console.log(`🔍 tc.js checking button "${button.label}" with triggerMethod: "${triggerMethod}" for redemption: "${title}"`);
+          // Only trigger if the button is configured to accept redemptions
+          if (triggerMethod === 'redeem' || triggerMethod === 'both') {
+            console.log(`🚀 tc.js triggering button "${button.label}" (triggerMethod: ${triggerMethod} allows redemptions)`);
+            return button.label;
+          } else {
+            console.log(`⏭️ tc.js skipping redemption "${title}" for button "${button.label}" (triggerMethod: ${triggerMethod} - command only)`);
+          }
+        }
+      }
+    }
+    
+    return null;
+  } catch (e) {
+    console.error('Error checking redemption against button keywords:', e);
+    return null;
   }
 }
 
@@ -573,10 +624,15 @@ function matchMappingForEvent(evt) {
   // Chat command mapping
   if ((rawType === 'chat' || rawType === 'command') && evt.message && evt.message.startsWith('!')) {
     const cmd = evt.message.split(' ')[0].substring(1).toLowerCase(); // without '!'
+    console.log(`🔍 tc.js processing chat command: !${cmd}`);
     for (const m of (window.twitchMappings || [])) {
       if (!m) continue;
-      if (m.type === 'command' && m.command && m.command.toLowerCase() === cmd) return m;
+      if (m.type === 'command' && m.command && m.command.toLowerCase() === cmd) {
+        console.log(`🎯 tc.js found command mapping for !${cmd}:`, m);
+        return m;
+      }
     }
+    console.log(`❌ tc.js no command mapping found for !${cmd}`);
   }
   // EventSub / other mappings
   for (const m of (window.twitchMappings || [])) {
@@ -708,9 +764,25 @@ function normalizeSubTier(evt) {
 
 // Wrap pushTwitchEvent to also evaluate mappings
 const _origPush = pushTwitchEvent;
-pushTwitchEvent = function(evt) {
+pushTwitchEvent = async function(evt) {
   _origPush(evt);
   try {
+    // Skip processing chat commands entirely - let main.js handle them
+    if (evt && evt.type === 'chat' && evt.message && evt.message.startsWith('!')) {
+      console.log(`⏭️ tc.js skipping chat command processing for: ${evt.message} (handled by main.js)`);
+      return; // Don't process chat commands in tc.js
+    }
+    
+    // ONLY for redemptions, check if any button has a matching chat command keyword
+    if (evt && evt.type === 'redeem') {
+      const matchingButtonLabel = await checkRedemptionAgainstButtonKeywords(evt);
+      if (matchingButtonLabel && window.electronAPI && window.electronAPI.sendTrigger) {
+        console.log(`🚀 Triggering button "${matchingButtonLabel}" from channel point redemption`);
+        triggerMapping({ cardLabel: matchingButtonLabel });
+        return; // Don't continue to mapping system if we found a keyword match
+      }
+    }
+    
     // First try standard matching
     let m = matchMappingForEvent(evt);
     // If bits event, try best-match algorithm
@@ -2285,3 +2357,20 @@ if (window.electronAPI && window.electronAPI.onTwitchClearResult) {
     setTimeout(() => { try { if (toast && toast.parentNode) toast.parentNode.removeChild(toast); } catch(e){} }, 3500);
   });
 }
+
+// Test function specifically for testing redemption keyword matching
+window.testRedemptionKeyword = function(rewardTitle = 'bob') {
+  console.log(`🧪 Testing redemption keyword matching for: "${rewardTitle}"`);
+  const testEvent = {
+    type: 'redeem',
+    user: 'TestUser',
+    user_name: 'TestUser',
+    event: {
+      user_name: 'TestUser',
+      reward: { title: rewardTitle },
+      user_input: ''
+    },
+    _testRequirement: 'none'
+  };
+  pushTwitchEvent(testEvent);
+};
