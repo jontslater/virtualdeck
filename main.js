@@ -368,6 +368,60 @@ function startOverlayServer() {
           res.end(data);
         });
       });
+    } else if (req.url.startsWith('/public/')) {
+      // Serve static files from public directory
+      const publicPath = req.url.substring(1); // Remove leading '/'
+      const fullPath = path.join(__dirname, publicPath);
+      
+      // Security check - ensure the file path is within public directory
+      if (!fullPath.startsWith(path.join(__dirname, 'public'))) {
+        res.writeHead(403);
+        res.end('Access denied');
+        return;
+      }
+      
+      fs.access(fullPath, fs.constants.F_OK, (err) => {
+        if (err) {
+          res.writeHead(404);
+          res.end('File not found');
+          return;
+        }
+        
+        // Get file extension for content type
+        const ext = path.extname(fullPath).toLowerCase();
+        const contentTypes = {
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.gif': 'image/gif',
+          '.webp': 'image/webp',
+          '.svg': 'image/svg+xml',
+          '.mp4': 'video/mp4',
+          '.webm': 'video/webm',
+          '.ogg': 'video/ogg',
+          '.mp3': 'audio/mpeg',
+          '.wav': 'audio/wav'
+        };
+        
+        const contentType = contentTypes[ext] || 'application/octet-stream';
+        
+        // Serve the file
+        fs.readFile(fullPath, (err, data) => {
+          if (err) {
+            res.writeHead(500);
+            res.end('Error reading file');
+            return;
+          }
+          res.writeHead(200, { 
+            'Content-Type': contentType,
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Cache-Control': 'public, max-age=3600'
+          });
+          res.end(data);
+        });
+      });
     } else {
       res.writeHead(404);
       res.end('Not found');
@@ -1362,6 +1416,58 @@ ipcMain.handle('get-app-version', async () => {
   } catch (error) {
     console.error('Error reading package.json:', error);
     return 'Unknown';
+  }
+});
+
+// Get connected overlays
+ipcMain.handle('get-connected-overlays', async () => {
+  try {
+    const connections = [];
+    // Convert overlayRegistry Map to array of connection objects
+    for (const [overlayName, clientSet] of overlayRegistry.entries()) {
+      if (clientSet.size > 0) {
+        connections.push({
+          name: overlayName,
+          count: clientSet.size
+        });
+      }
+    }
+    console.log('📊 Connected overlays:', connections);
+    return connections;
+  } catch (error) {
+    console.error('Error getting connected overlays:', error);
+    return [];
+  }
+});
+
+// Close all WebSocket connections for a specific overlay
+ipcMain.handle('close-overlay-connections', async (event, overlayName) => {
+  try {
+    console.log(`🔌 Closing connections for overlay: ${overlayName}`);
+    
+    if (overlayRegistry.has(overlayName)) {
+      const clientSet = overlayRegistry.get(overlayName);
+      const clientCount = clientSet.size;
+      
+      // Close all WebSocket connections for this overlay
+      for (const ws of clientSet) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close(1000, `Overlay "${overlayName}" deleted`);
+        }
+      }
+      
+      // Clear the registry entry
+      overlayRegistry.delete(overlayName);
+      
+      console.log(`✅ Closed ${clientCount} connection(s) for overlay: ${overlayName}`);
+      return { success: true, closedCount: clientCount };
+    } else {
+      console.log(`ℹ️ No connections found for overlay: ${overlayName}`);
+      return { success: true, closedCount: 0 };
+    }
+  } catch (error) {
+    console.error('Error closing overlay connections:', error);
+    return { success: false, error: error.message };
   }
 });
 

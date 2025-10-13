@@ -351,40 +351,75 @@ function triggerMapping(mapping) {
 }
 
 // Helper to check if a redemption title matches any button's chat command keyword
-async function checkRedemptionAgainstButtonKeywords(evt) {
+window.checkRedemptionAgainstButtonKeywords = async function checkRedemptionAgainstButtonKeywords(evt) {
   try {
     if (!evt || evt.type !== 'redeem') return null;
     
-    // Get reward title from redemption event
-    const title = (evt.event && (evt.event.reward && (evt.event.reward.title || evt.event.reward.name))) || 
-                  (evt.event && (evt.event.reward_title || evt.event.reward)) || '';
+    // Get reward title from redemption event - use event.reward.title directly
+    const title = evt.event?.reward?.title || evt.event?.reward?.name || evt.event?.reward_title || evt.event?.reward || '';
     
     if (!title) return null;
+    
+    console.log(`🔍 checkRedemptionAgainstButtonKeywords: Checking redemption "${title}"`);
     
     // Get all buttons from config
     const config = await window.electronAPI.getConfig();
     const buttons = config.buttons || [];
     
-    // Look for buttons with chat command keywords that match the redemption title
+    console.log(`🔍 Found ${buttons.length} buttons in config`);
+    
+    // Debug: Check for Donut button specifically
+    const donutButton = buttons.find(btn => btn.name === 'Donut' || btn.label === 'Donut');
+    if (donutButton) {
+      console.log('🔍 Found Donut button in tc.js:', donutButton);
+      console.log('🔍 Donut button chatCommand:', donutButton.chatCommand);
+    } else {
+      console.log('🔍 Donut button not found in tc.js config');
+    }
+    
+    // Look for buttons with chat command keywords or redeem names that match the redemption title
     for (const button of buttons) {
+      console.log(`🔍 Checking button "${button.label || button.name}":`, {
+        hasChatCommand: !!button.chatCommand,
+        enabled: button.chatCommand?.enabled,
+        keyword: button.chatCommand?.keyword,
+        redeemName: button.chatCommand?.redeemName,
+        triggerMethod: button.chatCommand?.triggerMethod
+      });
+      
       if (button.chatCommand && 
           button.chatCommand.enabled && 
-          button.chatCommand.keyword && 
-          button.label) {
+          (button.chatCommand.keyword || button.chatCommand.redeemName) && 
+          (button.label || button.name)) {
         
-        const keyword = String(button.chatCommand.keyword).toLowerCase();
+        const keyword = String(button.chatCommand.keyword || '').toLowerCase();
+        const redeemName = String(button.chatCommand.redeemName || '').toLowerCase();
         const rewardTitle = String(title).toLowerCase();
         const triggerMethod = button.chatCommand.triggerMethod || 'command';
         
-        if (keyword === rewardTitle) {
-          console.log(`🔍 tc.js checking button "${button.label}" with triggerMethod: "${triggerMethod}" for redemption: "${title}"`);
+        console.log(`🔍 Comparing "${keyword}" (keyword), "${redeemName}" (redeem name) with "${rewardTitle}" (reward title)`);
+        console.log(`🔍 Trigger method: "${triggerMethod}"`);
+        
+        // Check if redemption title matches either keyword or redeem name
+        const keywordMatch = keyword && keyword === rewardTitle;
+        const redeemNameMatch = redeemName && redeemName === rewardTitle;
+        
+        console.log(`🔍 Match check: keywordMatch=${keywordMatch}, redeemNameMatch=${redeemNameMatch}`);
+        console.log(`🔍 triggerMethod value: "${triggerMethod}" (type: ${typeof triggerMethod})`);
+        console.log(`🔍 triggerMethod === 'redeem': ${triggerMethod === 'redeem'}`);
+        console.log(`🔍 triggerMethod === 'both': ${triggerMethod === 'both'}`);
+        
+        if (keywordMatch || redeemNameMatch) {
+          console.log(`✅ Match found! Keyword match: ${keywordMatch}, Redeem name match: ${redeemNameMatch}`);
           // Only trigger if the button is configured to accept redemptions
           if (triggerMethod === 'redeem' || triggerMethod === 'both') {
-            console.log(`🚀 tc.js triggering button "${button.label}" (triggerMethod: ${triggerMethod} allows redemptions)`);
-            return button.label;
+            console.log(`🚀 tc.js triggering button "${button.label || button.name}" (triggerMethod: ${triggerMethod} allows redemptions)`);
+            return button.label || button.name;
           } else {
-            console.log(`⏭️ tc.js skipping redemption "${title}" for button "${button.label}" (triggerMethod: ${triggerMethod} - command only)`);
+            console.log(`⏭️ tc.js skipping redemption "${title}" for button "${button.label || button.name}" (triggerMethod: ${triggerMethod} - command only)`);
           }
+        } else {
+          console.log(`❌ No match found`);
         }
       }
     }

@@ -1,9 +1,147 @@
 // public/script.js
 
+/* ========================================================
+ * Custom Alert System (Non-blocking, preserves focus)
+ * ======================================================== */
+function showCustomAlert(message, type = 'info') {
+  // Create alert container if it doesn't exist
+  let alertContainer = document.getElementById('custom-alert-container');
+  if (!alertContainer) {
+    alertContainer = document.createElement('div');
+    alertContainer.id = 'custom-alert-container';
+    alertContainer.style.cssText = `
+      position: fixed;
+      top: 60px;
+      right: 20px;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    `;
+    document.body.appendChild(alertContainer);
+  }
+
+  // Create alert element
+  const alert = document.createElement('div');
+  alert.style.cssText = `
+    background: var(--bg-primary, #1e1e1e);
+    color: var(--text-primary, #ffffff);
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border-left: 4px solid ${type === 'error' ? '#f44336' : type === 'success' ? '#4CAF50' : '#2196F3'};
+    font-size: 14px;
+    max-width: 400px;
+    pointer-events: auto;
+    animation: slideIn 0.3s ease-out;
+  `;
+  alert.textContent = message;
+
+  // Add animation
+  const style = document.createElement('style');
+  if (!document.getElementById('custom-alert-styles')) {
+    style.id = 'custom-alert-styles';
+    style.textContent = `
+      @keyframes slideIn {
+        from {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      @keyframes slideOut {
+        from {
+          transform: translateX(0);
+          opacity: 1;
+        }
+        to {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  alertContainer.appendChild(alert);
+
+  // Auto-remove after 4 seconds
+  setTimeout(() => {
+    alert.style.animation = 'slideOut 0.3s ease-out';
+    setTimeout(() => {
+      if (alert.parentNode) {
+        alert.parentNode.removeChild(alert);
+      }
+    }, 300);
+  }, 4000);
+}
+
 const soundGrid = document.getElementById("sound-grid");
 const visualContainer = document.getElementById("visual-container");
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
+
+// Helper function to load Twitch channel point redemptions
+async function loadChannelRedemptions(selectElement, inputElement) {
+  if (!window.electronAPI || !window.electronAPI.getChannelRewards) {
+    showCustomAlert('Twitch API not available', 'error');
+    return;
+  }
+  
+  try {
+    const rewards = await window.electronAPI.getChannelRewards();
+    
+    if (!rewards || rewards.length === 0) {
+      showCustomAlert('No channel point redemptions found. Make sure you\'re connected to Twitch.', 'error');
+      return;
+    }
+    
+    // Clear existing options except the first one
+    selectElement.innerHTML = '<option value="">-- Select or type manually --</option>';
+    
+    // Add redemptions to dropdown
+    rewards.forEach(reward => {
+      const option = document.createElement('option');
+      option.value = reward.title;
+      option.textContent = `${reward.title} (${reward.cost} pts)`;
+      selectElement.appendChild(option);
+    });
+    
+    showCustomAlert(`Loaded ${rewards.length} redemption(s) from Twitch`, 'success');
+    console.log('✅ Loaded Twitch redemptions:', rewards);
+  } catch (error) {
+    console.error('Error loading redemptions:', error);
+    showCustomAlert('Failed to load redemptions from Twitch', 'error');
+  }
+}
+
+// Setup redemption dropdown sync with text input
+function setupRedemptionSync(selectElement, inputElement) {
+  if (!selectElement || !inputElement) return;
+  
+  // When dropdown changes, update text input
+  selectElement.addEventListener('change', () => {
+    if (selectElement.value) {
+      inputElement.value = selectElement.value;
+    }
+  });
+  
+  // When text input changes, try to match dropdown
+  inputElement.addEventListener('input', () => {
+    const matchingOption = Array.from(selectElement.options).find(
+      opt => opt.value.toLowerCase() === inputElement.value.toLowerCase()
+    );
+    if (matchingOption) {
+      selectElement.value = matchingOption.value;
+    } else {
+      selectElement.value = '';
+    }
+  });
+}
 
 // Add refresh UI listener
 window.electronAPI.onRefreshUI(() => {
@@ -32,31 +170,33 @@ function muteOverlayIframeAudio() {
         
         let mutedCount = 0;
         audios.forEach(audio => {
-          if (!audio.muted || audio.volume !== 0) {
-            audio.muted = true;
-            audio.volume = 0;
-            // Force pause any playing audio in dashboard iframe
-            if (!audio.paused) {
-              audio.pause();
-            }
-            mutedCount++;
+          // Immediately pause and mute
+          if (!audio.paused) {
+            audio.pause();
           }
+          audio.muted = true;
+          audio.volume = 0;
+          // Prevent future playback
+          audio.removeAttribute('autoplay');
+          audio.src = ''; // Clear source to prevent any playback
+          mutedCount++;
         });
         
         videos.forEach(video => {
-          if (!video.muted || video.volume !== 0) {
-            video.muted = true;
-            video.volume = 0;
-            // Force pause any playing video in dashboard iframe
-            if (!video.paused) {
-              video.pause();
-            }
-            mutedCount++;
+          // Immediately pause and mute
+          if (!video.paused) {
+            video.pause();
           }
+          video.muted = true;
+          video.volume = 0;
+          // Prevent future playback
+          video.removeAttribute('autoplay');
+          // Don't clear video source as it might be needed for visual preview
+          mutedCount++;
         });
         
         if (mutedCount > 0) {
-          console.log(`🔇 Muted ${mutedCount} media element(s) in dashboard overlay`);
+          console.log(`🔇 Muted and paused ${mutedCount} media element(s) in dashboard overlay`);
         }
       } catch (error) {
         // Silently ignore CORS errors when iframe is from different origin
@@ -74,8 +214,45 @@ function muteOverlayIframeAudio() {
       // Mute immediately
       muteElements();
       
-      // Set up mutation observer to mute any new audio/video elements
-      const observer = new MutationObserver(() => {
+      // Set up mutation observer to mute any new audio/video elements IMMEDIATELY when added
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach(mutation => {
+          mutation.addedNodes.forEach(node => {
+            if (node.tagName === 'AUDIO') {
+              console.log('🔇 New audio detected in dashboard iframe - muting immediately');
+              node.pause();
+              node.muted = true;
+              node.volume = 0;
+              node.removeAttribute('autoplay');
+              node.src = '';
+            } else if (node.tagName === 'VIDEO') {
+              console.log('🔇 New video detected in dashboard iframe - muting immediately');
+              node.pause();
+              node.muted = true;
+              node.volume = 0;
+              node.removeAttribute('autoplay');
+            }
+            // Check children as well
+            if (node.querySelectorAll) {
+              const audios = node.querySelectorAll('audio');
+              const videos = node.querySelectorAll('video');
+              audios.forEach(audio => {
+                audio.pause();
+                audio.muted = true;
+                audio.volume = 0;
+                audio.removeAttribute('autoplay');
+                audio.src = '';
+              });
+              videos.forEach(video => {
+                video.pause();
+                video.muted = true;
+                video.volume = 0;
+                video.removeAttribute('autoplay');
+              });
+            }
+          });
+        });
+        // Also run full mute as backup
         muteElements();
       });
       
@@ -92,10 +269,10 @@ function muteOverlayIframeAudio() {
       muteElements();
     }
     
-    // Continuously check and mute (failsafe for any edge cases)
+    // Aggressively check and mute every 100ms to catch any race conditions
     setInterval(() => {
       muteElements();
-    }, 500); // Check every 500ms to ensure dashboard overlay stays muted
+    }, 100); // Check every 100ms (more frequent) to ensure dashboard overlay stays muted
     
   } catch (error) {
     console.warn('Could not mute overlay iframe:', error);
@@ -903,6 +1080,30 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Initialize visibility dropdown
   initializeVisibilityDropdown();
+  
+  // Setup Twitch redemption loaders for Audio Button form
+  const audioRedeemSelect = document.getElementById('redeem-name-select');
+  const audioRedeemInput = document.getElementById('redeem-name');
+  const audioLoadBtn = document.getElementById('load-audio-redemptions');
+  
+  if (audioLoadBtn && audioRedeemSelect && audioRedeemInput) {
+    setupRedemptionSync(audioRedeemSelect, audioRedeemInput);
+    audioLoadBtn.addEventListener('click', () => {
+      loadChannelRedemptions(audioRedeemSelect, audioRedeemInput);
+    });
+  }
+  
+  // Setup Twitch redemption loaders for Multi-Media Button form
+  const mmRedeemSelect = document.getElementById('multi-media-redeem-name-select');
+  const mmRedeemInput = document.getElementById('multi-media-redeem-name');
+  const mmLoadBtn = document.getElementById('load-multimedia-redemptions');
+  
+  if (mmLoadBtn && mmRedeemSelect && mmRedeemInput) {
+    setupRedemptionSync(mmRedeemSelect, mmRedeemInput);
+    mmLoadBtn.addEventListener('click', () => {
+      loadChannelRedemptions(mmRedeemSelect, mmRedeemInput);
+    });
+  }
 });
 
 // Adjust container bottom padding so fixed pagination doesn't overlap the grid
@@ -1520,6 +1721,7 @@ function getVisibilityMap() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
+    'toggle-queue-control': 'queue-control-widget',
     // move-bar removed
   };
 }
@@ -1801,6 +2003,7 @@ function applyVisibilityPrefs() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
+    'toggle-queue-control': 'queue-control-widget',
     // move-bar removed
   };
 
@@ -2749,7 +2952,18 @@ async function handleMultiMediaTrigger(button) {
   const centerMediaData = button.centerMedia || [];
   const optionsData = button.options || { clearPrevious: true };
   
-  // Debug: Log the button options to see what we're working with
+  // Debug: Log the button data to see what we're working with
+  console.log('🔍 Button.slots:', button.slots);
+  console.log('🔍 SlotsData:', slotsData);
+  if (slotsData && Object.keys(slotsData).length > 0) {
+    Object.keys(slotsData).forEach(key => {
+      console.log(`🔍 Slot ${key}:`, slotsData[key]);
+      console.log(`🔍 Slot ${key} text:`, slotsData[key]?.text);
+      console.log(`🔍 Slot ${key} style:`, slotsData[key]?.style);
+    });
+  } else {
+    console.log('⚠️ No slots data found in button!');
+  }
   console.log('🔍 Button options:', button.options);
   console.log('🔍 OptionsData:', optionsData);
   console.log('🔍 DurationMs in options:', optionsData.durationMs);
@@ -2859,6 +3073,18 @@ async function handleMultiMediaTrigger(button) {
     centerMedia: [...processedCenterMedia, ...processedAudio] // Include audio in centerMedia
   };
 
+  // Log slots with full style data for debugging
+  console.log('📤 Full slots data being sent:', slotsData);
+  if (slotsData && Object.keys(slotsData).length > 0) {
+    Object.keys(slotsData).forEach(slotKey => {
+      console.log(`📤 Slot ${slotKey}:`, slotsData[slotKey]);
+      if (slotsData[slotKey].style) {
+        console.log(`📤 Slot ${slotKey} style:`, slotsData[slotKey].style);
+        console.log(`📤 Slot ${slotKey} fontFamily:`, slotsData[slotKey].style.fontFamily);
+      }
+    });
+  }
+
   // Log payload summary without full base64 data
   console.log('📤 Sending overlay payload:', {
     type: overlayPayload.type,
@@ -2935,11 +3161,11 @@ function clearOverlay() {
   const overlayWidget = document.getElementById('overlay-widget');
   if (overlayWidget && !overlayWidget.classList.contains('hidden')) {
     try {
-      if (window.testMultiSource) {
-        window.testMultiSource(clearPayload);
+      if (window.sendOverlayPayload) {
+        window.sendOverlayPayload(clearPayload);
         console.log(`✅ [${timestamp}] Clear message sent to overlay widget`);
       } else {
-        console.log(`ℹ️ [${timestamp}] Overlay widget found but testMultiSource function not available`);
+        console.log(`ℹ️ [${timestamp}] Overlay widget found but sendOverlayPayload function not available`);
       }
     } catch (error) {
       console.warn(`❌ [${timestamp}] Failed to send clear message to overlay widget:`, error);
@@ -3348,6 +3574,16 @@ window.editButton = async (index) => {
       chatCommandEnabled.checked = true;
       chatCommandKeyword.value = btn.chatCommand.keyword || '';
       redeemName.value = btn.chatCommand.redeemName || '';
+      
+      // Sync dropdown if value exists
+      const redeemSelect = document.getElementById('redeem-name-select');
+      if (redeemSelect && btn.chatCommand.redeemName) {
+        const matchingOption = Array.from(redeemSelect.options).find(
+          opt => opt.value === btn.chatCommand.redeemName
+        );
+        redeemSelect.value = matchingOption ? matchingOption.value : '';
+      }
+      
       chatCommandSettings.style.display = 'block';
       
       // Set trigger method selection
@@ -4651,9 +4887,6 @@ function setupOverlayWidget() {
   const closeBtn = document.getElementById('close-overlay-widget');
   const testBtns = document.querySelectorAll('.overlay-test-btn');
   const mediaBtns = document.querySelectorAll('.overlay-media-btn');
-  const customTextInput = document.getElementById('custom-text');
-  const customPositionSelect = document.getElementById('custom-position');
-  const sendCustomTextBtn = document.getElementById('send-custom-text');
   const copyUrlBtn = document.getElementById('copy-overlay-url');
   
   // Overlay management elements
@@ -4663,17 +4896,17 @@ function setupOverlayWidget() {
   const deleteOverlayBtn = document.getElementById('delete-overlay');
   const overlayUrlDisplay = document.getElementById('overlay-url-display');
   
-  // Position mapping for overlay IDs (old format for backward compatibility)
+  // Position mapping for overlay text slots (new schema format)
   const positionMap = {
-    1: 'text-top-left',
-    2: 'text-top-center', 
-    3: 'text-top-right',
-    4: 'text-mid-left',
-    5: 'center-media',
-    6: 'text-mid-right',
-    7: 'text-bottom-left',
-    8: 'text-bottom-center',
-    9: 'text-bottom-right'
+    1: 'topLeft',
+    2: 'topCenter', 
+    3: 'topRight',
+    4: 'midLeft',
+    5: 'center',
+    6: 'midRight',
+    7: 'bottomLeft',
+    8: 'bottomCenter',
+    9: 'bottomRight'
   };
   
   // Close widget
@@ -4703,11 +4936,13 @@ function setupOverlayWidget() {
                                 text: testText,
                                 style: {
                                     fontFamily: 'Arial, sans-serif',
-                                    fontSize: '18px',
-                                    color: '#00ff00',
+                                    fontSize: '48px',
+                                    color: '#ffffff',
                                     fontWeight: 'bold',
                                     textAlign: 'center',
-                                    zIndex: '1'
+                                    textShadow: '3px 3px 6px rgba(0, 0, 0, 0.9)',
+                                    webkitTextStroke: '2px #000',
+                                    zIndex: '15'
                                 }
                             }
                         }
@@ -4738,8 +4973,8 @@ function setupOverlayWidget() {
             },
             centerMedia: [{
               type: 'image',
-              src: 'https://via.placeholder.com/300x200/00ff00/000000?text=Test+Image+Connected',
-              alt: 'Test Image Connected'
+              src: 'http://localhost:8080/media/images/VirtualDeck2.png',
+              alt: 'VirtualDeck Logo'
             }]
           };
           window.electronAPI.sendOverlayMessage(payload);
@@ -4753,7 +4988,7 @@ function setupOverlayWidget() {
             },
             centerMedia: [{
               type: 'video',
-              src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+              src: 'http://localhost:8080/media/videos/generated-video.mp4',
               loop: true
             }]
           };
@@ -4772,54 +5007,6 @@ function setupOverlayWidget() {
       }
     });
   });
-  
-  // Custom text input
-  if (sendCustomTextBtn) {
-    sendCustomTextBtn.addEventListener('click', () => {
-      const text = customTextInput.value.trim();
-      const position = parseInt(customPositionSelect.value);
-      const targetId = positionMap[position];
-      
-      if (text) {
-        console.log(`Sending custom text to position ${position} (${targetId}): ${text}`);
-        
-        if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-          const payload = {
-            type: 'buttonTrigger',
-            options: {
-              clearPrevious: false
-            },
-            slots: {
-              [targetId]: {
-                text: text,
-                style: {
-                  fontFamily: 'Arial, sans-serif',
-                  fontSize: '16px',
-                  color: '#ffffff',
-                  fontWeight: 'normal',
-                  textAlign: 'center',
-                  zIndex: '1'
-                }
-              }
-            }
-          };
-          window.electronAPI.sendOverlayMessage(payload);
-          
-          // Clear the input
-          customTextInput.value = '';
-        }
-      }
-    });
-  }
-  
-  // Enter key support for custom text
-  if (customTextInput) {
-    customTextInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        sendCustomTextBtn.click();
-      }
-    });
-  }
   
   // Copy URL button
   if (copyUrlBtn) {
@@ -4840,113 +5027,17 @@ function setupOverlayWidget() {
         }).catch(err => {
           console.log('Failed to copy to clipboard:', err);
           // Fallback for older browsers
-          alert(`Copy this URL: ${overlayUrl}`);
+          showCustomAlert(`Copy this URL: ${overlayUrl}`, 'info');
         });
       } else {
         // Fallback for browsers without clipboard API
-        alert(`Copy this URL: ${overlayUrl}`);
+        showCustomAlert(`Copy this URL: ${overlayUrl}`, 'info');
       }
     });
   }
   
   // Multi-source test buttons
-  const testMultiSourceBtn = document.getElementById('test-multi-source');
   const testAllPositionsBtn = document.getElementById('test-all-positions');
-  
-  if (testMultiSourceBtn) {
-    testMultiSourceBtn.addEventListener('click', () => {
-      console.log('Testing multi-source capability...');
-      
-      const payload = {
-        type: 'buttonTrigger',
-        options: {
-          clearPrevious: true
-        },
-        slots: {
-          'topLeft': {
-            text: '🎮 GAME START',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 28,
-              color: '#00ff00',
-              bold: true,
-              italic: false,
-              align: 'center',
-              animation: 'pulse'
-            }
-          },
-          'topRight': {
-            text: 'SCORE: 9999',
-            style: {
-              fontFamily: 'Courier, monospace',
-              fontSize: 24,
-              color: '#ffff00',
-              bold: true,
-              italic: false,
-              align: 'right',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-              zIndex: '10'
-            }
-          },
-          'bottomCenter': {
-            text: 'PRESS SPACE TO CONTINUE',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 20,
-              color: '#ffffff',
-              bold: true,
-              italic: false,
-              align: 'center',
-              animation: 'pulse'
-            }
-          },
-          'midLeft': {
-            text: 'LIVES: 3',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 18,
-              color: '#ff6b6b',
-              bold: true,
-              textAlign: 'left',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-              zIndex: '10'
-            }
-          },
-          'midRight': {
-            text: 'LEVEL: 5',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 18,
-              color: '#4ecdc4',
-              bold: true,
-              italic: false,
-              align: 'right',
-              animation: null
-            }
-          }
-        },
-        centerMedia: [
-          {
-            type: 'image',
-            src: 'https://via.placeholder.com/600x400/000000/ffffff?text=GAME+SCREEN',
-            alt: 'Game Screen'
-          },
-          {
-            type: 'video',
-            src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
-            loop: true
-          }
-        ]
-      };
-      
-      if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-        window.electronAPI.sendOverlayMessage(payload);
-        console.log('Sent multi-source test payload');
-      } else {
-        console.log('sendOverlayMessage not available');
-      }
-    });
-  }
   
   if (testAllPositionsBtn) {
     testAllPositionsBtn.addEventListener('click', () => {
@@ -4977,12 +5068,13 @@ function setupOverlayWidget() {
           text: pos.text,
           style: {
             fontFamily: 'Arial, sans-serif',
-            fontSize: 18,
-            color: '#00ff00',
-            bold: true,
-            italic: false,
-            align: 'center',
-            animation: null
+            fontSize: '48px',
+            color: '#ffffff',
+            fontWeight: 'bold',
+            textAlign: 'center',
+            textShadow: '3px 3px 6px rgba(0, 0, 0, 0.9)',
+            webkitTextStroke: '2px #000',
+            zIndex: '15'
           }
         };
       });
@@ -4990,8 +5082,8 @@ function setupOverlayWidget() {
       // Add center media test
       payload.centerMedia = [{
         type: 'image',
-        src: 'https://via.placeholder.com/400x300/ff00ff/ffffff?text=Test+Center+Media',
-        alt: 'Test Center Media'
+        src: 'http://localhost:8080/media/images/VirtualDeck2.png',
+        alt: 'VirtualDeck Logo'
       }];
       
       if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
@@ -5003,46 +5095,6 @@ function setupOverlayWidget() {
     });
   }
   
-  // Resolution controls
-  const resolutionSelect = document.getElementById('overlay-resolution');
-  const applyResolutionBtn = document.getElementById('apply-resolution');
-  
-  if (resolutionSelect && applyResolutionBtn) {
-    applyResolutionBtn.addEventListener('click', () => {
-      const selectedResolution = resolutionSelect.value;
-      const [width, height] = selectedResolution.split('x').map(Number);
-      
-      console.log(`Applying overlay resolution: ${width}x${height}`);
-      
-      // Send resolution change to overlay iframe
-      const overlayIframe = document.getElementById('overlay-iframe');
-      if (overlayIframe && overlayIframe.contentWindow) {
-        try {
-          overlayIframe.contentWindow.setOverlayResolution(width, height);
-          console.log(`✅ Resolution changed to ${width}x${height}`);
-          
-          // Show feedback
-          const originalText = applyResolutionBtn.textContent;
-          applyResolutionBtn.textContent = '✓ Applied';
-          applyResolutionBtn.style.background = '#4CAF50';
-          setTimeout(() => {
-            applyResolutionBtn.textContent = originalText;
-            applyResolutionBtn.style.background = '';
-          }, 2000);
-        } catch (error) {
-          console.error('Failed to change overlay resolution:', error);
-          applyResolutionBtn.textContent = '❌ Failed';
-          applyResolutionBtn.style.background = '#f44336';
-          setTimeout(() => {
-            applyResolutionBtn.textContent = 'Apply Resolution';
-            applyResolutionBtn.style.background = '';
-          }, 2000);
-        }
-      } else {
-        console.error('Overlay iframe not found');
-      }
-    });
-  }
   
   // Overlay Management Functionality
   if (createOverlayBtn && newOverlayNameInput) {
@@ -5052,12 +5104,12 @@ function setupOverlayWidget() {
       const template = templateSelect ? templateSelect.value : 'center-media';
       
       if (!overlayName) {
-        alert('Please enter a name for the overlay');
+        showCustomAlert('Please enter a name for the overlay', 'error');
         return;
       }
       
       if (overlayName === 'main') {
-        alert('Cannot use "main" as overlay name - it is reserved');
+        showCustomAlert('Cannot use "main" as overlay name - it is reserved', 'error');
         return;
       }
       
@@ -5065,8 +5117,18 @@ function setupOverlayWidget() {
       const overlayId = overlayName.toLowerCase().replace(/\s+/g, '-');
       const displayName = `${overlayName} (${getTemplateDisplayName(template)})`;
       
-      // Save overlay to localStorage
+      // Check for duplicate names
       const savedOverlays = getSavedOverlays();
+      const isDuplicate = savedOverlays.some(overlay => 
+        overlay.id === overlayId || overlay.name.toLowerCase() === overlayName.toLowerCase()
+      );
+      
+      if (isDuplicate) {
+        showCustomAlert(`An overlay with the name "${overlayName}" already exists. Please choose a different name.`, 'error');
+        return;
+      }
+      
+      // Save overlay to localStorage
       savedOverlays.push({
         id: overlayId,
         name: overlayName,
@@ -5086,6 +5148,9 @@ function setupOverlayWidget() {
       // Clear input
       newOverlayNameInput.value = '';
       
+      // Show success message
+      showCustomAlert(`Overlay "${overlayName}" created successfully!`, 'success');
+      
       // Update all overlay selects in forms
       updateAllOverlaySelects();
       
@@ -5094,14 +5159,28 @@ function setupOverlayWidget() {
   }
   
   if (deleteOverlayBtn && overlaySelect) {
-    deleteOverlayBtn.addEventListener('click', () => {
+    deleteOverlayBtn.addEventListener('click', async () => {
       const selectedValue = overlaySelect.value;
       if (selectedValue === 'main') {
-        alert('Cannot delete the main overlay');
+        showCustomAlert('Cannot delete the main overlay', 'error');
         return;
       }
       
-      if (confirm(`Are you sure you want to delete the "${selectedValue}" overlay?`)) {
+      // Use custom confirm dialog instead of native confirm
+      const overlayName = overlaySelect.options[overlaySelect.selectedIndex].textContent;
+      if (confirm(`Are you sure you want to delete the "${overlayName}" overlay?`)) {
+        // Close all WebSocket connections for this overlay
+        if (window.electronAPI && window.electronAPI.closeOverlayConnections) {
+          try {
+            const result = await window.electronAPI.closeOverlayConnections(selectedValue);
+            if (result.success) {
+              console.log(`🔌 Closed ${result.closedCount} connection(s) for overlay: ${selectedValue}`);
+            }
+          } catch (error) {
+            console.error('Error closing overlay connections:', error);
+          }
+        }
+        
         // Remove from localStorage
         const savedOverlays = getSavedOverlays();
         const updatedOverlays = savedOverlays.filter(o => o.id !== selectedValue);
@@ -5113,10 +5192,25 @@ function setupOverlayWidget() {
           option.remove();
         }
         
+        // Reset to main overlay
+        overlaySelect.value = 'main';
+        
         // Update all overlay selects in forms
         updateAllOverlaySelects();
         
+        // Update overlay URL to reflect new selection
+        updateOverlayUrl();
+        
+        // Update preview iframe
+        updatePreviewIframe();
+        
+        // Force connection status update (after a short delay to let connections close)
+        setTimeout(() => {
+          updateOverlayConnectionStatus();
+        }, 100);
+        
         console.log(`✅ Deleted overlay: ${selectedValue}`);
+        showCustomAlert(`Overlay "${overlayName}" deleted successfully`, 'success');
       }
     });
   }
@@ -5229,6 +5323,7 @@ function getTemplateDisplayName(template) {
   const templateNames = {
     'center-media': 'Center Media',
     'fullscreen-media': 'Full Screen',
+    // Legacy templates (kept for backward compatibility)
     'text-only': 'Text Only',
     'custom': 'Custom'
   };
@@ -5315,15 +5410,31 @@ async function updateOverlayConnectionStatus() {
     if (window.electronAPI && window.electronAPI.getConnectedOverlays) {
       const connections = await window.electronAPI.getConnectedOverlays();
       
-      if (connections.length === 0) {
+      // Filter out dashboard preview from connection status
+      const actualConnections = connections.filter(conn => conn.name !== 'dashboard-preview');
+      
+      if (actualConnections.length === 0) {
         connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">⚠️ No overlays connected. Open overlay in OBS to connect.</div>';
       } else {
-        const html = connections.map(conn => 
+        // Group connections by overlay name and count clients
+        const connectionMap = new Map();
+        actualConnections.forEach(conn => {
+          const count = connectionMap.get(conn.name) || 0;
+          connectionMap.set(conn.name, count + conn.clientCount);
+        });
+        
+        const html = Array.from(connectionMap.entries()).map(([name, count]) => 
           `<div style="color: var(--accent-color); margin: 4px 0;">
-            ✅ <strong>${conn.name}</strong> - Connected
+            ✅ <strong>${name}</strong> - ${count} client${count !== 1 ? 's' : ''} connected
           </div>`
         ).join('');
-        connectionsList.innerHTML = html;
+        
+        const total = Array.from(connectionMap.values()).reduce((sum, count) => sum + count, 0);
+        const header = `<div style="color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;">
+          🔗 ${total} total connection${total !== 1 ? 's' : ''} across ${connectionMap.size} overlay${connectionMap.size !== 1 ? 's' : ''}
+        </div>`;
+        
+        connectionsList.innerHTML = header + html;
       }
     } else {
       connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">Connection status unavailable. Restart app to enable.</div>';
@@ -5466,6 +5577,12 @@ function setupAlertWidget() {
   const hardStopBtn = document.getElementById('hard-stop');
   const queueStatusBtn = document.getElementById('queue-status');
   const queueInfo = document.getElementById('queue-info');
+  
+  // Compact queue control widget elements
+  const queueWidgetClear = document.getElementById('queue-widget-clear');
+  const queueWidgetSkip = document.getElementById('queue-widget-skip');
+  const queueWidgetStop = document.getElementById('queue-widget-stop');
+  const queueWidgetStatus = document.getElementById('queue-widget-status');
   
   
   
@@ -6657,7 +6774,7 @@ function setupAlertWidget() {
   
   if (skipCurrentBtn) {
     skipCurrentBtn.addEventListener('click', () => {
-      alertQueue.clearCurrentAlert();
+      alertQueue.skipCurrentAlert();
       updateQueueStatus();
     });
   }
@@ -6674,6 +6791,31 @@ function setupAlertWidget() {
       updateQueueStatus();
       const status = alertQueue.getStatus();
       console.log('Queue Status:', status);
+    });
+  }
+
+  // Compact queue control widget event listeners
+  if (queueWidgetClear) {
+    queueWidgetClear.addEventListener('click', () => {
+      alertQueue.clearQueue();
+      updateQueueStatus();
+      updateQueueWidgetStatus();
+    });
+  }
+  
+  if (queueWidgetSkip) {
+    queueWidgetSkip.addEventListener('click', () => {
+      alertQueue.skipCurrentAlert();
+      updateQueueStatus();
+      updateQueueWidgetStatus();
+    });
+  }
+  
+  if (queueWidgetStop) {
+    queueWidgetStop.addEventListener('click', () => {
+      alertQueue.clearCurrentAlert();
+      updateQueueStatus();
+      updateQueueWidgetStatus();
     });
   }
   
@@ -6696,14 +6838,39 @@ function setupAlertWidget() {
     }
   }
   
+  // Update compact queue widget status
+  function updateQueueWidgetStatus() {
+    if (!queueWidgetStatus) return;
+    
+    const status = alertQueue.getStatus();
+    queueWidgetStatus.textContent = status.queueLength;
+    
+    // Update status color based on queue state
+    if (status.isProcessing) {
+      queueWidgetStatus.style.background = '#ffc107';
+      queueWidgetStatus.style.color = '#000';
+    } else if (status.queueLength > 0) {
+      queueWidgetStatus.style.background = '#17a2b8';
+      queueWidgetStatus.style.color = '#fff';
+    } else {
+      queueWidgetStatus.style.background = '#6c757d';
+      queueWidgetStatus.style.color = '#fff';
+    }
+  }
+  
+  
   // Update queue status every second
-  setInterval(updateQueueStatus, 1000);
+  setInterval(() => {
+    updateQueueStatus();
+    updateQueueWidgetStatus();
+  }, 1000);
   
   
   // Initialize
   updateAlertList();
   updatePreview();
   updateQueueStatus();
+  updateQueueWidgetStatus();
 }
 
 // Global functions for inline event handlers
@@ -6940,6 +7107,24 @@ let alertQueue = {
     }
     
     console.log('🛑 Current alert cleared');
+  },
+
+  // Skip current alert and move to next one
+  skipCurrentAlert() {
+    if (this.currentAlert) {
+      this.currentAlert.status = 'skipped';
+      console.log('⏭️ Current alert skipped');
+    }
+    
+    // Stop current processing and move to next
+    this.hardStop();
+    
+    // If there are more alerts in queue, start processing the next one
+    if (this.queue.length > 0) {
+      setTimeout(() => {
+        this.processQueue();
+      }, 100); // Small delay to ensure cleanup
+    }
   },
   
   // Clear entire queue
@@ -8520,7 +8705,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.electronAPI && typeof window.electronAPI.sendOverlayImage === 'function') {
       window.electronAPI.sendOverlayImage({ 
         position: 1, 
-        imageUrl: 'https://via.placeholder.com/200x100/00ff00/000000?text=Test+Image' 
+        imageUrl: 'http://localhost:8080/media/images/VirtualDeck2.png' 
       });
     } else {
       console.log('sendOverlayImage not available');
@@ -8532,7 +8717,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.electronAPI && typeof window.electronAPI.sendOverlayVideo === 'function') {
       window.electronAPI.sendOverlayVideo({ 
         position: 3, 
-        videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4' 
+        videoUrl: 'http://localhost:8080/media/videos/generated-video.mp4' 
       });
     } else {
       console.log('sendOverlayVideo not available');
@@ -8541,18 +8726,18 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Removed duplicate clearOverlay function - using the main one defined earlier
   
-  // Test multi-source functionality
-  window.testMultiSource = function(payload) {
-    console.log('Testing multi-source with payload:', payload);
+  // Utility function to send payload to overlay
+  window.sendOverlayPayload = function(payload) {
+    console.log('Sending payload to overlay:', payload);
     
     // Send to overlay iframe if available - send payload directly
     const overlayIframe = document.getElementById('overlay-iframe');
     if (overlayIframe && overlayIframe.contentWindow) {
       try {
         overlayIframe.contentWindow.postMessage(payload, '*');
-        console.log('Multi-source test sent to overlay iframe');
+        console.log('Payload sent to overlay iframe');
       } catch (error) {
-        console.warn('Failed to send multi-source test to overlay iframe:', error);
+        console.warn('Failed to send payload to overlay iframe:', error);
       }
     }
     
@@ -8560,9 +8745,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
       try {
         window.electronAPI.sendOverlayMessage(payload);
-        console.log('Multi-source test sent via WebSocket');
+        console.log('Payload sent via WebSocket');
       } catch (error) {
-        console.warn('Failed to send multi-source test via WebSocket:', error);
+        console.warn('Failed to send payload via WebSocket:', error);
       }
     }
   };
@@ -8596,11 +8781,13 @@ document.addEventListener('DOMContentLoaded', () => {
         text: pos.text,
         style: {
           fontFamily: 'Arial, sans-serif',
-          fontSize: '18px',
-          color: '#00ff00',
+          fontSize: '48px',
+          color: '#ffffff',
           fontWeight: 'bold',
           textAlign: 'center',
-          zIndex: (index + 1).toString()
+          textShadow: '3px 3px 6px rgba(0, 0, 0, 0.9)',
+          webkitTextStroke: '2px #000',
+          zIndex: '15'
         }
       };
     });
@@ -8608,8 +8795,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Add center media test
     payload.centerMedia = [{
       type: 'image',
-      src: 'https://via.placeholder.com/400x300/ff00ff/ffffff?text=Test+Center+Media',
-      alt: 'Test Center Media'
+      src: 'http://localhost:8080/media/images/VirtualDeck2.png',
+      alt: 'VirtualDeck Logo'
     }];
     
     if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
@@ -10488,7 +10675,7 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('🎬 Testing different video sources...');
     
     const videoSources = [
-      'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+      'http://localhost:8080/media/videos/generated-video.mp4',
       'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
       'https://www.w3schools.com/html/mov_bbb.mp4'
     ];
@@ -10800,7 +10987,7 @@ document.addEventListener('DOMContentLoaded', () => {
         {
           id: 'm1',
           type: 'image',
-          src: 'https://via.placeholder.com/400x300/ff6600/ffffff?text=Test+Image',
+          src: 'http://localhost:8080/media/images/VirtualDeck2.png',
           loop: false,
           widthPct: 70,
           align: 'center',

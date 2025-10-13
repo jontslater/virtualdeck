@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getMediaFile: async (relativePath) => ipcRenderer.invoke('get-media-file', relativePath),
   getMediaFilePath: async (relativePath) => ipcRenderer.invoke('get-media-file-path', relativePath),
   getConnectedOverlays: async () => ipcRenderer.invoke('get-connected-overlays'),
+  closeOverlayConnections: async (overlayName) => ipcRenderer.invoke('close-overlay-connections', overlayName),
   // Return persisted Twitch Client config (tc_config.json in userData)
   getTwitchConfig: async () => ipcRenderer.invoke('get-tc-config'),
   getSoundPath: async (relativePath) => ipcRenderer.invoke('get-sound-path', relativePath),

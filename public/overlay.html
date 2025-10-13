@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Virtual Deck Overlay</title>
+    <!-- Google Fonts for overlay text -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&family=Lato:wght@300;400;700;900&family=Montserrat:wght@300;400;500;600;700;800;900&family=Oswald:wght@300;400;500;600;700&family=Raleway:wght@300;400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800;900&family=Nunito:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&display=swap" rel="stylesheet">
     <style>
         :root {
             --overlay-width: 1920px;
@@ -348,8 +351,13 @@
         const extractedOverlayName = urlParams.get('name') || 'main';
         window.overlayName = extractedOverlayName;
         
+        // Check if this overlay should be muted (for dashboard preview)
+        const isMuted = urlParams.get('muted') === 'true';
+        window.overlayMuted = isMuted;
+        
         console.log('🔍 Main overlay name extracted:', extractedOverlayName);
         console.log('🔍 Main overlay window.overlayName:', window.overlayName);
+        console.log('🔇 Overlay muted mode:', isMuted);
         
         let messageCount = 0;
         
@@ -500,6 +508,8 @@
                     const element = document.getElementById(elementId);
                     
                     console.log(`🎯 Processing slot ${slotName}:`, slotData);
+                    console.log(`🎯 Slot style:`, slotData.style);
+                    console.log(`🎯 Font family in slot:`, slotData.style?.fontFamily);
                     console.log(`🎯 Mapped to element ID: ${elementId}`);
                     console.log(`🎯 Element found:`, element ? 'Yes' : 'No');
                     
@@ -524,7 +534,10 @@
                             if (slotData.style) {
                                 // Map schema style properties to CSS properties
                                 if (slotData.style.fontFamily) {
-                                    textEl.style.fontFamily = slotData.style.fontFamily;
+                                    console.log('🎨 Applying fontFamily:', slotData.style.fontFamily);
+                                    textEl.style.setProperty('font-family', slotData.style.fontFamily, 'important');
+                                    console.log('🎨 Element fontFamily after apply:', textEl.style.fontFamily);
+                                    console.log('🎨 Computed style:', window.getComputedStyle(textEl).fontFamily);
                                 }
                                 if (slotData.style.fontSize) {
                                     textEl.style.fontSize = typeof slotData.style.fontSize === 'number' 
@@ -629,6 +642,24 @@
             const centerMedia = document.getElementById('center-media');
             if (!centerMedia) {
                 console.error('Center media element not found');
+                return;
+            }
+            
+            // Check if this overlay is in muted mode (dashboard preview)
+            if (window.overlayMuted) {
+                console.log('🔇 Overlay is in muted mode - skipping all audio/video playback');
+                // Only show images, skip audio and video
+                let contentHTML = '';
+                for (const item of mediaItems) {
+                    if (item.type === 'image' || item.type === 'gif') {
+                        const imgSrc = item.src || item.url || item.path || item;
+                        contentHTML += `<img src="${imgSrc}" alt="Alert image">`;
+                        console.log(`🖼️ Added image (muted mode): ${imgSrc}`);
+                    } else {
+                        console.log(`🔇 Skipping ${item.type} in muted mode`);
+                    }
+                }
+                showCenterMedia(contentHTML);
                 return;
             }
             

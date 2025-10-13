@@ -400,8 +400,8 @@
 }
 
 .add-edit-button-form .button-preview {
-  width: 250px;
-  height: 150px;
+  width: 300px;
+  height: 200px;
   border: 2px solid var(--border-color, #333);
   border-radius: 8px;
   background: var(--bg-primary, #000);
@@ -432,14 +432,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
+  font-size: 8px;
   color: white;
   text-align: center;
-  padding: 3px;
+  padding: 2px;
   word-wrap: break-word;
+  word-break: break-word;
   overflow: hidden;
   position: relative;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  line-height: 1.1;
+  hyphens: auto;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .add-edit-button-form .preview-center-media {
@@ -467,20 +472,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.add-edit-button-form .preview-btn {
-  background: #4CAF50;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 8px 16px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.add-edit-button-form .preview-btn:hover {
-  background: #45a049;
 }
 
 .add-edit-button-form .form-actions {
