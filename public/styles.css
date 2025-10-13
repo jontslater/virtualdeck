@@ -463,6 +463,114 @@ html[data-theme], body[data-theme] {
   border-color: var(--accent-secondary);
 }
 
+/* Alert Queue Control Widget */
+.queue-control-widget {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 12px;
+  min-width: 200px;
+  font-size: 12px;
+}
+
+.queue-widget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.queue-widget-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.queue-widget-status {
+  background: var(--accent);
+  color: white;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: bold;
+  min-width: 20px;
+  text-align: center;
+}
+
+.queue-widget-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+
+.queue-widget-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px 8px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 50px;
+}
+
+.queue-widget-btn .btn-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.queue-widget-btn .btn-label {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.queue-widget-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.queue-widget-btn:active {
+  transform: scale(0.95);
+}
+
+/* Queue widget button specific styles */
+#queue-widget-clear:hover {
+  background: #dc3545;
+  border-color: #dc3545;
+}
+
+#queue-widget-skip:hover {
+  background: #ffc107;
+  border-color: #ffc107;
+  color: #000;
+}
+
+#queue-widget-stop:hover {
+  background: #dc3545;
+  border-color: #dc3545;
+}
+
+#queue-widget-info:hover {
+  background: #17a2b8;
+  border-color: #17a2b8;
+}
+
 .drag-status {
   color: var(--text-tertiary);
   font-size: 0.7vw;
@@ -1849,28 +1957,36 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
 .text-box-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 12px;
 }
 
 .overlay-test-btn {
   background: var(--bg-quaternary);
   color: var(--text-primary);
   border: 1px solid var(--border-secondary);
-  padding: 8px 12px;
+  padding: 12px 16px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 16px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: center;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .overlay-test-btn:hover {
   background: var(--hover-bg);
-  border-color: var(--border-tertiary);
+  border-color: var(--accent-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
 }
 
 .overlay-test-btn:active {
-  transform: translateY(1px);
+  transform: translateY(0px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .media-controls {
