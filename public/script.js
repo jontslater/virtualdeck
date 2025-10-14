@@ -1212,7 +1212,7 @@ async function loadButtons() {
   addCard.id = 'add-sound-card';
   addCard.innerHTML = `
     <div class="add-icon">+</div>
-    <div class="add-text">Add Sound</div>
+    <div class="add-text">Add New</div>
   `;
   addCard.onclick = () => {
     // Show selection modal
@@ -5571,14 +5571,7 @@ function setupAlertWidget() {
   const animationDelayValue = document.getElementById('animation-delay-value');
   
   
-  // Queue control elements
-  const clearQueueBtn = document.getElementById('clear-queue');
-  const skipCurrentBtn = document.getElementById('skip-current');
-  const hardStopBtn = document.getElementById('hard-stop');
-  const queueStatusBtn = document.getElementById('queue-status');
-  const queueInfo = document.getElementById('queue-info');
-  
-  // Compact queue control widget elements
+  // Compact queue control widget elements (on dashboard)
   const queueWidgetClear = document.getElementById('queue-widget-clear');
   const queueWidgetSkip = document.getElementById('queue-widget-skip');
   const queueWidgetStop = document.getElementById('queue-widget-stop');
@@ -6013,6 +6006,94 @@ function setupAlertWidget() {
     });
   }
   
+  // Media removal buttons
+  const removeSoundBtn = document.getElementById('remove-alert-sound');
+  const removeImageBtn = document.getElementById('remove-alert-image');
+  const removeVideoBtn = document.getElementById('remove-alert-video');
+  
+  // Helper function to show/hide remove buttons based on file selection
+  function updateRemoveButtons() {
+    // Sound file
+    if (removeSoundBtn) {
+      const hasSound = alertSoundInput.files[0] || window.editingAlertMedia?.soundFile;
+      removeSoundBtn.style.display = hasSound ? 'inline-block' : 'none';
+    }
+    
+    // Image file
+    if (removeImageBtn) {
+      const hasImage = alertImageInput.files[0] || window.editingAlertMedia?.imageFile;
+      removeImageBtn.style.display = hasImage ? 'inline-block' : 'none';
+    }
+    
+    // Video file
+    if (removeVideoBtn) {
+      const hasVideo = alertVideoInput.files[0] || window.editingAlertMedia?.videoFile;
+      removeVideoBtn.style.display = hasVideo ? 'inline-block' : 'none';
+    }
+  }
+  
+  // Update remove buttons when files change
+  if (alertSoundInput) {
+    alertSoundInput.addEventListener('change', () => {
+      updateRemoveButtons();
+    });
+  }
+  
+  if (alertImageInput) {
+    alertImageInput.addEventListener('change', () => {
+      updateRemoveButtons();
+    });
+  }
+  
+  if (alertVideoInput) {
+    alertVideoInput.addEventListener('change', () => {
+      updateRemoveButtons();
+    });
+  }
+  
+  // Remove sound file
+  if (removeSoundBtn) {
+    removeSoundBtn.addEventListener('click', () => {
+      alertSoundInput.value = '';
+      if (window.editingAlertMedia) {
+        window.editingAlertMedia.soundFile = null;
+      }
+      updateRemoveButtons();
+      updatePreview().catch(console.error);
+      console.log('Sound file removed');
+    });
+  }
+  
+  // Remove image file
+  if (removeImageBtn) {
+    removeImageBtn.addEventListener('click', () => {
+      alertImageInput.value = '';
+      if (window.editingAlertMedia) {
+        window.editingAlertMedia.imageFile = null;
+      }
+      updateRemoveButtons();
+      updatePreview().catch(console.error);
+      console.log('Image file removed');
+    });
+  }
+  
+  // Remove video file
+  if (removeVideoBtn) {
+    removeVideoBtn.addEventListener('click', () => {
+      alertVideoInput.value = '';
+      if (window.editingAlertMedia) {
+        window.editingAlertMedia.videoFile = null;
+      }
+      // Hide video settings panel
+      if (alertVideoSettings) {
+        alertVideoSettings.style.display = 'none';
+      }
+      updateRemoveButtons();
+      updatePreview().catch(console.error);
+      console.log('Video file removed');
+    });
+  }
+  
   
   // Save alert
   if (saveAlertBtn) {
@@ -6271,7 +6352,8 @@ function setupAlertWidget() {
         localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
         alertSystem.updateAlerts();
         updateAlertList();
-        console.log('All alerts cleared');
+        clearForm();
+        console.log('All alerts cleared - form cleared');
       }
     });
   }
@@ -6389,6 +6471,9 @@ function setupAlertWidget() {
     if (alertAnimationEasingSelect) {
       alertAnimationEasingSelect.value = 'ease';
     }
+    
+    // Hide all remove buttons
+    updateRemoveButtons();
     
     updatePreview().catch(console.error);
   }
@@ -6741,6 +6826,9 @@ function setupAlertWidget() {
     // Display existing media files in the form
     displayExistingMedia(alertToEdit.soundFile, alertToEdit.imageFile, alertToEdit.videoFile);
     
+    // Update remove buttons visibility
+    updateRemoveButtons();
+    
     // Update preview
     updatePreview().catch(console.error);
     
@@ -6760,45 +6848,20 @@ function setupAlertWidget() {
       alertSystem.updateAlerts();
       updateAlertList();
       console.log('Alert deleted:', alertId);
+      
+      // Clear the form if no alerts remain
+      if (savedAlerts.length === 0) {
+        clearForm();
+        console.log('All alerts deleted - form cleared');
+      }
     }
   };
   
 
-  // Queue control event listeners
-  if (clearQueueBtn) {
-    clearQueueBtn.addEventListener('click', () => {
-      alertQueue.clearQueue();
-      updateQueueStatus();
-    });
-  }
-  
-  if (skipCurrentBtn) {
-    skipCurrentBtn.addEventListener('click', () => {
-      alertQueue.skipCurrentAlert();
-      updateQueueStatus();
-    });
-  }
-  
-  if (hardStopBtn) {
-    hardStopBtn.addEventListener('click', () => {
-      alertQueue.hardStop();
-      updateQueueStatus();
-    });
-  }
-  
-  if (queueStatusBtn) {
-    queueStatusBtn.addEventListener('click', () => {
-      updateQueueStatus();
-      const status = alertQueue.getStatus();
-      console.log('Queue Status:', status);
-    });
-  }
-
-  // Compact queue control widget event listeners
+  // Compact queue control widget event listeners (on dashboard)
   if (queueWidgetClear) {
     queueWidgetClear.addEventListener('click', () => {
       alertQueue.clearQueue();
-      updateQueueStatus();
       updateQueueWidgetStatus();
     });
   }
@@ -6806,7 +6869,6 @@ function setupAlertWidget() {
   if (queueWidgetSkip) {
     queueWidgetSkip.addEventListener('click', () => {
       alertQueue.skipCurrentAlert();
-      updateQueueStatus();
       updateQueueWidgetStatus();
     });
   }
@@ -6814,28 +6876,8 @@ function setupAlertWidget() {
   if (queueWidgetStop) {
     queueWidgetStop.addEventListener('click', () => {
       alertQueue.clearCurrentAlert();
-      updateQueueStatus();
       updateQueueWidgetStatus();
     });
-  }
-  
-  // Update queue status display
-  function updateQueueStatus() {
-    if (!queueInfo) return;
-    
-    const status = alertQueue.getStatus();
-    const statusText = queueInfo.querySelector('.queue-status-text');
-    
-    if (statusText) {
-      let statusMessage = `Queue: ${status.queueLength} alerts`;
-      statusMessage += ` | Processing: ${status.isProcessing ? 'Yes' : 'No'}`;
-      
-      if (status.currentAlert) {
-        statusMessage += ` | Current: ${status.currentAlert.type}`;
-      }
-      
-      statusText.textContent = statusMessage;
-    }
   }
   
   // Update compact queue widget status
@@ -6861,7 +6903,6 @@ function setupAlertWidget() {
   
   // Update queue status every second
   setInterval(() => {
-    updateQueueStatus();
     updateQueueWidgetStatus();
   }, 1000);
   
@@ -6869,7 +6910,6 @@ function setupAlertWidget() {
   // Initialize
   updateAlertList();
   updatePreview();
-  updateQueueStatus();
   updateQueueWidgetStatus();
 }
 
