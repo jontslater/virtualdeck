@@ -18,8 +18,13 @@ fse.ensureDirSync(userDataPath);
 
 // Copy test media files to userData for bundling
 const mediaFiles = [
+  // Overlay test media
   { from: 'public/images/VirtualDeck2.png', to: 'images/VirtualDeck2.png' },
-  { from: 'public/videos/generated-video-fc791ab6-ec59-40d3-bbd3-9e0784f4f2cb.mp4', to: 'videos/generated-video.mp4' }
+  { from: 'public/videos/generated-video-fc791ab6-ec59-40d3-bbd3-9e0784f4f2cb.mp4', to: 'videos/generated-video.mp4' },
+  // Halloween night skin assets
+  { from: 'public/backgrounds/GPT_Image_1_A_haunting_digital_painting_in_a_dimly_lit_Hallowe_0.png', to: 'backgrounds/halloween-night.png' },
+  { from: 'public/images/blood-png-7162.png', to: 'images/blood-png-7162.png' },
+  { from: 'public/images/—Pngtree—red scary blood border_6652610.png', to: 'images/blood-border.png' }
 ];
 
 mediaFiles.forEach(({ from, to }) => {
