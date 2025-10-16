@@ -23,8 +23,11 @@ const mediaFiles = [
   { from: 'public/videos/generated-video-fc791ab6-ec59-40d3-bbd3-9e0784f4f2cb.mp4', to: 'videos/generated-video.mp4' },
   // Halloween night skin assets
   { from: 'public/backgrounds/GPT_Image_1_A_haunting_digital_painting_in_a_dimly_lit_Hallowe_0.png', to: 'backgrounds/halloween-night.png' },
+  { from: 'public/backgrounds/Image2.jpg', to: 'backgrounds/Image2.jpg' },
   { from: 'public/images/blood-png-7162.png', to: 'images/blood-png-7162.png' },
-  { from: 'public/images/—Pngtree—red scary blood border_6652610.png', to: 'images/blood-border.png' }
+  { from: 'public/images/—Pngtree—red scary blood border_6652610.png', to: 'images/blood-border.png' },
+  // Additional test video
+  { from: 'public/videos/Download.mp4', to: 'videos/Download.mp4' }
 ];
 
 mediaFiles.forEach(({ from, to }) => {
