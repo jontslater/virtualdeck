@@ -1631,6 +1631,26 @@ body.vd-dragging .sound-card.draggable:hover {
   z-index: 1200;
   -webkit-app-region: no-drag; /* buttons must be clickable */
 }
+
+/* BETA Badge */
+.beta-badge {
+  position: fixed;
+  top: 8px;
+  right: 190px;
+  background: linear-gradient(135deg, #ff9800, #ff5722);
+  color: #fff;
+  font-weight: 800;
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(255, 87, 34, 0.4);
+  z-index: 1200;
+  pointer-events: none;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+
 .window-btn {
   width: 36px;
   height: 28px;

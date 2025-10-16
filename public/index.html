@@ -77,6 +77,8 @@
     <div class="menu-item" id="menu-help" aria-haspopup="true">
       <button id="menu-help-btn" class="menu-button" aria-expanded="false" aria-controls="menu-help-dropdown">Help</button>
       <div id="menu-help-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Help menu">
+        <button id="menu-help-bug-report" class="menu-dropdown-item" role="menuitem">Report Bug</button>
+        <div class="menu-divider"></div>
         <button id="menu-help-placeholders" class="menu-dropdown-item" role="menuitem">Twitch Placeholders Guide</button>
         <div class="menu-divider"></div>
         <button id="menu-help-about" class="menu-dropdown-item" role="menuitem">About</button>
@@ -86,6 +88,7 @@
 
   <!-- App toolbar (custom window controls) -->
   <div id="app-toolbar" class="app-toolbar" role="toolbar" aria-label="Window Controls">
+    <div class="beta-badge">BETA</div>
     <button id="btn-move" class="window-btn window-btn-move" title="Hold to Move Window" aria-label="Move">
       <span class="material-icons">open_with</span>
     </button>

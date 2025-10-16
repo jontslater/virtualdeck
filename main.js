@@ -166,6 +166,7 @@ function createWindow() {
     frame: false,
     movable: true,
     resizable: true,
+    title: 'VirtualDeck BETA',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -1416,6 +1417,20 @@ ipcMain.handle('get-app-version', async () => {
   } catch (error) {
     console.error('Error reading package.json:', error);
     return 'Unknown';
+  }
+});
+
+// IPC handler to open bug report form
+ipcMain.handle('report-bug', async () => {
+  try {
+    const { shell } = require('electron');
+    const bugReportUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSdHUauA7LI_bJtfKRKrbD81lZ8Xs6R3egGOEalqAF2KHUNDdg/viewform';
+    await shell.openExternal(bugReportUrl);
+    console.log('Opened bug report form in browser');
+    return { success: true };
+  } catch (error) {
+    console.error('Error opening bug report form:', error);
+    return { success: false, error: error.message };
   }
 });
 
@@ -2883,6 +2898,16 @@ app.whenReady().then(() => {
       { role: 'reload' }
     ] },
     { label: 'Help', submenu: [ 
+      { label: 'Report Bug', click: async () => {
+        try {
+          const { shell } = require('electron');
+          const bugReportUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSdHUauA7LI_bJtfKRKrbD81lZ8Xs6R3egGOEalqAF2KHUNDdg/viewform';
+          await shell.openExternal(bugReportUrl);
+        } catch (error) {
+          console.error('Error opening bug report form:', error);
+        }
+      } },
+      { type: 'separator' },
       { label: 'About', click: () => {
         if (win && !win.isDestroyed()) win.webContents.send('show-about');
       } } 

@@ -8193,8 +8193,10 @@ function setupLeftAppMenu() {
   }
   // Helper to close other menus (so only one menu is open at a time)
   function closeOtherMenus(exceptDropdown) {
-    const allDropdowns = [menuDropdown, viewDropdown, helpDropdown, editDropdown].filter(Boolean);
-    const allBtns = [menuBtn, viewBtn, helpBtn, editBtn].filter(Boolean);
+    const toolsDropdown = document.getElementById('menu-tools-dropdown');
+    const toolsBtn = document.getElementById('menu-tools-btn');
+    const allDropdowns = [menuDropdown, viewDropdown, helpDropdown, editDropdown, toolsDropdown].filter(Boolean);
+    const allBtns = [menuBtn, viewBtn, helpBtn, editBtn, toolsBtn].filter(Boolean);
     allDropdowns.forEach(dd => {
       if (dd !== exceptDropdown) dd.classList.add('hidden');
     });
@@ -8323,6 +8325,23 @@ function setupLeftAppMenu() {
       }
       // Fallback: call local helper directly
       try { openAboutModal(); } catch (err) {}
+      if (helpDropdown) helpDropdown.classList.add('hidden');
+      if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  
+  // Bug Report menu item
+  const helpBugReport = document.getElementById('menu-help-bug-report');
+  if (helpBugReport) {
+    helpBugReport.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        if (window.electronAPI && window.electronAPI.reportBug) {
+          await window.electronAPI.reportBug();
+        }
+      } catch (error) {
+        console.error('Error opening bug report form:', error);
+      }
       if (helpDropdown) helpDropdown.classList.add('hidden');
       if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
     });
