@@ -7137,8 +7137,10 @@ let alertQueue = {
     });
   },
   
-  // Clear current alert and stop processing
+  // Clear current alert and stop processing (does NOT continue to next alert)
   clearCurrentAlert() {
+    console.log('🛑 Stopping current alert (will not continue to next)');
+    
     this.hardStop();
     
     if (this.currentAlert) {
@@ -7146,24 +7148,35 @@ let alertQueue = {
       this.currentAlert = null;
     }
     
-    console.log('🛑 Current alert cleared');
+    // Reset processing flag to stop the queue
+    this.isProcessing = false;
+    
+    console.log('🛑 Current alert stopped - queue processing halted');
   },
 
   // Skip current alert and move to next one
   skipCurrentAlert() {
+    console.log('⏭️ Skipping current alert and moving to next');
+    
     if (this.currentAlert) {
       this.currentAlert.status = 'skipped';
-      console.log('⏭️ Current alert skipped');
+      this.currentAlert = null;
     }
     
-    // Stop current processing and move to next
+    // Stop current processing
     this.hardStop();
     
-    // If there are more alerts in queue, start processing the next one
+    // Reset processing flag to allow next alert to process
+    this.isProcessing = false;
+    
+    // If there are more alerts in queue, start processing the next one immediately
     if (this.queue.length > 0) {
+      console.log(`⏭️ Moving to next alert (${this.queue.length} remaining in queue)`);
       setTimeout(() => {
         this.processQueue();
       }, 100); // Small delay to ensure cleanup
+    } else {
+      console.log('⏭️ No more alerts in queue');
     }
   },
   

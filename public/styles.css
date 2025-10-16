@@ -468,14 +468,16 @@ html[data-theme], body[data-theme] {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  z-index: 1000;
+  z-index: 10000;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   padding: 12px;
+  padding-bottom: 16px;
   min-width: 200px;
   font-size: 12px;
+  pointer-events: auto;
 }
 
 .queue-widget-header {
@@ -508,24 +510,29 @@ html[data-theme], body[data-theme] {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 8px;
+  position: relative;
+  z-index: 1;
 }
 
 .queue-widget-btn {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  padding: 10px 8px;
+  padding: 12px 8px;
   cursor: pointer;
   font-size: 11px;
   color: var(--text-primary);
   transition: all 0.2s ease;
-  min-height: 48px;
+  min-height: 52px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4px;
   min-width: 50px;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
 }
 
 .queue-widget-btn .btn-icon {
