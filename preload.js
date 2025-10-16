@@ -120,4 +120,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadDailyCheckins: async () => ipcRenderer.invoke('loadDailyCheckins'),
   saveDailyCheckins: async (data) => ipcRenderer.invoke('saveDailyCheckins', data),
   sendTwitchChatMessage: async (message) => ipcRenderer.invoke('sendTwitchChatMessage', message),
+  // Bug Report
+  reportBug: async () => ipcRenderer.invoke('report-bug'),
 });
