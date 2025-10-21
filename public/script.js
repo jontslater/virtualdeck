@@ -7609,6 +7609,8 @@ let alertSystem = {
   }
 };
 
+// Expose alertSystem to global scope
+window.alertSystem = alertSystem;
 
 // Expose alertQueue to global scope
 window.alertQueue = alertQueue;
@@ -8526,6 +8528,24 @@ function setupLeftAppMenu() {
       if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
     });
   }
+  
+  // Test Twitch Events - commented out but function available via console: testTwitchEvents()
+  /*
+  const toolsTestTwitch = document.getElementById('menu-tools-test-twitch');
+  if (toolsTestTwitch) {
+    toolsTestTwitch.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (toolsDropdown) toolsDropdown.classList.add('hidden');
+      if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
+      // Run the test function
+      if (window.testTwitchEventPipeline) {
+        window.testTwitchEventPipeline();
+      } else {
+        alert('Test function not available. Please reload the application.');
+      }
+    });
+  }
+  */
   
   // Themes population: built-in + dynamic skins
   async function renderToolsThemes() {
@@ -11489,3 +11509,302 @@ function initializePreferencesModal() {
     });
   }
 }
+
+// ============================================================================
+// TWITCH EVENT PIPELINE TESTING
+// ============================================================================
+
+/**
+ * Test function that simulates Twitch follow and subscription events
+ * going through the entire pipeline as if they came from Twitch.
+ * This helps diagnose alert issues.
+ */
+window.testTwitchEventPipeline = function() {
+  console.log('');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('🧪 TWITCH EVENT PIPELINE TEST');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('');
+  
+  // First, check what alerts are configured
+  console.log('📋 STEP 1: Checking configured alerts...');
+  console.log('─────────────────────────────────────────────────────────');
+  const alerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  console.log(`Total alerts configured: ${alerts.length}`);
+  
+  if (alerts.length === 0) {
+    console.log('❌ NO ALERTS CONFIGURED!');
+    console.log('💡 This is why you\'re not seeing alerts.');
+    console.log('💡 Go to Tools → Alerts to create alerts.');
+    console.log('');
+    alert('⚠️ No alerts configured!\n\nYou need to create alerts in Tools → Alerts first.\n\nCreate at least:\n• 1 "Follower" alert\n• 1 "Subscriber" alert');
+    return;
+  }
+  
+  // Group alerts by type
+  const alertsByType = {};
+  alerts.forEach(alert => {
+    if (!alertsByType[alert.type]) {
+      alertsByType[alert.type] = [];
+    }
+    alertsByType[alert.type].push(alert);
+  });
+  
+  console.log('\nAlerts by type:');
+  Object.keys(alertsByType).forEach(type => {
+    const typeAlerts = alertsByType[type];
+    const enabledCount = typeAlerts.filter(a => a.enabled !== false).length;
+    console.log(`  • ${type}: ${typeAlerts.length} total, ${enabledCount} enabled`);
+  });
+  console.log('');
+  
+  // Check for follower alerts
+  const followerAlerts = alertsByType['follower'] || [];
+  const enabledFollowerAlerts = followerAlerts.filter(a => a.enabled !== false);
+  
+  if (followerAlerts.length === 0) {
+    console.log('⚠️ WARNING: No follower alerts configured!');
+  } else if (enabledFollowerAlerts.length === 0) {
+    console.log('⚠️ WARNING: Follower alerts exist but none are enabled!');
+  } else {
+    console.log(`✅ Follower alerts: ${enabledFollowerAlerts.length} enabled`);
+  }
+  
+  // Check for subscriber alerts
+  const subscriberAlerts = alertsByType['subscriber'] || [];
+  const enabledSubscriberAlerts = subscriberAlerts.filter(a => a.enabled !== false);
+  
+  if (subscriberAlerts.length === 0) {
+    console.log('⚠️ WARNING: No subscriber alerts configured!');
+  } else if (enabledSubscriberAlerts.length === 0) {
+    console.log('⚠️ WARNING: Subscriber alerts exist but none are enabled!');
+  } else {
+    console.log(`✅ Subscriber alerts: ${enabledSubscriberAlerts.length} enabled`);
+  }
+  
+  console.log('');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log('📡 STEP 2: Simulating Twitch EventSub events...');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log('');
+  
+  // Test 1: Simulate a FOLLOW event
+  console.log('🧪 TEST 1: Simulating FOLLOW event');
+  console.log('──────────────────────────────────');
+  
+  const followEvent = {
+    type: 'channel.follow',
+    event: {
+      user_id: '123456789',
+      user_login: 'test_follower',
+      user_name: 'TestFollower',
+      display_name: 'TestFollower',
+      broadcaster_user_id: '987654321',
+      broadcaster_user_login: 'yourchannel',
+      broadcaster_user_name: 'YourChannel',
+      followed_at: new Date().toISOString()
+    }
+  };
+  
+  console.log('📤 Sending follow event through pipeline:', followEvent);
+  
+  // Check if the EventSub handler exists
+  if (typeof window.electronAPI !== 'undefined' && window.electronAPI.onTwitchEventSub) {
+    // Manually trigger the EventSub handler
+    // We need to get the handler function directly
+    console.log('✅ EventSub handler found');
+    
+    // Update alert system first
+    if (window.alertSystem) {
+      window.alertSystem.updateAlerts();
+      console.log('✅ Alert system updated');
+    }
+    
+    // Map event to alert type
+    const alertType = 'follower';
+    console.log(`🎯 Alert type for this event: "${alertType}"`);
+    
+    // Check if we have alerts for this type
+    const alertsForType = alerts.filter(a => a.type === alertType && a.enabled !== false);
+    if (alertsForType.length === 0) {
+      console.log(`❌ No enabled alerts found for type "${alertType}"!`);
+      console.log('💡 Create a "Follower" alert in Tools → Alerts');
+    } else {
+      console.log(`✅ Found ${alertsForType.length} enabled alert(s) for "${alertType}"`);
+      
+      // Trigger the alert
+      const userData = {
+        username: followEvent.event.user_name,
+        display_name: followEvent.event.display_name || followEvent.event.user_name,
+        ...followEvent.event
+      };
+      
+      console.log('🚀 Triggering alert with user data:', userData);
+      
+      if (window.alertSystem) {
+        window.alertSystem.triggerAlertForEvent(alertType, userData);
+        console.log('✅ Follow alert triggered!');
+      } else {
+        console.log('❌ Alert system not found!');
+      }
+    }
+    
+    // Add to chat display
+    if (typeof addTwitchEvent === 'function') {
+      addTwitchEvent(followEvent.type, followEvent.event);
+      console.log('✅ Added to chat display');
+    }
+    
+    // Update recent followers
+    if (typeof addRecentFollower === 'function') {
+      addRecentFollower(followEvent.event);
+      console.log('✅ Updated recent followers');
+    }
+  } else {
+    console.log('❌ EventSub handler not found - may not be initialized yet');
+  }
+  
+  console.log('');
+  
+  // Test 2: Simulate a SUBSCRIPTION event
+  console.log('🧪 TEST 2: Simulating SUBSCRIPTION event');
+  console.log('─────────────────────────────────────────');
+  
+  const subEvent = {
+    type: 'channel.subscribe',
+    event: {
+      user_id: '987654321',
+      user_login: 'test_subscriber',
+      user_name: 'TestSubscriber',
+      display_name: 'TestSubscriber',
+      broadcaster_user_id: '123456789',
+      broadcaster_user_login: 'yourchannel',
+      broadcaster_user_name: 'YourChannel',
+      tier: '1000',
+      is_gift: false,
+      cumulative_months: 3,
+      streak_months: 1,
+      duration_months: 1,
+      message: {
+        text: 'Love the stream!',
+        emotes: []
+      }
+    }
+  };
+  
+  console.log('📤 Sending subscription event through pipeline:', subEvent);
+  
+  if (typeof window.electronAPI !== 'undefined' && window.electronAPI.onTwitchEventSub) {
+    console.log('✅ EventSub handler found');
+    
+    // Update alert system
+    if (window.alertSystem) {
+      window.alertSystem.updateAlerts();
+    }
+    
+    // Map event to alert type
+    const alertType = 'subscriber';
+    console.log(`🎯 Alert type for this event: "${alertType}"`);
+    
+    // Check if we have alerts for this type
+    const alertsForType = alerts.filter(a => a.type === alertType && a.enabled !== false);
+    if (alertsForType.length === 0) {
+      console.log(`❌ No enabled alerts found for type "${alertType}"!`);
+      console.log('💡 Create a "Subscriber" alert in Tools → Alerts');
+    } else {
+      console.log(`✅ Found ${alertsForType.length} enabled alert(s) for "${alertType}"`);
+      
+      // Trigger the alert
+      const userData = {
+        username: subEvent.event.user_name,
+        display_name: subEvent.event.display_name || subEvent.event.user_name,
+        tier: subEvent.event.tier,
+        months: subEvent.event.cumulative_months,
+        message: subEvent.event.message,
+        ...subEvent.event
+      };
+      
+      console.log('🚀 Triggering alert with user data:', userData);
+      
+      if (window.alertSystem) {
+        window.alertSystem.triggerAlertForEvent(alertType, userData);
+        console.log('✅ Subscription alert triggered!');
+      } else {
+        console.log('❌ Alert system not found!');
+      }
+    }
+    
+    // Add to chat display
+    if (typeof addTwitchEvent === 'function') {
+      addTwitchEvent(subEvent.type, subEvent.event);
+      console.log('✅ Added to chat display');
+    }
+    
+    // Update recent subscribers
+    if (typeof addRecentSubscriber === 'function') {
+      addRecentSubscriber(subEvent.event);
+      console.log('✅ Updated recent subscribers');
+    }
+  } else {
+    console.log('❌ EventSub handler not found');
+  }
+  
+  console.log('');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('✅ TEST COMPLETE');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('');
+  console.log('📊 RESULTS SUMMARY:');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log(`• Total alerts configured: ${alerts.length}`);
+  console.log(`• Follower alerts enabled: ${enabledFollowerAlerts.length}`);
+  console.log(`• Subscriber alerts enabled: ${enabledSubscriberAlerts.length}`);
+  console.log('');
+  console.log('💡 WHAT TO CHECK:');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log('1. Did you see alerts appear on screen?');
+  console.log('2. Check the console messages above for errors');
+  console.log('3. Make sure you have alerts created in Tools → Alerts');
+  console.log('4. Make sure your alerts are ENABLED (not disabled)');
+  console.log('5. Check if you have an overlay URL open in OBS');
+  console.log('6. Look for any error messages in red above');
+  console.log('');
+  console.log('🔍 If alerts didn\'t show:');
+  console.log('─────────────────────────────────────────────────────────');
+  if (enabledFollowerAlerts.length === 0) {
+    console.log('❌ Create/enable a "Follower" alert in Tools → Alerts');
+  }
+  if (enabledSubscriberAlerts.length === 0) {
+    console.log('❌ Create/enable a "Subscriber" alert in Tools → Alerts');
+  }
+  console.log('• Check that your overlay is properly connected');
+  console.log('• Verify alert queue is working (check alertQueue in console)');
+  console.log('• Test individual alerts using the Test button in Alerts menu');
+  console.log('');
+  
+  // Create a summary alert for the user
+  let summaryMessage = '🧪 Twitch Event Pipeline Test Complete!\n\n';
+  summaryMessage += `Alerts configured: ${alerts.length}\n`;
+  summaryMessage += `Follower alerts enabled: ${enabledFollowerAlerts.length}\n`;
+  summaryMessage += `Subscriber alerts enabled: ${enabledSubscriberAlerts.length}\n\n`;
+  
+  if (enabledFollowerAlerts.length === 0 || enabledSubscriberAlerts.length === 0) {
+    summaryMessage += '⚠️ ISSUES FOUND:\n';
+    if (enabledFollowerAlerts.length === 0) {
+      summaryMessage += '• No enabled follower alerts\n';
+    }
+    if (enabledSubscriberAlerts.length === 0) {
+      summaryMessage += '• No enabled subscriber alerts\n';
+    }
+    summaryMessage += '\n💡 Create/enable alerts in Tools → Alerts';
+  } else {
+    summaryMessage += '✅ Alerts are configured correctly!\n\n';
+    summaryMessage += 'Check console (F12) for detailed logs.\n';
+    summaryMessage += 'Did you see the test alerts appear?';
+  }
+  
+  alert(summaryMessage);
+};
+
+// Add a shorter alias for quick testing
+window.testTwitchEvents = window.testTwitchEventPipeline;
