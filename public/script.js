@@ -1,14 +1,322 @@
 // public/script.js
 
+/* ========================================================
+ * Custom Alert System (Non-blocking, preserves focus)
+ * ======================================================== */
+function showCustomAlert(message, type = 'info') {
+  // Create alert container if it doesn't exist
+  let alertContainer = document.getElementById('custom-alert-container');
+  if (!alertContainer) {
+    alertContainer = document.createElement('div');
+    alertContainer.id = 'custom-alert-container';
+    alertContainer.style.cssText = `
+      position: fixed;
+      top: 60px;
+      right: 20px;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    `;
+    document.body.appendChild(alertContainer);
+  }
+
+  // Create alert element
+  const alert = document.createElement('div');
+  alert.style.cssText = `
+    background: var(--bg-primary, #1e1e1e);
+    color: var(--text-primary, #ffffff);
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border-left: 4px solid ${type === 'error' ? '#f44336' : type === 'success' ? '#4CAF50' : '#2196F3'};
+    font-size: 14px;
+    max-width: 400px;
+    pointer-events: auto;
+    animation: slideIn 0.3s ease-out;
+  `;
+  alert.textContent = message;
+
+  // Add animation
+  const style = document.createElement('style');
+  if (!document.getElementById('custom-alert-styles')) {
+    style.id = 'custom-alert-styles';
+    style.textContent = `
+      @keyframes slideIn {
+        from {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      @keyframes slideOut {
+        from {
+          transform: translateX(0);
+          opacity: 1;
+        }
+        to {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  alertContainer.appendChild(alert);
+
+  // Auto-remove after 4 seconds
+  setTimeout(() => {
+    alert.style.animation = 'slideOut 0.3s ease-out';
+    setTimeout(() => {
+      if (alert.parentNode) {
+        alert.parentNode.removeChild(alert);
+      }
+    }, 300);
+  }, 4000);
+}
+
 const soundGrid = document.getElementById("sound-grid");
 const visualContainer = document.getElementById("visual-container");
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
 
+// Helper function to load Twitch channel point redemptions
+async function loadChannelRedemptions(selectElement, inputElement) {
+  if (!window.electronAPI || !window.electronAPI.getChannelRewards) {
+    showCustomAlert('Twitch API not available', 'error');
+    return;
+  }
+  
+  try {
+    const rewards = await window.electronAPI.getChannelRewards();
+    
+    if (!rewards || rewards.length === 0) {
+      showCustomAlert('No channel point redemptions found. Make sure you\'re connected to Twitch.', 'error');
+      return;
+    }
+    
+    // Clear existing options except the first one
+    selectElement.innerHTML = '<option value="">-- Select or type manually --</option>';
+    
+    // Add redemptions to dropdown
+    rewards.forEach(reward => {
+      const option = document.createElement('option');
+      option.value = reward.title;
+      option.textContent = `${reward.title} (${reward.cost} pts)`;
+      selectElement.appendChild(option);
+    });
+    
+    showCustomAlert(`Loaded ${rewards.length} redemption(s) from Twitch`, 'success');
+    console.log('✅ Loaded Twitch redemptions:', rewards);
+  } catch (error) {
+    console.error('Error loading redemptions:', error);
+    showCustomAlert('Failed to load redemptions from Twitch', 'error');
+  }
+}
+
+// Setup redemption dropdown sync with text input
+function setupRedemptionSync(selectElement, inputElement) {
+  if (!selectElement || !inputElement) return;
+  
+  // When dropdown changes, update text input
+  selectElement.addEventListener('change', () => {
+    if (selectElement.value) {
+      inputElement.value = selectElement.value;
+    }
+  });
+  
+  // When text input changes, try to match dropdown
+  inputElement.addEventListener('input', () => {
+    const matchingOption = Array.from(selectElement.options).find(
+      opt => opt.value.toLowerCase() === inputElement.value.toLowerCase()
+    );
+    if (matchingOption) {
+      selectElement.value = matchingOption.value;
+    } else {
+      selectElement.value = '';
+    }
+  });
+}
+
 // Add refresh UI listener
 window.electronAPI.onRefreshUI(() => {
   loadButtons();
 });
+
+// Mute overlay iframe in dashboard to prevent double audio
+// Audio should only play in OBS browser source
+function muteOverlayIframeAudio() {
+  const overlayIframe = document.getElementById('overlay-iframe');
+  if (!overlayIframe) {
+    console.warn('🔇 Overlay iframe not found, retrying in 1 second...');
+    setTimeout(muteOverlayIframeAudio, 1000);
+    return;
+  }
+  
+  try {
+    // Mute all existing audio and video elements in the iframe
+      const muteElements = () => {
+      try {
+        const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow?.document;
+        if (!iframeDoc) return;
+        
+        const audios = iframeDoc.querySelectorAll('audio');
+        const videos = iframeDoc.querySelectorAll('video');
+        
+        let mutedCount = 0;
+        audios.forEach(audio => {
+          // Immediately pause and mute
+          if (!audio.paused) {
+            audio.pause();
+          }
+          audio.muted = true;
+          audio.volume = 0;
+          // Prevent future playback
+          audio.removeAttribute('autoplay');
+          audio.src = ''; // Clear source to prevent any playback
+          mutedCount++;
+        });
+        
+        videos.forEach(video => {
+          // Immediately pause and mute
+          if (!video.paused) {
+            video.pause();
+          }
+          video.muted = true;
+          video.volume = 0;
+          // Prevent future playback
+          video.removeAttribute('autoplay');
+          // Don't clear video source as it might be needed for visual preview
+          mutedCount++;
+        });
+        
+        if (mutedCount > 0) {
+          console.log(`🔇 Muted and paused ${mutedCount} media element(s) in dashboard overlay`);
+        }
+      } catch (error) {
+        // Silently ignore CORS errors when iframe is from different origin
+        if (!error.message?.includes('cross-origin')) {
+          console.warn('Error in muteElements:', error);
+        }
+      }
+    };
+    
+    // Set up muting when iframe loads
+    overlayIframe.addEventListener('load', () => {
+      const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow?.document;
+      if (!iframeDoc) return;
+      
+      // Mute immediately
+      muteElements();
+      
+      // Set up mutation observer to mute any new audio/video elements IMMEDIATELY when added
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach(mutation => {
+          mutation.addedNodes.forEach(node => {
+            if (node.tagName === 'AUDIO') {
+              console.log('🔇 New audio detected in dashboard iframe - muting immediately');
+              node.pause();
+              node.muted = true;
+              node.volume = 0;
+              node.removeAttribute('autoplay');
+              node.src = '';
+            } else if (node.tagName === 'VIDEO') {
+              console.log('🔇 New video detected in dashboard iframe - muting immediately');
+              node.pause();
+              node.muted = true;
+              node.volume = 0;
+              node.removeAttribute('autoplay');
+            }
+            // Check children as well
+            if (node.querySelectorAll) {
+              const audios = node.querySelectorAll('audio');
+              const videos = node.querySelectorAll('video');
+              audios.forEach(audio => {
+                audio.pause();
+                audio.muted = true;
+                audio.volume = 0;
+                audio.removeAttribute('autoplay');
+                audio.src = '';
+              });
+              videos.forEach(video => {
+                video.pause();
+                video.muted = true;
+                video.volume = 0;
+                video.removeAttribute('autoplay');
+              });
+            }
+          });
+        });
+        // Also run full mute as backup
+        muteElements();
+      });
+      
+      observer.observe(iframeDoc.body, {
+        childList: true,
+        subtree: true
+      });
+      
+      console.log('✅ Dashboard overlay preview muted (audio plays in OBS only)');
+    });
+    
+    // Also try to mute immediately if iframe is already loaded
+    if (overlayIframe.contentDocument) {
+      muteElements();
+    }
+    
+    // Aggressively check and mute every 100ms to catch any race conditions
+    setInterval(() => {
+      muteElements();
+    }, 100); // Check every 100ms (more frequent) to ensure dashboard overlay stays muted
+    
+  } catch (error) {
+    console.warn('Could not mute overlay iframe:', error);
+  }
+}
+
+// Initialize muting when page loads
+muteOverlayIframeAudio();
+
+// Additional safety: Ensure dashboard iframe never plays audio
+// This is a failsafe in case the dashboard iframe somehow receives WebSocket messages
+function preventDashboardAudio() {
+  const overlayIframe = document.getElementById('overlay-iframe');
+  if (overlayIframe && overlayIframe.contentWindow) {
+    try {
+      // Send a message to the iframe to disable all audio
+      overlayIframe.contentWindow.postMessage({
+        type: 'disableAudio',
+        source: 'dashboard'
+      }, '*');
+      console.log('🔇 Sent disableAudio message to dashboard iframe');
+    } catch (error) {
+      // Ignore cross-origin errors
+    }
+  }
+}
+
+// Send disable audio message periodically to ensure dashboard iframe stays silent
+// Only send if iframe is visible/active to reduce console spam
+let lastDisableAudioTime = 0;
+setInterval(() => {
+  const overlayIframe = document.getElementById('overlay-iframe');
+  const overlayPreview = document.getElementById('overlay-preview');
+  
+  // Only send disable message if overlay preview is visible and not hidden
+  if (overlayIframe && overlayPreview && !overlayPreview.classList.contains('hidden')) {
+    const now = Date.now();
+    // Only send every 5 seconds to reduce spam
+    if (now - lastDisableAudioTime > 5000) {
+      preventDashboardAudio();
+      lastDisableAudioTime = now;
+    }
+  }
+}, 2000); // Check every 2 seconds instead of sending every second
 
 // Chat display variables
 let chatMessages = [];
@@ -772,6 +1080,30 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Initialize visibility dropdown
   initializeVisibilityDropdown();
+  
+  // Setup Twitch redemption loaders for Audio Button form
+  const audioRedeemSelect = document.getElementById('redeem-name-select');
+  const audioRedeemInput = document.getElementById('redeem-name');
+  const audioLoadBtn = document.getElementById('load-audio-redemptions');
+  
+  if (audioLoadBtn && audioRedeemSelect && audioRedeemInput) {
+    setupRedemptionSync(audioRedeemSelect, audioRedeemInput);
+    audioLoadBtn.addEventListener('click', () => {
+      loadChannelRedemptions(audioRedeemSelect, audioRedeemInput);
+    });
+  }
+  
+  // Setup Twitch redemption loaders for Multi-Media Button form
+  const mmRedeemSelect = document.getElementById('multi-media-redeem-name-select');
+  const mmRedeemInput = document.getElementById('multi-media-redeem-name');
+  const mmLoadBtn = document.getElementById('load-multimedia-redemptions');
+  
+  if (mmLoadBtn && mmRedeemSelect && mmRedeemInput) {
+    setupRedemptionSync(mmRedeemSelect, mmRedeemInput);
+    mmLoadBtn.addEventListener('click', () => {
+      loadChannelRedemptions(mmRedeemSelect, mmRedeemInput);
+    });
+  }
 });
 
 // Adjust container bottom padding so fixed pagination doesn't overlap the grid
@@ -880,7 +1212,7 @@ async function loadButtons() {
   addCard.id = 'add-sound-card';
   addCard.innerHTML = `
     <div class="add-icon">+</div>
-    <div class="add-text">Add Sound</div>
+    <div class="add-text">Add New</div>
   `;
   addCard.onclick = () => {
     // Show selection modal
@@ -891,6 +1223,21 @@ async function loadButtons() {
 
   // Load buttons from config
   const data = await window.electronAPI.getConfig();
+  console.log('🔍 Loaded config data:', data);
+  console.log('🔍 Number of buttons:', data.buttons?.length || 0);
+  
+  // Debug: Check for Donut button specifically
+  const donutButton = data.buttons?.find(btn => btn.name === 'Donut' || btn.label === 'Donut');
+  if (donutButton) {
+    console.log('🔍 Found Donut button:', donutButton);
+    console.log('🔍 Donut button audio:', donutButton.audio);
+    if (donutButton.audio && donutButton.audio.length > 0) {
+      console.log('🔍 Donut button audio[0]:', donutButton.audio[0]);
+      console.log('🔍 Donut button audio[0].src:', donutButton.audio[0].src);
+    }
+  } else {
+    console.log('🔍 Donut button not found in config');
+  }
   
   // Check for saved order
   const savedOrder = loadButtonOrder();
@@ -949,7 +1296,11 @@ async function loadButtons() {
         // Read fresh soundData from the DOM so edits/reorders take effect
         try {
           const sd = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
-          if (sd) handleTrigger(sd);
+          if (sd) {
+            console.log('🔍 Raw button data from storage:', sd);
+            console.log('🔍 Button overlay property from storage:', sd.overlay);
+            handleTrigger(sd);
+          }
         } catch (err) {
           console.error('Failed to parse soundData on click:', err);
         }
@@ -1370,6 +1721,7 @@ function getVisibilityMap() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
+    'toggle-queue-control': 'queue-control-widget',
     // move-bar removed
   };
 }
@@ -1651,6 +2003,7 @@ function applyVisibilityPrefs() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
+    'toggle-queue-control': 'queue-control-widget',
     // move-bar removed
   };
 
@@ -1744,6 +2097,96 @@ if (window.electronAPI && window.electronAPI.onShowAbout) {
   window.electronAPI.onShowAbout(() => {
     openAboutModal();
   });
+}
+
+// Placeholders Guide Modal
+function openPlaceholdersGuide() {
+  const modal = document.getElementById('placeholders-guide-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    
+    // Disable hotkeys when modal is open
+    if (window.electronAPI && window.electronAPI.disableHotkeys) {
+      window.electronAPI.disableHotkeys();
+    }
+  }
+}
+
+function closePlaceholdersGuide() {
+  const modal = document.getElementById('placeholders-guide-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    
+    // Re-enable hotkeys when modal is closed
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+}
+
+// Close button for placeholders guide
+const placeholdersGuideCloseBtn = document.getElementById('placeholders-guide-close');
+if (placeholdersGuideCloseBtn) {
+  placeholdersGuideCloseBtn.onclick = () => {
+    closePlaceholdersGuide();
+  };
+}
+
+// Close on backdrop click
+const placeholdersGuideModal = document.getElementById('placeholders-guide-modal');
+if (placeholdersGuideModal) {
+  placeholdersGuideModal.addEventListener('click', (e) => {
+    if (e.target === placeholdersGuideModal) {
+      closePlaceholdersGuide();
+    }
+  });
+}
+
+// Help button in Alert Widget
+const alertPlaceholdersHelp = document.getElementById('alert-placeholders-help');
+if (alertPlaceholdersHelp) {
+  alertPlaceholdersHelp.addEventListener('click', () => {
+    openPlaceholdersGuide();
+  });
+}
+
+// Check-In Stats Modal Handlers
+const checkinStatsCloseBtn = document.getElementById('checkin-stats-close');
+if (checkinStatsCloseBtn) {
+  checkinStatsCloseBtn.onclick = () => {
+    const modal = document.getElementById('checkin-stats-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      // Re-enable hotkeys
+      if (window.electronAPI && window.electronAPI.enableHotkeys) {
+        window.electronAPI.enableHotkeys();
+      }
+    }
+  };
+}
+
+// Close on backdrop click
+const checkinStatsModal = document.getElementById('checkin-stats-modal');
+if (checkinStatsModal) {
+  checkinStatsModal.addEventListener('click', (e) => {
+    if (e.target === checkinStatsModal) {
+      checkinStatsModal.classList.add('hidden');
+      // Re-enable hotkeys
+      if (window.electronAPI && window.electronAPI.enableHotkeys) {
+        window.electronAPI.enableHotkeys();
+      }
+    }
+  });
+}
+
+// Stats filter and sort listeners
+const statsSort = document.getElementById('stats-sort');
+const statsFilter = document.getElementById('stats-filter');
+if (statsSort) {
+  statsSort.addEventListener('change', renderCheckinStats);
+}
+if (statsFilter) {
+  statsFilter.addEventListener('change', renderCheckinStats);
 }
 
 // Open settings modal when Preferences menu item is clicked
@@ -2092,9 +2535,40 @@ function addRecentSubscriber(subscriber) {
   updateRecentSubscribersDisplay();
 }
 
+// Deduplication for chat messages (similar to overlay)
+const processedChatMessages = new Set();
+const CHAT_DEDUP_WINDOW = 5000; // 5 seconds
+
+// Generate hash for chat message deduplication
+function getChatMessageHash(user, message, timestamp) {
+  // Group messages within 100ms for deduplication
+  const timeGroup = Math.floor(timestamp / 100);
+  return `${user}:${message}:${timeGroup}`;
+}
+
 // Listen for Twitch chat events
 window.electronAPI.onTwitchChatEvent((eventData) => {
+  console.log('📨 Twitch chat event received:', eventData);
+  console.log('📨 Event source:', eventData.source || 'unknown');
+  
   if (eventData.type === 'chat') {
+    // Generate hash for deduplication
+    const messageHash = getChatMessageHash(eventData.user, eventData.message, Date.now());
+    
+    // Check for duplicates
+    if (processedChatMessages.has(messageHash)) {
+      console.log('🚫 Duplicate chat message detected, skipping');
+      return;
+    }
+    
+    // Add to processed set
+    processedChatMessages.add(messageHash);
+    
+    // Remove after deduplication window
+    setTimeout(() => {
+      processedChatMessages.delete(messageHash);
+    }, CHAT_DEDUP_WINDOW);
+    
     // Check if it's a command (starts with !)
     if (eventData.message && eventData.message.startsWith('!')) {
       addTwitchEvent('command', {
@@ -2111,22 +2585,114 @@ window.electronAPI.onTwitchChatEvent((eventData) => {
 });
 
 // Listen for Twitch EventSub events (follows, subs, raids, etc.)
-window.electronAPI.onTwitchEventSub((eventData) => {
+window.electronAPI.onTwitchEventSub(async (eventData) => {
   console.log('📡 Twitch EventSub received:', eventData);
+  
+  // Handle daily check-in redemptions first
+  if (eventData.type === 'channel.channel_points_custom_reward_redemption.add') {
+    const rewardTitle = eventData.event.reward?.title || eventData.event.reward?.name || eventData.event.reward_title || '';
+    const configuredRewardName = dailyCheckinData.config.rewardName || 'Daily Check-In';
+    
+    // Check if this matches our daily check-in reward
+    if (rewardTitle.toLowerCase() === configuredRewardName.toLowerCase()) {
+      console.log('✅ Daily Check-In redemption detected!');
+      
+      // Process the daily check-in
+      const checkinResult = await processDailyCheckin({
+        user_id: eventData.event.user_id,
+        user_name: eventData.event.user_name || eventData.event.user_login,
+        display_name: eventData.event.user_login || eventData.event.user_name
+      });
+      
+      // If check-in was successful, trigger any configured daily-checkin alerts
+      if (checkinResult) {
+        // Get the updated viewer data
+        const viewer = dailyCheckinData.viewers[eventData.event.user_id];
+        
+        // Create user data with actual check-in counts
+        const userData = {
+          username: viewer.username,
+          display_name: viewer.display_name,
+          user_id: viewer.user_id,
+          total_checkins: viewer.total_checkins,
+          streak: viewer.streak || 0,
+          reward: rewardTitle,
+          ...eventData.event
+        };
+        
+        console.log('👤 Daily check-in user data:', userData);
+        
+        // Trigger daily-checkin alert with actual data
+        alertSystem.triggerAlertForEvent('daily-checkin', userData);
+      }
+      
+      // Don't process this as a regular channel-points alert
+      return;
+    }
+    
+    // For non-daily-checkin redemptions, let the TwitchConnected system handle button matching
+    // The TwitchConnected system will check for buttons with matching keywords
+    console.log('🎁 Non-daily-checkin redemption, letting TwitchConnected system handle button matching');
+    
+    // Send the event to TwitchConnected system for button matching
+    // We need to send it as a 'redeem' type event for the TwitchConnected system to process it
+    if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
+      // The TwitchConnected system expects events with type 'redeem'
+      const redeemEvent = {
+        type: 'redeem',
+        event: eventData.event
+      };
+      console.log('📤 Sending redemption event to TwitchConnected system:', redeemEvent);
+      
+      // Trigger the TwitchConnected system directly
+      if (window.checkRedemptionAgainstButtonKeywords) {
+        window.checkRedemptionAgainstButtonKeywords(redeemEvent).then(matchingButtonLabel => {
+          if (matchingButtonLabel && window.electronAPI && window.electronAPI.sendTrigger) {
+            console.log(`🚀 Triggering button "${matchingButtonLabel}" from channel point redemption`);
+            window.electronAPI.sendTrigger(matchingButtonLabel);
+          }
+        });
+      }
+    }
+  }
   
   // Update alerts from storage in case they changed
   alertSystem.updateAlerts();
   
-  // Map Twitch event types to alert types
-  const eventTypeMap = {
-    'channel.follow': 'follower',
-    'channel.subscribe': 'subscriber', 
-    'channel.subscription.gift': 'gift-sub',
-    'channel.raid': 'raid',
-    'channel.cheer': 'bits'
-  };
+  // Determine alert type with special handling for subscriptions
+  let alertType = null;
   
-  const alertType = eventTypeMap[eventData.type];
+  if (eventData.type === 'channel.subscribe') {
+    // Handle different subscription types based on event data
+    if (eventData.event.is_gift === true) {
+      // Check if it's a gift received (someone received a gift) or gift given (someone gave a gift)
+      if (eventData.event.user_id === eventData.event.broadcaster_user_id) {
+        alertType = 'gift-sub-received';
+      } else {
+        alertType = 'gift-sub';
+      }
+    } else if (eventData.event.cumulative_months && eventData.event.cumulative_months > 1) {
+      alertType = 'resubscriber';
+    } else {
+      alertType = 'subscriber';
+    }
+  } else if (eventData.type === 'channel.subscription.message') {
+    // Subscription message (resub announcement)
+    alertType = 'resubscriber';
+  } else {
+    // Map other Twitch event types to alert types
+    const eventTypeMap = {
+      'channel.follow': 'follower',
+      'poll.follow': 'follower', // Polling-based follower detection (fallback)
+      'channel.subscription.gift': 'gift-sub',
+      'channel.raid': 'raid',
+      'channel.cheer': 'bits',
+      'channel.ban': 'ban'
+    };
+    
+    alertType = eventTypeMap[eventData.type];
+  }
+  
   if (alertType) {
     // Extract user data from the event
     const userData = {
@@ -2137,11 +2703,12 @@ window.electronAPI.onTwitchEventSub((eventData) => {
       bits: eventData.event.bits || eventData.event.bits_used || eventData.event.bits_amount || eventData.event.amount || '',
       months: eventData.event.cumulative_months || eventData.event.months || '',
       message: eventData.event.message || eventData.event.user_input || '',
-      reward: eventData.event.reward || eventData.event.reward_title || '',
+      reward: eventData.event.reward?.title || eventData.event.reward?.name || eventData.event.reward_title || eventData.event.reward || '',
       ...eventData.event // Include all event data
     };
     
     console.log('👤 Extracted user data:', userData);
+    console.log('🎯 Alert type determined:', alertType, 'from event type:', eventData.type);
     
     // Trigger the alert
     alertSystem.triggerAlertForEvent(alertType, userData);
@@ -2155,7 +2722,7 @@ window.electronAPI.onTwitchEventSub((eventData) => {
   // Update recent activity for follows and subscribers
   if (eventData.type === 'channel.follow' || eventData.type === 'poll.follow') {
     addRecentFollower(eventData.event);
-  } else if (eventData.type === 'channel.subscribe') {
+  } else if (eventData.type === 'channel.subscribe' || eventData.type === 'channel.subscription.message') {
     addRecentSubscriber(eventData.event);
   }
 });
@@ -2310,23 +2877,36 @@ window.electronAPI.onTwitchCleared(() => {
 });
 
 async function handleTrigger(button) {
+  console.log(`🔍 handleTrigger called for button: "${button.name || button.label}" Type: ${button.type} Volume: ${button.volume}`);
   // Prevent accidental plays while editing/reordering
   if (isDragMode) return;
   // If caller passed a DOM element instead of button object, normalize
   if (button && button._vdJustDragged) return;
+  
+  // Clear audio cache before triggering to ensure fresh audio files
+  audioCache.clear();
+  console.log('🧹 Audio cache cleared before button trigger');
 
   if (button.type === "audio") {
     const audioPath = await window.electronAPI.getSoundPath(button.src);
-    const audio = new Audio(audioPath);
+    // Add cache-busting parameter to ensure fresh audio files are loaded
+    const cacheBuster = `?t=${Date.now()}`;
+    const audioUrl = audioPath + (audioPath.includes('?') ? '&' : '?') + cacheBuster;
+    const audio = new Audio(audioUrl);
+    console.log(`🔊 Loading audio with cache-busting URL: ${audioUrl}`);
     // Apply saved volume if present (expect 0.0 - 1.0). Fallback to 1.0
     // Note: volume is stored per-button in `config.json` and only applied for
     // audio-type buttons. The renderer sends `volume` as a float (0.0-1.0)
     // when saving; the main process persists it into the button config.
     try {
       const vol = (typeof button.volume === 'number') ? button.volume : (button.volume ? parseFloat(button.volume) : 1.0);
-      if (!isNaN(vol)) audio.volume = Math.max(0, Math.min(1, vol));
+      // Set volume immediately to prevent loud burst
+      audio.volume = 0; // Start muted
+      audio.volume = Math.max(0, Math.min(1, !isNaN(vol) ? vol : 1.0)); // Then set to desired volume
     } catch (err) {
       // ignore and use default
+      audio.volume = 0;
+      audio.volume = 1.0;
     }
     
     // Set up overlay clearing when audio finishes
@@ -2384,6 +2964,12 @@ const audioCache = new Map();
 
 async function handleMultiMediaTrigger(button) {
   console.log('Triggering multi-media button:', button);
+  console.log('🔍 Button overlay property:', button.overlay);
+  console.log('🔍 Button object keys:', Object.keys(button));
+  console.log('🔍 Button audio data:', button.audio);
+  console.log('🔍 Button ID:', button.id);
+  console.log('🔍 Button name:', button.name);
+  console.log('🔍 Full button config:', JSON.stringify(button, null, 2));
   
   // Use the new schema directly (no nested data object)
   const audioData = button.audio || [];
@@ -2391,66 +2977,39 @@ async function handleMultiMediaTrigger(button) {
   const centerMediaData = button.centerMedia || [];
   const optionsData = button.options || { clearPrevious: true };
   
-  // 1. Play audio(s) in dashboard - start immediately
-  const audioPromises = [];
-  if (Array.isArray(audioData)) {
-    for (const audioEntry of audioData) {
-      if (audioEntry.src) {
-        // Create async function to load and play audio
-        const playAudio = (async () => {
-          try {
-            let audioSrc = audioEntry.src;
-            
-            // Load audio from disk if it's a file path
-            if (typeof audioSrc === 'string' && 
-                !audioSrc.startsWith('data:') && 
-                !audioSrc.startsWith('blob:') && 
-                !audioSrc.startsWith('http')) {
-              console.log('🎵 Loading audio file from disk:', audioSrc);
-              try {
-                if (window.electronAPI && window.electronAPI.getMediaFile) {
-                  const result = await window.electronAPI.getMediaFile(audioSrc);
-                  if (result.success) {
-                    const sizeKB = (result.data.length / 1024).toFixed(2);
-                    console.log(`✅ Audio file loaded: ${audioSrc} (${sizeKB} KB)`);
-                    audioSrc = result.data; // Use base64 data URI
-                  } else {
-                    console.error('Failed to load audio file:', result.error);
-                  }
-                }
-              } catch (error) {
-                console.error('Error loading audio file:', error);
-              }
-            }
-            
-            // Use cached audio or create new one
-            let audio = audioCache.get(audioSrc);
-            if (!audio) {
-              audio = new Audio(audioSrc);
-              audioCache.set(audioSrc, audio);
-            }
-            
-            // Reset and configure audio
-            audio.currentTime = 0;
-            audio.volume = audioEntry.volume || 1.0; // Volume is already 0-1 in new schema
-            audio.loop = audioEntry.loop || false;
-            
-            // Start playing
-            return audio.play();
-          } catch (error) {
-            console.warn('Failed to play audio:', error);
-          }
-        })();
-        
-        audioPromises.push(playAudio);
-      }
-    }
+  // Debug: Log the button data to see what we're working with
+  console.log('🔍 Button.slots:', button.slots);
+  console.log('🔍 SlotsData:', slotsData);
+  if (slotsData && Object.keys(slotsData).length > 0) {
+    Object.keys(slotsData).forEach(key => {
+      console.log(`🔍 Slot ${key}:`, slotsData[key]);
+      console.log(`🔍 Slot ${key} text:`, slotsData[key]?.text);
+      console.log(`🔍 Slot ${key} style:`, slotsData[key]?.style);
+    });
+  } else {
+    console.log('⚠️ No slots data found in button!');
   }
+  console.log('🔍 Button options:', button.options);
+  console.log('🔍 OptionsData:', optionsData);
+  console.log('🔍 DurationMs in options:', optionsData.durationMs);
+  
+  // 1. Audio handling for multi-media buttons
+  // NOTE: Audio plays ONLY in the overlay, not in the dashboard, to prevent double audio
+  console.log('🎵 Audio will play in overlay only (preventing double audio)');
+  const audioPromises = []; // Keep empty for overlay-only playback
 
   // 2. Send overlay payload - immediately after starting audio
+  // Check if we have separate audio files - if so, mute videos to avoid double audio
+  const hasSeparateAudio = audioData && audioData.length > 0;
+  
   // Process center media similar to alert system
   const processedCenterMedia = await Promise.all(centerMediaData.map(async (item) => {
     if (item.src) {
+      // Mute videos if there are separate audio files to prevent double audio
+      if (item.type === 'video' && hasSeparateAudio) {
+        console.log('🔇 Muting video because separate audio files are present');
+        item.muted = true;
+      }
       // Handle different image source types like alert system
       if (item.src instanceof File) {
         // Fresh file upload - create blob URL
@@ -2464,28 +3023,21 @@ async function handleMultiMediaTrigger(button) {
         console.log('🖼️ Using base64/blob data for multi-media');
         return item;
       } else if (typeof item.src === 'string' && !item.src.startsWith('http')) {
-        // File path (relative to userDataPath) - load from disk
-        console.log('🖼️ Loading media file from disk:', item.src);
+        // File path (relative to userDataPath) - serve via HTTP to avoid base64 conversion
+        console.log('🖼️ Converting file path to HTTP URL:', item.src);
         try {
-          if (window.electronAPI && window.electronAPI.getMediaFile) {
-            const result = await window.electronAPI.getMediaFile(item.src);
-            if (result.success) {
-              const sizeKB = (result.data.length / 1024).toFixed(2);
-              console.log(`✅ Media file loaded: ${item.src} (${sizeKB} KB)`);
-              return {
-                ...item,
-                src: result.data // Base64 data URI
-              };
-            } else {
-              console.error('Failed to load media file:', result.error);
-              return item; // Return as-is, might be URL
-            }
-          } else {
-            console.warn('getMediaFile API not available, using path directly');
-            return item;
-          }
+          // Use the original relative path in the URL
+          // The media server expects relative paths (from userDataPath) and will join them
+          const relativePath = item.src.replace(/\\/g, '/'); // Normalize path separators
+          const httpUrl = `http://localhost:8080/media/${encodeURIComponent(relativePath)}`;
+          console.log(`✅ Serving media via HTTP: ${httpUrl}`);
+          console.log(`🔍 Media relative path: ${relativePath}`);
+          return {
+            ...item,
+            src: httpUrl
+          };
         } catch (error) {
-          console.error('Error loading media file:', error);
+          console.error('Error constructing HTTP URL for media:', error);
           return item;
         }
       } else {
@@ -2496,73 +3048,107 @@ async function handleMultiMediaTrigger(button) {
     return item;
   }));
 
+  // Process audio files for overlay (convert paths to HTTP URLs)
+  const processedAudio = await Promise.all(audioData.map(async (audioItem) => {
+    if (audioItem.src) {
+      let audioSrc = audioItem.src;
+      console.log('🎵 Processing audio item:', audioItem);
+      
+      // Convert file paths to HTTP URLs
+      if (typeof audioSrc === 'string' && 
+          !audioSrc.startsWith('data:') && 
+          !audioSrc.startsWith('blob:') && 
+          !audioSrc.startsWith('http')) {
+        console.log('🎵 Converting audio file path to HTTP URL:', audioSrc);
+        try {
+          // Use the original relative path (audioSrc) in the URL
+          // The media server expects relative paths (from userDataPath) and will join them
+          const relativePath = audioSrc.replace(/\\/g, '/'); // Normalize path separators
+          audioSrc = `http://localhost:8080/media/${encodeURIComponent(relativePath)}?t=${Date.now()}`;
+          console.log(`✅ Serving audio via HTTP with cache-busting: ${audioSrc}`);
+          console.log(`🔍 Audio relative path: ${relativePath}`);
+        } catch (error) {
+          console.error('Error constructing HTTP URL for audio:', error);
+        }
+      }
+      
+      return {
+        ...audioItem,
+        src: audioSrc,
+        type: 'audio',
+        volume: audioItem.volume !== undefined ? audioItem.volume : 1.0,
+        loop: audioItem.loop || false
+      };
+    }
+    return audioItem;
+  }));
+
+  // Debug: Log chroma key data
+  console.log('🔍 Processed center media with chroma key data:', processedCenterMedia.map(item => ({
+    type: item.type,
+    src: item.src,
+    chromaKey: item.chromaKey
+  })));
+
   const overlayPayload = {
     type: 'buttonTrigger',
+    targetOverlay: button.overlay || 'main', // Route to specific overlay
     options: optionsData,
     slots: slotsData,
-    centerMedia: processedCenterMedia
+    centerMedia: [...processedCenterMedia, ...processedAudio] // Include audio in centerMedia
   };
+
+  // Log slots with full style data for debugging
+  console.log('📤 Full slots data being sent:', slotsData);
+  if (slotsData && Object.keys(slotsData).length > 0) {
+    Object.keys(slotsData).forEach(slotKey => {
+      console.log(`📤 Slot ${slotKey}:`, slotsData[slotKey]);
+      if (slotsData[slotKey].style) {
+        console.log(`📤 Slot ${slotKey} style:`, slotsData[slotKey].style);
+        console.log(`📤 Slot ${slotKey} fontFamily:`, slotsData[slotKey].style.fontFamily);
+      }
+    });
+  }
 
   // Log payload summary without full base64 data
   console.log('📤 Sending overlay payload:', {
     type: overlayPayload.type,
+    targetOverlay: overlayPayload.targetOverlay,
     slots: Object.keys(overlayPayload.slots || {}),
-    centerMedia: centerMediaData.map(item => ({
+    centerMedia: overlayPayload.centerMedia.map(item => ({
       type: item.type,
-      src: item.src // Shows file path from config
+      volume: item.volume
     })),
+    audioCount: processedAudio.length,
+    videoCount: processedCenterMedia.filter(i => i.type === 'video').length,
+    imageCount: processedCenterMedia.filter(i => i.type === 'image').length,
     options: overlayPayload.options
   });
+  console.log(`🎯 Sending to overlay: ${overlayPayload.targetOverlay}`);
 
-  // Send to overlay iframe (if exists) - immediately
-  const overlayIframe = document.getElementById('overlay-iframe');
-  if (overlayIframe && overlayIframe.contentWindow) {
-    try {
-      overlayIframe.contentWindow.postMessage(overlayPayload, '*');
-      console.log('Message sent to overlay iframe');
-    } catch (error) {
-      console.warn('Failed to send message to overlay iframe:', error);
-    }
-  }
-
-  // Send to overlay widget (if exists) - immediately
-  const overlayWidget = document.getElementById('overlay-widget');
-  if (overlayWidget && !overlayWidget.classList.contains('hidden')) {
-    try {
-      // Trigger the overlay widget's test function
-      if (window.testMultiSource) {
-        window.testMultiSource(overlayPayload);
-      }
-      console.log('Message sent to overlay widget');
-    } catch (error) {
-      console.warn('Failed to send message to overlay widget:', error);
-    }
-  }
-
-  // Send via WebSocket (if available) - immediately
+  // Send via WebSocket (primary method for OBS overlay) - immediately
   if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
     try {
+    console.log(`🎯 SENDING TO OVERLAY: "${overlayPayload.targetOverlay}"`);
+    console.log(`📊 Button overlay setting: ${button.overlay || 'NOT SET (defaulting to main)'}`);
+    console.log(`🔍 Full button object:`, button);
       window.electronAPI.sendOverlayMessage(overlayPayload);
-      console.log('Message sent via WebSocket');
+    console.log(`✅ Message sent via WebSocket to overlay: "${overlayPayload.targetOverlay}"`);
     } catch (error) {
       console.warn('Failed to send message via WebSocket:', error);
     }
-  }
-
-  // Wait for audio to start (non-blocking - overlay message already sent)
-  if (audioPromises.length > 0) {
-    try {
-      await Promise.all(audioPromises);
-      console.log('All audio started successfully');
-    } catch (error) {
-      console.warn('Some audio failed to start:', error);
-    }
+  } else {
+    console.warn('⚠️ WebSocket not available, overlay message not sent');
   }
   
-  // Set up overlay clearing based on media duration
-  // Check if button has custom duration in options
-  const customDuration = button.options && button.options.durationMs ? button.options.durationMs / 1000 : null;
-  setupOverlayClearing(audioData, centerMediaData, customDuration);
+  // Note: Removed duplicate iframe and widget sending to prevent double-triggering
+  // The overlay receives messages via WebSocket only
+  
+  // Note: Audio plays in overlay only (not in dashboard) to prevent double audio
+  
+  // Note: Overlay handles its own reset timer based on payload.options.durationMs
+  // No need to call setupOverlayClearing from dashboard - it would conflict with overlay's timer
+  console.log('✅ Overlay will handle auto-clear based on duration:', optionsData.durationMs, 'ms');
 }
 
 // Function to clear overlay content
@@ -2600,11 +3186,11 @@ function clearOverlay() {
   const overlayWidget = document.getElementById('overlay-widget');
   if (overlayWidget && !overlayWidget.classList.contains('hidden')) {
     try {
-      if (window.testMultiSource) {
-        window.testMultiSource(clearPayload);
+      if (window.sendOverlayPayload) {
+        window.sendOverlayPayload(clearPayload);
         console.log(`✅ [${timestamp}] Clear message sent to overlay widget`);
       } else {
-        console.log(`ℹ️ [${timestamp}] Overlay widget found but testMultiSource function not available`);
+        console.log(`ℹ️ [${timestamp}] Overlay widget found but sendOverlayPayload function not available`);
       }
     } catch (error) {
       console.warn(`❌ [${timestamp}] Failed to send clear message to overlay widget:`, error);
@@ -2751,7 +3337,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   e.preventDefault();
   const form = e.target;
   const label = form.label.value.trim();
-  const type = form.type.value;
+  
+  // Determine type based on which section is visible
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  const type = audioFileSection && audioFileSection.style.display !== 'none' ? 'audio' : 'app';
+  
   // Ensure we reference the hotkey input element safely
   const hotkeyInput = document.getElementById('hotkey-input');
   const hotkey = hotkeyInput && hotkeyInput.value ? hotkeyInput.value.trim() : '';
@@ -2762,6 +3353,36 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   if (!label) return alert("Please fill in the label field.");
   // Use the recorded hotkey directly (accumulative recorder populates hotkeyInput.value)
   const completeHotkey = (hotkeyInput && hotkeyInput.value && hotkeyInput.value.trim()) ? hotkeyInput.value.trim() : hotkey;
+
+  // Get chat command settings
+  const chatCommandCheckbox = document.getElementById('chat-command-enabled');
+  const chatCommandKeywordInput = document.getElementById('chat-command-keyword');
+  const redeemNameInput = document.getElementById('redeem-name');
+  
+  console.log('Chat command elements found:');
+  console.log('- Checkbox element:', chatCommandCheckbox);
+  console.log('- Keyword input element:', chatCommandKeywordInput);
+  console.log('- Redeem name input element:', redeemNameInput);
+  
+  const chatCommandEnabled = chatCommandCheckbox?.checked || false;
+  const chatCommandKeyword = chatCommandKeywordInput?.value?.trim() || '';
+  const redeemName = redeemNameInput?.value?.trim() || '';
+  
+  // Get trigger method selection
+  const triggerMethodRadio = document.querySelector('input[name="trigger-method"]:checked');
+  const triggerMethod = triggerMethodRadio?.value || 'command';
+  console.log(`🔍 Selected trigger method radio:`, triggerMethodRadio);
+  console.log(`🔍 Selected trigger method value:`, triggerMethod);
+  
+  const chatCommand = (chatCommandEnabled && (chatCommandKeyword || redeemName)) ? {
+    enabled: true,
+    keyword: chatCommandKeyword.toLowerCase(),
+    redeemName: redeemName,
+    triggerMethod: triggerMethod
+  } : undefined;
+  
+  console.log(`🔍 Saving button with chatCommand:`, chatCommand);
+  console.log(`🔍 Form values - enabled: ${chatCommandEnabled}, keyword: "${chatCommandKeyword}", redeemName: "${redeemName}", triggerMethod: "${triggerMethod}"`);
 
   // Get the appropriate file input based on type
   const fileInput = type === 'app' ? document.getElementById('app-file-input') : document.getElementById('file-input');
@@ -2782,6 +3403,9 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   console.log('- File input files length:', fileInput.files.length);
   console.log('- Resolved path:', resolvedPath);
   console.log('- Resolved args:', resolvedArgs);
+  console.log('- Chat command enabled:', chatCommandEnabled);
+  console.log('- Chat command keyword:', chatCommandKeyword);
+  console.log('- Chat command object:', chatCommand);
 
   // Prevent dangerous system shortcuts like Alt+F4 from being saved
   if (completeHotkey && (completeHotkey.includes('Alt') && completeHotkey.includes('F4'))) {
@@ -2801,31 +3425,21 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
       targetPath: existingFile,
       originalPath: existingFile,
-      editingIndex: parseInt(form.dataset.editingIndex)
+      editingIndex: parseInt(form.dataset.editingIndex),
+      chatCommand: chatCommand
     });
     window.electronAPI.refreshHotkeys();
-    // Update the displayed card in-place to avoid full re-render flash
-    try {
-      const editingId = form.dataset.editingId;
-      const updated = {
-        id: editingId,
-        label,
-        type,
-        src: existingFile,
-        hotkey: completeHotkey || undefined,
-        volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
-        args: form.dataset.resolvedArgs || undefined
-      };
-      if (editingId) {
-        const card = document.querySelector(`.sound-card[data-button-id="${editingId}"]`);
-        if (card) {
-          card.dataset.soundData = JSON.stringify(updated);
-          const nameEl = card.querySelector('.sound-name'); if (nameEl) nameEl.textContent = updated.label;
-          const hotkeyEl = card.querySelector('.sound-hotkey'); if (hotkeyEl) hotkeyEl.textContent = updated.hotkey || 'No hotkey';
-          const typeEl = card.querySelector('.sound-type'); if (typeEl) typeEl.textContent = updated.type;
-        }
-      }
-    } catch (err) { console.error('In-place update failed:', err); }
+    
+    // Clear audio cache to ensure new audio files are loaded
+    audioCache.clear();
+    console.log('🧹 Audio cache cleared after button edit');
+    
+    // Refresh the entire button list to show updated data
+    setTimeout(() => {
+      loadButtons();
+      console.log('🔄 Buttons reloaded after edit');
+    }, 100);
+    
     skipReload = true;
   } else if (fileInput.files.length || resolvedPath) {
     // New file selected or resolved path from drag-and-drop
@@ -2856,11 +3470,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       hotkey: completeHotkey,
       targetPath,
       originalPath: filePath,
-      args
+      args,
+      chatCommand: chatCommand
     });
 
     // Send file path and data to main
-    window.electronAPI.addMedia({
+    const addMediaData = {
       label,
       type,
       hotkey: completeHotkey,
@@ -2868,34 +3483,25 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       targetPath,
       originalPath: filePath,
       args,
-      editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined
-    });
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined,
+      chatCommand: chatCommand
+    };
+    
+    console.log('Final addMediaData object:', addMediaData);
+    window.electronAPI.addMedia(addMediaData);
     window.electronAPI.refreshHotkeys();
-    // If editing (with new file), update in-place using the computed targetPath
-    if (isEditing) {
-      try {
-        const editingId = form.dataset.editingId;
-        const updated = {
-          id: editingId,
-          label,
-          type,
-          src: targetPath,
-          hotkey: completeHotkey || undefined,
-          volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
-          args: args || undefined
-        };
-        if (editingId) {
-          const card = document.querySelector(`.sound-card[data-button-id="${editingId}"]`);
-          if (card) {
-            card.dataset.soundData = JSON.stringify(updated);
-            const nameEl = card.querySelector('.sound-name'); if (nameEl) nameEl.textContent = updated.label;
-            const hotkeyEl = card.querySelector('.sound-hotkey'); if (hotkeyEl) hotkeyEl.textContent = updated.hotkey || 'No hotkey';
-            const typeEl = card.querySelector('.sound-type'); if (typeEl) typeEl.textContent = updated.type;
-          }
-        }
-      } catch (err) { console.error('In-place update failed:', err); }
-      skipReload = true;
-    }
+    
+    // Clear audio cache to ensure new audio files are loaded
+    audioCache.clear();
+    console.log('🧹 Audio cache cleared after button add/edit with new file');
+    
+    // Refresh the entire button list to show updated data
+    setTimeout(() => {
+      loadButtons();
+      console.log('🔄 Buttons reloaded after add/edit with new file');
+    }, 100);
+    
+    skipReload = true;
   } else if (!isEditing) {
     // Only require file selection for new buttons, not when editing
     console.log('No file found and not editing - showing alert');
@@ -2925,6 +3531,8 @@ document.getElementById('settings-form').onsubmit = async (e) => {
 window.editButton = async (index) => {
   const config = await window.electronAPI.getConfig();
   const btn = config.buttons[index];
+  console.log(`🔍 editButton: Editing button at index ${index}:`, btn);
+  console.log(`🔍 editButton: Button chatCommand data:`, btn.chatCommand);
   const settingsForm = document.getElementById('settings-form');
   // Always set editingIndex for edit, and clear resolvedPath/existingFile for safety
   settingsForm.dataset.editingIndex = index;
@@ -2955,9 +3563,6 @@ window.editButton = async (index) => {
   labelInput.value = btn.name || btn.label || ''; // Support both new and old schema
   labelInput.readOnly = false;
   labelInput.disabled = false;
-  // Set the type selection
-  const typeSelect = document.querySelector(`input[name="button-type"][value="${btn.type}"]`);
-  if (typeSelect) typeSelect.checked = true;
   // Toggle file input sections and required states based on type
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
@@ -2982,6 +3587,50 @@ window.editButton = async (index) => {
   } else {
     hotkeyInput.value = '';
   }
+  
+  // Set chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const redeemName = document.getElementById('redeem-name');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  
+  if (chatCommandEnabled && chatCommandKeyword && chatCommandSettings) {
+    if (btn.chatCommand && btn.chatCommand.enabled) {
+      chatCommandEnabled.checked = true;
+      chatCommandKeyword.value = btn.chatCommand.keyword || '';
+      redeemName.value = btn.chatCommand.redeemName || '';
+      
+      // Sync dropdown if value exists
+      const redeemSelect = document.getElementById('redeem-name-select');
+      if (redeemSelect && btn.chatCommand.redeemName) {
+        const matchingOption = Array.from(redeemSelect.options).find(
+          opt => opt.value === btn.chatCommand.redeemName
+        );
+        redeemSelect.value = matchingOption ? matchingOption.value : '';
+      }
+      
+      chatCommandSettings.style.display = 'block';
+      
+      // Set trigger method selection
+      const triggerMethod = btn.chatCommand.triggerMethod || 'command';
+      const triggerMethodRadio = document.querySelector(`input[name="trigger-method"][value="${triggerMethod}"]`);
+      if (triggerMethodRadio) {
+        triggerMethodRadio.checked = true;
+      }
+    } else {
+      chatCommandEnabled.checked = false;
+      chatCommandKeyword.value = '';
+      redeemName.value = '';
+      chatCommandSettings.style.display = 'none';
+      
+      // Reset to default trigger method
+      const defaultRadio = document.querySelector('input[name="trigger-method"][value="command"]');
+      if (defaultRadio) {
+        defaultRadio.checked = true;
+      }
+    }
+  }
+  
   // Store the existing file path and args for editing
   settingsForm.dataset.existingFile = btn.src;
   if (btn.args) {
@@ -3180,6 +3829,20 @@ window.addEventListener('DOMContentLoaded', () => {
   // Make the hotkey input read-only to force use of the recorder button
   if (hotkeyInput) hotkeyInput.readOnly = true;
 
+  // Setup chat command checkbox toggle for regular form
+  const chatCommandCheckbox = document.getElementById('chat-command-enabled');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  
+  if (chatCommandCheckbox && chatCommandSettings) {
+    chatCommandCheckbox.addEventListener('change', () => {
+      if (chatCommandCheckbox.checked) {
+        chatCommandSettings.style.display = 'block';
+      } else {
+        chatCommandSettings.style.display = 'none';
+      }
+    });
+  }
+
   if (recordHotkeyBtn) {
     recordHotkeyBtn.addEventListener('click', () => {
       // Button click animation
@@ -3262,8 +3925,112 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // move-bar removed — menu bar is used instead for window controls
 
+// Close functions for modals
+function closeSettingsModal() {
+  const settingsModal = document.getElementById('settings-modal');
+  if (settingsModal) {
+    settingsModal.classList.add('hidden');
+    // Clear any form data if needed
+    clearSettingsForm();
+  }
+}
+
+function closeMultiMediaModal() {
+  const multiMediaModal = document.getElementById('multi-media-modal');
+  if (multiMediaModal) {
+    multiMediaModal.classList.add('hidden');
+    // Clear any form data if needed
+    if (window.addEditButtonForm) {
+      window.addEditButtonForm.resetForm();
+    }
+  }
+}
+
+function closeTwitchAlertWidget() {
+  const twitchAlertWidget = document.getElementById('twitch-alert-widget');
+  if (twitchAlertWidget) {
+    twitchAlertWidget.classList.add('hidden');
+  }
+}
+
+// Add event listeners for close buttons
+document.addEventListener('DOMContentLoaded', () => {
+  // Settings modal close button
+  const settingsCloseBtn = document.getElementById('settings-modal-close');
+  if (settingsCloseBtn) {
+    settingsCloseBtn.addEventListener('click', closeSettingsModal);
+  }
+  
+  // Multi-media modal close button
+  const multiMediaCloseBtn = document.getElementById('multi-media-modal-close');
+  if (multiMediaCloseBtn) {
+    multiMediaCloseBtn.addEventListener('click', closeMultiMediaModal);
+  }
+  
+  // Twitch alert widget close button
+  const twitchAlertCloseBtn = document.getElementById('twitch-alert-widget-close');
+  if (twitchAlertCloseBtn) {
+    twitchAlertCloseBtn.addEventListener('click', closeTwitchAlertWidget);
+  }
+  
+  // Add click-outside-to-close functionality
+  const settingsModal = document.getElementById('settings-modal');
+  if (settingsModal) {
+    settingsModal.addEventListener('click', (e) => {
+      if (e.target === settingsModal) {
+        closeSettingsModal();
+      }
+    });
+  }
+  
+  const multiMediaModal = document.getElementById('multi-media-modal');
+  if (multiMediaModal) {
+    multiMediaModal.addEventListener('click', (e) => {
+      if (e.target === multiMediaModal) {
+        closeMultiMediaModal();
+      }
+    });
+  }
+});
+
+// ESC key handling for closing modals and forms
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    // Close settings modal
+    const settingsModal = document.getElementById('settings-modal');
+    if (settingsModal && !settingsModal.classList.contains('hidden')) {
+      closeSettingsModal();
+      return;
+    }
+    
+    // Close multi-media modal
+    const multiMediaModal = document.getElementById('multi-media-modal');
+    if (multiMediaModal && !multiMediaModal.classList.contains('hidden')) {
+      closeMultiMediaModal();
+      return;
+    }
+    
+    // Close Twitch Alert Widget
+    const twitchAlertWidget = document.getElementById('twitch-alert-widget');
+    if (twitchAlertWidget && !twitchAlertWidget.classList.contains('hidden')) {
+      closeTwitchAlertWidget();
+      return;
+    }
+    
+    // Close any other visible modals
+    const visibleModals = document.querySelectorAll('.modal:not(.hidden), [class*="modal"]:not(.hidden)');
+    visibleModals.forEach(modal => {
+      if (modal.style.display !== 'none' && modal.offsetParent !== null) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
+    });
+  }
+});
+
 // Listen for trigger-media events from the main process
 window.electronAPI.onTriggerMedia(async (mediaId) => {
+  console.log(`🔍 onTriggerMedia called for: "${mediaId}"`);
   const config = await window.electronAPI.getConfig();
   if (!config || !Array.isArray(config.buttons)) return;
   const button = config.buttons.find(btn => {
@@ -3272,7 +4039,7 @@ window.electronAPI.onTriggerMedia(async (mediaId) => {
     return name.toLowerCase() === mediaId.toLowerCase();
   });
   if (button) {
-    console.log('🎯 Triggering mapped button:', button.name || button.label, 'Type:', button.type);
+    console.log(`🎯 Triggering mapped button: "${button.name || button.label}" Type: ${button.type} Volume: ${button.volume}`);
     handleTrigger(button);
   } else {
     console.warn('⚠️ No button found for mapping trigger:', mediaId);
@@ -3349,6 +4116,17 @@ function handleFileDrop(file) {
   hotkeyStatus.textContent = '';
   delete settingsForm.dataset.editingIndex;
   delete settingsForm.dataset.editingId;
+  
+  // Clear chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const redeemName = document.getElementById('redeem-name');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  if (chatCommandEnabled) chatCommandEnabled.checked = false;
+  if (chatCommandKeyword) chatCommandKeyword.value = '';
+  if (redeemName) redeemName.value = '';
+  if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+  
   document.querySelector('#settings-modal h2').textContent = 'Add New ' + (type === 'audio' ? 'Sound' : 'App');
   
   // Since we're using the modal-based approach, we need to directly open the audio form
@@ -4095,12 +4873,21 @@ document.addEventListener('DOMContentLoaded', () => {
   setupOverlayControls();
   setupOverlayWidget();
   setupAlertWidget();
+  initDailyCheckinSystem();
   // initialize left app menu
   if (typeof setupLeftAppMenu === 'function') {
     console.log('🔧 Setting up left app menu');
     setupLeftAppMenu();
   } else {
     console.log('🔧 setupLeftAppMenu function not found');
+  }
+  
+  // initialize preferences modal
+  if (typeof initializePreferencesModal === 'function') {
+    console.log('🔧 Setting up preferences modal');
+    initializePreferencesModal();
+  } else {
+    console.log('🔧 initializePreferencesModal function not found');
   }
 });
 
@@ -4125,22 +4912,26 @@ function setupOverlayWidget() {
   const closeBtn = document.getElementById('close-overlay-widget');
   const testBtns = document.querySelectorAll('.overlay-test-btn');
   const mediaBtns = document.querySelectorAll('.overlay-media-btn');
-  const customTextInput = document.getElementById('custom-text');
-  const customPositionSelect = document.getElementById('custom-position');
-  const sendCustomTextBtn = document.getElementById('send-custom-text');
   const copyUrlBtn = document.getElementById('copy-overlay-url');
   
-  // Position mapping for overlay IDs (old format for backward compatibility)
+  // Overlay management elements
+  const newOverlayNameInput = document.getElementById('new-overlay-name');
+  const createOverlayBtn = document.getElementById('create-overlay');
+  const overlaySelect = document.getElementById('overlay-select');
+  const deleteOverlayBtn = document.getElementById('delete-overlay');
+  const overlayUrlDisplay = document.getElementById('overlay-url-display');
+  
+  // Position mapping for overlay text slots (new schema format)
   const positionMap = {
-    1: 'text-top-left',
-    2: 'text-top-center', 
-    3: 'text-top-right',
-    4: 'text-mid-left',
-    5: 'center-media',
-    6: 'text-mid-right',
-    7: 'text-bottom-left',
-    8: 'text-bottom-center',
-    9: 'text-bottom-right'
+    1: 'topLeft',
+    2: 'topCenter', 
+    3: 'topRight',
+    4: 'midLeft',
+    5: 'center',
+    6: 'midRight',
+    7: 'bottomLeft',
+    8: 'bottomCenter',
+    9: 'bottomRight'
   };
   
   // Close widget
@@ -4170,11 +4961,13 @@ function setupOverlayWidget() {
                                 text: testText,
                                 style: {
                                     fontFamily: 'Arial, sans-serif',
-                                    fontSize: '18px',
-                                    color: '#00ff00',
+                                    fontSize: '48px',
+                                    color: '#ffffff',
                                     fontWeight: 'bold',
                                     textAlign: 'center',
-                                    zIndex: '1'
+                                    textShadow: '3px 3px 6px rgba(0, 0, 0, 0.9)',
+                                    webkitTextStroke: '2px #000',
+                                    zIndex: '15'
                                 }
                             }
                         }
@@ -4205,8 +4998,8 @@ function setupOverlayWidget() {
             },
             centerMedia: [{
               type: 'image',
-              src: 'https://via.placeholder.com/300x200/00ff00/000000?text=Test+Image+Connected',
-              alt: 'Test Image Connected'
+              src: 'http://localhost:8080/media/images/VirtualDeck2.png',
+              alt: 'VirtualDeck Logo'
             }]
           };
           window.electronAPI.sendOverlayMessage(payload);
@@ -4220,7 +5013,7 @@ function setupOverlayWidget() {
             },
             centerMedia: [{
               type: 'video',
-              src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+              src: 'http://localhost:8080/media/videos/generated-video.mp4',
               loop: true
             }]
           };
@@ -4240,173 +5033,36 @@ function setupOverlayWidget() {
     });
   });
   
-  // Custom text input
-  if (sendCustomTextBtn) {
-    sendCustomTextBtn.addEventListener('click', () => {
-      const text = customTextInput.value.trim();
-      const position = parseInt(customPositionSelect.value);
-      const targetId = positionMap[position];
-      
-      if (text) {
-        console.log(`Sending custom text to position ${position} (${targetId}): ${text}`);
-        
-        if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-          const payload = {
-            type: 'buttonTrigger',
-            options: {
-              clearPrevious: false
-            },
-            slots: {
-              [targetId]: {
-                text: text,
-                style: {
-                  fontFamily: 'Arial, sans-serif',
-                  fontSize: '16px',
-                  color: '#ffffff',
-                  fontWeight: 'normal',
-                  textAlign: 'center',
-                  zIndex: '1'
-                }
-              }
-            }
-          };
-          window.electronAPI.sendOverlayMessage(payload);
-          
-          // Clear the input
-          customTextInput.value = '';
-        }
-      }
-    });
-  }
-  
-  // Enter key support for custom text
-  if (customTextInput) {
-    customTextInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        sendCustomTextBtn.click();
-      }
-    });
-  }
-  
   // Copy URL button
   if (copyUrlBtn) {
     copyUrlBtn.addEventListener('click', () => {
-      const overlayUrl = 'http://localhost:8080/overlay';
+      // Get the URL from the display element instead of hardcoding
+      const overlayUrlDisplay = document.getElementById('overlay-url-display');
+      const overlayUrl = overlayUrlDisplay ? overlayUrlDisplay.textContent : 'http://localhost:8080/overlay';
       
       if (navigator.clipboard) {
         navigator.clipboard.writeText(overlayUrl).then(() => {
-          console.log('Overlay URL copied to clipboard');
+          console.log('Overlay URL copied to clipboard:', overlayUrl);
           // Show brief feedback
           const originalText = copyUrlBtn.textContent;
-          copyUrlBtn.textContent = '✓';
+          copyUrlBtn.textContent = '✓ Copied';
           setTimeout(() => {
             copyUrlBtn.textContent = originalText;
-          }, 1000);
+          }, 1500);
         }).catch(err => {
           console.log('Failed to copy to clipboard:', err);
+          // Fallback for older browsers
+          showCustomAlert(`Copy this URL: ${overlayUrl}`, 'info');
         });
+      } else {
+        // Fallback for browsers without clipboard API
+        showCustomAlert(`Copy this URL: ${overlayUrl}`, 'info');
       }
     });
   }
   
   // Multi-source test buttons
-  const testMultiSourceBtn = document.getElementById('test-multi-source');
   const testAllPositionsBtn = document.getElementById('test-all-positions');
-  
-  if (testMultiSourceBtn) {
-    testMultiSourceBtn.addEventListener('click', () => {
-      console.log('Testing multi-source capability...');
-      
-      const payload = {
-        type: 'buttonTrigger',
-        options: {
-          clearPrevious: true
-        },
-        slots: {
-          'topLeft': {
-            text: '🎮 GAME START',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 28,
-              color: '#00ff00',
-              bold: true,
-              italic: false,
-              align: 'center',
-              animation: 'pulse'
-            }
-          },
-          'topRight': {
-            text: 'SCORE: 9999',
-            style: {
-              fontFamily: 'Courier, monospace',
-              fontSize: 24,
-              color: '#ffff00',
-              bold: true,
-              italic: false,
-              align: 'right',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-              zIndex: '10'
-            }
-          },
-          'bottomCenter': {
-            text: 'PRESS SPACE TO CONTINUE',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 20,
-              color: '#ffffff',
-              bold: true,
-              italic: false,
-              align: 'center',
-              animation: 'pulse'
-            }
-          },
-          'midLeft': {
-            text: 'LIVES: 3',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 18,
-              color: '#ff6b6b',
-              bold: true,
-              textAlign: 'left',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-              zIndex: '10'
-            }
-          },
-          'midRight': {
-            text: 'LEVEL: 5',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 18,
-              color: '#4ecdc4',
-              bold: true,
-              italic: false,
-              align: 'right',
-              animation: null
-            }
-          }
-        },
-        centerMedia: [
-          {
-            type: 'image',
-            src: 'https://via.placeholder.com/600x400/000000/ffffff?text=GAME+SCREEN',
-            alt: 'Game Screen'
-          },
-          {
-            type: 'video',
-            src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
-            loop: true
-          }
-        ]
-      };
-      
-      if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-        window.electronAPI.sendOverlayMessage(payload);
-        console.log('Sent multi-source test payload');
-      } else {
-        console.log('sendOverlayMessage not available');
-      }
-    });
-  }
   
   if (testAllPositionsBtn) {
     testAllPositionsBtn.addEventListener('click', () => {
@@ -4437,12 +5093,13 @@ function setupOverlayWidget() {
           text: pos.text,
           style: {
             fontFamily: 'Arial, sans-serif',
-            fontSize: 18,
-            color: '#00ff00',
-            bold: true,
-            italic: false,
-            align: 'center',
-            animation: null
+            fontSize: '48px',
+            color: '#ffffff',
+            fontWeight: 'bold',
+            textAlign: 'center',
+            textShadow: '3px 3px 6px rgba(0, 0, 0, 0.9)',
+            webkitTextStroke: '2px #000',
+            zIndex: '15'
           }
         };
       });
@@ -4450,8 +5107,8 @@ function setupOverlayWidget() {
       // Add center media test
       payload.centerMedia = [{
         type: 'image',
-        src: 'https://via.placeholder.com/400x300/ff00ff/ffffff?text=Test+Center+Media',
-        alt: 'Test Center Media'
+        src: 'http://localhost:8080/media/images/VirtualDeck2.png',
+        alt: 'VirtualDeck Logo'
       }];
       
       if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
@@ -4463,45 +5120,358 @@ function setupOverlayWidget() {
     });
   }
   
-  // Resolution controls
-  const resolutionSelect = document.getElementById('overlay-resolution');
-  const applyResolutionBtn = document.getElementById('apply-resolution');
   
-  if (resolutionSelect && applyResolutionBtn) {
-    applyResolutionBtn.addEventListener('click', () => {
-      const selectedResolution = resolutionSelect.value;
-      const [width, height] = selectedResolution.split('x').map(Number);
+  // Overlay Management Functionality
+  if (createOverlayBtn && newOverlayNameInput) {
+    createOverlayBtn.addEventListener('click', () => {
+      const overlayName = newOverlayNameInput.value.trim();
+      const templateSelect = document.getElementById('overlay-template');
+      const template = templateSelect ? templateSelect.value : 'center-media';
       
-      console.log(`Applying overlay resolution: ${width}x${height}`);
+      if (!overlayName) {
+        showCustomAlert('Please enter a name for the overlay', 'error');
+        return;
+      }
       
-      // Send resolution change to overlay iframe
-      const overlayIframe = document.getElementById('overlay-iframe');
-      if (overlayIframe && overlayIframe.contentWindow) {
-        try {
-          overlayIframe.contentWindow.setOverlayResolution(width, height);
-          console.log(`✅ Resolution changed to ${width}x${height}`);
-          
-          // Show feedback
-          const originalText = applyResolutionBtn.textContent;
-          applyResolutionBtn.textContent = '✓ Applied';
-          applyResolutionBtn.style.background = '#4CAF50';
-          setTimeout(() => {
-            applyResolutionBtn.textContent = originalText;
-            applyResolutionBtn.style.background = '';
-          }, 2000);
-        } catch (error) {
-          console.error('Failed to change overlay resolution:', error);
-          applyResolutionBtn.textContent = '❌ Failed';
-          applyResolutionBtn.style.background = '#f44336';
-          setTimeout(() => {
-            applyResolutionBtn.textContent = 'Apply Resolution';
-            applyResolutionBtn.style.background = '';
-          }, 2000);
+      if (overlayName === 'main') {
+        showCustomAlert('Cannot use "main" as overlay name - it is reserved', 'error');
+        return;
+      }
+      
+      // Create overlay name that includes template info
+      const overlayId = overlayName.toLowerCase().replace(/\s+/g, '-');
+      const displayName = `${overlayName} (${getTemplateDisplayName(template)})`;
+      
+      // Check for duplicate names
+      const savedOverlays = getSavedOverlays();
+      const isDuplicate = savedOverlays.some(overlay => 
+        overlay.id === overlayId || overlay.name.toLowerCase() === overlayName.toLowerCase()
+      );
+      
+      if (isDuplicate) {
+        showCustomAlert(`An overlay with the name "${overlayName}" already exists. Please choose a different name.`, 'error');
+        return;
+      }
+      
+      // Save overlay to localStorage
+      savedOverlays.push({
+        id: overlayId,
+        name: overlayName,
+        displayName: displayName,
+        template: template,
+        createdAt: new Date().toISOString()
+      });
+      saveOverlays(savedOverlays);
+      
+      // Create new overlay option
+      const option = document.createElement('option');
+      option.value = overlayId;
+      option.textContent = displayName;
+      option.dataset.template = template;
+      overlaySelect.appendChild(option);
+      
+      // Clear input
+      newOverlayNameInput.value = '';
+      
+      // Show success message
+      showCustomAlert(`Overlay "${overlayName}" created successfully!`, 'success');
+      
+      // Update all overlay selects in forms
+      updateAllOverlaySelects();
+      
+      console.log(`✅ Created and saved new overlay: ${overlayName} with template: ${template}`);
+    });
+  }
+  
+  if (deleteOverlayBtn && overlaySelect) {
+    deleteOverlayBtn.addEventListener('click', async () => {
+      const selectedValue = overlaySelect.value;
+      if (selectedValue === 'main') {
+        showCustomAlert('Cannot delete the main overlay', 'error');
+        return;
+      }
+      
+      // Use custom confirm dialog instead of native confirm
+      const overlayName = overlaySelect.options[overlaySelect.selectedIndex].textContent;
+      if (confirm(`Are you sure you want to delete the "${overlayName}" overlay?`)) {
+        // Close all WebSocket connections for this overlay
+        if (window.electronAPI && window.electronAPI.closeOverlayConnections) {
+          try {
+            const result = await window.electronAPI.closeOverlayConnections(selectedValue);
+            if (result.success) {
+              console.log(`🔌 Closed ${result.closedCount} connection(s) for overlay: ${selectedValue}`);
+            }
+          } catch (error) {
+            console.error('Error closing overlay connections:', error);
+          }
         }
-      } else {
-        console.error('Overlay iframe not found');
+        
+        // Remove from localStorage
+        const savedOverlays = getSavedOverlays();
+        const updatedOverlays = savedOverlays.filter(o => o.id !== selectedValue);
+        saveOverlays(updatedOverlays);
+        
+        // Remove from select
+        const option = overlaySelect.querySelector(`option[value="${selectedValue}"]`);
+        if (option) {
+          option.remove();
+        }
+        
+        // Reset to main overlay
+        overlaySelect.value = 'main';
+        
+        // Update all overlay selects in forms
+        updateAllOverlaySelects();
+        
+        // Update overlay URL to reflect new selection
+        updateOverlayUrl();
+        
+        // Update preview iframe
+        updatePreviewIframe();
+        
+        // Force connection status update (after a short delay to let connections close)
+        setTimeout(() => {
+          updateOverlayConnectionStatus();
+        }, 100);
+        
+        console.log(`✅ Deleted overlay: ${selectedValue}`);
+        showCustomAlert(`Overlay "${overlayName}" deleted successfully`, 'success');
       }
     });
+  }
+  
+  if (overlaySelect) {
+    overlaySelect.addEventListener('change', () => {
+      updateOverlayUrl();
+      updatePreviewIframe();
+    });
+  }
+  
+  // Initialize overlay management - load saved overlays first
+  loadSavedOverlaysIntoUI();
+  updateAllOverlaySelects();
+  updateOverlayUrl();
+  
+  // Start periodic connection status updates
+  updateOverlayConnectionStatus();
+  setInterval(updateOverlayConnectionStatus, 3000); // Update every 3 seconds
+  
+  // Predefined overlay cards removed - only user-created overlays will be shown
+  
+  // Ensure overlay selects are updated after a short delay to catch any late-loading forms
+  setTimeout(() => {
+    updateAllOverlaySelects();
+    console.log('🔄 Refreshed overlay selects after delay');
+  }, 1000);
+}
+
+// Predefined overlay cards function removed - only user-created overlays are supported
+
+// Get overlay URL
+function getOverlayUrl(overlayName) {
+  if (overlayName === 'main') {
+    return 'http://localhost:8080/overlay';
+  } else {
+    return `http://localhost:8080/overlay?name=${overlayName}`;
+  }
+}
+
+// Helper functions for overlay management
+function updateAllOverlaySelects() {
+  // Get all overlay options from the main overlay select
+  const mainOverlaySelect = document.getElementById('overlay-select');
+  if (!mainOverlaySelect) return;
+  
+  const options = Array.from(mainOverlaySelect.options).map(option => ({
+    value: option.value,
+    text: option.textContent
+  }));
+  
+  // Update multi-media form overlay select
+  const multiMediaOverlaySelect = document.getElementById('multi-media-overlay-select');
+  if (multiMediaOverlaySelect) {
+    const currentValue = multiMediaOverlaySelect.value;
+    console.log('🔄 Updating multi-media overlay select. Current value:', currentValue);
+    console.log('🔄 Available options:', options);
+    multiMediaOverlaySelect.innerHTML = '';
+    
+    options.forEach(option => {
+      const optionElement = document.createElement('option');
+      optionElement.value = option.value;
+      optionElement.textContent = option.text;
+      if (option.value === currentValue) {
+        optionElement.selected = true;
+      }
+      multiMediaOverlaySelect.appendChild(optionElement);
+    });
+    console.log('✅ Multi-media overlay select updated with', options.length, 'options');
+  } else {
+    console.log('⚠️ Multi-media overlay select not found');
+  }
+  
+  // Update alert form overlay select
+  const alertOverlaySelect = document.getElementById('alert-overlay-select');
+  if (alertOverlaySelect) {
+    const currentValue = alertOverlaySelect.value;
+    console.log('🔄 Updating alert overlay select. Current value:', currentValue);
+    console.log('🔄 Available options for alert:', options);
+    alertOverlaySelect.innerHTML = '';
+    
+    options.forEach(option => {
+      const optionElement = document.createElement('option');
+      optionElement.value = option.value;
+      optionElement.textContent = option.text;
+      if (option.value === currentValue) {
+        optionElement.selected = true;
+      }
+      alertOverlaySelect.appendChild(optionElement);
+    });
+    console.log('✅ Alert overlay select updated with', options.length, 'options');
+  } else {
+    console.log('⚠️ Alert overlay select not found');
+  }
+}
+
+function updateOverlayUrl() {
+  const overlaySelect = document.getElementById('overlay-select');
+  const overlayUrlDisplay = document.getElementById('overlay-url-display');
+  
+  if (overlaySelect && overlayUrlDisplay) {
+    const selectedOverlay = overlaySelect.value;
+    const baseUrl = 'http://localhost:8080/overlay';
+    const url = selectedOverlay === 'main' ? baseUrl : `${baseUrl}?name=${selectedOverlay}`;
+    overlayUrlDisplay.textContent = url;
+  }
+}
+
+function getTemplateDisplayName(template) {
+  const templateNames = {
+    'center-media': 'Center Media',
+    'fullscreen-media': 'Full Screen',
+    // Legacy templates (kept for backward compatibility)
+    'text-only': 'Text Only',
+    'custom': 'Custom'
+  };
+  return templateNames[template] || 'Center Media';
+}
+
+// Overlay persistence functions
+function getSavedOverlays() {
+  try {
+    const saved = localStorage.getItem('customOverlays');
+    return saved ? JSON.parse(saved) : [];
+  } catch (error) {
+    console.error('Error loading saved overlays:', error);
+    return [];
+  }
+}
+
+function saveOverlays(overlays) {
+  try {
+    localStorage.setItem('customOverlays', JSON.stringify(overlays));
+    console.log('✅ Saved overlays to localStorage:', overlays.length);
+  } catch (error) {
+    console.error('Error saving overlays:', error);
+  }
+}
+
+function loadSavedOverlaysIntoUI() {
+  const overlaySelect = document.getElementById('overlay-select');
+  if (!overlaySelect) return;
+  
+  const savedOverlays = getSavedOverlays();
+  console.log(`📂 Loading ${savedOverlays.length} saved overlays...`);
+  
+  // Remove all options except 'main'
+  Array.from(overlaySelect.options).forEach(option => {
+    if (option.value !== 'main') {
+      option.remove();
+    }
+  });
+  
+  // Predefined overlays removed - only user-created overlays will be shown
+  
+  // Add saved overlays
+  savedOverlays.forEach(overlay => {
+    const option = document.createElement('option');
+    option.value = overlay.id;
+    option.textContent = overlay.displayName;
+    option.dataset.template = overlay.template;
+    overlaySelect.appendChild(option);
+    console.log(`✅ Loaded custom overlay: ${overlay.displayName}`);
+  });
+}
+
+function updatePreviewIframe(overlayName = null) {
+  const overlaySelect = document.getElementById('overlay-select');
+  const overlayIframe = document.getElementById('overlay-iframe');
+  
+  if (!overlayIframe) return;
+  
+  const selectedOverlay = overlayName || (overlaySelect ? overlaySelect.value : 'main');
+  
+  // Determine the correct URL for the iframe
+  let iframeUrl;
+  if (selectedOverlay === 'main') {
+    iframeUrl = 'overlay.html';
+  } else {
+    iframeUrl = `http://localhost:8080/overlay?name=${selectedOverlay}`;
+  }
+  
+  console.log(`🔄 Updating preview iframe to: ${iframeUrl}`);
+  
+  // Only update if the src is different to avoid unnecessary reloads
+  if (overlayIframe.src !== iframeUrl && !overlayIframe.src.endsWith(iframeUrl)) {
+    overlayIframe.src = iframeUrl;
+    console.log(`✅ Preview iframe updated to ${selectedOverlay} overlay`);
+  }
+}
+
+async function updateOverlayConnectionStatus() {
+  const connectionsList = document.getElementById('overlay-connections-list');
+  if (!connectionsList) return;
+  
+  try {
+    if (window.electronAPI && window.electronAPI.getConnectedOverlays) {
+      const connections = await window.electronAPI.getConnectedOverlays();
+      
+      // Filter out dashboard preview from connection status
+      const actualConnections = connections.filter(conn => conn.name !== 'dashboard-preview');
+      
+      if (actualConnections.length === 0) {
+        connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">⚠️ No overlays connected. Open overlay in OBS to connect.</div>';
+      } else {
+        // Group connections by overlay name and count clients
+        const connectionMap = new Map();
+        actualConnections.forEach(conn => {
+          const count = connectionMap.get(conn.name) || 0;
+          connectionMap.set(conn.name, count + conn.clientCount);
+        });
+        
+        const html = Array.from(connectionMap.entries()).map(([name, count]) => 
+          `<div style="color: var(--accent-color); margin: 4px 0;">
+            ✅ <strong>${name}</strong> - ${count} client${count !== 1 ? 's' : ''} connected
+          </div>`
+        ).join('');
+        
+        const total = Array.from(connectionMap.values()).reduce((sum, count) => sum + count, 0);
+        const header = `<div style="color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;">
+          🔗 ${total} total connection${total !== 1 ? 's' : ''} across ${connectionMap.size} overlay${connectionMap.size !== 1 ? 's' : ''}
+        </div>`;
+        
+        connectionsList.innerHTML = header + html;
+      }
+    } else {
+      connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">Connection status unavailable. Restart app to enable.</div>';
+    }
+  } catch (error) {
+    // Handler not registered yet - needs app restart
+    if (error.message?.includes('No handler registered')) {
+      connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">⚠️ Restart app to see connection status</div>';
+    } else {
+      console.error('Error updating overlay connection status:', error);
+      connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">Error loading connections</div>';
+    }
   }
 }
 
@@ -4550,7 +5520,9 @@ function setupAlertTypeFilter() {
         'gift-sub': 'Gift Sub',
         'gift-sub-received': 'Gift Received',
         'raid': 'Raid',
-        'bits': 'Bits'
+        'bits': 'Bits',
+        'ban': 'Ban',
+        'daily-checkin': 'Daily Checkin'
       };
       
       selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
@@ -4567,6 +5539,9 @@ function setupAlertTypeFilter() {
       'gift-sub-received': 'Gift Received',
       'raid': 'Raid',
       'bits': 'Bits',
+      'ban': 'Ban',
+      'channel-points': 'Channel Point Redemption',
+      'daily-checkin': 'Daily Checkin'
     };
     selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
   }
@@ -4581,12 +5556,19 @@ function setupAlertWidget() {
   const alertWidget = document.getElementById('alert-widget');
   const closeBtn = document.getElementById('close-alert-widget');
   const alertTypeSelect = document.getElementById('alert-type');
+  const selectedAlertTypeName = document.getElementById('selected-alert-type-name');
   const alertTextInput = document.getElementById('alert-text');
   const alertDurationInput = document.getElementById('alert-duration');
   const alertBitsThresholdInput = document.getElementById('alert-bits-threshold');
   const bitsThresholdGroup = document.getElementById('bits-threshold-group');
   const alertSoundInput = document.getElementById('alert-sound');
   const alertImageInput = document.getElementById('alert-image');
+  const alertVideoInput = document.getElementById('alert-video');
+  const alertVideoSettings = document.getElementById('alert-video-settings');
+  const alertVideoLoop = document.getElementById('alert-video-loop');
+  const alertVideoVolume = document.getElementById('alert-video-volume');
+  const alertVideoVolumeValue = document.getElementById('alert-video-volume-value');
+  const alertVideoDisplayMode = document.getElementById('alert-video-display-mode');
   const saveAlertBtn = document.getElementById('save-alert');
   const clearAlertsBtn = document.getElementById('clear-alerts');
   const alertPreviewArea = document.getElementById('alert-preview-area');
@@ -4614,17 +5596,17 @@ function setupAlertWidget() {
   const animationDelayValue = document.getElementById('animation-delay-value');
   
   
-  // Queue control elements
-  const clearQueueBtn = document.getElementById('clear-queue');
-  const skipCurrentBtn = document.getElementById('skip-current');
-  const hardStopBtn = document.getElementById('hard-stop');
-  const queueStatusBtn = document.getElementById('queue-status');
-  const queueInfo = document.getElementById('queue-info');
+  // Compact queue control widget elements (on dashboard)
+  const queueWidgetClear = document.getElementById('queue-widget-clear');
+  const queueWidgetSkip = document.getElementById('queue-widget-skip');
+  const queueWidgetStop = document.getElementById('queue-widget-stop');
+  const queueWidgetStatus = document.getElementById('queue-widget-status');
   
   
   
-  // Alert storage
-  let savedAlerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  // Alert storage - make it globally accessible for window functions
+  window.savedAlerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  let savedAlerts = window.savedAlerts; // Keep local reference for backward compatibility
   
   
   // Helper function to convert file to base64
@@ -4718,6 +5700,12 @@ function setupAlertWidget() {
         bitsThresholdGroup.style.display = selectedType === 'bits' ? 'block' : 'none';
       }
       
+      // Show/hide daily check-in settings based on alert type
+      const dailyCheckinSettings = document.getElementById('daily-checkin-settings');
+      if (dailyCheckinSettings) {
+        dailyCheckinSettings.style.display = selectedType === 'daily-checkin' ? 'block' : 'none';
+      }
+      
       // Update alert list to show only matching alerts
       updateAlertList();
       
@@ -4731,8 +5719,27 @@ function setupAlertWidget() {
           'gift-sub-received': 'Gift Sub Received',
           'raid': 'Raid',
           'bits': 'Bits',
+          'ban': 'Ban',
+          'channel-points': 'Channel Point Redemption',
+          'daily-checkin': 'Daily Checkin'
         };
         selectedAlertTypeName.textContent = typeNames[selectedType] || 'Unknown';
+      }
+      
+      // Update placeholder text based on alert type
+      if (alertTextInput) {
+        const placeholderTexts = {
+          'follower': 'Welcome {username}!',
+          'subscriber': '{username} subscribed!',
+          'resubscriber': '{username} resubscribed for {months} months!',
+          'gift-sub': '{username} gifted {tier} to {recipient}!',
+          'gift-sub-received': '{username} received a gift sub!',
+          'raid': '{username} raided with {viewers} viewers!',
+          'bits': '{username} cheered {bits} bits!',
+          'ban': '{username} has been banned by {moderator}!',
+          'daily-checkin': '{username} checked in! Total: {total_checkins}'
+        };
+        alertTextInput.placeholder = placeholderTexts[selectedType] || 'Welcome {username}!';
       }
       
       // Update preview when type changes
@@ -4796,6 +5803,7 @@ function setupAlertWidget() {
     // Check for new files first, then existing media when editing
     let soundFile = alertSoundInput.files[0];
     let imageFile = alertImageInput.files[0];
+    let videoFile = alertVideoInput.files[0];
     
     // If no new files and we're editing, use existing media
     if (!soundFile && window.editingAlertMedia?.soundFile) {
@@ -4803,6 +5811,9 @@ function setupAlertWidget() {
     }
     if (!imageFile && window.editingAlertMedia?.imageFile) {
       imageFile = window.editingAlertMedia.imageFile;
+    }
+    if (!videoFile && window.editingAlertMedia?.videoFile) {
+      videoFile = window.editingAlertMedia.videoFile;
     }
     
     if (!text.trim()) {
@@ -4820,7 +5831,9 @@ function setupAlertWidget() {
       bits: '100',
       months: '3',
       message: 'Thanks for the follow!',
-      reward: 'Test Reward'
+      reward: 'Test Reward',
+      moderator: 'TestModerator',
+      reason: 'Spam'
     };
     
     // Process text with sample data for preview
@@ -4857,44 +5870,81 @@ function setupAlertWidget() {
       `;
     }
     
-    let previewHTML = '<div class="alert-preview-content">';
+    // Build position style for text
+    let positionStyle = '';
+    switch(textPosition) {
+      case 'topLeft':
+        positionStyle = 'top: 10%; left: 10%;';
+        break;
+      case 'topCenter':
+        positionStyle = 'top: 10%; left: 50%; transform: translateX(-50%);';
+        break;
+      case 'topRight':
+        positionStyle = 'top: 10%; right: 10%;';
+        break;
+      case 'midLeft':
+        positionStyle = 'top: 50%; left: 10%; transform: translateY(-50%);';
+        break;
+      case 'center':
+        positionStyle = 'top: 50%; left: 50%; transform: translate(-50%, -50%);';
+        break;
+      case 'midRight':
+        positionStyle = 'top: 50%; right: 10%; transform: translateY(-50%);';
+        break;
+      case 'bottomLeft':
+        positionStyle = 'bottom: 10%; left: 10%;';
+        break;
+      case 'bottomCenter':
+        positionStyle = 'bottom: 10%; left: 50%; transform: translateX(-50%);';
+        break;
+      case 'bottomRight':
+        positionStyle = 'bottom: 10%; right: 10%;';
+        break;
+    }
+    
+    let previewHTML = '<div class="alert-preview-content" style="position: relative; width: 100%; height: 300px; background: rgba(0,0,0,0.1); border: 1px solid var(--border-color);">';
     
     if (imageFile) {
       if (imageFile instanceof File) {
         // New file from input
         const imageUrl = URL.createObjectURL(imageFile);
-        previewHTML += `<img src="${imageUrl}" alt="Alert Image" />`;
+        previewHTML += `<img src="${imageUrl}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
       } else if (imageFile.data) {
         // Legacy base64 data
-        previewHTML += `<img src="${imageFile.data}" alt="Alert Image" />`;
+        previewHTML += `<img src="${imageFile.data}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
       } else if (imageFile.path && window.electronAPI && window.electronAPI.getMediaFile) {
         // Existing saved file with path - load from disk
         try {
           const result = await window.electronAPI.getMediaFile(imageFile.path);
           if (result.success) {
-            previewHTML += `<img src="${result.data}" alt="Alert Image" />`;
+            previewHTML += `<img src="${result.data}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
           } else {
             // Fallback to placeholder if loading fails
-            previewHTML += `<div class="image-placeholder">📷 ${imageFile.name || 'Alert Image'}</div>`;
+            previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name || 'Alert Image'}</div>`;
           }
         } catch (error) {
           console.error('Error loading preview image:', error);
-          previewHTML += `<div class="image-placeholder">📷 ${imageFile.name || 'Alert Image'}</div>`;
+          previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name || 'Alert Image'}</div>`;
         }
       } else if (imageFile.name) {
         // Existing file (show placeholder)
-        previewHTML += `<div class="image-placeholder">📷 ${imageFile.name}</div>`;
+        previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name}</div>`;
       }
     }
     
-    previewHTML += `<h3>${getAlertTypeDisplayName(type)}</h3>`;
-    previewHTML += `<p style="${textStyle}">${processedText}</p>`;
-    previewHTML += `<p><small>Duration: ${duration}s</small></p>`;
+    // Add positioned text
+    previewHTML += `<div style="position: absolute; ${positionStyle} white-space: nowrap;">`;
+    previewHTML += `<p style="${textStyle} margin: 0;">${processedText}</p>`;
+    previewHTML += `</div>`;
     
+    // Add info at bottom
+    previewHTML += `<div style="position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--text-tertiary); text-align: center;">`;
+    previewHTML += `<div><small>Position: ${textPosition} | Duration: ${duration}s</small></div>`;
     if (soundFile) {
       const soundName = soundFile.name || 'Existing Sound';
-      previewHTML += `<p><small>🔊 Sound: ${soundName}</small></p>`;
+      previewHTML += `<div><small>🔊 Sound: ${soundName}</small></div>`;
     }
+    previewHTML += `</div>`;
     
     previewHTML += '</div>';
     alertPreviewArea.innerHTML = previewHTML;
@@ -4908,13 +5958,14 @@ function setupAlertWidget() {
       'resubscriber': 'Resubscriber',
       'raid': 'Raid',
       'gift-sub': 'Gifted Subscription',
-      'bits': 'Bits Donation'
+      'bits': 'Bits Donation',
+      'daily-checkin': 'Daily Checkin'
     };
     return typeNames[type] || type;
   }
   
   // Event listeners for form changes
-  [alertTypeSelect, alertTextInput, alertDurationInput, alertSoundInput, alertImageInput].forEach(element => {
+  [alertTypeSelect, alertTextInput, alertDurationInput, alertSoundInput, alertImageInput, alertVideoInput].forEach(element => {
     if (element) {
       element.addEventListener('change', () => updatePreview().catch(console.error));
       element.addEventListener('input', () => updatePreview().catch(console.error));
@@ -4943,12 +5994,132 @@ function setupAlertWidget() {
         const duration = await getMediaDuration(file);
         if (duration && duration > parseInt(alertDurationInput.value)) {
           alertDurationInput.value = duration;
-          console.log(`🎵 Auto-updated duration to ${duration}s for image/video file`);
+          console.log(`🎵 Auto-updated duration to ${duration}s for image file`);
           updatePreview().catch(console.error);
         }
       }
     });
   }
+  
+  if (alertVideoInput) {
+    alertVideoInput.addEventListener('change', async () => {
+      const file = alertVideoInput.files[0];
+      if (file) {
+        // Show video settings panel
+        if (alertVideoSettings) {
+          alertVideoSettings.style.display = 'block';
+        }
+        
+        const duration = await getMediaDuration(file);
+        if (duration && duration > parseInt(alertDurationInput.value)) {
+          alertDurationInput.value = duration;
+          console.log(`🎬 Auto-updated duration to ${duration}s for video file`);
+          updatePreview().catch(console.error);
+        }
+      } else {
+        // Hide video settings panel if no file
+        if (alertVideoSettings) {
+          alertVideoSettings.style.display = 'none';
+        }
+      }
+    });
+  }
+  
+  // Video volume slider
+  if (alertVideoVolume && alertVideoVolumeValue) {
+    alertVideoVolume.addEventListener('input', () => {
+      alertVideoVolumeValue.textContent = alertVideoVolume.value + '%';
+    });
+  }
+  
+  // Media removal buttons
+  const removeSoundBtn = document.getElementById('remove-alert-sound');
+  const removeImageBtn = document.getElementById('remove-alert-image');
+  const removeVideoBtn = document.getElementById('remove-alert-video');
+  
+  // Helper function to show/hide remove buttons based on file selection
+  function updateRemoveButtons() {
+    // Sound file
+    if (removeSoundBtn) {
+      const hasSound = alertSoundInput.files[0] || window.editingAlertMedia?.soundFile;
+      removeSoundBtn.style.display = hasSound ? 'inline-block' : 'none';
+    }
+    
+    // Image file
+    if (removeImageBtn) {
+      const hasImage = alertImageInput.files[0] || window.editingAlertMedia?.imageFile;
+      removeImageBtn.style.display = hasImage ? 'inline-block' : 'none';
+    }
+    
+    // Video file
+    if (removeVideoBtn) {
+      const hasVideo = alertVideoInput.files[0] || window.editingAlertMedia?.videoFile;
+      removeVideoBtn.style.display = hasVideo ? 'inline-block' : 'none';
+    }
+  }
+  
+  // Update remove buttons when files change
+  if (alertSoundInput) {
+    alertSoundInput.addEventListener('change', () => {
+      updateRemoveButtons();
+    });
+  }
+  
+  if (alertImageInput) {
+    alertImageInput.addEventListener('change', () => {
+      updateRemoveButtons();
+    });
+  }
+  
+  if (alertVideoInput) {
+    alertVideoInput.addEventListener('change', () => {
+      updateRemoveButtons();
+    });
+  }
+  
+  // Remove sound file
+  if (removeSoundBtn) {
+    removeSoundBtn.addEventListener('click', () => {
+      alertSoundInput.value = '';
+      if (window.editingAlertMedia) {
+        window.editingAlertMedia.soundFile = null;
+      }
+      updateRemoveButtons();
+      updatePreview().catch(console.error);
+      console.log('Sound file removed');
+    });
+  }
+  
+  // Remove image file
+  if (removeImageBtn) {
+    removeImageBtn.addEventListener('click', () => {
+      alertImageInput.value = '';
+      if (window.editingAlertMedia) {
+        window.editingAlertMedia.imageFile = null;
+      }
+      updateRemoveButtons();
+      updatePreview().catch(console.error);
+      console.log('Image file removed');
+    });
+  }
+  
+  // Remove video file
+  if (removeVideoBtn) {
+    removeVideoBtn.addEventListener('click', () => {
+      alertVideoInput.value = '';
+      if (window.editingAlertMedia) {
+        window.editingAlertMedia.videoFile = null;
+      }
+      // Hide video settings panel
+      if (alertVideoSettings) {
+        alertVideoSettings.style.display = 'none';
+      }
+      updateRemoveButtons();
+      updatePreview().catch(console.error);
+      console.log('Video file removed');
+    });
+  }
+  
   
   // Save alert
   if (saveAlertBtn) {
@@ -4958,19 +6129,18 @@ function setupAlertWidget() {
       let duration = parseInt(alertDurationInput.value) || 5;
       const soundFile = alertSoundInput.files[0];
       const imageFile = alertImageInput.files[0];
+      const videoFile = alertVideoInput.files[0];
       
-      if (!text) {
-        alert('Please enter alert text');
-        return;
-      }
+      // Alert text is now optional - alerts can have just images/videos/sounds without text
       
       // Auto-detect duration from media files
       const soundDuration = await getMediaDuration(soundFile);
       const imageDuration = await getMediaDuration(imageFile);
+      const videoDuration = await getMediaDuration(videoFile);
       
       // Use the longer duration if media is present
-      if (soundDuration || imageDuration) {
-        const mediaDuration = Math.max(soundDuration || 0, imageDuration || 0);
+      if (soundDuration || imageDuration || videoDuration) {
+        const mediaDuration = Math.max(soundDuration || 0, imageDuration || 0, videoDuration || 0);
         if (mediaDuration > duration) {
           duration = mediaDuration;
           alertDurationInput.value = duration;
@@ -4984,6 +6154,7 @@ function setupAlertWidget() {
       // Save media files to disk instead of base64
       let soundFilePath = null;
       let imageFilePath = null;
+      let videoFilePath = null;
       
       if (soundFile && window.electronAPI && window.electronAPI.saveMediaFile) {
         try {
@@ -5021,6 +6192,24 @@ function setupAlertWidget() {
         }
       }
       
+      if (videoFile && window.electronAPI && window.electronAPI.saveMediaFile) {
+        try {
+          const base64Data = await fileToBase64(videoFile);
+          const result = await window.electronAPI.saveMediaFile({
+            base64Data: base64Data,
+            buttonId: alertId,
+            mediaType: 'video',
+            originalName: videoFile.name
+          });
+          if (result.success) {
+            videoFilePath = result.filePath;
+            console.log(`💾 Alert video saved to: ${videoFilePath}`);
+          }
+        } catch (error) {
+          console.error('Error saving alert video:', error);
+        }
+      }
+      
       // Get styling values
       const textStyling = {
         position: alertTextPositionSelect ? alertTextPositionSelect.value : 'topCenter',
@@ -5043,11 +6232,17 @@ function setupAlertWidget() {
       // Get volume value
       const soundVolume = alertSoundVolumeRange ? parseInt(alertSoundVolumeRange.value) : 100;
       
+      // Get overlay selection
+      const overlaySelect = document.getElementById('alert-overlay-select')?.value || 'main';
+      
+      console.log('🔍 Creating alert with overlay:', overlaySelect);
+      
       const alertData = {
         id: alertId,
         type: type,
         text: text,
         duration: duration,
+        overlay: overlaySelect,
         bitsThreshold: type === 'bits' ? (parseInt(alertBitsThresholdInput.value) || 10) : null,
         textStyling: textStyling,
         animation: animation,
@@ -5063,6 +6258,25 @@ function setupAlertWidget() {
           size: imageFile.size,
           type: imageFile.type,
           path: imageFilePath // Store file path instead of base64
+        } : null,
+        videoFile: videoFilePath ? {
+          name: videoFile.name,
+          size: videoFile.size,
+          type: videoFile.type,
+          path: videoFilePath, // Store file path instead of base64
+          loop: alertVideoLoop ? alertVideoLoop.checked : false,
+          volume: alertVideoVolume ? parseInt(alertVideoVolume.value) : 100,
+          displayMode: alertVideoDisplayMode ? alertVideoDisplayMode.value : 'center'
+        } : null,
+        // Include daily check-in config if this is a daily-checkin alert
+        dailyCheckinConfig: type === 'daily-checkin' ? {
+          enabled: document.getElementById('daily-checkin-enabled')?.checked ?? true,
+          rewardName: document.getElementById('daily-checkin-reward-name')?.value || 'Daily Check-In',
+          chatResponse: document.getElementById('daily-checkin-chat-response')?.value || 'Welcome back {username}!',
+          alreadyCheckedMessage: document.getElementById('daily-checkin-already-checked-message')?.value || 'You\'ve already checked in today!',
+          showStreak: document.getElementById('daily-checkin-show-streak')?.checked ?? false,
+          sendToChat: document.getElementById('daily-checkin-send-to-chat')?.checked ?? true,
+          testMode: document.getElementById('daily-checkin-test-mode')?.checked ?? false
         } : null,
         variations: [],
         randomMode: false,
@@ -5092,8 +6306,30 @@ function setupAlertWidget() {
               console.log('Preserved existing image file:', window.editingAlertMedia.imageFile.name);
             }
             
+            if (!videoFilePath && window.editingAlertMedia?.videoFile) {
+              alertData.videoFile = {
+                ...window.editingAlertMedia.videoFile,
+                loop: alertVideoLoop ? alertVideoLoop.checked : window.editingAlertMedia.videoFile.loop,
+                volume: alertVideoVolume ? parseInt(alertVideoVolume.value) : window.editingAlertMedia.videoFile.volume,
+                displayMode: alertVideoDisplayMode ? alertVideoDisplayMode.value : window.editingAlertMedia.videoFile.displayMode
+              };
+              console.log('Preserved existing video file with updated settings:', window.editingAlertMedia.videoFile.name, 'volume:', alertData.videoFile.volume + '%');
+            }
+            
+            // Preserve existing text styling and animation if they weren't explicitly changed
+            if (!textStyling || Object.keys(textStyling).length === 0) {
+              alertData.textStyling = savedAlerts[alertIndex].textStyling || alertData.textStyling;
+              console.log('Preserved existing text styling');
+            }
+            
+            if (!animation || Object.keys(animation).length === 0) {
+              alertData.animation = savedAlerts[alertIndex].animation || alertData.animation;
+              console.log('Preserved existing animation');
+            }
+            
             savedAlerts[alertIndex] = alertData;
-            console.log('Updated existing alert:', window.editingAlertId);
+            console.log('✅ Updated existing alert:', window.editingAlertId);
+            console.log('✅ Alert overlay property:', alertData.overlay);
           } else {
             console.error('Alert to edit not found:', window.editingAlertId);
             savedAlerts.push(alertData);
@@ -5104,10 +6340,25 @@ function setupAlertWidget() {
         } else {
           // Create new alert
           savedAlerts.push(alertData);
-          console.log('Created new alert:', alertId);
+          console.log('✅ Created new alert:', alertId);
+          console.log('✅ Alert overlay property:', alertData.overlay);
         }
         
         localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+        console.log('💾 Saved to localStorage. Verifying overlay property persisted...');
+        
+        // Verify the alert was saved correctly with overlay
+        const savedAlertsCheck = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+        const savedAlert = savedAlertsCheck.find(a => a.id === alertId);
+        if (savedAlert) {
+          console.log('✅ Verified alert in localStorage has overlay:', savedAlert.overlay);
+        } else {
+          console.error('❌ Alert not found in localStorage after save');
+        }
+        
+        // Update alertSystem's in-memory cache
+        alertSystem.updateAlerts();
+        console.log('✅ Updated alertSystem cache with new alerts');
         
         updateAlertList();
         clearForm();
@@ -5124,9 +6375,12 @@ function setupAlertWidget() {
     clearAlertsBtn.addEventListener('click', () => {
       if (confirm('Are you sure you want to clear all saved alerts?')) {
         savedAlerts = [];
+        window.savedAlerts = savedAlerts; // Keep window reference in sync
         localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+        alertSystem.updateAlerts();
         updateAlertList();
-        console.log('All alerts cleared');
+        clearForm();
+        console.log('All alerts cleared - form cleared');
       }
     });
   }
@@ -5157,6 +6411,24 @@ function setupAlertWidget() {
     alertDurationInput.value = '5';
     alertSoundInput.value = '';
     alertImageInput.value = '';
+    alertVideoInput.value = '';
+    
+    // Reset video settings
+    if (alertVideoSettings) {
+      alertVideoSettings.style.display = 'none';
+    }
+    if (alertVideoLoop) {
+      alertVideoLoop.checked = false;
+    }
+    if (alertVideoVolume) {
+      alertVideoVolume.value = '100';
+      if (alertVideoVolumeValue) {
+        alertVideoVolumeValue.textContent = '100%';
+      }
+    }
+    if (alertVideoDisplayMode) {
+      alertVideoDisplayMode.value = 'center';
+    }
     
     // Reset volume slider
     if (alertSoundVolumeRange) {
@@ -5227,6 +6499,9 @@ function setupAlertWidget() {
       alertAnimationEasingSelect.value = 'ease';
     }
     
+    // Hide all remove buttons
+    updateRemoveButtons();
+    
     updatePreview().catch(console.error);
   }
   
@@ -5240,6 +6515,8 @@ function setupAlertWidget() {
       'gift-sub-received': 'Gift Received',
       'raid': 'Raid',
       'bits': 'Bits',
+      'channel-points': 'Channel Point Redemption',
+      'daily-checkin': 'Daily Checkin'
     };
     return typeNames[alertType] || alertType;
   }
@@ -5277,20 +6554,30 @@ function setupAlertWidget() {
     const variationsHtml = `
       <div class="alert-variations-list">
         <div class="variations-header">
-          <span>Variations (${filteredAlerts.length}):</span>
-          <label class="random-toggle">
-            <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
-                   onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
-            Random
-          </label>
+          <span>Variations (${filteredAlerts.length} total, ${filteredAlerts.filter(a => a.enabled !== false).length} enabled):</span>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', true)" style="padding: 4px 8px; font-size: 12px;">Enable All</button>
+            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', false)" style="padding: 4px 8px; font-size: 12px;">Disable All</button>
+            <label class="random-toggle">
+              <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
+                     onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
+              Random Mode
+            </label>
+          </div>
+        </div>
+        <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
+          <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
         </div>
         <div class="variations-items">
           ${filteredAlerts.map((alert, index) => `
-            <div class="variation-item ${alert.enabled !== false ? 'enabled' : ''}">
+            <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
               <label class="variation-toggle">
                 <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
                        onchange="toggleAlert('${alert.id}', this.checked)" />
-                <span class="variation-text">${alert.text}</span>
+                <span class="variation-text">
+                  ${alert.enabled !== false ? '✓' : '○'} ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
+                  <span class="overlay-badge">${alert.overlay || 'main'}</span>
+                </span>
               </label>
               <div class="variation-actions">
                 <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
@@ -5319,6 +6606,8 @@ function setupAlertWidget() {
     const alert = savedAlerts.find(a => a.id === alertId);
     if (alert) {
       console.log('🎭 Testing specific saved alert:', alertId, alert);
+      console.log('🎯 Alert overlay setting:', alert.overlay || 'NOT SET (will default to main)');
+      console.log('🎬 Alert animation in saved data:', alert.animation);
       
       // Create sample user data for the alert
       const sampleUserData = {
@@ -5330,7 +6619,9 @@ function setupAlertWidget() {
         bits: '100',
         months: '3',
         message: 'Thanks for the follow!',
-        reward: 'Test Reward'
+        reward: 'Test Reward',
+        moderator: 'TestModerator',
+        reason: 'Spam'
       };
       
       // Directly trigger this specific alert - bypass the overlay event system
@@ -5348,7 +6639,7 @@ function setupAlertWidget() {
   
   // Delete alert
   // Display existing media files in the form
-  function displayExistingMedia(soundFile, imageFile) {
+  function displayExistingMedia(soundFile, imageFile, videoFile) {
     // Display existing sound file
     if (soundFile) {
       const soundFileLabel = document.querySelector('label[for="alert-sound"]');
@@ -5370,6 +6661,44 @@ function setupAlertWidget() {
         imageFileLabel.style.fontWeight = 'bold';
       }
     }
+    
+    // Display existing video file
+    if (videoFile) {
+      const videoFileLabel = document.querySelector('label[for="alert-video"]');
+      if (videoFileLabel) {
+        const fileName = videoFile.name || 'Existing Video File';
+        videoFileLabel.textContent = `Video File: ${fileName}`;
+        videoFileLabel.style.color = 'var(--accent-color)';
+        videoFileLabel.style.fontWeight = 'bold';
+      }
+      
+      // Show video settings panel
+      const videoSettings = document.getElementById('alert-video-settings');
+      if (videoSettings) {
+        videoSettings.style.display = 'block';
+      }
+      
+      // Populate video settings
+      const videoLoop = document.getElementById('alert-video-loop');
+      if (videoLoop && videoFile.loop !== undefined) {
+        videoLoop.checked = videoFile.loop;
+      }
+      
+      const videoVolume = document.getElementById('alert-video-volume');
+      const videoVolumeValue = document.getElementById('alert-video-volume-value');
+      if (videoVolume && videoFile.volume !== undefined) {
+        videoVolume.value = videoFile.volume;
+        if (videoVolumeValue) {
+          videoVolumeValue.textContent = videoFile.volume + '%';
+        }
+      }
+      
+      const videoDisplayMode = document.getElementById('alert-video-display-mode');
+      if (videoDisplayMode && videoFile.displayMode !== undefined) {
+        videoDisplayMode.value = videoFile.displayMode;
+      }
+      
+    }
   }
 
   window.editAlert = function(alertId) {
@@ -5390,11 +6719,18 @@ function setupAlertWidget() {
     }
     
     if (alertTextInput) {
-      alertTextInput.value = alertToEdit.text;
+      alertTextInput.value = alertToEdit.text || '';
     }
     
     if (alertDurationInput) {
       alertDurationInput.value = alertToEdit.duration || 5;
+    }
+    
+    // Set overlay selection
+    const alertOverlaySelect = document.getElementById('alert-overlay-select');
+    if (alertOverlaySelect && alertToEdit.overlay) {
+      alertOverlaySelect.value = alertToEdit.overlay;
+      console.log(`📝 [Edit Alert] Setting overlay to: ${alertToEdit.overlay}`);
     }
     
     // Populate bits threshold if it's a bits alert
@@ -5468,15 +6804,64 @@ function setupAlertWidget() {
       }
     }
     
+    // Populate video settings if video file exists
+    if (alertToEdit.videoFile) {
+      if (alertVideoVolume && alertToEdit.videoFile.volume !== undefined) {
+        alertVideoVolume.value = alertToEdit.videoFile.volume;
+        if (alertVideoVolumeValue) {
+          alertVideoVolumeValue.textContent = alertToEdit.videoFile.volume + '%';
+        }
+      }
+      if (alertVideoLoop && alertToEdit.videoFile.loop !== undefined) {
+        alertVideoLoop.checked = alertToEdit.videoFile.loop;
+      }
+      if (alertVideoDisplayMode && alertToEdit.videoFile.displayMode) {
+        alertVideoDisplayMode.value = alertToEdit.videoFile.displayMode;
+      }
+      console.log('Loaded video settings - volume:', alertToEdit.videoFile.volume, 'loop:', alertToEdit.videoFile.loop);
+    }
+    
+    // Populate daily check-in config if this is a daily-checkin alert
+    if (alertToEdit.type === 'daily-checkin' && alertToEdit.dailyCheckinConfig) {
+      const config = alertToEdit.dailyCheckinConfig;
+      
+      const enabledCheckbox = document.getElementById('daily-checkin-enabled');
+      if (enabledCheckbox) enabledCheckbox.checked = config.enabled ?? true;
+      
+      const rewardNameInput = document.getElementById('daily-checkin-reward-name');
+      if (rewardNameInput) rewardNameInput.value = config.rewardName || 'Daily Check-In';
+      
+      const chatResponseInput = document.getElementById('daily-checkin-chat-response');
+      if (chatResponseInput) chatResponseInput.value = config.chatResponse || 'Welcome back {username}!';
+      
+      const alreadyCheckedInput = document.getElementById('daily-checkin-already-checked-message');
+      if (alreadyCheckedInput) alreadyCheckedInput.value = config.alreadyCheckedMessage || 'You\'ve already checked in today!';
+      
+      const showStreakCheckbox = document.getElementById('daily-checkin-show-streak');
+      if (showStreakCheckbox) showStreakCheckbox.checked = config.showStreak ?? false;
+      
+      const sendToChatCheckbox = document.getElementById('daily-checkin-send-to-chat');
+      if (sendToChatCheckbox) sendToChatCheckbox.checked = config.sendToChat ?? true;
+      
+      const testModeCheckbox = document.getElementById('daily-checkin-test-mode');
+      if (testModeCheckbox) testModeCheckbox.checked = config.testMode ?? false;
+      
+      console.log('Loaded daily check-in config for editing');
+    }
+    
     // Store the alert ID and existing media for editing
     window.editingAlertId = alertId;
     window.editingAlertMedia = {
       soundFile: alertToEdit.soundFile,
-      imageFile: alertToEdit.imageFile
+      imageFile: alertToEdit.imageFile,
+      videoFile: alertToEdit.videoFile
     };
     
     // Display existing media files in the form
-    displayExistingMedia(alertToEdit.soundFile, alertToEdit.imageFile);
+    displayExistingMedia(alertToEdit.soundFile, alertToEdit.imageFile, alertToEdit.videoFile);
+    
+    // Update remove buttons visibility
+    updateRemoveButtons();
     
     // Update preview
     updatePreview().catch(console.error);
@@ -5493,70 +6878,74 @@ function setupAlertWidget() {
   window.deleteAlert = function(alertId) {
     if (confirm('Are you sure you want to delete this alert?')) {
       savedAlerts = savedAlerts.filter(a => a.id !== alertId);
+      window.savedAlerts = savedAlerts; // Keep window reference in sync
       localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+      alertSystem.updateAlerts();
       updateAlertList();
       console.log('Alert deleted:', alertId);
+      
+      // Clear the form if no alerts remain
+      if (savedAlerts.length === 0) {
+        clearForm();
+        console.log('All alerts deleted - form cleared');
+      }
     }
   };
   
 
-  // Queue control event listeners
-  if (clearQueueBtn) {
-    clearQueueBtn.addEventListener('click', () => {
+  // Compact queue control widget event listeners (on dashboard)
+  if (queueWidgetClear) {
+    queueWidgetClear.addEventListener('click', () => {
       alertQueue.clearQueue();
-      updateQueueStatus();
+      updateQueueWidgetStatus();
     });
   }
   
-  if (skipCurrentBtn) {
-    skipCurrentBtn.addEventListener('click', () => {
+  if (queueWidgetSkip) {
+    queueWidgetSkip.addEventListener('click', () => {
+      alertQueue.skipCurrentAlert();
+      updateQueueWidgetStatus();
+    });
+  }
+  
+  if (queueWidgetStop) {
+    queueWidgetStop.addEventListener('click', () => {
       alertQueue.clearCurrentAlert();
-      updateQueueStatus();
+      updateQueueWidgetStatus();
     });
   }
   
-  if (hardStopBtn) {
-    hardStopBtn.addEventListener('click', () => {
-      alertQueue.hardStop();
-      updateQueueStatus();
-    });
-  }
-  
-  if (queueStatusBtn) {
-    queueStatusBtn.addEventListener('click', () => {
-      updateQueueStatus();
-      const status = alertQueue.getStatus();
-      console.log('Queue Status:', status);
-    });
-  }
-  
-  // Update queue status display
-  function updateQueueStatus() {
-    if (!queueInfo) return;
+  // Update compact queue widget status
+  function updateQueueWidgetStatus() {
+    if (!queueWidgetStatus) return;
     
     const status = alertQueue.getStatus();
-    const statusText = queueInfo.querySelector('.queue-status-text');
+    queueWidgetStatus.textContent = status.queueLength;
     
-    if (statusText) {
-      let statusMessage = `Queue: ${status.queueLength} alerts`;
-      statusMessage += ` | Processing: ${status.isProcessing ? 'Yes' : 'No'}`;
-      
-      if (status.currentAlert) {
-        statusMessage += ` | Current: ${status.currentAlert.type}`;
-      }
-      
-      statusText.textContent = statusMessage;
+    // Update status color based on queue state
+    if (status.isProcessing) {
+      queueWidgetStatus.style.background = '#ffc107';
+      queueWidgetStatus.style.color = '#000';
+    } else if (status.queueLength > 0) {
+      queueWidgetStatus.style.background = '#17a2b8';
+      queueWidgetStatus.style.color = '#fff';
+    } else {
+      queueWidgetStatus.style.background = '#6c757d';
+      queueWidgetStatus.style.color = '#fff';
     }
   }
   
+  
   // Update queue status every second
-  setInterval(updateQueueStatus, 1000);
+  setInterval(() => {
+    updateQueueWidgetStatus();
+  }, 1000);
   
   
   // Initialize
   updateAlertList();
   updatePreview();
-  updateQueueStatus();
+  updateQueueWidgetStatus();
 }
 
 // Global functions for inline event handlers
@@ -5592,20 +6981,30 @@ window.updateAlertList = function() {
   const variationsHtml = `
     <div class="alert-variations-list">
       <div class="variations-header">
-        <span>Variations (${filteredAlerts.length}):</span>
-        <label class="random-toggle">
-          <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
-                 onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
-          Random
-        </label>
+        <span>Variations (${filteredAlerts.length} total, ${filteredAlerts.filter(a => a.enabled !== false).length} enabled):</span>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', true)" style="padding: 4px 8px; font-size: 12px;">Enable All</button>
+          <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', false)" style="padding: 4px 8px; font-size: 12px;">Disable All</button>
+          <label class="random-toggle">
+            <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
+                   onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
+            Random Mode
+          </label>
+        </div>
+      </div>
+      <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
+        <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
       </div>
       <div class="variations-items">
         ${filteredAlerts.map((alert, index) => `
-          <div class="variation-item ${alert.enabled !== false ? 'enabled' : ''}">
+          <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
             <label class="variation-toggle">
               <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
                      onchange="toggleAlert('${alert.id}', this.checked)" />
-              <span class="variation-text">${alert.text}</span>
+              <span class="variation-text">
+                ${alert.enabled !== false ? '✓' : '○'} ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
+                <span class="overlay-badge">${alert.overlay || 'main'}</span>
+              </span>
             </label>
             <div class="variation-actions">
               <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
@@ -5632,10 +7031,11 @@ window.updateAlertList = function() {
 };
 
 window.toggleAlert = function(alertId, enabled) {
-  const alert = savedAlerts.find(a => a.id === alertId);
+  const alert = window.savedAlerts.find(a => a.id === alertId);
   if (alert) {
     alert.enabled = enabled;
-    localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+    localStorage.setItem('twitchAlerts', JSON.stringify(window.savedAlerts));
+    alertSystem.updateAlerts();
     updateAlertList();
     console.log('Toggled alert:', alertId, 'enabled:', enabled);
   }
@@ -5643,15 +7043,33 @@ window.toggleAlert = function(alertId, enabled) {
 
 window.toggleRandomModeForType = function(alertType, randomMode) {
   // Update random mode for all alerts of this type
-  savedAlerts.forEach(alert => {
+  window.savedAlerts.forEach(alert => {
     if (alert.type === alertType) {
       alert.randomMode = randomMode;
     }
   });
   
-  localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+  localStorage.setItem('twitchAlerts', JSON.stringify(window.savedAlerts));
+  alertSystem.updateAlerts();
   updateAlertList();
   console.log('Toggled random mode for type:', alertType, 'random:', randomMode);
+};
+
+window.toggleAllAlertsForType = function(alertType, enabled) {
+  // Enable or disable all alerts of this type
+  let count = 0;
+  window.savedAlerts.forEach(alert => {
+    if (alert.type === alertType) {
+      alert.enabled = enabled;
+      count++;
+    }
+  });
+  
+  localStorage.setItem('twitchAlerts', JSON.stringify(window.savedAlerts));
+  alertSystem.updateAlerts();
+  updateAlertList();
+  console.log(`${enabled ? 'Enabled' : 'Disabled'} ${count} alerts for type: ${alertType}`);
+  showCustomAlert(`${enabled ? 'Enabled' : 'Disabled'} all ${count} ${alertType} alerts`, 'success');
 };
 
 // Global replace placeholders function
@@ -5663,12 +7081,19 @@ function replacePlaceholders(text, userData) {
   // Replace common placeholders
   processedText = processedText.replace(/\{username\}/g, userData.username || userData.user_name || userData.user || 'Unknown');
   processedText = processedText.replace(/\{display_name\}/g, userData.display_name || userData.user_name || userData.user || 'Unknown');
-  processedText = processedText.replace(/\{tier\}/g, userData.tier || userData.sub_plan || '');
-  processedText = processedText.replace(/\{viewers\}/g, userData.viewers || userData.view_count || userData.viewer_count || '');
-  processedText = processedText.replace(/\{bits\}/g, userData.bits || userData.bits_used || userData.bits_amount || userData.amount || '');
-  processedText = processedText.replace(/\{months\}/g, userData.cumulative_months || userData.months || '');
-  processedText = processedText.replace(/\{message\}/g, userData.message || userData.user_input || '');
-  processedText = processedText.replace(/\{reward\}/g, userData.reward || userData.reward_title || '');
+  processedText = processedText.replace(/\{displayName\}/g, userData.displayName || userData.display_name || userData.user_name || userData.user || 'Unknown');
+  processedText = processedText.replace(/\{tier\}/g, String(userData.tier || userData.sub_plan || ''));
+  processedText = processedText.replace(/\{viewers\}/g, String(userData.viewers || userData.view_count || userData.viewer_count || ''));
+  processedText = processedText.replace(/\{bits\}/g, String(userData.bits || userData.bits_used || userData.bits_amount || userData.amount || ''));
+  processedText = processedText.replace(/\{months\}/g, String(userData.cumulative_months || userData.months || ''));
+  processedText = processedText.replace(/\{message\}/g, String(userData.message || userData.user_input || ''));
+  processedText = processedText.replace(/\{reward\}/g, String(userData.reward || userData.reward_title || ''));
+  processedText = processedText.replace(/\{moderator\}/g, String(userData.moderator || ''));
+  processedText = processedText.replace(/\{reason\}/g, String(userData.reason || ''));
+  
+  // Daily Check-In specific placeholders
+  processedText = processedText.replace(/\{total_checkins\}/g, String(userData.total_checkins || '0'));
+  processedText = processedText.replace(/\{streak\}/g, String(userData.streak || '0'));
   
   return processedText;
 }
@@ -5771,8 +7196,10 @@ let alertQueue = {
     });
   },
   
-  // Clear current alert and stop processing
+  // Clear current alert and stop processing (does NOT continue to next alert)
   clearCurrentAlert() {
+    console.log('🛑 Stopping current alert (will not continue to next)');
+    
     this.hardStop();
     
     if (this.currentAlert) {
@@ -5780,7 +7207,36 @@ let alertQueue = {
       this.currentAlert = null;
     }
     
-    console.log('🛑 Current alert cleared');
+    // Reset processing flag to stop the queue
+    this.isProcessing = false;
+    
+    console.log('🛑 Current alert stopped - queue processing halted');
+  },
+
+  // Skip current alert and move to next one
+  skipCurrentAlert() {
+    console.log('⏭️ Skipping current alert and moving to next');
+    
+    if (this.currentAlert) {
+      this.currentAlert.status = 'skipped';
+      this.currentAlert = null;
+    }
+    
+    // Stop current processing
+    this.hardStop();
+    
+    // Reset processing flag to allow next alert to process
+    this.isProcessing = false;
+    
+    // If there are more alerts in queue, start processing the next one immediately
+    if (this.queue.length > 0) {
+      console.log(`⏭️ Moving to next alert (${this.queue.length} remaining in queue)`);
+      setTimeout(() => {
+        this.processQueue();
+      }, 100); // Small delay to ensure cleanup
+    } else {
+      console.log('⏭️ No more alerts in queue');
+    }
   },
   
   // Clear entire queue
@@ -5812,19 +7268,33 @@ let alertQueue = {
       return;
     }
     
+    console.log('🔥 triggerAlert called with alertData:', alertData);
+    console.log('🔥 alertData.overlay:', alertData.overlay);
+    
     if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
       // Process text with user data if available
       const processedText = userData ? replacePlaceholders(alertData.text, userData) : alertData.text;
       
       console.log('🎯 Triggering alert:', { alertData, userData, processedText });
       
+      console.log('🎯 Alert overlay from alertData:', alertData.overlay || 'NOT SET');
+      console.log('🎯 Alert will be sent to overlay:', alertData.overlay || 'main');
+      console.log('🎬 Alert animation config:', alertData.animation);
+      console.log('📝 Alert text:', alertData.text);
+      console.log('📝 Processed text:', processedText);
+      console.log('📝 Processed text length:', processedText ? processedText.length : 'null/undefined');
+      console.log('📝 Processed text trim check:', processedText && processedText.trim() ? 'HAS CONTENT' : 'EMPTY OR NULL');
+      console.log('🎨 Alert textStyling:', alertData.textStyling);
+      console.log('📍 Text position:', alertData.textStyling?.position || 'topCenter');
+      
       const payload = {
         type: 'buttonTrigger',
+        targetOverlay: alertData.overlay || 'main', // Route to specific overlay
         options: {
           clearPrevious: true,
           durationMs: alertData.duration * 1000
         },
-        slots: {
+        slots: processedText && processedText.trim() ? {
           [alertData.textStyling?.position || 'topCenter']: {
             text: processedText,
             style: {
@@ -5837,17 +7307,23 @@ let alertQueue = {
               textAlign: 'center',
               zIndex: '1'
             },
-            animation: alertData.animation?.type !== 'none' ? {
+            animation: (alertData.animation && alertData.animation.type && alertData.animation.type !== 'none') ? {
               name: alertData.animation.type,
-              duration: alertData.animation.duration,
-              delay: alertData.animation.delay,
-              iterationCount: alertData.animation.iteration,
-              timingFunction: alertData.animation.easing
+              duration: alertData.animation.duration || '1s',
+              delay: alertData.animation.delay || '0s',
+              iterationCount: alertData.animation.iteration || '1',
+              timingFunction: alertData.animation.easing || 'ease'
             } : null
           }
-        },
-        centerMedia: []
+        } : {},
+        centerMedia: [],
+        fullscreenMedia: [] // New: fullscreen media support for alerts
       };
+      
+      console.log('🎬 Payload animation data:', payload.slots[alertData.textStyling?.position || 'topCenter']?.animation);
+      console.log('📦 Payload slots object:', payload.slots);
+      console.log('📦 Payload slots keys:', Object.keys(payload.slots));
+      console.log('📦 Payload slots topCenter:', payload.slots.topCenter);
       
       // Add image if present
       if (alertData.imageFile) {
@@ -5863,23 +7339,20 @@ let alertQueue = {
             alt: 'Alert Image'
           });
         } else if (alertData.imageFile.path) {
-          // This is a saved alert with file path - load from disk like multi-media buttons
-          console.log('🖼️ Loading alert image from disk:', alertData.imageFile.path);
+          // This is a saved alert with file path - serve via HTTP like multi-media buttons
+          console.log('🖼️ Converting alert image path to HTTP URL:', alertData.imageFile.path);
           try {
-            if (window.electronAPI && window.electronAPI.getMediaFile) {
-              const result = await window.electronAPI.getMediaFile(alertData.imageFile.path);
-              if (result.success) {
-                const sizeKB = (result.data.length / 1024).toFixed(2);
-                console.log(`✅ Alert image loaded: ${alertData.imageFile.path} (${sizeKB} KB)`);
+            // Use the relative path directly (same as multimedia buttons)
+            const relativePath = alertData.imageFile.path.replace(/\\/g, '/');
+            const imageSrc = `http://localhost:8080/media/${encodeURIComponent(relativePath)}`;
+            console.log(`✅ Serving alert image via HTTP: ${imageSrc}`);
+            console.log(`🔍 Image relative path: ${relativePath}`);
+            
                 payload.centerMedia.push({
                   type: 'image',
-                  src: result.data, // Send base64 data URI like multi-media buttons
+              src: imageSrc, // Use HTTP URL instead of base64
                   alt: 'Alert Image'
                 });
-              } else {
-                console.error('Failed to load alert image:', result.error);
-              }
-            }
           } catch (error) {
             console.error('Error loading alert image:', error);
           }
@@ -5896,6 +7369,76 @@ let alertQueue = {
         }
       }
       
+      // Add video file if present
+      if (alertData.videoFile) {
+        if (alertData.videoFile instanceof File) {
+          // Fresh file upload - use blob URL (video settings not available for unsaved alerts)
+          const videoUrl = URL.createObjectURL(alertData.videoFile);
+          console.log('🎬 Created blob URL for fresh video file:', videoUrl);
+          const videoItem = {
+            type: 'video',
+            src: videoUrl,
+            loop: false,
+            volume: 1.0,
+            muted: false
+          };
+          
+          // For fresh uploads, use center media by default
+          payload.centerMedia.push(videoItem);
+        } else if (alertData.videoFile.path) {
+          // This is a saved alert with file path - serve via HTTP like multi-media buttons
+          console.log('🎬 Converting alert video path to HTTP URL:', alertData.videoFile.path);
+          console.log('🎬 Video file object:', alertData.videoFile);
+          try {
+            // Use the relative path directly (same as multimedia buttons)
+            const relativePath = alertData.videoFile.path.replace(/\\/g, '/');
+            const videoSrc = `http://localhost:8080/media/${encodeURIComponent(relativePath)}`;
+            console.log(`✅ Serving alert video via HTTP: ${videoSrc}`);
+            console.log(`🔍 Video relative path: ${relativePath}`);
+            
+            const videoItem = {
+              type: 'video',
+              src: videoSrc, // Use HTTP URL instead of base64
+              loop: alertData.videoFile.loop || false,
+              volume: (alertData.videoFile.volume || 100) / 100, // Convert percentage to 0-1
+              muted: false
+            };
+            
+            console.log('🎬 Video item created:', videoItem);
+            
+            // Add to appropriate media array based on display mode
+            const displayMode = alertData.videoFile.displayMode || 'center';
+            console.log('🎬 Alert video displayMode:', displayMode);
+            if (displayMode === 'fullscreen') {
+              payload.fullscreenMedia.push(videoItem);
+              console.log('🎬 Added video to fullscreenMedia');
+            } else {
+              payload.centerMedia.push(videoItem);
+              console.log('🎬 Added video to centerMedia');
+            }
+            
+            console.log('🎬 CenterMedia array now has:', payload.centerMedia.length, 'items');
+          } catch (error) {
+            console.error('Error loading alert video:', error);
+          }
+        } else if (alertData.videoFile.data) {
+          // Legacy: saved alert with base64 data (backwards compatibility)
+          console.log('🎬 Using legacy base64 data for alert video');
+          const videoItem = {
+            type: 'video',
+            src: alertData.videoFile.data, // Use base64 data directly
+            loop: alertData.videoFile.loop || false,
+            volume: (alertData.videoFile.volume || 100) / 100,
+            muted: false
+          };
+          
+          
+          payload.centerMedia.push(videoItem);
+        } else {
+          console.warn('🎬 Unknown video file format:', alertData.videoFile);
+        }
+      }
+      
       // Log payload summary instead of full object to avoid base64 spam
       const payloadSummary = {
         type: payload.type,
@@ -5907,7 +7450,11 @@ let alertQueue = {
         })) : 'none'
       };
       console.log('📤 Sending overlay message with payload:', payloadSummary);
+      console.log('🎬 Full centerMedia array:', payload.centerMedia);
+      console.log(`🎯 SENDING ALERT TO OVERLAY: "${payload.targetOverlay}"`);
+      console.log(`📊 Alert overlay setting: ${alertData.overlay || 'NOT SET (defaulting to main)'}`);
       window.electronAPI.sendOverlayMessage(payload);
+      console.log(`✅ Alert sent via WebSocket to overlay: "${payload.targetOverlay}"`);
       
       // Play sound if present - store reference for hard stop
       if (alertData.soundFile) {
@@ -5918,7 +7465,9 @@ let alertQueue = {
         if (alertData.soundFile instanceof File) {
           // Fresh file upload
           this.currentAudio = new Audio(URL.createObjectURL(alertData.soundFile));
-          this.currentAudio.volume = volume;
+          // Set volume immediately to prevent loud burst
+          this.currentAudio.volume = 0; // Start muted
+          this.currentAudio.volume = volume; // Then set to desired volume
           this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
         } else if (alertData.soundFile.path) {
           // Saved alert with file path - load from disk for audio playback
@@ -5930,7 +7479,9 @@ let alertQueue = {
                 const sizeKB = (result.data.length / 1024).toFixed(2);
                 console.log(`✅ Alert sound loaded: ${alertData.soundFile.path} (${sizeKB} KB)`);
                 this.currentAudio = new Audio(result.data);
-                this.currentAudio.volume = volume;
+                // Set volume immediately to prevent loud burst
+                this.currentAudio.volume = 0; // Start muted
+                this.currentAudio.volume = volume; // Then set to desired volume
                 this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
               } else {
                 console.error('Failed to load alert sound:', result.error);
@@ -5943,7 +7494,9 @@ let alertQueue = {
           // Legacy: saved alert with base64 data (backwards compatibility)
           console.log('🎵 Using legacy base64 data for alert sound');
           this.currentAudio = new Audio(alertData.soundFile.data);
-          this.currentAudio.volume = volume;
+          // Set volume immediately to prevent loud burst
+          this.currentAudio.volume = 0; // Start muted
+          this.currentAudio.volume = volume; // Then set to desired volume
           this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
         }
       }
@@ -6060,9 +7613,12 @@ let alertSystem = {
   
   // Trigger alert for specific event type
   triggerAlertForEvent(eventType, userData) {
+    console.log(`🔍 Looking for alerts of type: ${eventType}`);
+    console.log(`📋 Available alert types:`, this.alerts.map(a => a.type));
     const alertsOfType = this.alerts.filter(a => a.type === eventType);
     if (alertsOfType.length === 0) {
       console.log(`⚠️ No alerts found for event type: ${eventType}`);
+      console.log(`💡 Create a "${eventType}" alert in Tools → Alerts to fix this`);
       return;
     }
     
@@ -6112,6 +7668,8 @@ let alertSystem = {
   }
 };
 
+// Expose alertSystem to global scope
+window.alertSystem = alertSystem;
 
 // Expose alertQueue to global scope
 window.alertQueue = alertQueue;
@@ -6174,12 +7732,22 @@ function showAlertWidget() {
     // Ensure bits threshold is hidden unless alert type is 'bits'
     const alertTypeSelect = document.getElementById('alert-type');
     const bitsThresholdGroup = document.getElementById('bits-threshold-group');
+    const dailyCheckinSettings = document.getElementById('daily-checkin-settings');
     
     if (alertTypeSelect && bitsThresholdGroup) {
       if (alertTypeSelect.value === 'bits') {
         bitsThresholdGroup.style.display = 'block';
       } else {
         bitsThresholdGroup.style.display = 'none';
+      }
+    }
+    
+    // Ensure daily check-in settings are hidden unless alert type is 'daily-checkin'
+    if (alertTypeSelect && dailyCheckinSettings) {
+      if (alertTypeSelect.value === 'daily-checkin') {
+        dailyCheckinSettings.style.display = 'block';
+      } else {
+        dailyCheckinSettings.style.display = 'none';
       }
     }
     
@@ -6214,6 +7782,464 @@ function hideOverlayWidget() {
   }
 }
 
+// ===============================
+// Daily Check-In System
+// ===============================
+
+// In-memory storage for check-ins (will be persisted to file)
+let dailyCheckinData = {
+  viewers: {},
+  config: {
+    enabled: true,
+    rewardName: 'Daily Check-In',
+    chatResponse: 'Welcome back {username}! You\'ve checked in {total_checkins} times!',
+    alreadyCheckedMessage: 'You\'ve already checked in today, {username}! Come back tomorrow!',
+    showStreak: false,
+    sendToChat: true,
+    testMode: false
+  }
+};
+
+// Load daily check-in data
+async function loadDailyCheckinData() {
+  try {
+    if (window.electronAPI && window.electronAPI.loadDailyCheckins) {
+      const data = await window.electronAPI.loadDailyCheckins();
+      if (data) {
+        dailyCheckinData = data;
+        console.log('📊 Loaded daily check-in data:', Object.keys(dailyCheckinData.viewers).length, 'viewers');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error loading daily check-in data:', error);
+  }
+}
+
+// Save daily check-in data
+async function saveDailyCheckinData() {
+  try {
+    if (window.electronAPI && window.electronAPI.saveDailyCheckins) {
+      await window.electronAPI.saveDailyCheckins(dailyCheckinData);
+      console.log('💾 Saved daily check-in data');
+    }
+  } catch (error) {
+    console.error('❌ Error saving daily check-in data:', error);
+  }
+}
+
+// Check if user has already checked in today
+function hasCheckedInToday(userId) {
+  const viewer = dailyCheckinData.viewers[userId];
+  if (!viewer) return false;
+  
+  const lastCheckin = new Date(viewer.last_checkin);
+  const today = new Date();
+  
+  // Check if last check-in was today (same date)
+  return lastCheckin.toDateString() === today.toDateString();
+}
+
+// Process a daily check-in
+async function processDailyCheckin(userData, testMode = false) {
+  const { user_id, user_name, display_name } = userData;
+  
+  // Check test mode setting
+  const testModeCheckbox = document.getElementById('daily-checkin-test-mode');
+  const isTestMode = testMode || (testModeCheckbox && testModeCheckbox.checked);
+  
+  // Check if user already checked in today (skip in test mode)
+  if (!isTestMode && hasCheckedInToday(user_id)) {
+    console.log('⚠️ User', user_name, 'already checked in today');
+    
+    // Send already checked message if enabled
+    if (dailyCheckinData.config.sendToChat) {
+      const message = dailyCheckinData.config.alreadyCheckedMessage
+        .replace(/{username}/g, user_name)
+        .replace(/{display_name}/g, display_name || user_name);
+      
+      await sendTwitchChatMessage(message);
+    }
+    
+    return false;
+  }
+  
+  // Initialize or update viewer data
+  if (!dailyCheckinData.viewers[user_id]) {
+    dailyCheckinData.viewers[user_id] = {
+      user_id: user_id,
+      username: user_name,
+      display_name: display_name || user_name,
+      total_checkins: 0,
+      last_checkin: null,
+      streak: 0
+    };
+  }
+  
+  const viewer = dailyCheckinData.viewers[user_id];
+  
+  // Update check-in data
+  viewer.total_checkins++;
+  viewer.last_checkin = new Date().toISOString();
+  viewer.username = user_name; // Update in case username changed
+  viewer.display_name = display_name || user_name;
+  
+  // Calculate streak if enabled
+  if (dailyCheckinData.config.showStreak) {
+    // TODO: Implement streak calculation
+    // For now, just increment (will need to check if consecutive days)
+  }
+  
+  // Save data
+  await saveDailyCheckinData();
+  
+  console.log('✅ Check-in processed for', user_name, '- Total:', viewer.total_checkins);
+  
+  // Send chat response if enabled
+  if (dailyCheckinData.config.sendToChat) {
+    let message = dailyCheckinData.config.chatResponse;
+    message = message.replace(/{username}/g, viewer.username);
+    message = message.replace(/{display_name}/g, viewer.display_name);
+    message = message.replace(/{total_checkins}/g, String(viewer.total_checkins));
+    message = message.replace(/{streak}/g, String(viewer.streak || 0));
+    
+    await sendTwitchChatMessage(message);
+  }
+  
+  return true;
+}
+
+// Send message to Twitch chat
+async function sendTwitchChatMessage(message) {
+  try {
+    if (window.electronAPI && window.electronAPI.sendTwitchChatMessage) {
+      await window.electronAPI.sendTwitchChatMessage(message);
+      console.log('💬 Sent chat message:', message);
+    }
+  } catch (error) {
+    console.error('❌ Error sending chat message:', error);
+  }
+}
+
+// Update daily check-in config from UI
+function updateDailyCheckinConfig() {
+  const enabled = document.getElementById('daily-checkin-enabled')?.checked ?? true;
+  const rewardName = document.getElementById('daily-checkin-reward-name')?.value || 'Daily Check-In';
+  const chatResponse = document.getElementById('daily-checkin-chat-response')?.value || 'Welcome back {username}!';
+  const alreadyCheckedMessage = document.getElementById('daily-checkin-already-checked-message')?.value || 'You\'ve already checked in today!';
+  const showStreak = document.getElementById('daily-checkin-show-streak')?.checked ?? false;
+  const sendToChat = document.getElementById('daily-checkin-send-to-chat')?.checked ?? true;
+  const testMode = document.getElementById('daily-checkin-test-mode')?.checked ?? false;
+  
+  dailyCheckinData.config = {
+    enabled,
+    rewardName,
+    chatResponse,
+    alreadyCheckedMessage,
+    showStreak,
+    sendToChat,
+    testMode
+  };
+  
+  saveDailyCheckinData();
+  console.log('⚙️ Updated daily check-in config:', dailyCheckinData.config);
+}
+
+// Load daily check-in config into UI
+function loadDailyCheckinConfigToUI() {
+  const config = dailyCheckinData.config;
+  
+  const enabledCheckbox = document.getElementById('daily-checkin-enabled');
+  if (enabledCheckbox) enabledCheckbox.checked = config.enabled ?? true;
+  
+  const rewardNameInput = document.getElementById('daily-checkin-reward-name');
+  if (rewardNameInput) rewardNameInput.value = config.rewardName || 'Daily Check-In';
+  
+  const chatResponseInput = document.getElementById('daily-checkin-chat-response');
+  if (chatResponseInput) chatResponseInput.value = config.chatResponse || 'Welcome back {username}!';
+  
+  const alreadyCheckedInput = document.getElementById('daily-checkin-already-checked-message');
+  if (alreadyCheckedInput) alreadyCheckedInput.value = config.alreadyCheckedMessage || 'You\'ve already checked in today!';
+  
+  const showStreakCheckbox = document.getElementById('daily-checkin-show-streak');
+  if (showStreakCheckbox) showStreakCheckbox.checked = config.showStreak ?? false;
+  
+  const sendToChatCheckbox = document.getElementById('daily-checkin-send-to-chat');
+  if (sendToChatCheckbox) sendToChatCheckbox.checked = config.sendToChat ?? true;
+  
+  const testModeCheckbox = document.getElementById('daily-checkin-test-mode');
+  if (testModeCheckbox) testModeCheckbox.checked = config.testMode ?? false;
+}
+
+// Initialize daily check-in system
+async function initDailyCheckinSystem() {
+  console.log('🚀 Initializing Daily Check-In System...');
+  
+  // Load data
+  await loadDailyCheckinData();
+  
+  // Load config to UI
+  loadDailyCheckinConfigToUI();
+  
+  // Add change listeners to update config
+  const fields = [
+    'daily-checkin-enabled',
+    'daily-checkin-reward-name',
+    'daily-checkin-chat-response',
+    'daily-checkin-already-checked-message',
+    'daily-checkin-show-streak',
+    'daily-checkin-send-to-chat',
+    'daily-checkin-test-mode'
+  ];
+  
+  fields.forEach(fieldId => {
+    const element = document.getElementById(fieldId);
+    if (element) {
+      element.addEventListener('change', updateDailyCheckinConfig);
+      if (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT') {
+        element.addEventListener('input', updateDailyCheckinConfig);
+      }
+    }
+  });
+  
+  // Add button listeners
+  const viewStatsBtn = document.getElementById('view-checkin-stats');
+  if (viewStatsBtn) {
+    viewStatsBtn.addEventListener('click', showDailyCheckinStats);
+  }
+  
+  const testCheckinBtn = document.getElementById('test-checkin');
+  if (testCheckinBtn) {
+    testCheckinBtn.addEventListener('click', testDailyCheckin);
+  }
+  
+  const clearTodayBtn = document.getElementById('clear-today-checkins');
+  if (clearTodayBtn) {
+    clearTodayBtn.addEventListener('click', clearTodayCheckins);
+  }
+  
+  const clearAllBtn = document.getElementById('clear-all-checkins');
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', clearAllCheckins);
+  }
+  
+  console.log('✅ Daily Check-In System initialized');
+}
+
+// Show daily check-in statistics
+function showDailyCheckinStats() {
+  const modal = document.getElementById('checkin-stats-modal');
+  if (!modal) {
+    console.error('❌ Check-in stats modal not found');
+    return;
+  }
+  
+  // Show the modal
+  modal.classList.remove('hidden');
+  
+  // Disable hotkeys when modal is open
+  if (window.electronAPI && window.electronAPI.disableHotkeys) {
+    window.electronAPI.disableHotkeys();
+  }
+  
+  // Populate and render the stats
+  renderCheckinStats();
+}
+
+// Render check-in statistics data
+function renderCheckinStats() {
+  const viewers = dailyCheckinData.viewers;
+  const viewerList = Object.values(viewers);
+  
+  // Calculate summary stats
+  const totalViewers = viewerList.length;
+  const totalCheckins = viewerList.reduce((sum, v) => sum + v.total_checkins, 0);
+  const today = new Date().toDateString();
+  const todayCheckins = viewerList.filter(v => {
+    if (!v.last_checkin) return false;
+    return new Date(v.last_checkin).toDateString() === today;
+  }).length;
+  
+  // Update summary cards
+  document.getElementById('total-checkin-viewers').textContent = totalViewers;
+  document.getElementById('total-checkins-all').textContent = totalCheckins;
+  document.getElementById('total-checkins-today').textContent = todayCheckins;
+  
+  // Get filter and sort values
+  const sortBy = document.getElementById('stats-sort')?.value || 'total';
+  const filterBy = document.getElementById('stats-filter')?.value || 'all';
+  
+  // Filter viewers
+  let filteredViewers = [...viewerList];
+  if (filterBy === 'today') {
+    filteredViewers = filteredViewers.filter(v => {
+      if (!v.last_checkin) return false;
+      return new Date(v.last_checkin).toDateString() === today;
+    });
+  }
+  
+  // Sort viewers
+  if (sortBy === 'total') {
+    filteredViewers.sort((a, b) => b.total_checkins - a.total_checkins);
+  } else if (sortBy === 'recent') {
+    filteredViewers.sort((a, b) => {
+      const dateA = a.last_checkin ? new Date(a.last_checkin) : new Date(0);
+      const dateB = b.last_checkin ? new Date(b.last_checkin) : new Date(0);
+      return dateB - dateA;
+    });
+  } else if (sortBy === 'username') {
+    filteredViewers.sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+  }
+  
+  // Populate table
+  const tbody = document.getElementById('checkin-stats-tbody');
+  if (!tbody) return;
+  
+  if (filteredViewers.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-tertiary);">
+          No check-in data available yet
+        </td>
+      </tr>
+    `;
+    return;
+  }
+  
+  let rowsHTML = '';
+  filteredViewers.forEach((viewer, index) => {
+    const lastCheckin = viewer.last_checkin ? new Date(viewer.last_checkin).toLocaleDateString() : 'Never';
+    const lastCheckinTime = viewer.last_checkin ? new Date(viewer.last_checkin).toLocaleTimeString() : '';
+    const streak = viewer.streak || 0;
+    
+    rowsHTML += `
+      <tr>
+        <td style="text-align: center; font-weight: 600;">${index + 1}</td>
+        <td>${viewer.display_name || viewer.username}</td>
+        <td style="text-align: center; font-weight: 600; color: var(--accent);">${viewer.total_checkins}</td>
+        <td>${lastCheckin}<br><small style="color: var(--text-tertiary); font-size: 11px;">${lastCheckinTime}</small></td>
+        <td style="text-align: center;">${streak}</td>
+      </tr>
+    `;
+  });
+  
+  tbody.innerHTML = rowsHTML;
+  
+  console.log('📊 Rendered check-in statistics:', filteredViewers.length, 'viewers');
+}
+
+// Test check-in function (simulate a check-in)
+async function testDailyCheckin() {
+  // Create fake test user data
+  const testUser = {
+    user_id: 'test_user_' + Date.now(),
+    user_name: 'TestUser' + Math.floor(Math.random() * 1000),
+    display_name: 'TestUser' + Math.floor(Math.random() * 1000)
+  };
+  
+  console.log('🧪 Testing check-in with test user:', testUser);
+  
+  // Process the check-in
+  const result = await processDailyCheckin(testUser, true);
+  
+  if (result) {
+    // Get the viewer data
+    const viewer = dailyCheckinData.viewers[testUser.user_id];
+    
+    // Create user data with actual check-in counts
+    const userData = {
+      username: viewer.username,
+      display_name: viewer.display_name,
+      user_id: viewer.user_id,
+      total_checkins: viewer.total_checkins,
+      streak: viewer.streak || 0
+    };
+    
+    console.log('🧪 Triggering test alert with data:', userData);
+    
+    // Trigger alert
+    alertSystem.triggerAlertForEvent('daily-checkin', userData);
+    
+    alert(`✅ Test check-in successful!\n\nUsername: ${viewer.username}\nTotal Check-Ins: ${viewer.total_checkins}`);
+  } else {
+    alert('❌ Test check-in failed - check console for details');
+  }
+}
+
+// Clear today's check-ins
+async function clearTodayCheckins() {
+  if (!confirm('Clear all check-ins from today? This will allow users to check in again today.')) {
+    return;
+  }
+  
+  const today = new Date().toDateString();
+  let clearedCount = 0;
+  
+  Object.values(dailyCheckinData.viewers).forEach(viewer => {
+    if (viewer.last_checkin) {
+      const lastCheckinDate = new Date(viewer.last_checkin).toDateString();
+      if (lastCheckinDate === today) {
+        // Set last check-in to yesterday so they can check in again
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        viewer.last_checkin = yesterday.toISOString();
+        clearedCount++;
+      }
+    }
+  });
+  
+  await saveDailyCheckinData();
+  console.log(`🔄 Cleared ${clearedCount} check-ins from today`);
+  alert(`✅ Cleared ${clearedCount} check-ins from today!\n\nUsers can now check in again.`);
+  
+  // Refresh stats if modal is open
+  if (!document.getElementById('checkin-stats-modal')?.classList.contains('hidden')) {
+    renderCheckinStats();
+  }
+}
+
+// Clear all check-in data
+async function clearAllCheckins() {
+  if (!confirm('⚠️ WARNING: This will permanently delete ALL check-in data!\n\nThis includes:\n- All viewer check-in counts\n- All check-in history\n- All streaks\n\nAre you sure?')) {
+    return;
+  }
+  
+  // Double confirmation
+  if (!confirm('This action cannot be undone. Are you absolutely sure?')) {
+    return;
+  }
+  
+  const viewerCount = Object.keys(dailyCheckinData.viewers).length;
+  
+  // Reset viewer data
+  dailyCheckinData.viewers = {};
+  
+  await saveDailyCheckinData();
+  console.log(`🗑️ Cleared all check-in data for ${viewerCount} viewers`);
+  alert(`✅ All check-in data cleared!\n\n${viewerCount} viewers reset.`);
+  
+  // Refresh stats if modal is open
+  if (!document.getElementById('checkin-stats-modal')?.classList.contains('hidden')) {
+    renderCheckinStats();
+  }
+}
+
+// ===============================
+// End Daily Check-In System
+// ===============================
+
+// TODO: Integrate with Twitch Channel Point Redemptions
+// When a Channel Point redemption event is received that matches the reward name
+// configured in Daily Check-In settings, call:
+// 
+// processDailyCheckin({
+//   user_id: event.user_id,
+//   user_name: event.user_name,
+//   display_name: event.user_login
+// });
+//
+// Example integration location: TwitchConnected/tc.js or wherever Twitch EventSub
+// events are processed. Look for 'channel.channel_points_custom_reward_redemption' events.
+
 // Left app menu wiring: toggles File dropdown and wires Quit
 function setupLeftAppMenu() {
   const menuBtn = document.getElementById('menu-file-btn');
@@ -6228,8 +8254,10 @@ function setupLeftAppMenu() {
   }
   // Helper to close other menus (so only one menu is open at a time)
   function closeOtherMenus(exceptDropdown) {
-    const allDropdowns = [menuDropdown, viewDropdown, helpDropdown, editDropdown].filter(Boolean);
-    const allBtns = [menuBtn, viewBtn, helpBtn, editBtn].filter(Boolean);
+    const toolsDropdown = document.getElementById('menu-tools-dropdown');
+    const toolsBtn = document.getElementById('menu-tools-btn');
+    const allDropdowns = [menuDropdown, viewDropdown, helpDropdown, editDropdown, toolsDropdown].filter(Boolean);
+    const allBtns = [menuBtn, viewBtn, helpBtn, editBtn, toolsBtn].filter(Boolean);
     allDropdowns.forEach(dd => {
       if (dd !== exceptDropdown) dd.classList.add('hidden');
     });
@@ -6358,6 +8386,34 @@ function setupLeftAppMenu() {
       }
       // Fallback: call local helper directly
       try { openAboutModal(); } catch (err) {}
+      if (helpDropdown) helpDropdown.classList.add('hidden');
+      if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  
+  // Bug Report menu item
+  const helpBugReport = document.getElementById('menu-help-bug-report');
+  if (helpBugReport) {
+    helpBugReport.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        if (window.electronAPI && window.electronAPI.reportBug) {
+          await window.electronAPI.reportBug();
+        }
+      } catch (error) {
+        console.error('Error opening bug report form:', error);
+      }
+      if (helpDropdown) helpDropdown.classList.add('hidden');
+      if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  
+  // Placeholders Guide menu item
+  const helpPlaceholders = document.getElementById('menu-help-placeholders');
+  if (helpPlaceholders) {
+    helpPlaceholders.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openPlaceholdersGuide();
       if (helpDropdown) helpDropdown.classList.add('hidden');
       if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
     });
@@ -6531,6 +8587,24 @@ function setupLeftAppMenu() {
       if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
     });
   }
+  
+  // Test Twitch Events - commented out but function available via console: testTwitchEvents()
+  /*
+  const toolsTestTwitch = document.getElementById('menu-tools-test-twitch');
+  if (toolsTestTwitch) {
+    toolsTestTwitch.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (toolsDropdown) toolsDropdown.classList.add('hidden');
+      if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
+      // Run the test function
+      if (window.testTwitchEventPipeline) {
+        window.testTwitchEventPipeline();
+      } else {
+        alert('Test function not available. Please reload the application.');
+      }
+    });
+  }
+  */
   
   // Themes population: built-in + dynamic skins
   async function renderToolsThemes() {
@@ -6743,11 +8817,7 @@ function setupLeftAppMenu() {
   if (prefBtn) {
     prefBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (window.electronAPI && typeof window.electronAPI.openPreferences === 'function') {
-        window.electronAPI.openPreferences();
-      } else {
-        try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('open-preferences'); } catch (e) {}
-      }
+      openPreferencesModal();
     });
   }
 }
@@ -6786,7 +8856,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.electronAPI && typeof window.electronAPI.sendOverlayImage === 'function') {
       window.electronAPI.sendOverlayImage({ 
         position: 1, 
-        imageUrl: 'https://via.placeholder.com/200x100/00ff00/000000?text=Test+Image' 
+        imageUrl: 'http://localhost:8080/media/images/VirtualDeck2.png' 
       });
     } else {
       console.log('sendOverlayImage not available');
@@ -6798,7 +8868,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.electronAPI && typeof window.electronAPI.sendOverlayVideo === 'function') {
       window.electronAPI.sendOverlayVideo({ 
         position: 3, 
-        videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4' 
+        videoUrl: 'http://localhost:8080/media/videos/generated-video.mp4' 
       });
     } else {
       console.log('sendOverlayVideo not available');
@@ -6807,18 +8877,18 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Removed duplicate clearOverlay function - using the main one defined earlier
   
-  // Test multi-source functionality
-  window.testMultiSource = function(payload) {
-    console.log('Testing multi-source with payload:', payload);
+  // Utility function to send payload to overlay
+  window.sendOverlayPayload = function(payload) {
+    console.log('Sending payload to overlay:', payload);
     
     // Send to overlay iframe if available - send payload directly
     const overlayIframe = document.getElementById('overlay-iframe');
     if (overlayIframe && overlayIframe.contentWindow) {
       try {
         overlayIframe.contentWindow.postMessage(payload, '*');
-        console.log('Multi-source test sent to overlay iframe');
+        console.log('Payload sent to overlay iframe');
       } catch (error) {
-        console.warn('Failed to send multi-source test to overlay iframe:', error);
+        console.warn('Failed to send payload to overlay iframe:', error);
       }
     }
     
@@ -6826,9 +8896,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
       try {
         window.electronAPI.sendOverlayMessage(payload);
-        console.log('Multi-source test sent via WebSocket');
+        console.log('Payload sent via WebSocket');
       } catch (error) {
-        console.warn('Failed to send multi-source test via WebSocket:', error);
+        console.warn('Failed to send payload via WebSocket:', error);
       }
     }
   };
@@ -6862,11 +8932,13 @@ document.addEventListener('DOMContentLoaded', () => {
         text: pos.text,
         style: {
           fontFamily: 'Arial, sans-serif',
-          fontSize: '18px',
-          color: '#00ff00',
+          fontSize: '48px',
+          color: '#ffffff',
           fontWeight: 'bold',
           textAlign: 'center',
-          zIndex: (index + 1).toString()
+          textShadow: '3px 3px 6px rgba(0, 0, 0, 0.9)',
+          webkitTextStroke: '2px #000',
+          zIndex: '15'
         }
       };
     });
@@ -6874,8 +8946,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Add center media test
     payload.centerMedia = [{
       type: 'image',
-      src: 'https://via.placeholder.com/400x300/ff00ff/ffffff?text=Test+Center+Media',
-      alt: 'Test Center Media'
+      src: 'http://localhost:8080/media/images/VirtualDeck2.png',
+      alt: 'VirtualDeck Logo'
     }];
     
     if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
@@ -6933,10 +9005,13 @@ document.addEventListener('DOMContentLoaded', () => {
           name: buttonData.name,
           hotkey: buttonData.hotkey,
           type: 'multi-media',
+          overlay: buttonData.overlay || 'main', // Preserve overlay selection
           slots: buttonData.slots,
           centerMedia: buttonData.centerMedia,
           audio: buttonData.audio,
-          options: buttonData.options
+          options: buttonData.options,
+          // Include chat command data if provided
+          chatCommand: buttonData.chatCommand || undefined
         };
 
         // Check if Electron API is available
@@ -6977,6 +9052,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (saveResult && saveResult.success) {
           // Refresh hotkeys to register the new hotkey
           window.electronAPI.refreshHotkeys();
+          
+          // Clear audio cache to ensure new audio files are loaded
+          audioCache.clear();
+          console.log('🧹 Audio cache cleared after multi-media button save');
           
           // Reload buttons
           await loadButtons();
@@ -8747,7 +10826,7 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('🎬 Testing different video sources...');
     
     const videoSources = [
-      'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+      'http://localhost:8080/media/videos/generated-video.mp4',
       'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
       'https://www.w3schools.com/html/mov_bbb.mp4'
     ];
@@ -9059,7 +11138,7 @@ document.addEventListener('DOMContentLoaded', () => {
         {
           id: 'm1',
           type: 'image',
-          src: 'https://via.placeholder.com/400x300/ff6600/ffffff?text=Test+Image',
+          src: 'http://localhost:8080/media/images/VirtualDeck2.png',
           loop: false,
           widthPct: 70,
           align: 'center',
@@ -9356,6 +11435,16 @@ function openAudioForm() {
   delete settingsForm.dataset.resolvedArgs;
   delete settingsForm.dataset.existingFile;
   
+  // Clear chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const redeemName = document.getElementById('redeem-name');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  if (chatCommandEnabled) chatCommandEnabled.checked = false;
+  if (chatCommandKeyword) chatCommandKeyword.value = '';
+  if (redeemName) redeemName.value = '';
+  if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+  
   // Replace file inputs to clear previous file references
   const oldFileInput = document.getElementById('file-input');
   if (oldFileInput) {
@@ -9382,3 +11471,399 @@ function openAudioForm() {
     window.electronAPI.disableHotkeys();
   }
 }
+
+// Preferences Modal Functions
+function openPreferencesModal() {
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.classList.remove('hidden');
+    loadPreferences();
+  }
+}
+
+function closePreferencesModal() {
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.classList.add('hidden');
+  }
+}
+
+function loadPreferences() {
+  // Load preferences from localStorage
+  const preferences = JSON.parse(localStorage.getItem('vdPreferences') || '{}');
+  
+  // Update checkboxes
+  document.getElementById('auto-update-checkbox').checked = preferences.autoUpdate !== false; // default to true
+}
+
+function savePreferences() {
+  const preferences = {
+    autoUpdate: document.getElementById('auto-update-checkbox').checked
+  };
+  
+  // Save to localStorage
+  localStorage.setItem('vdPreferences', JSON.stringify(preferences));
+  
+  // Send preferences to main process if available
+  if (window.electronAPI && window.electronAPI.savePreferences) {
+    window.electronAPI.savePreferences(preferences);
+  }
+  
+  // Show success message
+  if (window.notificationManager) {
+    window.notificationManager.show('Preferences saved successfully!', 'success');
+  }
+  
+  // Close modal
+  closePreferencesModal();
+}
+
+function checkForUpdatesFromPreferences() {
+  // Send check for updates request to main process
+  if (window.electronAPI && window.electronAPI.checkForUpdates) {
+    window.electronAPI.checkForUpdates();
+    if (window.notificationManager) {
+      window.notificationManager.show('Checking for updates...', 'info');
+    }
+  } else {
+    if (window.notificationManager) {
+      window.notificationManager.show('Update checking not available in development mode', 'warning');
+    }
+  }
+}
+
+// Initialize preferences modal event listeners
+function initializePreferencesModal() {
+  // Close button
+  const closeBtn = document.getElementById('preferences-modal-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closePreferencesModal);
+  }
+  
+  // Save button
+  const saveBtn = document.getElementById('save-preferences');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', savePreferences);
+  }
+  
+  // Cancel button
+  const cancelBtn = document.getElementById('cancel-preferences');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', closePreferencesModal);
+  }
+  
+  // Check for updates button
+  const checkUpdatesBtn = document.getElementById('check-updates-button');
+  if (checkUpdatesBtn) {
+    checkUpdatesBtn.addEventListener('click', checkForUpdatesFromPreferences);
+  }
+  
+  // Close modal when clicking outside
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.addEventListener('click', (e) => {
+      if (e.target === preferencesModal) {
+        closePreferencesModal();
+      }
+    });
+  }
+}
+
+// ============================================================================
+// TWITCH EVENT PIPELINE TESTING
+// ============================================================================
+
+/**
+ * Test function that simulates Twitch follow and subscription events
+ * going through the entire pipeline as if they came from Twitch.
+ * This helps diagnose alert issues.
+ */
+window.testTwitchEventPipeline = function() {
+  console.log('');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('🧪 TWITCH EVENT PIPELINE TEST');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('');
+  
+  // First, check what alerts are configured
+  console.log('📋 STEP 1: Checking configured alerts...');
+  console.log('─────────────────────────────────────────────────────────');
+  const alerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  console.log(`Total alerts configured: ${alerts.length}`);
+  
+  if (alerts.length === 0) {
+    console.log('❌ NO ALERTS CONFIGURED!');
+    console.log('💡 This is why you\'re not seeing alerts.');
+    console.log('💡 Go to Tools → Alerts to create alerts.');
+    console.log('');
+    alert('⚠️ No alerts configured!\n\nYou need to create alerts in Tools → Alerts first.\n\nCreate at least:\n• 1 "Follower" alert\n• 1 "Subscriber" alert');
+    return;
+  }
+  
+  // Group alerts by type
+  const alertsByType = {};
+  alerts.forEach(alert => {
+    if (!alertsByType[alert.type]) {
+      alertsByType[alert.type] = [];
+    }
+    alertsByType[alert.type].push(alert);
+  });
+  
+  console.log('\nAlerts by type:');
+  Object.keys(alertsByType).forEach(type => {
+    const typeAlerts = alertsByType[type];
+    const enabledCount = typeAlerts.filter(a => a.enabled !== false).length;
+    console.log(`  • ${type}: ${typeAlerts.length} total, ${enabledCount} enabled`);
+  });
+  console.log('');
+  
+  // Check for follower alerts
+  const followerAlerts = alertsByType['follower'] || [];
+  const enabledFollowerAlerts = followerAlerts.filter(a => a.enabled !== false);
+  
+  if (followerAlerts.length === 0) {
+    console.log('⚠️ WARNING: No follower alerts configured!');
+  } else if (enabledFollowerAlerts.length === 0) {
+    console.log('⚠️ WARNING: Follower alerts exist but none are enabled!');
+  } else {
+    console.log(`✅ Follower alerts: ${enabledFollowerAlerts.length} enabled`);
+  }
+  
+  // Check for subscriber alerts
+  const subscriberAlerts = alertsByType['subscriber'] || [];
+  const enabledSubscriberAlerts = subscriberAlerts.filter(a => a.enabled !== false);
+  
+  if (subscriberAlerts.length === 0) {
+    console.log('⚠️ WARNING: No subscriber alerts configured!');
+  } else if (enabledSubscriberAlerts.length === 0) {
+    console.log('⚠️ WARNING: Subscriber alerts exist but none are enabled!');
+  } else {
+    console.log(`✅ Subscriber alerts: ${enabledSubscriberAlerts.length} enabled`);
+  }
+  
+  console.log('');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log('📡 STEP 2: Simulating Twitch EventSub events...');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log('');
+  
+  // Test 1: Simulate a FOLLOW event
+  console.log('🧪 TEST 1: Simulating FOLLOW event');
+  console.log('──────────────────────────────────');
+  
+  const followEvent = {
+    type: 'channel.follow',
+    event: {
+      user_id: '123456789',
+      user_login: 'test_follower',
+      user_name: 'TestFollower',
+      display_name: 'TestFollower',
+      broadcaster_user_id: '987654321',
+      broadcaster_user_login: 'yourchannel',
+      broadcaster_user_name: 'YourChannel',
+      followed_at: new Date().toISOString()
+    }
+  };
+  
+  console.log('📤 Sending follow event through pipeline:', followEvent);
+  
+  // Check if the EventSub handler exists
+  if (typeof window.electronAPI !== 'undefined' && window.electronAPI.onTwitchEventSub) {
+    // Manually trigger the EventSub handler
+    // We need to get the handler function directly
+    console.log('✅ EventSub handler found');
+    
+    // Update alert system first
+    if (window.alertSystem) {
+      window.alertSystem.updateAlerts();
+      console.log('✅ Alert system updated');
+    }
+    
+    // Map event to alert type
+    const alertType = 'follower';
+    console.log(`🎯 Alert type for this event: "${alertType}"`);
+    
+    // Check if we have alerts for this type
+    const alertsForType = alerts.filter(a => a.type === alertType && a.enabled !== false);
+    if (alertsForType.length === 0) {
+      console.log(`❌ No enabled alerts found for type "${alertType}"!`);
+      console.log('💡 Create a "Follower" alert in Tools → Alerts');
+    } else {
+      console.log(`✅ Found ${alertsForType.length} enabled alert(s) for "${alertType}"`);
+      
+      // Trigger the alert
+      const userData = {
+        username: followEvent.event.user_name,
+        display_name: followEvent.event.display_name || followEvent.event.user_name,
+        ...followEvent.event
+      };
+      
+      console.log('🚀 Triggering alert with user data:', userData);
+      
+      if (window.alertSystem) {
+        window.alertSystem.triggerAlertForEvent(alertType, userData);
+        console.log('✅ Follow alert triggered!');
+      } else {
+        console.log('❌ Alert system not found!');
+      }
+    }
+    
+    // Add to chat display
+    if (typeof addTwitchEvent === 'function') {
+      addTwitchEvent(followEvent.type, followEvent.event);
+      console.log('✅ Added to chat display');
+    }
+    
+    // Update recent followers
+    if (typeof addRecentFollower === 'function') {
+      addRecentFollower(followEvent.event);
+      console.log('✅ Updated recent followers');
+    }
+  } else {
+    console.log('❌ EventSub handler not found - may not be initialized yet');
+  }
+  
+  console.log('');
+  
+  // Test 2: Simulate a SUBSCRIPTION event
+  console.log('🧪 TEST 2: Simulating SUBSCRIPTION event');
+  console.log('─────────────────────────────────────────');
+  
+  const subEvent = {
+    type: 'channel.subscribe',
+    event: {
+      user_id: '987654321',
+      user_login: 'test_subscriber',
+      user_name: 'TestSubscriber',
+      display_name: 'TestSubscriber',
+      broadcaster_user_id: '123456789',
+      broadcaster_user_login: 'yourchannel',
+      broadcaster_user_name: 'YourChannel',
+      tier: '1000',
+      is_gift: false,
+      cumulative_months: 3,
+      streak_months: 1,
+      duration_months: 1,
+      message: {
+        text: 'Love the stream!',
+        emotes: []
+      }
+    }
+  };
+  
+  console.log('📤 Sending subscription event through pipeline:', subEvent);
+  
+  if (typeof window.electronAPI !== 'undefined' && window.electronAPI.onTwitchEventSub) {
+    console.log('✅ EventSub handler found');
+    
+    // Update alert system
+    if (window.alertSystem) {
+      window.alertSystem.updateAlerts();
+    }
+    
+    // Map event to alert type
+    const alertType = 'subscriber';
+    console.log(`🎯 Alert type for this event: "${alertType}"`);
+    
+    // Check if we have alerts for this type
+    const alertsForType = alerts.filter(a => a.type === alertType && a.enabled !== false);
+    if (alertsForType.length === 0) {
+      console.log(`❌ No enabled alerts found for type "${alertType}"!`);
+      console.log('💡 Create a "Subscriber" alert in Tools → Alerts');
+    } else {
+      console.log(`✅ Found ${alertsForType.length} enabled alert(s) for "${alertType}"`);
+      
+      // Trigger the alert
+      const userData = {
+        username: subEvent.event.user_name,
+        display_name: subEvent.event.display_name || subEvent.event.user_name,
+        tier: subEvent.event.tier,
+        months: subEvent.event.cumulative_months,
+        message: subEvent.event.message,
+        ...subEvent.event
+      };
+      
+      console.log('🚀 Triggering alert with user data:', userData);
+      
+      if (window.alertSystem) {
+        window.alertSystem.triggerAlertForEvent(alertType, userData);
+        console.log('✅ Subscription alert triggered!');
+      } else {
+        console.log('❌ Alert system not found!');
+      }
+    }
+    
+    // Add to chat display
+    if (typeof addTwitchEvent === 'function') {
+      addTwitchEvent(subEvent.type, subEvent.event);
+      console.log('✅ Added to chat display');
+    }
+    
+    // Update recent subscribers
+    if (typeof addRecentSubscriber === 'function') {
+      addRecentSubscriber(subEvent.event);
+      console.log('✅ Updated recent subscribers');
+    }
+  } else {
+    console.log('❌ EventSub handler not found');
+  }
+  
+  console.log('');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('✅ TEST COMPLETE');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('');
+  console.log('📊 RESULTS SUMMARY:');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log(`• Total alerts configured: ${alerts.length}`);
+  console.log(`• Follower alerts enabled: ${enabledFollowerAlerts.length}`);
+  console.log(`• Subscriber alerts enabled: ${enabledSubscriberAlerts.length}`);
+  console.log('');
+  console.log('💡 WHAT TO CHECK:');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log('1. Did you see alerts appear on screen?');
+  console.log('2. Check the console messages above for errors');
+  console.log('3. Make sure you have alerts created in Tools → Alerts');
+  console.log('4. Make sure your alerts are ENABLED (not disabled)');
+  console.log('5. Check if you have an overlay URL open in OBS');
+  console.log('6. Look for any error messages in red above');
+  console.log('');
+  console.log('🔍 If alerts didn\'t show:');
+  console.log('─────────────────────────────────────────────────────────');
+  if (enabledFollowerAlerts.length === 0) {
+    console.log('❌ Create/enable a "Follower" alert in Tools → Alerts');
+  }
+  if (enabledSubscriberAlerts.length === 0) {
+    console.log('❌ Create/enable a "Subscriber" alert in Tools → Alerts');
+  }
+  console.log('• Check that your overlay is properly connected');
+  console.log('• Verify alert queue is working (check alertQueue in console)');
+  console.log('• Test individual alerts using the Test button in Alerts menu');
+  console.log('');
+  
+  // Create a summary alert for the user
+  let summaryMessage = '🧪 Twitch Event Pipeline Test Complete!\n\n';
+  summaryMessage += `Alerts configured: ${alerts.length}\n`;
+  summaryMessage += `Follower alerts enabled: ${enabledFollowerAlerts.length}\n`;
+  summaryMessage += `Subscriber alerts enabled: ${enabledSubscriberAlerts.length}\n\n`;
+  
+  if (enabledFollowerAlerts.length === 0 || enabledSubscriberAlerts.length === 0) {
+    summaryMessage += '⚠️ ISSUES FOUND:\n';
+    if (enabledFollowerAlerts.length === 0) {
+      summaryMessage += '• No enabled follower alerts\n';
+    }
+    if (enabledSubscriberAlerts.length === 0) {
+      summaryMessage += '• No enabled subscriber alerts\n';
+    }
+    summaryMessage += '\n💡 Create/enable alerts in Tools → Alerts';
+  } else {
+    summaryMessage += '✅ Alerts are configured correctly!\n\n';
+    summaryMessage += 'Check console (F12) for detailed logs.\n';
+    summaryMessage += 'Did you see the test alerts appear?';
+  }
+  
+  alert(summaryMessage);
+};
+
+// Add a shorter alias for quick testing
+window.testTwitchEvents = window.testTwitchEventPipeline;

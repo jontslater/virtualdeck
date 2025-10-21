@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Virtual Deck Overlay</title>
+    <!-- Google Fonts for overlay text -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&family=Lato:wght@300;400;700;900&family=Montserrat:wght@300;400;500;600;700;800;900&family=Oswald:wght@300;400;500;600;700&family=Raleway:wght@300;400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800;900&family=Nunito:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&display=swap" rel="stylesheet">
     <style>
         :root {
             --overlay-width: 1920px;
@@ -136,7 +139,6 @@
             align-items: center;
             justify-content: center;
             position: relative;
-            transition: all 0.3s ease;
             background: none;
             border: none;
             padding: 0;
@@ -148,10 +150,9 @@
             display: flex;
         }
 
-        /* Child items fade in/out */
+        /* Child items - no transitions to avoid conflicting with animations */
         .text-slot > * {
             opacity: 1;
-            transition: opacity 0.4s ease; /* fade effect */
         }
 
         /* Fade-out state */
@@ -164,23 +165,6 @@
         #center-media:empty::before {
             content: '';
             display: none;
-        }
-        
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-
-        @keyframes fadeIn {
-            0% { 
-                opacity: 0; 
-                transform: scale(0.95);
-            }
-            100% { 
-                opacity: 1; 
-                transform: scale(1);
-            }
         }
 
         @keyframes fadeOut {
@@ -223,17 +207,20 @@
             margin: 0;
             padding: 0;
             color: white; /* or any color you want visible */
-            font-size: 2rem; /* adjust size */
+            font-size: 3rem; /* increased from 2rem for better visibility */
             text-align: center;
         }
 
         #center-media img,
         #center-media video {
-            max-width: 100%;
-            max-height: 100%;
+            max-width: 90%;
+            max-height: 90%;
             width: auto;
             height: auto;
             object-fit: contain;
+            /* Enhanced visibility for streaming */
+            filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.6));
+            border-radius: 8px;
         }
 
         /* Fade animation classes */
@@ -269,7 +256,7 @@
         #text-center {
             grid-column: 2;
             grid-row: 2;
-            z-index: 5; /* Above center media */
+            z-index: 20; /* Above center media */
         }
 
         /* Make center text slot completely transparent when empty */
@@ -319,7 +306,7 @@
         }
 
         /* Utility classes for text styling overrides */
-        .text-large { font-size: 24px; }
+        .text-large { font-size: 64px; }
         .text-small { font-size: 12px; }
         .text-bold { font-weight: bold; }
         .text-normal { font-weight: normal; }
@@ -359,7 +346,24 @@
     </div>
 
     <script>
+        // Set overlay name for debugging
+        const urlParams = new URLSearchParams(window.location.search);
+        const extractedOverlayName = urlParams.get('name') || 'main';
+        window.overlayName = extractedOverlayName;
+        
+        // Check if this overlay should be muted (for dashboard preview)
+        const isMuted = urlParams.get('muted') === 'true';
+        window.overlayMuted = isMuted;
+        
+        console.log('🔍 Main overlay name extracted:', extractedOverlayName);
+        console.log('🔍 Main overlay window.overlayName:', window.overlayName);
+        console.log('🔇 Overlay muted mode:', isMuted);
+        
         let messageCount = 0;
+        
+        // Message deduplication - track recently processed messages
+        const processedMessages = new Set();
+        const MESSAGE_DEDUP_WINDOW = 1000; // 1 second window for deduplication
 
         // Update debug info
         function updateDebugInfo(message = null) {
@@ -369,12 +373,51 @@
                 document.getElementById('last-message').textContent = new Date().toLocaleTimeString();
             }
         }
+        
+        // Generate message hash for deduplication
+        function getMessageHash(payload) {
+            if (!payload) return null;
+            // Create a simple hash based on message content
+            const hashContent = JSON.stringify({
+                type: payload.type,
+                slots: payload.slots,
+                centerMediaCount: payload.centerMedia ? payload.centerMedia.length : 0,
+                timestamp: Math.floor(Date.now() / 100) // Group messages within 100ms
+            });
+            return hashContent;
+        }
+        
+        // Check if message was recently processed
+        function isDuplicateMessage(payload) {
+            const hash = getMessageHash(payload);
+            if (!hash) return false;
+            
+            if (processedMessages.has(hash)) {
+                console.log('🚫 Duplicate message detected, skipping');
+                return true;
+            }
+            
+            // Add to processed set
+            processedMessages.add(hash);
+            
+            // Remove after deduplication window
+            setTimeout(() => {
+                processedMessages.delete(hash);
+            }, MESSAGE_DEDUP_WINDOW);
+            
+            return false;
+        }
 
         // Render payload function
         function renderPayload(payload) {
             // Safety check for undefined payload
             if (!payload) {
                 console.error('❌ renderPayload called with undefined payload');
+                return;
+            }
+            
+            // Check for duplicate messages (prevents double-processing from multiple channels)
+            if (isDuplicateMessage(payload)) {
                 return;
             }
             
@@ -443,10 +486,11 @@
             };
             console.log('🎯 Processing button trigger payload:', payloadSummary);
             
-            // Clear any existing reset timer
+            // Clear any existing reset timer (will be recreated by setupResetTimer)
             if (overlayResetTimer) {
                 clearTimeout(overlayResetTimer);
                 overlayResetTimer = null;
+                console.log('🔄 Cleared existing timer for new trigger');
             }
             
             // Clear previous content if requested
@@ -464,6 +508,8 @@
                     const element = document.getElementById(elementId);
                     
                     console.log(`🎯 Processing slot ${slotName}:`, slotData);
+                    console.log(`🎯 Slot style:`, slotData.style);
+                    console.log(`🎯 Font family in slot:`, slotData.style?.fontFamily);
                     console.log(`🎯 Mapped to element ID: ${elementId}`);
                     console.log(`🎯 Element found:`, element ? 'Yes' : 'No');
                     
@@ -488,7 +534,10 @@
                             if (slotData.style) {
                                 // Map schema style properties to CSS properties
                                 if (slotData.style.fontFamily) {
-                                    textEl.style.fontFamily = slotData.style.fontFamily;
+                                    console.log('🎨 Applying fontFamily:', slotData.style.fontFamily);
+                                    textEl.style.setProperty('font-family', slotData.style.fontFamily, 'important');
+                                    console.log('🎨 Element fontFamily after apply:', textEl.style.fontFamily);
+                                    console.log('🎨 Computed style:', window.getComputedStyle(textEl).fontFamily);
                                 }
                                 if (slotData.style.fontSize) {
                                     textEl.style.fontSize = typeof slotData.style.fontSize === 'number' 
@@ -514,6 +563,9 @@
                                     textEl.style.zIndex = slotData.style.zIndex;
                                 }
                                 
+                                // Add drop shadow for enhanced visibility
+                                textEl.style.filter = 'drop-shadow(0 0 8px rgba(0, 0, 0, 0.8))';
+                                
                                 // Legacy support
                                 if (slotData.style.bold !== undefined) {
                                     textEl.style.fontWeight = slotData.style.bold ? 'bold' : 'normal';
@@ -527,13 +579,29 @@
                             }
                             
                             // Apply animation to the text element if present
-                            if (slotData.animation && slotData.animation.name !== 'none') {
-                                textEl.style.animationName = slotData.animation.name;
-                                textEl.style.animationDuration = slotData.animation.duration;
-                                textEl.style.animationDelay = slotData.animation.delay;
-                                textEl.style.animationIterationCount = slotData.animation.iterationCount;
-                                textEl.style.animationTimingFunction = slotData.animation.timingFunction;
-                                console.log(`🎬 Applied animation: ${slotData.animation.name} for ${slotData.animation.duration}`);
+                            if (slotData.animation) {
+                                console.log('🎬 Animation data received:', slotData.animation);
+                                if (slotData.animation.name && slotData.animation.name !== 'none') {
+                                    const animName = slotData.animation.name;
+                                    const animDuration = slotData.animation.duration || '1s';
+                                    const animDelay = slotData.animation.delay || '0s';
+                                    const animIterCount = slotData.animation.iterationCount || '1';
+                                    const animTiming = slotData.animation.timingFunction || 'ease';
+                                    
+                                    textEl.style.animationName = animName;
+                                    textEl.style.animationDuration = animDuration;
+                                    textEl.style.animationDelay = animDelay;
+                                    textEl.style.animationIterationCount = animIterCount;
+                                    textEl.style.animationTimingFunction = animTiming;
+                                    textEl.style.animationFillMode = 'both'; // Keep animation state before and after
+                                    
+                                    console.log(`🎬 ✅ Applied animation: ${animName} ${animDuration} ${animTiming} ${animDelay} (repeat: ${animIterCount})`);
+                                    console.log('🎬 Element style:', textEl.style.cssText);
+                                } else {
+                                    console.log('🎬 Animation is "none" or missing name, skipping');
+                                }
+                            } else {
+                                console.log('🎬 No animation data in slot');
                             }
                         } else {
                             // Hide the text slot
@@ -577,6 +645,24 @@
                 return;
             }
             
+            // Check if this overlay is in muted mode (dashboard preview)
+            if (window.overlayMuted) {
+                console.log('🔇 Overlay is in muted mode - skipping all audio/video playback');
+                // Only show images, skip audio and video
+                let contentHTML = '';
+                for (const item of mediaItems) {
+                    if (item.type === 'image' || item.type === 'gif') {
+                        const imgSrc = item.src || item.url || item.path || item;
+                        contentHTML += `<img src="${imgSrc}" alt="Alert image">`;
+                        console.log(`🖼️ Added image (muted mode): ${imgSrc}`);
+                    } else {
+                        console.log(`🔇 Skipping ${item.type} in muted mode`);
+                    }
+                }
+                showCenterMedia(contentHTML);
+                return;
+            }
+            
             // Clear old content first
             centerMedia.innerHTML = '';
             
@@ -592,8 +678,14 @@
                     // Handle video content
                     const videoSrc = item.src || item.url || item.path || item;
                     const loopAttr = item.loop !== false ? 'loop' : '';
-                    contentHTML += `<video src="${videoSrc}" ${loopAttr} muted autoplay></video>`;
-                    console.log(`Added video: ${videoSrc}`);
+                    // Only mute if explicitly requested, otherwise allow sound
+                    const mutedAttr = item.muted === true ? 'muted' : '';
+                    const videoId = 'video-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                    const volume = item.volume !== undefined ? item.volume : 1.0;
+                    
+                    // Regular video
+                    contentHTML += `<video id="${videoId}" src="${videoSrc}" ${loopAttr} ${mutedAttr} autoplay playsinline data-volume="${volume}"></video>`;
+                    console.log(`🎬 Added video: ${videoSrc}${item.muted === true ? ' (muted)' : ' (with sound)'} at volume ${Math.round(volume * 100)}%`);
                 } else if (item.type === 'audio') {
                     // Handle audio content
                     const audioSrc = item.src || item.url || item.path || item;
@@ -603,14 +695,34 @@
                     
                     // Create audio element with volume control
                     const audioId = 'audio-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-                    contentHTML += `<audio id="${audioId}" src="${audioSrc}" ${loopAttr} ${autoplayAttr} style="display:none;"></audio>`;
+                    contentHTML += `<audio id="${audioId}" src="${audioSrc}" ${loopAttr} ${autoplayAttr} style="display:none;" data-volume="${volume}"></audio>`;
                     
-                    // Store audio ID and volume to set after insertion
+                    // Set volume immediately after insertion to prevent loud burst
                     setTimeout(() => {
                         const audioEl = document.getElementById(audioId);
                         if (audioEl) {
+                            // Set volume before any potential autoplay
                             audioEl.volume = volume;
+                            // If autoplay is enabled, ensure volume is set before play starts
+                            if (autoplayAttr && !audioEl.paused) {
+                                audioEl.pause();
+                                audioEl.currentTime = 0;
+                                audioEl.volume = volume;
+                                audioEl.play().catch(err => console.warn('Audio autoplay failed:', err));
+                            }
                             console.log(`🎵 Audio volume set to ${volume} (${Math.round(volume * 100)}%)`);
+                            
+                            // Listen for ended event to clear overlay when audio finishes (only if not looping)
+                            if (!audioEl.hasAttribute('loop')) {
+                                audioEl.addEventListener('ended', () => {
+                                    console.log('🎵 Audio finished playing - triggering clear all');
+                                    console.log('🎵 Audio ended event fired!');
+                                    triggerClearAll();
+                                }, { once: true });
+                                console.log('🎵 Added ended event listener to audio');
+                            } else {
+                                console.log('🎵 Audio has loop attribute - no ended listener added');
+                            }
                         }
                     }, 0);
                     
@@ -626,29 +738,71 @@
             // Show the content (duration handled by reset timer)
             showCenterMedia(contentHTML);
             
+            // Set volume for videos after insertion (autoplay attribute handles playing)
+            setTimeout(() => {
+                const videos = centerMedia.querySelectorAll('video');
+                videos.forEach(video => {
+                    // Set volume from data attribute
+                    const volume = parseFloat(video.getAttribute('data-volume')) || 1.0;
+                    video.volume = volume;
+                    console.log(`🎬 Video volume set to ${volume} (${Math.round(volume * 100)}%)`);
+                    
+                    // Listen for play event to confirm autoplay worked
+                    video.addEventListener('play', () => {
+                        console.log('🎬 Video autoplay successful');
+                    }, { once: true });
+                    
+                    // Listen for error event in case autoplay fails
+                    video.addEventListener('error', (error) => {
+                        console.error('❌ Video playback error:', error);
+                    }, { once: true });
+                    
+                    // Listen for ended event to clear overlay when video finishes (only if not looping)
+                    if (!video.hasAttribute('loop')) {
+                        video.addEventListener('ended', () => {
+                            console.log('🎬 Video finished playing - triggering clear all');
+                            console.log('🎬 Video ended event fired! Current time:', video.currentTime);
+                            console.log('🎬 Video duration:', video.duration);
+                            triggerClearAll();
+                        }, { once: true });
+                        console.log('🎬 Added ended event listener to video');
+                    } else {
+                        console.log('🎬 Video has loop attribute - no ended listener added');
+                    }
+                });
+                
+            }, 100);
+            
             console.log('🎯 Center media update completed');
         }
         
+        
         // Set up reset timer based on payload options or default
         function setupResetTimer(payload) {
-            let resetDelay = 60000; // Default 1 minute (60 seconds)
+            console.log('🔥 setupResetTimer FUNCTION CALLED!');
+            console.log('🔍 Payload received:', payload);
+            
+            let resetDelay = payload?.options?.durationMs || 30000; // default 30s
+            
+            console.log(`⏰ Timer delay: ${resetDelay}ms (${(resetDelay/1000).toFixed(1)}s)`);
             
             // Check for custom duration in options
-            if (payload.options && payload.options.durationMs) {
+            if (payload && payload.options && payload.options.durationMs) {
                 resetDelay = payload.options.durationMs;
-                console.log('🔄 Using custom duration:', resetDelay, 'ms');
+                console.log('✅ Using button duration:', resetDelay, 'ms', `(${(resetDelay/1000).toFixed(1)}s)`);
             } else {
-                console.log('🔄 Using default duration:', resetDelay, 'ms');
+                console.warn('⚠️ No duration in payload, using default:', resetDelay, 'ms', `(${(resetDelay/1000).toFixed(1)}s)`);
+                console.log('   Payload options:', payload?.options);
             }
             
             // Set the reset timer
             overlayResetTimer = setTimeout(() => {
-                console.log('🔄 Auto-resetting overlay after', resetDelay, 'ms');
+                console.log('⏰ Auto-clear triggered after', resetDelay, 'ms', `(${(resetDelay/1000).toFixed(1)}s)`);
                 clearSlots();
                 overlayResetTimer = null;
             }, resetDelay);
             
-            console.log('🔄 Reset timer set for', resetDelay, 'ms');
+            console.log('✅ Reset timer armed for', resetDelay, 'ms', `(${(resetDelay/1000).toFixed(1)}s)`);
         }
         
         // Show play overlay for autoplay-blocked videos
@@ -678,12 +832,25 @@
             video.parentElement.appendChild(overlay);
         }
         
+        // Trigger clear all - mimics the "Clear All" button functionality
+        function triggerClearAll() {
+            console.log('🔄 Triggering clear all button functionality...');
+            
+            // Call the same function that the "Clear All" button uses - directly clear the slots
+            // This avoids the circular message loop
+            console.log('🧹 Calling clearSlots() directly (same as Clear All button)');
+            clearSlots();
+        }
+        
         // Clear all slots helper
         function clearSlots() {
+            console.log('🧹 clearSlots() called');
+            
             // Clear any existing reset timer
             if (overlayResetTimer) {
                 clearTimeout(overlayResetTimer);
                 overlayResetTimer = null;
+                console.log('⏰ Cleared existing reset timer');
             }
             
             // Clear text slots
@@ -752,55 +919,55 @@
                     text: 'Top Left Text',
                     style: {
                         fontFamily: 'Arial, sans-serif',
-                        fontSize: '24px',
+                        fontSize: '64px',
                         color: '#ff0000',
                         fontWeight: 'bold',
                         textAlign: 'left',
-                        zIndex: '1'
+                        zIndex: '15'
                     }
                 },
                 'text-top-center': {
                     text: 'Top Center Text',
                     style: {
                         fontFamily: 'Georgia, serif',
-                        fontSize: '20px',
+                        fontSize: '48px',
                         color: '#00ff00',
                         fontWeight: 'normal',
                         textAlign: 'center',
-                        zIndex: '2'
+                        zIndex: '16'
                     }
                 },
                 'text-top-right': {
                     text: 'Top Right Text',
                     style: {
                         fontFamily: 'Courier, monospace',
-                        fontSize: '18px',
+                        fontSize: '48px',
                         color: '#0000ff',
                         fontWeight: 'italic',
                         textAlign: 'right',
-                        zIndex: '3'
+                        zIndex: '17'
                     }
                 },
                 'text-bottom-left': {
                     text: 'Bottom Left Text',
                     style: {
                         fontFamily: 'Verdana, sans-serif',
-                        fontSize: '16px',
+                        fontSize: '40px',
                         color: '#ffff00',
                         fontWeight: 'bold',
                         textAlign: 'left',
-                        zIndex: '4'
+                        zIndex: '18'
                     }
                 },
                 'text-bottom-right': {
                     text: 'Bottom Right Text',
                     style: {
                         fontFamily: 'Times, serif',
-                        fontSize: '14px',
+                        fontSize: '36px',
                         color: '#ff00ff',
                         fontWeight: 'normal',
                         textAlign: 'right',
-                        zIndex: '5'
+                        zIndex: '19'
                     }
                 }
             },
@@ -831,39 +998,39 @@
                         text: '🎮 GAME START',
                         style: {
                             fontFamily: 'Arial, sans-serif',
-                            fontSize: '28px',
+                            fontSize: '56px',
                             color: '#00ff00',
                             fontWeight: 'bold',
                             textAlign: 'center',
-                            textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-                            zIndex: '10'
+                            textShadow: '3px 3px 6px rgba(0,0,0,0.9)',
+                            zIndex: '20'
                         }
                     },
                     'text-top-right': {
                         text: 'SCORE: 9999',
                         style: {
                             fontFamily: 'Courier, monospace',
-                            fontSize: '24px',
+                            fontSize: '64px',
                             color: '#ffff00',
                             fontWeight: 'bold',
                             textAlign: 'right',
-                            textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-                            zIndex: '10'
+                            textShadow: '3px 3px 6px rgba(0,0,0,0.9)',
+                            zIndex: '20'
                         }
                     },
                     'text-bottom-center': {
                         text: 'PRESS SPACE TO CONTINUE',
                         style: {
                             fontFamily: 'Arial, sans-serif',
-                            fontSize: '20px',
+                            fontSize: '48px',
                             color: '#ffffff',
                             fontWeight: 'bold',
                             textAlign: 'center',
-                            textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+                            textShadow: '3px 3px 6px rgba(0,0,0,0.9)',
                             animationName: 'pulse',
                             animationDuration: '1s',
                             animationIterationCount: 'infinite',
-                            zIndex: '10'
+                            zIndex: '20'
                         }
                     }
                 },
@@ -1010,16 +1177,21 @@
             
             console.log('🎭 Processing alert with media:', alertConfig.type);
             
-            // Replace placeholders in text
-            let alertText = alertConfig.text || 'Test alert!';
-            alertText = alertText.replace(/{username}/g, userData.username || 'Unknown');
-            alertText = alertText.replace(/{displayName}/g, userData.displayName || userData.display_name || 'Unknown');
-            alertText = alertText.replace(/{tier}/g, userData.tier || '');
-            alertText = alertText.replace(/{months}/g, userData.months || '');
-            alertText = alertText.replace(/{viewers}/g, userData.viewers || '');
-            alertText = alertText.replace(/{bits}/g, userData.bits || '');
-            alertText = alertText.replace(/{reward}/g, userData.reward || '');
-            alertText = alertText.replace(/{message}/g, userData.message || '');
+            // Replace placeholders in text (only if text exists)
+            let alertText = alertConfig.text || '';
+            if (alertText) {
+                alertText = alertText.replace(/{username}/g, userData.username || 'Unknown');
+                alertText = alertText.replace(/{displayName}/g, userData.displayName || userData.display_name || 'Unknown');
+                alertText = alertText.replace(/{display_name}/g, userData.displayName || userData.display_name || 'Unknown');
+                alertText = alertText.replace(/{tier}/g, String(userData.tier || ''));
+                alertText = alertText.replace(/{months}/g, String(userData.months || ''));
+                alertText = alertText.replace(/{viewers}/g, String(userData.viewers || ''));
+                alertText = alertText.replace(/{bits}/g, String(userData.bits || ''));
+                alertText = alertText.replace(/{reward}/g, String(userData.reward || ''));
+                alertText = alertText.replace(/{message}/g, String(userData.message || ''));
+                alertText = alertText.replace(/{total_checkins}/g, String(userData.total_checkins || '0'));
+                alertText = alertText.replace(/{streak}/g, String(userData.streak || '0'));
+            }
             
             // Create payload for overlay
             const payload = {
@@ -1027,30 +1199,38 @@
                 options: {
                     duration: alertConfig.duration || 5
                 },
-                slots: {
-                    [alertConfig.textStyling?.position || 'topCenter']: {
-                        type: 'text',
-                        text: alertText,
-                        style: {
-                            color: alertConfig.textStyling?.color || '#fff',
-                            fontFamily: alertConfig.textStyling?.fontFamily || 'Arial, sans-serif',
-                            fontSize: alertConfig.textStyling?.fontSize || '24px',
-                            fontWeight: alertConfig.textStyling?.fontWeight || 'bold',
-                            textShadow: alertConfig.textStyling?.textShadow || '2px 2px #000',
-                            webkitTextStroke: alertConfig.textStyling?.textStroke || '1px #000',
-                            zIndex: '1'
-                        },
-                        animation: alertConfig.animation?.type !== 'none' ? {
-                            name: alertConfig.animation.type,
-                            duration: alertConfig.animation.duration,
-                            delay: alertConfig.animation.delay,
-                            iterationCount: alertConfig.animation.iteration,
-                            timingFunction: alertConfig.animation.easing
-                        } : null
-                    }
-                },
+                slots: {},
                 centerMedia: []
             };
+            
+            // Only add text slot if there is text
+            if (alertText && alertText.trim()) {
+                console.log('🎬 Alert animation config:', alertConfig.animation);
+                const animationData = (alertConfig.animation && alertConfig.animation.type && alertConfig.animation.type !== 'none') ? {
+                    name: alertConfig.animation.type,
+                    duration: alertConfig.animation.duration || '1s',
+                    delay: alertConfig.animation.delay || '0s',
+                    iterationCount: alertConfig.animation.iteration || '1',
+                    timingFunction: alertConfig.animation.easing || 'ease'
+                } : null;
+                
+                console.log('🎬 Processed animation data:', animationData);
+                
+                payload.slots[alertConfig.textStyling?.position || 'topCenter'] = {
+                    type: 'text',
+                    text: alertText,
+                    style: {
+                        color: alertConfig.textStyling?.color || '#fff',
+                        fontFamily: alertConfig.textStyling?.fontFamily || 'Arial, sans-serif',
+                        fontSize: alertConfig.textStyling?.fontSize || '64px',
+                        fontWeight: alertConfig.textStyling?.fontWeight || 'bold',
+                        textShadow: alertConfig.textStyling?.textShadow || '3px 3px 6px rgba(0, 0, 0, 0.9)',
+                        webkitTextStroke: alertConfig.textStyling?.textStroke || '1px #000',
+                        zIndex: '15'
+                    },
+                    animation: animationData
+                };
+            }
             
             // Add sound file if present
             if (alertConfig.soundFile && alertConfig.soundFile.data) {
@@ -1076,56 +1256,71 @@
                 });
             }
             
+            // Add video file if present
+            if (alertConfig.videoFile && alertConfig.videoFile.data) {
+                console.log('🎬 Adding video file to alert');
+                const videoItem = {
+                    type: 'video',
+                    src: alertConfig.videoFile.data,
+                    duration: alertConfig.duration || 5,
+                    loop: alertConfig.videoFile.loop || false,
+                    volume: (alertConfig.videoFile.volume || 100) / 100, // Convert percentage to 0-1
+                    muted: false
+                };
+                
+                // Add chroma key if enabled
+                if (alertConfig.videoFile.chromaKey && alertConfig.videoFile.chromaKey.enabled) {
+                    videoItem.chromaKey = {
+                        enabled: true,
+                        color: alertConfig.videoFile.chromaKey.color || '#00ff00',
+                        tolerance: alertConfig.videoFile.chromaKey.tolerance || 0.4
+                    };
+                    console.log('🎬 Video has chroma key:', videoItem.chromaKey);
+                }
+                
+                payload.centerMedia.push(videoItem);
+            }
+            
             console.log('🎭 Final payload:', payload);
             renderPayload(payload);
         }
         
-        // Listen for messages from parent window (OBS Browser Source)
+        // Listen for messages from parent window (DISABLED - using WebSocket only)
         window.addEventListener('message', function(event) {
-            console.log('🔔 Overlay received message:', event);
-            console.log('🔔 Event data:', event.data);
-            console.log('🔔 Event data type:', typeof event.data);
-            console.log('🔔 Event data keys:', event.data ? Object.keys(event.data) : 'No data');
-            
-            // Safety check for event.data
-            if (!event.data) {
-                console.error('❌ Received message event with no data');
+            // Handle disableAudio message from dashboard
+            if (event.data?.type === 'disableAudio' && event.data?.source === 'dashboard') {
+                console.log('🔇 Received disableAudio message from dashboard - muting all audio/video');
+                disableAllAudio();
                 return;
             }
             
-            // Handle the message structure: { type: 'buttonTrigger', payload: overlayPayload }
-            if (event.data && event.data.type === 'buttonTrigger' && event.data.payload) {
-                console.log('🔔 Processing wrapped payload:', event.data.payload);
-                renderPayload(event.data.payload);
-            } else if (event.data && event.data.type === 'buttonTrigger') {
-                console.log('🔔 Processing direct payload:', event.data);
-                renderPayload(event.data);
-            } else if (event.data && event.data.type === 'processAlert') {
-                // Handle direct alert processing
-                console.log('🔔 Processing direct alert:', event.data.alertConfig?.type || 'unknown');
-                console.log('🔔 Alert config:', event.data.alertConfig);
-                console.log('🔔 User data:', event.data.userData);
-                
-                // Validate parameters before processing
-                if (validateAlertParameters(event.data.alertConfig, event.data.userData)) {
-                    processAlertWithMedia(event.data.alertConfig, event.data.userData);
-                } else {
-                    console.error('❌ Invalid or missing alertConfig/userData in processAlert message');
-                    console.error('   alertConfig:', event.data.alertConfig);
-                    console.error('   userData:', event.data.userData);
-                }
-            } else if (event.data && event.data.type && event.data.event) {
-                // Handle Twitch EventSub events
-                console.log('🔔 Processing Twitch event:', event.data.type);
-                handleTwitchEvent(event.data);
-                return; // Don't fall through to renderPayload
-            } else if (event.data) {
-                console.log('🔔 Processing fallback payload:', event.data);
-                renderPayload(event.data);
-            } else {
-                console.log('🔔 No valid data in message');
-            }
+            // Disabled to prevent duplicate triggering - overlay receives via WebSocket only
+            console.log('⚠️ Received postMessage (ignored - using WebSocket only):', event.data?.type);
         });
+        
+        // Function to disable all audio/video in this overlay
+        function disableAllAudio() {
+            const audios = document.querySelectorAll('audio');
+            const videos = document.querySelectorAll('video');
+            
+            audios.forEach(audio => {
+                audio.muted = true;
+                audio.volume = 0;
+                if (!audio.paused) {
+                    audio.pause();
+                }
+            });
+            
+            videos.forEach(video => {
+                video.muted = true;
+                video.volume = 0;
+                if (!video.paused) {
+                    video.pause();
+                }
+            });
+            
+            console.log(`🔇 Disabled ${audios.length} audio and ${videos.length} video elements`);
+        }
 
         // Also listen for WebSocket messages (for our current implementation)
         let overlayWS = null;
@@ -1134,47 +1329,57 @@
 
         function connectWebSocket() {
             try {
-                overlayWS = new WebSocket('ws://localhost:8080');
+                // Extract overlay name from URL parameters
+                const urlParams = new URLSearchParams(window.location.search);
+                const overlayName = urlParams.get('name') || 'main';
+                overlayWS = new WebSocket(`ws://localhost:8080?overlay=${overlayName}`);
+                console.log(`🔗 Connecting WebSocket for overlay: ${overlayName}`);
                 
                 overlayWS.onopen = function() {
-                    console.log('Overlay WebSocket connected');
+                    console.log('🔥 Overlay WebSocket connected successfully!');
+                    console.log(`🔗 Connected to overlay: ${overlayName}`);
+                    console.log(`🌐 WebSocket URL: ws://localhost:8080?overlay=${overlayName}`);
                     reconnectAttempts = 0;
                     updateDebugInfo();
+                };
+                
+                overlayWS.onerror = function(error) {
+                    console.error('🔥 WebSocket connection error:', error);
+                };
+                
+                overlayWS.onclose = function(event) {
+                    console.log('🔥 WebSocket connection closed:', event.code, event.reason);
                 };
                 
                 overlayWS.onmessage = function(event) {
                     try {
                         const message = JSON.parse(event.data);
-                        console.log('🔔 WebSocket received message:', message);
+                        console.log('🔥 WebSocket message received:', message.type);
+                        console.log('📨 Received message:', message);
+                        console.log('🎯 Current overlay ID:', window.overlayName || 'not set');
                         
-                        // Use the same message handling logic as window message listener
-                        if (message && message.type === 'buttonTrigger' && message.payload) {
-                            console.log('🔔 WebSocket processing wrapped payload:', message.payload);
-                            renderPayload(message.payload);
-                        } else if (message && message.type === 'buttonTrigger') {
-                            console.log('🔔 WebSocket processing direct payload:', message);
+                        // Handle different message types
+                        if (message.type === 'buttonTrigger') {
+                            // Button trigger with centerMedia, slots, options
+                            console.log('🎬 Processing button trigger');
                             renderPayload(message);
-                        } else if (message && message.type === 'processAlert') {
-                            console.log('🔔 WebSocket processing direct alert:', message.alertConfig?.type || 'unknown');
-                            
-                            // Validate parameters before processing
+                        } else if (message.type === 'processAlert') {
+                            // Twitch alert processing
+                            console.log('🎭 Processing Twitch alert:', message.alertConfig?.type);
                             if (validateAlertParameters(message.alertConfig, message.userData)) {
                                 processAlertWithMedia(message.alertConfig, message.userData);
                             } else {
-                                console.error('❌ Invalid or missing alertConfig/userData in WebSocket processAlert message');
-                                console.error('   alertConfig:', message.alertConfig);
-                                console.error('   userData:', message.userData);
+                                console.error('❌ Invalid alert parameters');
                             }
-                        } else if (message && message.type && message.event) {
-                            console.log('🔔 WebSocket processing Twitch event:', message.type);
+                        } else if (message.type && message.event) {
+                            // Twitch EventSub event
+                            console.log('📡 Processing Twitch event:', message.type);
                             handleTwitchEvent(message);
-                            return; // Don't fall through to renderPayload
                         } else {
-                            console.log('🔔 WebSocket processing fallback payload:', message);
-                            renderPayload(message);
+                            console.log('⚠️ Unknown message type:', message.type);
                         }
                     } catch (e) {
-                        console.error('Error parsing WebSocket message:', e);
+                        console.error('❌ Error parsing WebSocket message:', e);
                     }
                 };
                 
@@ -1241,6 +1446,19 @@
         console.log('Available test functions:');
         console.log('- testOverlay() - Test the overlay');
         console.log('- clearOverlay() - Clear all content');
+        
+        // Test WebSocket connection
+        window.testWebSocket = function() {
+            console.log('🧪 Testing WebSocket connection...');
+            console.log('WebSocket object:', overlayWS);
+            console.log('WebSocket state:', overlayWS ? overlayWS.readyState : 'No WebSocket');
+            console.log('WebSocket readyState:', overlayWS ? 
+                (overlayWS.readyState === 0 ? 'CONNECTING' : 
+                 overlayWS.readyState === 1 ? 'OPEN' : 
+                 overlayWS.readyState === 2 ? 'CLOSING' : 
+                 overlayWS.readyState === 3 ? 'CLOSED' : 'UNKNOWN') : 'No WebSocket');
+            console.log('Overlay name:', window.overlayName);
+        };
     </script>
 </body>
 </html>

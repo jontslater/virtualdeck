@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VirtualDeck Camera Frame Overlay</title>
+    <style>
+        :root {
+            --overlay-width: 1920px;
+            --overlay-height: 1080px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            width: var(--overlay-width);
+            height: var(--overlay-height);
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #00ff00; /* Green background for OBS chroma key */
+        }
+
+        /* Camera Frame Container */
+        .camera-frame {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            height: 300px;
+            border: 8px solid #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            background: transparent;
+            overflow: hidden;
+        }
+
+        /* Animated Border */
+        .camera-frame::before {
+            content: '';
+            position: absolute;
+            top: -4px;
+            left: -4px;
+            right: -4px;
+            bottom: -4px;
+            background: linear-gradient(45deg, #ff0000, #00ff00, #0000ff, #ffff00, #ff00ff, #00ffff);
+            border-radius: 24px;
+            z-index: -1;
+            animation: borderGlow 3s linear infinite;
+        }
+
+        @keyframes borderGlow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Camera Content Area */
+        .camera-content {
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        /* Media Elements */
+        .media-element {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 12px;
+        }
+
+        /* Text Overlay */
+        .text-overlay {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        /* Corner Decorations */
+        .corner-decoration {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #ffffff;
+        }
+
+        .corner-top-left {
+            top: -10px;
+            left: -10px;
+            border-right: none;
+            border-bottom: none;
+        }
+
+        .corner-top-right {
+            top: -10px;
+            right: -10px;
+            border-left: none;
+            border-bottom: none;
+        }
+
+        .corner-bottom-left {
+            bottom: -10px;
+            left: -10px;
+            border-right: none;
+            border-top: none;
+        }
+
+        .corner-bottom-right {
+            bottom: -10px;
+            right: -10px;
+            border-left: none;
+            border-top: none;
+        }
+
+        /* Connection Status */
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 9999;
+            pointer-events: none;
+            display: none;
+        }
+
+        #connection-status.error {
+            color: #ff0000;
+        }
+
+        #connection-status.warning {
+            color: #ffaa00;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .camera-frame {
+            animation: slideIn 0.5s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div id="connection-status">Connecting...</div>
+    
+    <div class="camera-frame">
+        <div class="corner-decoration corner-top-left"></div>
+        <div class="corner-decoration corner-top-right"></div>
+        <div class="corner-decoration corner-bottom-left"></div>
+        <div class="corner-decoration corner-bottom-right"></div>
+        
+        <div class="camera-content">
+            <div id="camera-placeholder">Camera Frame Ready</div>
+        </div>
+        
+        <div class="text-overlay" id="text-overlay" style="display: none;">
+            <!-- Dynamic text will appear here -->
+        </div>
+    </div>
+
+    <script>
+        // Camera Frame Overlay Configuration
+        const CAMERA_CONFIG = {
+            name: 'cameraFrameOverlay',
+            backgroundMode: 'chroma',
+            chromaColor: '#00ff00',
+            layout: 'camera-frame'
+        };
+
+        // Global variables
+        let overlayWS = null;
+        let messageCount = 0;
+        let overlayResetTimer = null;
+        let messageHistory = new Map();
+        const MESSAGE_DEDUP_WINDOW = 5000;
+
+        // Initialize camera frame overlay
+        function initCameraFrame() {
+            console.log('🚀 Initializing camera frame overlay');
+            connectWebSocket();
+            showConnectionStatus('🔄 Connecting...', 'warning');
+        }
+
+        // WebSocket connection
+        function connectWebSocket() {
+            try {
+                const wsUrl = `ws://localhost:8080?overlay=${CAMERA_CONFIG.name}`;
+                console.log('🔗 Connecting to:', wsUrl);
+                
+                overlayWS = new WebSocket(wsUrl);
+                
+                overlayWS.onopen = function() {
+                    console.log('✅ Camera frame WebSocket connected');
+                    showConnectionStatus('✅ Connected', 'success');
+                };
+                
+                overlayWS.onmessage = function(event) {
+                    try {
+                        const payload = JSON.parse(event.data);
+                        
+                        if (isDuplicateMessage(payload)) {
+                            return;
+                        }
+                        
+                        addToMessageHistory(payload);
+                        messageCount++;
+                        
+                        console.log('📨 Camera frame received message:', payload.type);
+                        renderCameraPayload(payload);
+                    } catch (error) {
+                        console.error('❌ Error parsing camera frame message:', error);
+                    }
+                };
+                
+                overlayWS.onclose = function(event) {
+                    console.log('🔌 Camera frame WebSocket disconnected');
+                    showConnectionStatus('❌ Disconnected', 'error');
+                };
+                
+                overlayWS.onerror = function(error) {
+                    console.error('❌ Camera frame WebSocket error:', error);
+                    showConnectionStatus('❌ Connection Error', 'error');
+                };
+                
+            } catch (error) {
+                console.error('❌ Failed to create camera frame WebSocket:', error);
+                showConnectionStatus('❌ Connection Failed', 'error');
+            }
+        }
+
+        // Show connection status
+        function showConnectionStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('connection-status');
+            if (!statusDiv) return;
+            
+            statusDiv.textContent = `${message} - Camera Frame`;
+            statusDiv.className = type === 'success' ? '' : type;
+            statusDiv.style.display = 'block';
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // Message deduplication
+        function isDuplicateMessage(payload) {
+            const messageId = generateMessageId(payload);
+            const now = Date.now();
+            
+            if (messageHistory.has(messageId)) {
+                const lastSeen = messageHistory.get(messageId);
+                if (now - lastSeen < MESSAGE_DEDUP_WINDOW) {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+
+        function addToMessageHistory(payload) {
+            const messageId = generateMessageId(payload);
+            messageHistory.set(messageId, Date.now());
+            
+            const now = Date.now();
+            for (const [id, timestamp] of messageHistory.entries()) {
+                if (now - timestamp > MESSAGE_DEDUP_WINDOW) {
+                    messageHistory.delete(id);
+                }
+            }
+        }
+
+        function generateMessageId(payload) {
+            return JSON.stringify({
+                type: payload.type,
+                timestamp: payload.timestamp || 0,
+                id: payload.id || ''
+            });
+        }
+
+        // Render camera frame payload
+        function renderCameraPayload(payload) {
+            console.log('🎯 Rendering camera frame payload:', payload.type);
+            
+            if (payload.type === 'buttonTrigger') {
+                handleCameraButtonTrigger(payload);
+            } else if (payload.type === 'clear') {
+                clearCameraFrame();
+            } else if (payload.type === 'cameraUpdate') {
+                handleCameraUpdate(payload);
+            }
+        }
+
+        // Handle camera button trigger
+        function handleCameraButtonTrigger(payload) {
+            console.log('🎮 Camera frame button triggered:', payload.options?.name || 'Unknown');
+            
+            if (overlayResetTimer) {
+                clearTimeout(overlayResetTimer);
+                overlayResetTimer = null;
+            }
+            
+            clearCameraFrame();
+            
+            // Process center media
+            if (payload.centerMedia && payload.centerMedia.length > 0) {
+                payload.centerMedia.forEach((media, index) => {
+                    setTimeout(() => {
+                        renderCameraMedia(media, index);
+                    }, index * 100);
+                });
+            }
+            
+            // Use standard durationMs format (milliseconds) or fallback to duration (seconds)
+            const durationMs = payload.options?.durationMs || (payload.options?.duration ? payload.options.duration * 1000 : 60000);
+            if (durationMs > 0) {
+                overlayResetTimer = setTimeout(() => {
+                    console.log('⏰ Camera frame auto-clear triggered after', durationMs, 'ms');
+                    clearCameraFrame();
+                }, durationMs);
+                console.log('✅ Camera frame reset timer armed for', durationMs, 'ms');
+            }
+        }
+
+        // Handle camera update
+        function handleCameraUpdate(payload) {
+            console.log('📷 Camera update:', payload.data);
+            
+            if (payload.data) {
+                updateCameraContent(payload.data);
+            }
+        }
+
+        // Update camera content
+        function updateCameraContent(data) {
+            const placeholder = document.getElementById('camera-placeholder');
+            const textOverlay = document.getElementById('text-overlay');
+            
+            if (data.text) {
+                textOverlay.textContent = data.text;
+                textOverlay.style.display = 'block';
+            }
+            
+            if (data.placeholder) {
+                placeholder.textContent = data.placeholder;
+            }
+        }
+
+        // Render camera media
+        function renderCameraMedia(media, index) {
+            console.log('🎨 Rendering camera media:', media.type);
+            
+            const content = document.querySelector('.camera-content');
+            
+            if (media.type === 'image') {
+                const img = document.createElement('img');
+                img.className = 'media-element';
+                img.src = media.src || media.url || '';
+                img.style.animation = 'fadeIn 0.5s ease-in-out';
+                
+                img.onload = () => {
+                    console.log('🖼️ Camera image loaded:', img.src);
+                };
+                
+                img.onerror = () => {
+                    console.error('❌ Failed to load camera image:', img.src);
+                };
+                
+                content.appendChild(img);
+            } else if (media.type === 'video') {
+                const video = document.createElement('video');
+                video.className = 'media-element';
+                video.src = media.src || media.url || '';
+                video.autoplay = true;
+                video.loop = media.loop || false;
+                video.muted = true;
+                video.volume = media.volume || 1.0;
+                video.style.animation = 'fadeIn 0.5s ease-in-out';
+                
+                video.onloadeddata = () => {
+                    console.log('🎥 Camera video loaded:', video.src);
+                    video.play();
+                };
+                
+                video.onerror = () => {
+                    console.error('❌ Failed to load camera video:', video.src);
+                };
+                
+                content.appendChild(video);
+            }
+        }
+
+        // Clear camera frame
+        function clearCameraFrame() {
+            console.log('🧹 Clearing camera frame');
+            
+            const content = document.querySelector('.camera-content');
+            const textOverlay = document.getElementById('text-overlay');
+            
+            // Remove all media elements except placeholder
+            const mediaElements = content.querySelectorAll('.media-element');
+            mediaElements.forEach(element => element.remove());
+            
+            // Hide text overlay
+            textOverlay.style.display = 'none';
+            
+            // Show placeholder
+            const placeholder = document.getElementById('camera-placeholder');
+            if (placeholder) {
+                placeholder.textContent = 'Camera Frame Ready';
+            }
+            
+            if (overlayResetTimer) {
+                clearTimeout(overlayResetTimer);
+                overlayResetTimer = null;
+            }
+        }
+
+        // Initialize camera frame
+        document.addEventListener('DOMContentLoaded', initCameraFrame);
+        
+        window.addEventListener('beforeunload', () => {
+            if (overlayWS) {
+                overlayWS.close();
+            }
+        });
+    </script>
+</body>
+</html>

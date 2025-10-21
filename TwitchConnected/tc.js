@@ -288,6 +288,7 @@ function pushTwitchEvent(evt) {
         else if (rt.includes('subscription.gift') || rt.includes('channel.subscription.gift')) displayType = 'subgift';
         else if (rt.includes('channel.cheer') || rt.includes('bits')) displayType = 'bits';
         else if (rt.includes('channel.raid')) displayType = 'raid';
+        else if (rt.includes('channel.ban')) displayType = 'ban';
       }
       if (e.event && e.event.type && typeof e.event.type === 'string') {
         const et = e.event.type.toLowerCase();
@@ -297,6 +298,7 @@ function pushTwitchEvent(evt) {
         else if (et.includes('subscription.gift') || et.includes('channel.subscription.gift')) displayType = 'subgift';
         else if (et.includes('channel.cheer') || et.includes('bits')) displayType = 'bits';
         else if (et.includes('channel.raid')) displayType = 'raid';
+        else if (et.includes('channel.ban')) displayType = 'ban';
       }
       const shouldShow = (f === 'all') || (displayType === f) || (f === 'command' && e.type === 'chat' && e.message && e.message.startsWith('!'));
       if (shouldShow) {
@@ -337,9 +339,95 @@ function triggerMapping(mapping) {
     // pick random
     const idx = Math.floor(Math.random() * choices.length);
     const label = choices[idx];
-    if (window.electronAPI && window.electronAPI.sendTrigger) window.electronAPI.sendTrigger(label);
+    
+    // Use the main.js debouncing mechanism by sending through the trigger system
+    if (window.electronAPI && window.electronAPI.sendTrigger) {
+      console.log(`🚀 Triggering button "${label}" from redemption keyword matching`);
+      window.electronAPI.sendTrigger(label);
+    }
   } catch (e) {
     console.error('Error in triggerMapping:', e);
+  }
+}
+
+// Helper to check if a redemption title matches any button's chat command keyword
+window.checkRedemptionAgainstButtonKeywords = async function checkRedemptionAgainstButtonKeywords(evt) {
+  try {
+    if (!evt || evt.type !== 'redeem') return null;
+    
+    // Get reward title from redemption event - use event.reward.title directly
+    const title = evt.event?.reward?.title || evt.event?.reward?.name || evt.event?.reward_title || evt.event?.reward || '';
+    
+    if (!title) return null;
+    
+    console.log(`🔍 checkRedemptionAgainstButtonKeywords: Checking redemption "${title}"`);
+    
+    // Get all buttons from config
+    const config = await window.electronAPI.getConfig();
+    const buttons = config.buttons || [];
+    
+    console.log(`🔍 Found ${buttons.length} buttons in config`);
+    
+    // Debug: Check for Donut button specifically
+    const donutButton = buttons.find(btn => btn.name === 'Donut' || btn.label === 'Donut');
+    if (donutButton) {
+      console.log('🔍 Found Donut button in tc.js:', donutButton);
+      console.log('🔍 Donut button chatCommand:', donutButton.chatCommand);
+    } else {
+      console.log('🔍 Donut button not found in tc.js config');
+    }
+    
+    // Look for buttons with chat command keywords or redeem names that match the redemption title
+    for (const button of buttons) {
+      console.log(`🔍 Checking button "${button.label || button.name}":`, {
+        hasChatCommand: !!button.chatCommand,
+        enabled: button.chatCommand?.enabled,
+        keyword: button.chatCommand?.keyword,
+        redeemName: button.chatCommand?.redeemName,
+        triggerMethod: button.chatCommand?.triggerMethod
+      });
+      
+      if (button.chatCommand && 
+          button.chatCommand.enabled && 
+          (button.chatCommand.keyword || button.chatCommand.redeemName) && 
+          (button.label || button.name)) {
+        
+        const keyword = String(button.chatCommand.keyword || '').toLowerCase();
+        const redeemName = String(button.chatCommand.redeemName || '').toLowerCase();
+        const rewardTitle = String(title).toLowerCase();
+        const triggerMethod = button.chatCommand.triggerMethod || 'command';
+        
+        console.log(`🔍 Comparing "${keyword}" (keyword), "${redeemName}" (redeem name) with "${rewardTitle}" (reward title)`);
+        console.log(`🔍 Trigger method: "${triggerMethod}"`);
+        
+        // Check if redemption title matches either keyword or redeem name
+        const keywordMatch = keyword && keyword === rewardTitle;
+        const redeemNameMatch = redeemName && redeemName === rewardTitle;
+        
+        console.log(`🔍 Match check: keywordMatch=${keywordMatch}, redeemNameMatch=${redeemNameMatch}`);
+        console.log(`🔍 triggerMethod value: "${triggerMethod}" (type: ${typeof triggerMethod})`);
+        console.log(`🔍 triggerMethod === 'redeem': ${triggerMethod === 'redeem'}`);
+        console.log(`🔍 triggerMethod === 'both': ${triggerMethod === 'both'}`);
+        
+        if (keywordMatch || redeemNameMatch) {
+          console.log(`✅ Match found! Keyword match: ${keywordMatch}, Redeem name match: ${redeemNameMatch}`);
+          // Only trigger if the button is configured to accept redemptions
+          if (triggerMethod === 'redeem' || triggerMethod === 'both') {
+            console.log(`🚀 tc.js triggering button "${button.label || button.name}" (triggerMethod: ${triggerMethod} allows redemptions)`);
+            return button.label || button.name;
+          } else {
+            console.log(`⏭️ tc.js skipping redemption "${title}" for button "${button.label || button.name}" (triggerMethod: ${triggerMethod} - command only)`);
+          }
+        } else {
+          console.log(`❌ No match found`);
+        }
+      }
+    }
+    
+    return null;
+  } catch (e) {
+    console.error('Error checking redemption against button keywords:', e);
+    return null;
   }
 }
 
@@ -491,14 +579,23 @@ function renderEventRow(ev) {
 }
 
 // IPC listeners to receive events from main
+// Note: Chat messages are now handled by script.js to avoid duplication
+// This listener is kept for potential future use or other event types
 if (window.electronAPI && window.electronAPI.onTwitchChatEvent) {
   window.electronAPI.onTwitchChatEvent((e) => {
-    pushTwitchEvent({ type: 'chat', user: e.user, message: e.message });
+    // Only handle non-chat events or special chat events to avoid duplication
+    // Regular chat messages are handled by script.js
+    if (e.type !== 'chat') {
+      pushTwitchEvent({ type: e.type, user: e.user, message: e.message });
+    }
   });
 } else if (window.ipcRenderer) {
   window.ipcRenderer.on('twitch-chat-event', (event, e) => {
-  console.debug('renderer received twitch-chat-event:', e);
-  pushTwitchEvent({ type: 'chat', user: e.user, message: e.message });
+    console.debug('renderer received twitch-chat-event:', e);
+    // Only handle non-chat events or special chat events to avoid duplication
+    if (e.type !== 'chat') {
+      pushTwitchEvent({ type: e.type, user: e.user, message: e.message });
+    }
   });
 }
 
@@ -507,8 +604,10 @@ if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
   // Normalize eventsub redemption topics to 'redeem' for cleaner rendering
   let t = e.type || 'eventsub';
   if (typeof t === 'string' && t.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
+  if (typeof t === 'string' && t.includes('channel.ban')) t = 'ban';
   // Some payloads nest the topic under event.type
   if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
+  if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.ban')) t = 'ban';
   pushTwitchEvent({ type: t, event: e.event });
   });
 } else if (window.ipcRenderer) {
@@ -516,7 +615,9 @@ if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
     console.debug('renderer received twitch-eventsub:', e);
   let t = e.type || 'eventsub';
   if (typeof t === 'string' && t.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
+  if (typeof t === 'string' && t.includes('channel.ban')) t = 'ban';
   if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
+  if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.ban')) t = 'ban';
   pushTwitchEvent({ type: t, event: e.event });
   });
 }
@@ -558,10 +659,15 @@ function matchMappingForEvent(evt) {
   // Chat command mapping
   if ((rawType === 'chat' || rawType === 'command') && evt.message && evt.message.startsWith('!')) {
     const cmd = evt.message.split(' ')[0].substring(1).toLowerCase(); // without '!'
+    console.log(`🔍 tc.js processing chat command: !${cmd}`);
     for (const m of (window.twitchMappings || [])) {
       if (!m) continue;
-      if (m.type === 'command' && m.command && m.command.toLowerCase() === cmd) return m;
+      if (m.type === 'command' && m.command && m.command.toLowerCase() === cmd) {
+        console.log(`🎯 tc.js found command mapping for !${cmd}:`, m);
+        return m;
+      }
     }
+    console.log(`❌ tc.js no command mapping found for !${cmd}`);
   }
   // EventSub / other mappings
   for (const m of (window.twitchMappings || [])) {
@@ -589,6 +695,7 @@ function matchMappingForEvent(evt) {
       continue;
     }
     if (t === 'raid' && rawType && rawType.includes('raid')) return m;
+    if (t === 'ban' && rawType && rawType.includes('ban')) return m;
     if (t === 'bits' && rawType && (rawType.includes('cheer') || rawType.includes('bits'))) {
   // Collect candidate bit mappings elsewhere (see below). Here, skip; we'll handle after loop
   // (keep placeholder)
@@ -692,9 +799,25 @@ function normalizeSubTier(evt) {
 
 // Wrap pushTwitchEvent to also evaluate mappings
 const _origPush = pushTwitchEvent;
-pushTwitchEvent = function(evt) {
+pushTwitchEvent = async function(evt) {
   _origPush(evt);
   try {
+    // Skip processing chat commands entirely - let main.js handle them
+    if (evt && evt.type === 'chat' && evt.message && evt.message.startsWith('!')) {
+      console.log(`⏭️ tc.js skipping chat command processing for: ${evt.message} (handled by main.js)`);
+      return; // Don't process chat commands in tc.js
+    }
+    
+    // ONLY for redemptions, check if any button has a matching chat command keyword
+    if (evt && evt.type === 'redeem') {
+      const matchingButtonLabel = await checkRedemptionAgainstButtonKeywords(evt);
+      if (matchingButtonLabel && window.electronAPI && window.electronAPI.sendTrigger) {
+        console.log(`🚀 Triggering button "${matchingButtonLabel}" from channel point redemption`);
+        triggerMapping({ cardLabel: matchingButtonLabel });
+        return; // Don't continue to mapping system if we found a keyword match
+      }
+    }
+    
     // First try standard matching
     let m = matchMappingForEvent(evt);
     // If bits event, try best-match algorithm
@@ -910,6 +1033,7 @@ function showTwitchActivityModal() {
         <option value="subgift">Test Sub Gift</option>
         <option value="bits">Test Bits/Cheer</option>
         <option value="raid">Test Raid</option>
+        <option value="ban">Test Ban</option>
       </select>
       <select id="twitch-test-req" style="padding:6px;border-radius:6px;border:1px solid #333;background:#222;color:#fff;">
         <option value="none">No Requirement</option>
@@ -1021,6 +1145,24 @@ function showTwitchActivityModal() {
       // msg = viewer count
       const v = parseInt(msg, 10) || 5;
   pushTwitchEvent({ type: 'raid', user: user, user_name: user, event: { from_broadcaster_user_name: user, viewers: v }, _testRequirement: req });
+    } else if (t === 'ban') {
+      // msg = optional reason
+      const bannedUser = msg || 'TestBannedUser';
+      const moderator = userInput || 'TestModerator';
+      const reason = 'Spam and harassment';
+      pushTwitchEvent({ 
+        type: 'ban', 
+        event: { 
+          user_name: bannedUser, 
+          user_login: bannedUser.toLowerCase(),
+          moderator_user_name: moderator,
+          moderator_user_login: moderator.toLowerCase(),
+          reason: reason,
+          expires_at: null,
+          created_at: new Date().toISOString()
+        }, 
+        _testRequirement: req 
+      });
     }
     renderList();
   };
@@ -1039,6 +1181,7 @@ function showTwitchActivityModal() {
       case 'subgift': testInput.placeholder = 'Recipient username'; break;
       case 'bits': testInput.placeholder = 'Amount (e.g. 100)'; break;
       case 'raid': testInput.placeholder = 'Viewer count (e.g. 10)'; break;
+      case 'ban': testInput.placeholder = 'Banned username'; break;
       default: testInput.placeholder = 'Optional message or value';
     }
   };
@@ -1263,6 +1406,7 @@ function showTwitchConnectedMenu() {
           <option value="sub_tier3" title="Subscribe Tier 3">Subscribe — Tier 3</option>
           <option value="sub_prime" title="Subscribe Prime">Subscribe — Prime</option>
           <option value="raid">Raid</option>
+          <option value="ban">User Ban</option>
         </select>
         <div id="map-event-context" style="margin-top:10px"></div>
   <!-- subscribe tier selector removed; tiers are separate event types now -->
@@ -2248,3 +2392,20 @@ if (window.electronAPI && window.electronAPI.onTwitchClearResult) {
     setTimeout(() => { try { if (toast && toast.parentNode) toast.parentNode.removeChild(toast); } catch(e){} }, 3500);
   });
 }
+
+// Test function specifically for testing redemption keyword matching
+window.testRedemptionKeyword = function(rewardTitle = 'bob') {
+  console.log(`🧪 Testing redemption keyword matching for: "${rewardTitle}"`);
+  const testEvent = {
+    type: 'redeem',
+    user: 'TestUser',
+    user_name: 'TestUser',
+    event: {
+      user_name: 'TestUser',
+      reward: { title: rewardTitle },
+      user_input: ''
+    },
+    _testRequirement: 'none'
+  };
+  pushTwitchEvent(testEvent);
+};

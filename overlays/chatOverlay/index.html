@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VirtualDeck Chat Overlay</title>
+    <style>
+        :root {
+            --overlay-width: 1920px;
+            --overlay-height: 1080px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            width: var(--overlay-width);
+            height: var(--overlay-height);
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: transparent;
+        }
+
+        /* Chat Container */
+        .chat-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 400px;
+            max-height: 500px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 8px;
+            padding: 10px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #666 transparent;
+        }
+
+        .chat-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .chat-container::-webkit-scrollbar-thumb {
+            background: #666;
+            border-radius: 3px;
+        }
+
+        /* Chat Messages */
+        .chat-message {
+            margin-bottom: 8px;
+            padding: 6px 8px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 14px;
+            line-height: 1.4;
+            word-wrap: break-word;
+            animation: slideInRight 0.3s ease-out;
+        }
+
+        .chat-message.highlight {
+            background: rgba(255, 255, 0, 0.2);
+            border-left: 3px solid #ffff00;
+        }
+
+        .chat-message.subscriber {
+            background: rgba(0, 255, 0, 0.2);
+            border-left: 3px solid #00ff00;
+        }
+
+        .chat-message.moderator {
+            background: rgba(0, 0, 255, 0.2);
+            border-left: 3px solid #0000ff;
+        }
+
+        .chat-message.broadcaster {
+            background: rgba(255, 0, 0, 0.2);
+            border-left: 3px solid #ff0000;
+        }
+
+        /* Username */
+        .chat-username {
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        .chat-username.subscriber {
+            color: #00ff00;
+        }
+
+        .chat-username.moderator {
+            color: #0000ff;
+        }
+
+        .chat-username.broadcaster {
+            color: #ff0000;
+        }
+
+        /* Message Text */
+        .chat-text {
+            color: #ffffff;
+        }
+
+        /* Timestamp */
+        .chat-timestamp {
+            font-size: 11px;
+            color: #999;
+            margin-right: 8px;
+        }
+
+        /* Chat Header */
+        .chat-header {
+            position: sticky;
+            top: 0;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 0;
+            margin-bottom: 10px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 16px;
+            border-bottom: 1px solid #333;
+        }
+
+        /* Chat Stats */
+        .chat-stats {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .chat-stats div {
+            margin-bottom: 4px;
+        }
+
+        /* Connection Status */
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 9999;
+            pointer-events: none;
+            display: none;
+        }
+
+        #connection-status.error {
+            color: #ff0000;
+        }
+
+        #connection-status.warning {
+            color: #ffaa00;
+        }
+
+        /* Animations */
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+
+        .chat-message.fade-out {
+            animation: fadeOut 0.5s ease-out forwards;
+        }
+
+        /* Auto-scroll indicator */
+        .auto-scroll-indicator {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 255, 0, 0.8);
+            color: black;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="connection-status">Connecting...</div>
+    
+    <div class="chat-stats" id="chat-stats">
+        <div>Messages: <span id="message-count">0</span></div>
+        <div>Viewers: <span id="viewer-count">0</span></div>
+        <div>Uptime: <span id="uptime">00:00:00</span></div>
+    </div>
+    
+    <div class="chat-container" id="chat-container">
+        <div class="chat-header">Live Chat</div>
+        <div id="chat-messages"></div>
+    </div>
+    
+    <div class="auto-scroll-indicator" id="auto-scroll-indicator">Auto-scroll ON</div>
+
+    <script>
+        // Chat Overlay Configuration
+        const CHAT_CONFIG = {
+            name: 'chatOverlay',
+            backgroundMode: 'transparent',
+            layout: 'chat'
+        };
+
+        // Global variables
+        let overlayWS = null;
+        let messageCount = 0;
+        let viewerCount = 0;
+        let startTime = Date.now();
+        let overlayResetTimer = null;
+        let messageHistory = new Map();
+        let autoScroll = true;
+        const MESSAGE_DEDUP_WINDOW = 5000;
+        const MAX_MESSAGES = 50; // Maximum messages to keep in DOM
+
+        // Initialize chat overlay
+        function initChat() {
+            console.log('🚀 Initializing chat overlay');
+            connectWebSocket();
+            showConnectionStatus('🔄 Connecting...', 'warning');
+            startUptimeCounter();
+        }
+
+        // WebSocket connection
+        function connectWebSocket() {
+            try {
+                const wsUrl = `ws://localhost:8080?overlay=${CHAT_CONFIG.name}`;
+                console.log('🔗 Connecting to:', wsUrl);
+                
+                overlayWS = new WebSocket(wsUrl);
+                
+                overlayWS.onopen = function() {
+                    console.log('✅ Chat WebSocket connected');
+                    showConnectionStatus('✅ Connected', 'success');
+                };
+                
+                overlayWS.onmessage = function(event) {
+                    try {
+                        const payload = JSON.parse(event.data);
+                        
+                        if (isDuplicateMessage(payload)) {
+                            return;
+                        }
+                        
+                        addToMessageHistory(payload);
+                        messageCount++;
+                        
+                        console.log('📨 Chat received message:', payload.type);
+                        renderChatPayload(payload);
+                    } catch (error) {
+                        console.error('❌ Error parsing chat message:', error);
+                    }
+                };
+                
+                overlayWS.onclose = function(event) {
+                    console.log('🔌 Chat WebSocket disconnected');
+                    showConnectionStatus('❌ Disconnected', 'error');
+                };
+                
+                overlayWS.onerror = function(error) {
+                    console.error('❌ Chat WebSocket error:', error);
+                    showConnectionStatus('❌ Connection Error', 'error');
+                };
+                
+            } catch (error) {
+                console.error('❌ Failed to create chat WebSocket:', error);
+                showConnectionStatus('❌ Connection Failed', 'error');
+            }
+        }
+
+        // Show connection status
+        function showConnectionStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('connection-status');
+            if (!statusDiv) return;
+            
+            statusDiv.textContent = `${message} - Chat`;
+            statusDiv.className = type === 'success' ? '' : type;
+            statusDiv.style.display = 'block';
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // Message deduplication
+        function isDuplicateMessage(payload) {
+            const messageId = generateMessageId(payload);
+            const now = Date.now();
+            
+            if (messageHistory.has(messageId)) {
+                const lastSeen = messageHistory.get(messageId);
+                if (now - lastSeen < MESSAGE_DEDUP_WINDOW) {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+
+        function addToMessageHistory(payload) {
+            const messageId = generateMessageId(payload);
+            messageHistory.set(messageId, Date.now());
+            
+            const now = Date.now();
+            for (const [id, timestamp] of messageHistory.entries()) {
+                if (now - timestamp > MESSAGE_DEDUP_WINDOW) {
+                    messageHistory.delete(id);
+                }
+            }
+        }
+
+        function generateMessageId(payload) {
+            return JSON.stringify({
+                type: payload.type,
+                timestamp: payload.timestamp || 0,
+                id: payload.id || ''
+            });
+        }
+
+        // Render chat payload
+        function renderChatPayload(payload) {
+            console.log('🎯 Rendering chat payload:', payload.type);
+            
+            if (payload.type === 'buttonTrigger') {
+                handleChatButtonTrigger(payload);
+            } else if (payload.type === 'clear') {
+                clearChat();
+            } else if (payload.type === 'chatMessage') {
+                handleChatMessage(payload);
+            } else if (payload.type === 'chatUpdate') {
+                handleChatUpdate(payload);
+            }
+        }
+
+        // Handle chat button trigger
+        function handleChatButtonTrigger(payload) {
+            console.log('🎮 Chat button triggered:', payload.options?.name || 'Unknown');
+            
+            if (overlayResetTimer) {
+                clearTimeout(overlayResetTimer);
+                overlayResetTimer = null;
+            }
+            
+            // Process chat-specific data
+            if (payload.chatData) {
+                handleChatData(payload.chatData);
+            }
+            
+            // Use standard durationMs format (milliseconds) or fallback to duration (seconds)
+            const durationMs = payload.options?.durationMs || (payload.options?.duration ? payload.options.duration * 1000 : 60000);
+            if (durationMs > 0) {
+                overlayResetTimer = setTimeout(() => {
+                    console.log('⏰ Chat auto-clear triggered after', durationMs, 'ms');
+                    clearChat();
+                }, durationMs);
+                console.log('✅ Chat reset timer armed for', durationMs, 'ms');
+            }
+        }
+
+        // Handle chat message
+        function handleChatMessage(payload) {
+            console.log('💬 Chat message:', payload.message);
+            
+            if (payload.message) {
+                addChatMessage(payload.message);
+            }
+        }
+
+        // Handle chat update
+        function handleChatUpdate(payload) {
+            console.log('📊 Chat update:', payload.data);
+            
+            if (payload.data) {
+                handleChatData(payload.data);
+            }
+        }
+
+        // Handle chat data
+        function handleChatData(data) {
+            if (data.messages) {
+                data.messages.forEach(message => {
+                    addChatMessage(message);
+                });
+            }
+            
+            if (data.viewerCount !== undefined) {
+                updateViewerCount(data.viewerCount);
+            }
+        }
+
+        // Add chat message
+        function addChatMessage(messageData) {
+            const messagesContainer = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            
+            // Determine message class based on user type
+            let messageClass = 'chat-message';
+            let usernameClass = 'chat-username';
+            
+            if (messageData.userType) {
+                messageClass += ` ${messageData.userType}`;
+                usernameClass += ` ${messageData.userType}`;
+            }
+            
+            if (messageData.highlight) {
+                messageClass += ' highlight';
+            }
+            
+            // Create message HTML
+            messageDiv.className = messageClass;
+            messageDiv.innerHTML = `
+                <span class="chat-timestamp">${formatTime(new Date())}</span>
+                <span class="${usernameClass}">${messageData.username || 'Anonymous'}:</span>
+                <span class="chat-text">${messageData.text || messageData.message || ''}</span>
+            `;
+            
+            // Add to container
+            messagesContainer.appendChild(messageDiv);
+            
+            // Limit message count
+            const messages = messagesContainer.querySelectorAll('.chat-message');
+            if (messages.length > MAX_MESSAGES) {
+                messages[0].remove();
+            }
+            
+            // Auto-scroll if enabled
+            if (autoScroll) {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+            
+            // Update message count
+            updateMessageCount();
+        }
+
+        // Update message count
+        function updateMessageCount() {
+            const countElement = document.getElementById('message-count');
+            if (countElement) {
+                countElement.textContent = messageCount;
+            }
+        }
+
+        // Update viewer count
+        function updateViewerCount(count) {
+            viewerCount = count;
+            const countElement = document.getElementById('viewer-count');
+            if (countElement) {
+                countElement.textContent = count;
+            }
+        }
+
+        // Start uptime counter
+        function startUptimeCounter() {
+            setInterval(() => {
+                const uptimeElement = document.getElementById('uptime');
+                if (uptimeElement) {
+                    const elapsed = Date.now() - startTime;
+                    uptimeElement.textContent = formatUptime(elapsed);
+                }
+            }, 1000);
+        }
+
+        // Format uptime
+        function formatUptime(milliseconds) {
+            const seconds = Math.floor(milliseconds / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            
+            return `${hours.toString().padStart(2, '0')}:${(minutes % 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
+        }
+
+        // Format time
+        function formatTime(date) {
+            return date.toLocaleTimeString('en-US', { 
+                hour12: false, 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+        }
+
+        // Clear chat
+        function clearChat() {
+            console.log('🧹 Clearing chat');
+            
+            const messagesContainer = document.getElementById('chat-messages');
+            if (messagesContainer) {
+                messagesContainer.innerHTML = '';
+            }
+            
+            messageCount = 0;
+            updateMessageCount();
+            
+            if (overlayResetTimer) {
+                clearTimeout(overlayResetTimer);
+                overlayResetTimer = null;
+            }
+        }
+
+        // Initialize chat
+        document.addEventListener('DOMContentLoaded', initChat);
+        
+        window.addEventListener('beforeunload', () => {
+            if (overlayWS) {
+                overlayWS.close();
+            }
+        });
+    </script>
+</body>
+</html>
