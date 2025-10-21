@@ -2659,16 +2659,40 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
   // Update alerts from storage in case they changed
   alertSystem.updateAlerts();
   
-  // Map Twitch event types to alert types
-  const eventTypeMap = {
-    'channel.follow': 'follower',
-    'channel.subscribe': 'subscriber', 
-    'channel.subscription.gift': 'gift-sub',
-    'channel.raid': 'raid',
-    'channel.cheer': 'bits'
-  };
+  // Determine alert type with special handling for subscriptions
+  let alertType = null;
   
-  const alertType = eventTypeMap[eventData.type];
+  if (eventData.type === 'channel.subscribe') {
+    // Handle different subscription types based on event data
+    if (eventData.event.is_gift === true) {
+      // Check if it's a gift received (someone received a gift) or gift given (someone gave a gift)
+      if (eventData.event.user_id === eventData.event.broadcaster_user_id) {
+        alertType = 'gift-sub-received';
+      } else {
+        alertType = 'gift-sub';
+      }
+    } else if (eventData.event.cumulative_months && eventData.event.cumulative_months > 1) {
+      alertType = 'resubscriber';
+    } else {
+      alertType = 'subscriber';
+    }
+  } else if (eventData.type === 'channel.subscription.message') {
+    // Subscription message (resub announcement)
+    alertType = 'resubscriber';
+  } else {
+    // Map other Twitch event types to alert types
+    const eventTypeMap = {
+      'channel.follow': 'follower',
+      'poll.follow': 'follower', // Polling-based follower detection (fallback)
+      'channel.subscription.gift': 'gift-sub',
+      'channel.raid': 'raid',
+      'channel.cheer': 'bits',
+      'channel.ban': 'ban'
+    };
+    
+    alertType = eventTypeMap[eventData.type];
+  }
+  
   if (alertType) {
     // Extract user data from the event
     const userData = {
@@ -2684,6 +2708,7 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
     };
     
     console.log('👤 Extracted user data:', userData);
+    console.log('🎯 Alert type determined:', alertType, 'from event type:', eventData.type);
     
     // Trigger the alert
     alertSystem.triggerAlertForEvent(alertType, userData);
@@ -2697,7 +2722,7 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
   // Update recent activity for follows and subscribers
   if (eventData.type === 'channel.follow' || eventData.type === 'poll.follow') {
     addRecentFollower(eventData.event);
-  } else if (eventData.type === 'channel.subscribe') {
+  } else if (eventData.type === 'channel.subscribe' || eventData.type === 'channel.subscription.message') {
     addRecentSubscriber(eventData.event);
   }
 });
@@ -5579,8 +5604,9 @@ function setupAlertWidget() {
   
   
   
-  // Alert storage
-  let savedAlerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  // Alert storage - make it globally accessible for window functions
+  window.savedAlerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  let savedAlerts = window.savedAlerts; // Keep local reference for backward compatibility
   
   
   // Helper function to convert file to base64
@@ -6349,6 +6375,7 @@ function setupAlertWidget() {
     clearAlertsBtn.addEventListener('click', () => {
       if (confirm('Are you sure you want to clear all saved alerts?')) {
         savedAlerts = [];
+        window.savedAlerts = savedAlerts; // Keep window reference in sync
         localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
         alertSystem.updateAlerts();
         updateAlertList();
@@ -6527,21 +6554,28 @@ function setupAlertWidget() {
     const variationsHtml = `
       <div class="alert-variations-list">
         <div class="variations-header">
-          <span>Variations (${filteredAlerts.length}):</span>
-          <label class="random-toggle">
-            <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
-                   onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
-            Random
-          </label>
+          <span>Variations (${filteredAlerts.length} total, ${filteredAlerts.filter(a => a.enabled !== false).length} enabled):</span>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', true)" style="padding: 4px 8px; font-size: 12px;">Enable All</button>
+            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', false)" style="padding: 4px 8px; font-size: 12px;">Disable All</button>
+            <label class="random-toggle">
+              <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
+                     onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
+              Random Mode
+            </label>
+          </div>
+        </div>
+        <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
+          <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
         </div>
         <div class="variations-items">
           ${filteredAlerts.map((alert, index) => `
-            <div class="variation-item ${alert.enabled !== false ? 'enabled' : ''}">
+            <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
               <label class="variation-toggle">
                 <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
                        onchange="toggleAlert('${alert.id}', this.checked)" />
                 <span class="variation-text">
-                  ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
+                  ${alert.enabled !== false ? '✓' : '○'} ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
                   <span class="overlay-badge">${alert.overlay || 'main'}</span>
                 </span>
               </label>
@@ -6844,6 +6878,7 @@ function setupAlertWidget() {
   window.deleteAlert = function(alertId) {
     if (confirm('Are you sure you want to delete this alert?')) {
       savedAlerts = savedAlerts.filter(a => a.id !== alertId);
+      window.savedAlerts = savedAlerts; // Keep window reference in sync
       localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
       alertSystem.updateAlerts();
       updateAlertList();
@@ -6946,21 +6981,28 @@ window.updateAlertList = function() {
   const variationsHtml = `
     <div class="alert-variations-list">
       <div class="variations-header">
-        <span>Variations (${filteredAlerts.length}):</span>
-        <label class="random-toggle">
-          <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
-                 onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
-          Random
-        </label>
+        <span>Variations (${filteredAlerts.length} total, ${filteredAlerts.filter(a => a.enabled !== false).length} enabled):</span>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', true)" style="padding: 4px 8px; font-size: 12px;">Enable All</button>
+          <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', false)" style="padding: 4px 8px; font-size: 12px;">Disable All</button>
+          <label class="random-toggle">
+            <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
+                   onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
+            Random Mode
+          </label>
+        </div>
+      </div>
+      <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
+        <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
       </div>
       <div class="variations-items">
         ${filteredAlerts.map((alert, index) => `
-          <div class="variation-item ${alert.enabled !== false ? 'enabled' : ''}">
+          <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
             <label class="variation-toggle">
               <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
                      onchange="toggleAlert('${alert.id}', this.checked)" />
               <span class="variation-text">
-                ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
+                ${alert.enabled !== false ? '✓' : '○'} ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
                 <span class="overlay-badge">${alert.overlay || 'main'}</span>
               </span>
             </label>
@@ -6989,10 +7031,10 @@ window.updateAlertList = function() {
 };
 
 window.toggleAlert = function(alertId, enabled) {
-  const alert = savedAlerts.find(a => a.id === alertId);
+  const alert = window.savedAlerts.find(a => a.id === alertId);
   if (alert) {
     alert.enabled = enabled;
-    localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+    localStorage.setItem('twitchAlerts', JSON.stringify(window.savedAlerts));
     alertSystem.updateAlerts();
     updateAlertList();
     console.log('Toggled alert:', alertId, 'enabled:', enabled);
@@ -7001,16 +7043,33 @@ window.toggleAlert = function(alertId, enabled) {
 
 window.toggleRandomModeForType = function(alertType, randomMode) {
   // Update random mode for all alerts of this type
-  savedAlerts.forEach(alert => {
+  window.savedAlerts.forEach(alert => {
     if (alert.type === alertType) {
       alert.randomMode = randomMode;
     }
   });
   
-  localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+  localStorage.setItem('twitchAlerts', JSON.stringify(window.savedAlerts));
   alertSystem.updateAlerts();
   updateAlertList();
   console.log('Toggled random mode for type:', alertType, 'random:', randomMode);
+};
+
+window.toggleAllAlertsForType = function(alertType, enabled) {
+  // Enable or disable all alerts of this type
+  let count = 0;
+  window.savedAlerts.forEach(alert => {
+    if (alert.type === alertType) {
+      alert.enabled = enabled;
+      count++;
+    }
+  });
+  
+  localStorage.setItem('twitchAlerts', JSON.stringify(window.savedAlerts));
+  alertSystem.updateAlerts();
+  updateAlertList();
+  console.log(`${enabled ? 'Enabled' : 'Disabled'} ${count} alerts for type: ${alertType}`);
+  showCustomAlert(`${enabled ? 'Enabled' : 'Disabled'} all ${count} ${alertType} alerts`, 'success');
 };
 
 // Global replace placeholders function

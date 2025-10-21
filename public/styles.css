@@ -3144,6 +3144,12 @@ input[type="color"]::-webkit-color-swatch {
   background: rgba(0, 122, 204, 0.05);
 }
 
+.variation-item.disabled {
+  opacity: 0.5;
+  border-color: var(--border-tertiary);
+  background: var(--bg-secondary);
+}
+
 .variation-toggle {
   display: flex;
   align-items: center;
@@ -3288,6 +3294,12 @@ input[type="color"]::-webkit-color-swatch {
 .variation-item.enabled {
   border-color: var(--accent-color);
   background: rgba(0, 122, 204, 0.05);
+}
+
+.variation-item.disabled {
+  opacity: 0.5;
+  border-color: var(--border-tertiary);
+  background: var(--bg-secondary);
 }
 
 .variation-toggle {
