@@ -33,6 +33,8 @@
       "preload.js",
       "config.json",
       "public/**/*",
+      "overlays/**/*",
+      "skins/**/*",
       "TwitchConnected/**/*",
       "node_modules/**/*"
     ],
