@@ -2837,6 +2837,22 @@ input[type="color"]::-webkit-color-swatch {
   margin-bottom: 20px;
 }
 
+/* Media files group - simple grouping */
+.media-files-group {
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+}
+
+.media-files-group h4 {
+  margin: 0 0 16px 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
 /* Remove conflicting styles - handled by unified system above */
 
 .alert-actions {

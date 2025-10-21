@@ -52,6 +52,9 @@
       <div id="menu-tools-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Tools menu">
         <button id="menu-tools-overlay" class="menu-dropdown-item" role="menuitem">Overlay Controls</button>
         <button id="menu-tools-alerts" class="menu-dropdown-item" role="menuitem">Alert Widget</button>
+        <!-- Test Twitch Events button - commented out but function available via console: testTwitchEvents()
+        <button id="menu-tools-test-twitch" class="menu-dropdown-item" role="menuitem">🧪 Test Twitch Events</button>
+        -->
         <div class="menu-divider"></div>
         <button id="menu-tools-devtools" class="menu-dropdown-item" role="menuitem">Developer Tools</button>
         <button id="menu-tools-reload" class="menu-dropdown-item" role="menuitem">Reload Application</button>
@@ -1342,62 +1345,67 @@
             </div>
           </div>
           
-          <div class="setting-group">
-            <label for="alert-sound">Sound File:</label>
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <input type="file" id="alert-sound" accept="audio/*" style="flex: 1;" />
-              <button type="button" id="remove-alert-sound" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
-            </div>
-            <label for="alert-sound-volume" class="volume-label">Volume: <span id="alert-sound-volume-value">100%</span></label>
-            <input type="range" id="alert-sound-volume" name="alert-sound-volume" min="0" max="100" value="100" />
-            <div class="audio-note" style="margin-top: 6px; padding: 6px; background: rgba(0, 150, 255, 0.1); border: 1px solid rgba(0, 150, 255, 0.3); border-radius: 4px; font-size: 12px; color: #4fc3f7;">
-              🔊 Audio plays through the overlay in OBS
-            </div>
-          </div>
-          
-          <div class="setting-group">
-            <label for="alert-image">Image File:</label>
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <input type="file" id="alert-image" accept="image/*" style="flex: 1;" />
-              <button type="button" id="remove-alert-image" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
-            </div>
-          </div>
-          
-          <div class="setting-group">
-            <label for="alert-video">Video File:</label>
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <input type="file" id="alert-video" accept="video/*" style="flex: 1;" />
-              <button type="button" id="remove-alert-video" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
-            </div>
-            <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
-              Supports MP4, WebM, MOV, AVI
-            </small>
+          <!-- Media Files - Grouped together -->
+          <div class="media-files-group">
+            <h4>Media Files</h4>
             
-            <!-- Video Settings (shown when video is selected) -->
-            <div id="alert-video-settings" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
-              <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--text-secondary);">Video Settings</h4>
-              
-              <div style="margin-bottom: 10px;">
-                <label for="alert-video-display-mode">Display Mode:</label>
-                <select id="alert-video-display-mode" style="width: 100%; margin-top: 4px;">
-                  <option value="center">Center Media (Text can overlay)</option>
-                  <option value="fullscreen">Full Screen (Text overlays video)</option>
-                </select>
-                <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
-                  Full screen mode allows text to appear over the video
-                </small>
+            <div class="setting-group">
+              <label for="alert-sound">Sound File:</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="file" id="alert-sound" accept="audio/*" style="flex: 1;" />
+                <button type="button" id="remove-alert-sound" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
               </div>
+              <label for="alert-sound-volume" class="volume-label">Volume: <span id="alert-sound-volume-value">100%</span></label>
+              <input type="range" id="alert-sound-volume" name="alert-sound-volume" min="0" max="100" value="100" />
+              <div class="audio-note" style="margin-top: 6px; padding: 6px; background: rgba(0, 150, 255, 0.1); border: 1px solid rgba(0, 150, 255, 0.3); border-radius: 4px; font-size: 12px; color: #4fc3f7;">
+                🔊 Audio plays through the overlay in OBS
+              </div>
+            </div>
+            
+            <div class="setting-group">
+              <label for="alert-image">Image File:</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="file" id="alert-image" accept="image/*" style="flex: 1;" />
+                <button type="button" id="remove-alert-image" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
+              </div>
+            </div>
+            
+            <div class="setting-group">
+              <label for="alert-video">Video File:</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="file" id="alert-video" accept="video/*" style="flex: 1;" />
+                <button type="button" id="remove-alert-video" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
+              </div>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                Supports MP4, WebM, MOV, AVI
+              </small>
               
-              <label style="display: flex; align-items: center; margin-bottom: 8px;">
-                <input type="checkbox" id="alert-video-loop" />
-                <span style="margin-left: 6px;">Loop Video</span>
-              </label>
-              
-              <label for="alert-video-volume" class="volume-label" style="display: block; margin-bottom: 8px;">
-                Volume: <span id="alert-video-volume-value">100%</span>
-              </label>
-              <input type="range" id="alert-video-volume" name="alert-video-volume" min="0" max="100" value="100" style="width: 100%;" />
-              
+              <!-- Video Settings (shown when video is selected) -->
+              <div id="alert-video-settings" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
+                <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--text-secondary);">Video Settings</h4>
+                
+                <div style="margin-bottom: 10px;">
+                  <label for="alert-video-display-mode">Display Mode:</label>
+                  <select id="alert-video-display-mode" style="width: 100%; margin-top: 4px;">
+                    <option value="center">Center Media (Text can overlay)</option>
+                    <option value="fullscreen">Full Screen (Text overlays video)</option>
+                  </select>
+                  <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                    Full screen mode allows text to appear over the video
+                  </small>
+                </div>
+                
+                <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                  <input type="checkbox" id="alert-video-loop" />
+                  <span style="margin-left: 6px;">Loop Video</span>
+                </label>
+                
+                <label for="alert-video-volume" class="volume-label" style="display: block; margin-bottom: 8px;">
+                  Volume: <span id="alert-video-volume-value">100%</span>
+                </label>
+                <input type="range" id="alert-video-volume" name="alert-video-volume" min="0" max="100" value="100" style="width: 100%;" />
+                
+              </div>
             </div>
           </div>
         </div>
