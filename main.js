@@ -233,12 +233,11 @@ function startOverlayServer() {
     }
     
     if (req.url === '/overlay' || req.url === '/') {
-      // Serve the main overlay HTML file
-      const overlayPath = path.join(__dirname, 'public/overlay.html');
-      fs.readFile(overlayPath, (err, data) => {
+      // Serve the default base overlay
+      generateOverlayHTML('default', (err, html) => {
         if (err) {
           res.writeHead(500);
-          res.end('Error loading overlay');
+          res.end('Error generating overlay');
           return;
         }
         res.writeHead(200, { 
@@ -247,16 +246,16 @@ function startOverlayServer() {
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type'
         });
-        res.end(data);
+        res.end(html);
       });
     } else if (req.url.startsWith('/overlay/') || req.url.startsWith('/overlay?')) {
       // Handle custom overlays - /overlay/name or /overlay?name=name
-      let overlayName = 'main';
+      let overlayName = 'default';
       
       // Parse overlay name from URL
       if (req.url.includes('?')) {
         const url = new URL(req.url, `http://localhost:${port}`);
-        overlayName = url.searchParams.get('name') || 'main';
+        overlayName = url.searchParams.get('name') || 'default';
       } else {
         // Extract from path like /overlay/custom-name
         overlayName = req.url.substring(9); // Remove '/overlay/'
@@ -509,6 +508,8 @@ function startOverlayServer() {
       } else {
         console.log(`✅ Overlay server running at http://localhost:${port}/overlay`);
         console.log(`📺 Use this URL in OBS Browser Source: http://localhost:${port}/overlay`);
+        console.log(`📺 Default overlay URL: http://localhost:${port}/overlay`);
+        console.log(`📺 Custom overlays: http://localhost:${port}/overlay?name=overlayName`);
         
         // Store the actual port used for reference
         overlayServerPort = port;
