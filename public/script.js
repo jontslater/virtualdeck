@@ -3092,7 +3092,7 @@ async function handleMultiMediaTrigger(button) {
 
   const overlayPayload = {
     type: 'buttonTrigger',
-    targetOverlay: button.overlay || 'main', // Route to specific overlay
+    targetOverlay: button.overlay || getDefaultOverlay(), // Route to specific overlay
     options: optionsData,
     slots: slotsData,
     centerMedia: [...processedCenterMedia, ...processedAudio] // Include audio in centerMedia
@@ -3130,7 +3130,7 @@ async function handleMultiMediaTrigger(button) {
   if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
     try {
     console.log(`🎯 SENDING TO OVERLAY: "${overlayPayload.targetOverlay}"`);
-    console.log(`📊 Button overlay setting: ${button.overlay || 'NOT SET (defaulting to main)'}`);
+    console.log(`📊 Button overlay setting: ${button.overlay || 'NOT SET (defaulting to default)'}`);
     console.log(`🔍 Full button object:`, button);
       window.electronAPI.sendOverlayMessage(overlayPayload);
     console.log(`✅ Message sent via WebSocket to overlay: "${overlayPayload.targetOverlay}"`);
@@ -4237,6 +4237,66 @@ typeRadios.forEach(radio => {
   });
 });
 
+// Overlay Helper Functions
+function getDefaultOverlay() {
+  const savedOverlays = getSavedOverlays();
+  // Return the second overlay (index 1) if it exists, otherwise first overlay, otherwise 'default'
+  return savedOverlays.length >= 2 ? savedOverlays[1].name : (savedOverlays.length >= 1 ? savedOverlays[0].name : 'default');
+}
+
+// Overlay Migration System
+function migrateOverlayReferences() {
+  try {
+    console.log('🔄 Checking for overlay migration...');
+    let needsMigration = false;
+    
+    // Load current config
+    const config = window.electronAPI.getConfig();
+    if (!config) return;
+    
+    // Get the second overlay from saved overlays (index 1)
+    const targetOverlay = getDefaultOverlay();
+    const savedOverlays = getSavedOverlays();
+    
+    console.log(`🎯 Target overlay for migration: "${targetOverlay}"`);
+    console.log(`📋 Available overlays:`, savedOverlays.map(o => o.name));
+    
+    // Check buttons for 'main' or 'default' overlay references
+    if (config.buttons && Array.isArray(config.buttons)) {
+      config.buttons.forEach(button => {
+        if (button.overlay === 'main' || button.overlay === 'default') {
+          const oldOverlay = button.overlay;
+          button.overlay = targetOverlay;
+          needsMigration = true;
+          console.log(`🔄 Migrated button "${button.label || button.name}" overlay from '${oldOverlay}' to '${targetOverlay}'`);
+        }
+      });
+    }
+    
+    // Check alerts for 'main' or 'default' overlay references
+    if (config.alerts && Array.isArray(config.alerts)) {
+      config.alerts.forEach(alert => {
+        if (alert.overlay === 'main' || alert.overlay === 'default') {
+          const oldOverlay = alert.overlay;
+          alert.overlay = targetOverlay;
+          needsMigration = true;
+          console.log(`🔄 Migrated alert "${alert.name || 'unnamed'}" overlay from '${oldOverlay}' to '${targetOverlay}'`);
+        }
+      });
+    }
+    
+    // Save migrated config if changes were made
+    if (needsMigration) {
+      window.electronAPI.saveConfig(config);
+      console.log(`✅ Overlay migration completed successfully - migrated to '${targetOverlay}'`);
+    } else {
+      console.log('✅ No overlay migration needed');
+    }
+  } catch (error) {
+    console.error('❌ Error during overlay migration:', error);
+  }
+}
+
 // Theme System
 class ThemeManager {
   constructor() {
@@ -4865,6 +4925,9 @@ function setupAppToolbar() {
 document.addEventListener('DOMContentLoaded', () => {
   console.log('🔧 DOMContentLoaded fired - initializing toolbar');
   
+  // Run overlay migration on app load
+  migrateOverlayReferences();
+  
   // Clear overlay immediately on app startup
   console.log('🧹 Clearing overlay on DOM ready...');
   clearOverlay();
@@ -5133,10 +5196,6 @@ function setupOverlayWidget() {
         return;
       }
       
-      if (overlayName === 'main') {
-        showCustomAlert('Cannot use "main" as overlay name - it is reserved', 'error');
-        return;
-      }
       
       // Create overlay name that includes template info
       const overlayId = overlayName.toLowerCase().replace(/\s+/g, '-');
@@ -5186,10 +5245,6 @@ function setupOverlayWidget() {
   if (deleteOverlayBtn && overlaySelect) {
     deleteOverlayBtn.addEventListener('click', async () => {
       const selectedValue = overlaySelect.value;
-      if (selectedValue === 'main') {
-        showCustomAlert('Cannot delete the main overlay', 'error');
-        return;
-      }
       
       // Use custom confirm dialog instead of native confirm
       const overlayName = overlaySelect.options[overlaySelect.selectedIndex].textContent;
@@ -5217,8 +5272,8 @@ function setupOverlayWidget() {
           option.remove();
         }
         
-        // Reset to main overlay
-        overlaySelect.value = 'main';
+        // Reset to default overlay (second in list)
+        overlaySelect.value = getDefaultOverlay();
         
         // Update all overlay selects in forms
         updateAllOverlaySelects();
@@ -5269,11 +5324,7 @@ function setupOverlayWidget() {
 
 // Get overlay URL
 function getOverlayUrl(overlayName) {
-  if (overlayName === 'main') {
-    return 'http://localhost:8080/overlay';
-  } else {
-    return `http://localhost:8080/overlay?name=${overlayName}`;
-  }
+  return `http://localhost:8080/overlay?name=${overlayName}`;
 }
 
 // Helper functions for overlay management
@@ -5339,7 +5390,7 @@ function updateOverlayUrl() {
   if (overlaySelect && overlayUrlDisplay) {
     const selectedOverlay = overlaySelect.value;
     const baseUrl = 'http://localhost:8080/overlay';
-    const url = selectedOverlay === 'main' ? baseUrl : `${baseUrl}?name=${selectedOverlay}`;
+    const url = `${baseUrl}?name=${selectedOverlay}`;
     overlayUrlDisplay.textContent = url;
   }
 }
@@ -5408,15 +5459,11 @@ function updatePreviewIframe(overlayName = null) {
   
   if (!overlayIframe) return;
   
-  const selectedOverlay = overlayName || (overlaySelect ? overlaySelect.value : 'main');
+  const selectedOverlay = overlayName || (overlaySelect ? overlaySelect.value : 'default');
   
   // Determine the correct URL for the iframe
   let iframeUrl;
-  if (selectedOverlay === 'main') {
-    iframeUrl = 'overlay.html';
-  } else {
-    iframeUrl = `http://localhost:8080/overlay?name=${selectedOverlay}`;
-  }
+  iframeUrl = `http://localhost:8080/overlay?name=${selectedOverlay}`;
   
   console.log(`🔄 Updating preview iframe to: ${iframeUrl}`);
   
@@ -6233,7 +6280,7 @@ function setupAlertWidget() {
       const soundVolume = alertSoundVolumeRange ? parseInt(alertSoundVolumeRange.value) : 100;
       
       // Get overlay selection
-      const overlaySelect = document.getElementById('alert-overlay-select')?.value || 'main';
+      const overlaySelect = document.getElementById('alert-overlay-select')?.value || 'default';
       
       console.log('🔍 Creating alert with overlay:', overlaySelect);
       
@@ -6606,7 +6653,7 @@ function setupAlertWidget() {
     const alert = savedAlerts.find(a => a.id === alertId);
     if (alert) {
       console.log('🎭 Testing specific saved alert:', alertId, alert);
-      console.log('🎯 Alert overlay setting:', alert.overlay || 'NOT SET (will default to main)');
+      console.log('🎯 Alert overlay setting:', alert.overlay || 'NOT SET (will default to default)');
       console.log('🎬 Alert animation in saved data:', alert.animation);
       
       // Create sample user data for the alert
@@ -7278,7 +7325,7 @@ let alertQueue = {
       console.log('🎯 Triggering alert:', { alertData, userData, processedText });
       
       console.log('🎯 Alert overlay from alertData:', alertData.overlay || 'NOT SET');
-      console.log('🎯 Alert will be sent to overlay:', alertData.overlay || 'main');
+      console.log('🎯 Alert will be sent to overlay:', alertData.overlay || getDefaultOverlay());
       console.log('🎬 Alert animation config:', alertData.animation);
       console.log('📝 Alert text:', alertData.text);
       console.log('📝 Processed text:', processedText);
@@ -7289,7 +7336,7 @@ let alertQueue = {
       
       const payload = {
         type: 'buttonTrigger',
-        targetOverlay: alertData.overlay || 'main', // Route to specific overlay
+        targetOverlay: alertData.overlay || getDefaultOverlay(), // Route to specific overlay
         options: {
           clearPrevious: true,
           durationMs: alertData.duration * 1000
@@ -7452,7 +7499,7 @@ let alertQueue = {
       console.log('📤 Sending overlay message with payload:', payloadSummary);
       console.log('🎬 Full centerMedia array:', payload.centerMedia);
       console.log(`🎯 SENDING ALERT TO OVERLAY: "${payload.targetOverlay}"`);
-      console.log(`📊 Alert overlay setting: ${alertData.overlay || 'NOT SET (defaulting to main)'}`);
+      console.log(`📊 Alert overlay setting: ${alertData.overlay || 'NOT SET (defaulting to default)'}`);
       window.electronAPI.sendOverlayMessage(payload);
       console.log(`✅ Alert sent via WebSocket to overlay: "${payload.targetOverlay}"`);
       
@@ -9005,7 +9052,7 @@ document.addEventListener('DOMContentLoaded', () => {
           name: buttonData.name,
           hotkey: buttonData.hotkey,
           type: 'multi-media',
-          overlay: buttonData.overlay || 'main', // Preserve overlay selection
+          overlay: buttonData.overlay || getDefaultOverlay(), // Preserve overlay selection
           slots: buttonData.slots,
           centerMedia: buttonData.centerMedia,
           audio: buttonData.audio,

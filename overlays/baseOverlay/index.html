@@ -59,19 +59,22 @@
         .overlay-content {
             width: 100%;
             height: 100%;
-            position: relative;
+            position: absolute;
+            top: 0;
+            left: 0;
             /* Remove flexbox centering to avoid conflicts with absolute positioning */
         }
 
         /* Media Elements */
         .media-element {
-            max-width: 90%;
-            max-height: 90%;
-            width: auto;
-            height: auto;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
             object-fit: contain;
-            /* Enhanced visibility for streaming */
-            filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.6));
+            /* Enhanced visibility for streaming alerts */
+            filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
             border-radius: 8px;
         }
 
@@ -83,13 +86,14 @@
         .text-element {
             position: absolute;
             color: white;
-            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.9);
+            text-shadow: 4px 4px 8px rgba(0, 0, 0, 1.0), -2px -2px 4px rgba(0, 0, 0, 0.8);
             font-size: 64px;
             font-weight: bold;
             text-align: center;
             white-space: nowrap;
-            /* Enhanced visibility for streaming */
-            filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.8));
+            /* Enhanced visibility for streaming alerts over images */
+            filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.9));
+            z-index: 100;
         }
 
         /* Animation Keyframes */
@@ -384,6 +388,7 @@
         // Handle button trigger
         function handleButtonTrigger(payload) {
             console.log('🎮 Button triggered:', payload.options?.name || 'Unknown');
+            console.log('🎮 Full payload received:', JSON.stringify(payload, null, 2));
             
             // Clear any existing timer
             if (overlayResetTimer) {
@@ -512,31 +517,31 @@
             img.src = payload.src || payload.url || '';
             img.style.cssText = `
                 position: absolute;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                max-width: 80%;
-                max-height: 80%;
-                width: auto;
-                height: auto;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
                 object-fit: contain;
                 animation: fadeIn 0.5s ease-in-out;
-                filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.6));
+                filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
                 border-radius: 8px;
                 z-index: 1;
             `;
             
             img.onload = () => {
-                console.log('🖼️ Image loaded:', img.src);
+                console.log('🖼️ Image loaded successfully:', img.src);
+                console.log('🖼️ Image dimensions:', img.naturalWidth, 'x', img.naturalHeight);
+                console.log('🖼️ Image display size:', img.offsetWidth, 'x', img.offsetHeight);
                 // Force image to stay behind text when it loads
                 img.style.setProperty('z-index', '1', 'important');
                 console.log('🎯 Image z-index forced to 1 on load');
                 
                 // Also ensure all text elements are brought to front
                 const textElements = document.querySelectorAll('.text-element');
-                textElements.forEach(textEl => {
+                console.log('🎯 Found', textElements.length, 'text elements');
+                textElements.forEach((textEl, index) => {
                     textEl.style.setProperty('z-index', '100', 'important');
-                    console.log('🎯 Text element z-index boosted to 100');
+                    console.log(`🎯 Text element ${index} z-index boosted to 100:`, textEl.textContent);
                 });
                 
                 console.log('🎯 Image z-index:', img.style.zIndex);
@@ -573,16 +578,13 @@
             
             video.style.cssText = `
                 position: absolute;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                max-width: 80%;
-                max-height: 80%;
-                width: auto;
-                height: auto;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
                 object-fit: contain;
                 animation: fadeIn 0.5s ease-in-out;
-                filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.6));
+                filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
                 border-radius: 8px;
                 z-index: 1;
             `;
@@ -677,43 +679,43 @@
             
             switch (position) {
                 case 'topCenter':
-                    positioningStyles = 'top: 10%; left: 0; right: 0; width: 100%;';
+                    positioningStyles = 'top: 10vh; left: 0; right: 0; width: 100vw;';
                     flexDirection = 'row';
                     break;
                 case 'topLeft':
-                    positioningStyles = 'top: 10%; left: 10%; width: auto;';
+                    positioningStyles = 'top: 10vh; left: 10vw; width: auto;';
                     flexDirection = 'row';
                     break;
                 case 'topRight':
-                    positioningStyles = 'top: 10%; right: 10%; width: auto;';
+                    positioningStyles = 'top: 10vh; right: 10vw; width: auto;';
                     flexDirection = 'row';
                     break;
                 case 'midLeft':
-                    positioningStyles = 'top: 50%; left: 10%; width: auto; transform: translateY(-50%);';
+                    positioningStyles = 'top: 50vh; left: 10vw; width: auto; transform: translateY(-50%);';
                     flexDirection = 'row';
                     break;
                 case 'center':
-                    positioningStyles = 'top: 50%; left: 0; right: 0; width: 100%; transform: translateY(-50%);';
+                    positioningStyles = 'top: 50vh; left: 0; right: 0; width: 100vw; transform: translateY(-50%);';
                     flexDirection = 'row';
                     break;
                 case 'midRight':
-                    positioningStyles = 'top: 50%; right: 10%; width: auto; transform: translateY(-50%);';
+                    positioningStyles = 'top: 50vh; right: 10vw; width: auto; transform: translateY(-50%);';
                     flexDirection = 'row';
                     break;
                 case 'bottomCenter':
-                    positioningStyles = 'bottom: 10%; left: 0; right: 0; width: 100%;';
+                    positioningStyles = 'bottom: 10vh; left: 0; right: 0; width: 100vw;';
                     flexDirection = 'row';
                     break;
                 case 'bottomLeft':
-                    positioningStyles = 'bottom: 10%; left: 10%; width: auto;';
+                    positioningStyles = 'bottom: 10vh; left: 10vw; width: auto;';
                     flexDirection = 'row';
                     break;
                 case 'bottomRight':
-                    positioningStyles = 'bottom: 10%; right: 10%; width: auto;';
+                    positioningStyles = 'bottom: 10vh; right: 10vw; width: auto;';
                     flexDirection = 'row';
                     break;
                 default:
-                    positioningStyles = 'top: 50%; left: 0; right: 0; width: 100%; transform: translateY(-50%);';
+                    positioningStyles = 'top: 50vh; left: 0; right: 0; width: 100vw; transform: translateY(-50%);';
                     flexDirection = 'row';
             }
             
@@ -769,8 +771,12 @@
             }, 0);
             
             console.log('✅ Text element added to DOM:', slotData.text);
+            console.log('🎯 Text element position:', textElement.style.top, textElement.style.left);
+            console.log('🎯 Text element dimensions:', textElement.offsetWidth, 'x', textElement.offsetHeight);
             console.log('🎯 Text element z-index:', textElement.style.zIndex);
             console.log('🎯 Text element computed style:', window.getComputedStyle(textElement).zIndex);
+            console.log('🎯 Text element visibility:', window.getComputedStyle(textElement).visibility);
+            console.log('🎯 Text element display:', window.getComputedStyle(textElement).display);
         }
         
         // Render media element
