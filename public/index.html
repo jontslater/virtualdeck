@@ -1070,7 +1070,54 @@
             <option value="bits">Bits Donation</option>
             <option value="ban">User Ban</option>
             <option value="daily-checkin">Daily Checkin</option>
+            <option value="first-chat-walkon">Walk On (First Chat)</option>
           </select>
+        </div>
+
+        <div id="alert-walkon-users-group" style="display: none; margin-bottom: 15px;">
+          <label for="alert-walkon-users">Select Followers:</label>
+          <div style="position: relative;">
+            <!-- Search Input -->
+            <input 
+              type="text" 
+              id="alert-walkon-search" 
+              placeholder="Search followers or type username..."
+              style="width: 100%; padding: 8px; margin-top: 5px; margin-bottom: 8px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); border-radius: 4px;"
+            />
+            <!-- Selected Users Display -->
+            <div id="alert-walkon-selected" style="min-height: 40px; padding: 8px; border: 1px solid var(--border-color); background: var(--bg-secondary); border-radius: 4px; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+              <div style="color: var(--text-tertiary); font-size: 12px; align-self: center; width: 100%; text-align: center;">No users selected</div>
+            </div>
+            <!-- Follower List Dropdown -->
+            <div id="alert-walkon-follower-list" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); background: var(--bg-primary); border-radius: 4px; display: none; position: absolute; width: 100%; z-index: 1000;">
+              <!-- Will be populated dynamically -->
+            </div>
+          </div>
+          <!-- Manual Username Entry -->
+          <div style="display: flex; gap: 6px; margin-top: 8px;">
+            <input 
+              type="text" 
+              id="alert-walkon-manual-username" 
+              placeholder="Or manually enter username..."
+              style="flex: 1; padding: 6px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); border-radius: 4px; font-size: 12px;"
+            />
+            <button 
+              id="alert-walkon-add-manual" 
+              style="padding: 6px 12px; background: var(--accent); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;"
+            >
+              Add
+            </button>
+          </div>
+          <small style="display: block; margin-top: 5px; color: var(--text-secondary); font-size: 12px;">
+            Click followers to add/remove them, or manually enter a username. Alert will only trigger for selected users on their first chat message.
+          </small>
+          <button 
+            id="alert-walkon-reset-test" 
+            style="margin-top: 8px; padding: 6px 12px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; width: 100%;"
+            title="Reset first-time chatters for testing (allows testing same user multiple times)"
+          >
+            🔄 Reset First-Time Chatters (for Testing)
+          </button>
         </div>
 
         <div class="alert-overlay-selector">
