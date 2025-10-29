@@ -49,13 +49,40 @@ cd VirtualDeck
 
 # Install dependencies
 npm install
-
-# Start the development server
-npm start
-
-# Build for production
-npm run build
 ```
+
+## 🏃 How to Run
+
+To run the VirtualDeck application in development mode:
+
+```bash
+npm start
+```
+
+This will start the Electron application with hot reload enabled for development.
+
+## 🧪 How to Test
+
+To test the application functionality:
+
+1. **Manual Testing**: 
+   - Launch the app with `npm start`
+   - Test adding new sound triggers
+   - Test hotkey assignments (F1-F12, 1-0)
+   - Test audio playback
+   - Test editing and deleting triggers
+
+2. **Build Testing**:
+   ```bash
+   # Test the build process
+   npm run prepare-build
+   npm run build:win
+   ```
+
+3. **Integration Testing**:
+   - Test global hotkeys work when app is not focused
+   - Test file operations (add/edit/delete sounds)
+   - Test window controls (move, close, always-on-top)
 
 ## 📖 Usage
 

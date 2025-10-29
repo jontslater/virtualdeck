@@ -2629,7 +2629,28 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
       // Don't process this as a regular channel-points alert
       return;
     }
+  }
+  
+  // Handle first-chat walk-on events
+  if (eventData.type === 'first-chat-walkon') {
+    const username = eventData.event?.user_name || eventData.event?.display_name || 'Someone';
+    const userData = {
+      username: eventData.event.user_name || username,
+      display_name: eventData.event.display_name || username,
+      user_id: eventData.event.user_id,
+      user_name: eventData.event.user_name || username,
+      ...eventData.event
+    };
     
+    console.log('👤 First chat walk-on user data:', userData);
+    alertSystem.triggerAlertForEvent('first-chat-walkon', userData);
+    
+    // Don't process further
+    return;
+  }
+  
+  // For channel point redemptions (non-daily-checkin), let the TwitchConnected system handle button matching
+  if (eventData.type === 'channel.channel_points_custom_reward_redemption.add') {
     // For non-daily-checkin redemptions, let the TwitchConnected system handle button matching
     // The TwitchConnected system will check for buttons with matching keywords
     console.log('🎁 Non-daily-checkin redemption, letting TwitchConnected system handle button matching');
@@ -5569,7 +5590,8 @@ function setupAlertTypeFilter() {
         'raid': 'Raid',
         'bits': 'Bits',
         'ban': 'Ban',
-        'daily-checkin': 'Daily Checkin'
+        'daily-checkin': 'Daily Checkin',
+        'first-chat-walkon': 'Walk On (First Chat)'
       };
       
       selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
@@ -5588,7 +5610,8 @@ function setupAlertTypeFilter() {
       'bits': 'Bits',
       'ban': 'Ban',
       'channel-points': 'Channel Point Redemption',
-      'daily-checkin': 'Daily Checkin'
+      'daily-checkin': 'Daily Checkin',
+      'first-chat-walkon': 'Walk On (First Chat)'
     };
     selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
   }
@@ -5784,7 +5807,8 @@ function setupAlertWidget() {
           'raid': '{username} raided with {viewers} viewers!',
           'bits': '{username} cheered {bits} bits!',
           'ban': '{username} has been banned by {moderator}!',
-          'daily-checkin': '{username} checked in! Total: {total_checkins}'
+          'daily-checkin': '{username} checked in! Total: {total_checkins}',
+          'first-chat-walkon': 'Welcome {username} to the stream!'
         };
         alertTextInput.placeholder = placeholderTexts[selectedType] || 'Welcome {username}!';
       }
@@ -5825,6 +5849,262 @@ function setupAlertWidget() {
   
   // Setup alert type change handler to filter saved alerts
   setupAlertTypeFilter();
+  
+  // Walk-on (First Chat) follower selection UI
+  const alertWalkonUsersGroup = document.getElementById('alert-walkon-users-group');
+  const alertWalkonSearch = document.getElementById('alert-walkon-search');
+  const alertWalkonSelected = document.getElementById('alert-walkon-selected');
+  const alertWalkonFollowerList = document.getElementById('alert-walkon-follower-list');
+  
+  // Track selected followers
+  let selectedWalkonUsers = [];
+  let allFollowers = [];
+  
+  // Function to load followers
+  async function loadWalkonFollowers() {
+    try {
+      if (window.electronAPI && window.electronAPI.getFollowersWithUsers) {
+        allFollowers = await window.electronAPI.getFollowersWithUsers();
+        renderWalkonFollowerList();
+        console.log(`✅ Loaded ${allFollowers.length} followers for walk-on selection`);
+      } else {
+        console.error('getFollowersWithUsers API not available');
+      }
+    } catch (error) {
+      console.error('Error loading followers:', error);
+    }
+  }
+  
+  // Function to render follower list
+  function renderWalkonFollowerList(searchTerm = '') {
+    if (!alertWalkonFollowerList) return;
+    
+    const search = searchTerm.toLowerCase().trim();
+    const filtered = allFollowers.filter(f => {
+      if (!search) return true; // Show all if no search term
+      const username = (f.username || '').toLowerCase();
+      const displayName = (f.display_name || '').toLowerCase();
+      return username.includes(search) || displayName.includes(search);
+    });
+    
+    alertWalkonFollowerList.innerHTML = '';
+    
+    if (filtered.length === 0) {
+      alertWalkonFollowerList.innerHTML = '<div style="padding: 12px; text-align: center; color: var(--text-tertiary);">No followers found matching search</div>';
+      return;
+    }
+    
+    // Show count
+    const countInfo = document.createElement('div');
+    countInfo.style.cssText = 'padding: 8px 12px; font-size: 11px; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); background: var(--bg-secondary);';
+    countInfo.textContent = search ? `Showing ${filtered.length} of ${allFollowers.length} followers` : `Showing all ${filtered.length} followers`;
+    alertWalkonFollowerList.appendChild(countInfo);
+    
+    filtered.forEach(follower => {
+      const item = document.createElement('div');
+      const isSelected = selectedWalkonUsers.some(u => u.user_id === follower.user_id);
+      item.style.cssText = `
+        padding: 10px;
+        cursor: pointer;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: ${isSelected ? 'var(--accent)' : 'transparent'};
+        color: ${isSelected ? 'white' : 'var(--text-primary)'};
+        transition: background 0.2s ease;
+      `;
+      item.innerHTML = `
+        <img src="${follower.profile_image_url || ''}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'">
+        <div style="flex: 1;">
+          <div style="font-weight: 600;">${escapeHtml(follower.display_name || follower.username)}</div>
+          <div style="font-size: 11px; opacity: 0.7;">${escapeHtml(follower.username)}</div>
+        </div>
+        ${isSelected ? '<span style="color: white; font-size: 18px;">✓</span>' : ''}
+      `;
+      item.addEventListener('click', () => toggleWalkonUser(follower));
+      alertWalkonFollowerList.appendChild(item);
+    });
+  }
+  
+  // Function to escape HTML
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  
+  // Function to toggle user selection
+  function toggleWalkonUser(follower) {
+    const index = selectedWalkonUsers.findIndex(u => u.user_id === follower.user_id);
+    if (index >= 0) {
+      selectedWalkonUsers.splice(index, 1);
+    } else {
+      selectedWalkonUsers.push(follower);
+    }
+    renderWalkonSelected();
+    renderWalkonFollowerList(alertWalkonSearch ? alertWalkonSearch.value : '');
+  }
+  
+  // Function to render selected users
+  function renderWalkonSelected() {
+    if (!alertWalkonSelected) return;
+    
+    if (selectedWalkonUsers.length === 0) {
+      alertWalkonSelected.innerHTML = '<div style="color: var(--text-tertiary); font-size: 12px; align-self: center; width: 100%; text-align: center;">No users selected</div>';
+      return;
+    }
+    
+    alertWalkonSelected.innerHTML = selectedWalkonUsers.map(user => {
+      const isManual = user.user_id && user.user_id.startsWith('manual_');
+      const label = isManual ? '📝 ' : ''; // Mark manual entries
+      return `<div style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--accent); color: white; border-radius: 4px; font-size: 12px;">
+        <span>${label}${escapeHtml(user.display_name || user.username)}</span>
+        <button onclick="removeWalkonUser('${user.user_id}')" style="background: rgba(255,255,255,0.2); border: none; color: white; border-radius: 50%; width: 18px; height: 18px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; padding: 0;">×</button>
+      </div>`;
+    }).join('');
+  }
+  
+  // Function to remove user from selection (exposed globally)
+  window.removeWalkonUser = function(userId) {
+    selectedWalkonUsers = selectedWalkonUsers.filter(u => u.user_id !== userId);
+    renderWalkonSelected();
+    renderWalkonFollowerList(alertWalkonSearch ? alertWalkonSearch.value : '');
+  };
+  
+  // Show/hide walkon users group based on alert type
+  if (alertTypeSelect && alertWalkonUsersGroup) {
+    function updateWalkonUserFieldVisibility() {
+      const selectedType = alertTypeSelect.value;
+      if (selectedType === 'first-chat-walkon') {
+        alertWalkonUsersGroup.style.display = 'block';
+        if (allFollowers.length === 0) {
+          loadWalkonFollowers();
+        }
+      } else {
+        alertWalkonUsersGroup.style.display = 'none';
+        selectedWalkonUsers = [];
+        if (alertWalkonSearch) alertWalkonSearch.value = '';
+        if (alertWalkonFollowerList) {
+          alertWalkonFollowerList.innerHTML = '';
+          alertWalkonFollowerList.style.display = 'none';
+        }
+        const manualInput = document.getElementById('alert-walkon-manual-username');
+        if (manualInput) manualInput.value = '';
+        // Keep allFollowers loaded for faster switching back
+      }
+    }
+    
+    alertTypeSelect.addEventListener('change', updateWalkonUserFieldVisibility);
+    updateWalkonUserFieldVisibility();
+  }
+  
+  // Function to add manual username
+  function addManualUsername() {
+    const manualInput = document.getElementById('alert-walkon-manual-username');
+    if (!manualInput) return;
+    
+    const username = manualInput.value.trim();
+    if (!username) {
+      alert('Please enter a username');
+      return;
+    }
+    
+    const userLower = username.toLowerCase();
+    
+    // Check if already added
+    const alreadyAdded = selectedWalkonUsers.some(u => 
+      (u.username && u.username.toLowerCase() === userLower) ||
+      (u.user_id && u.user_id === 'manual_' + userLower)
+    );
+    
+    if (alreadyAdded) {
+      alert('User already in list');
+      manualInput.value = '';
+      return;
+    }
+    
+    // Create a manual user entry (without user_id from API)
+    const manualUser = {
+      user_id: 'manual_' + userLower, // Special ID for manual entries
+      username: userLower,
+      display_name: username
+    };
+    
+    selectedWalkonUsers.push(manualUser);
+    renderWalkonSelected();
+    renderWalkonFollowerList(alertWalkonSearch ? alertWalkonSearch.value : '');
+    manualInput.value = '';
+    
+    console.log('✅ Added manual username:', username);
+  }
+  
+  // Manual username entry handlers
+  const manualUsernameInput = document.getElementById('alert-walkon-manual-username');
+  const addManualButton = document.getElementById('alert-walkon-add-manual');
+  
+  if (addManualButton) {
+    addManualButton.addEventListener('click', addManualUsername);
+  }
+  
+  if (manualUsernameInput) {
+    manualUsernameInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addManualUsername();
+      }
+    });
+  }
+  
+  // Reset first-time chatters for testing
+  const resetTestButton = document.getElementById('alert-walkon-reset-test');
+  if (resetTestButton) {
+    resetTestButton.addEventListener('click', async () => {
+      if (confirm('Reset first-time chatters list? This will allow testing the same users again.\n\nNote: This only affects the walk-on detection, not saved alert configurations.')) {
+        try {
+          if (window.electronAPI && window.electronAPI.resetFirstTimeChatters) {
+            const result = await window.electronAPI.resetFirstTimeChatters();
+            if (result.success) {
+              alert('✅ First-time chatters list reset!\n\nYou can now test the walk-on alert again with the same users.');
+              console.log('✅ First-time chatters reset:', result.message);
+            } else {
+              alert('❌ Error resetting: ' + (result.error || 'Unknown error'));
+            }
+          } else {
+            alert('❌ Reset function not available');
+          }
+        } catch (error) {
+          console.error('Error resetting first-time chatters:', error);
+          alert('❌ Error: ' + error.message);
+        }
+      }
+    });
+  }
+  
+  // Search handler
+  if (alertWalkonSearch) {
+    alertWalkonSearch.addEventListener('input', (e) => {
+      const searchTerm = e.target.value;
+      renderWalkonFollowerList(searchTerm);
+      if (allFollowers.length > 0) {
+        alertWalkonFollowerList.style.display = 'block';
+      }
+    });
+    
+    alertWalkonSearch.addEventListener('focus', () => {
+      if (allFollowers.length > 0) {
+        alertWalkonFollowerList.style.display = 'block';
+        renderWalkonFollowerList(alertWalkonSearch.value);
+      }
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (alertWalkonFollowerList && alertWalkonUsersGroup && !alertWalkonUsersGroup.contains(e.target)) {
+        alertWalkonFollowerList.style.display = 'none';
+      }
+    });
+  }
   
   // Close widget when clicking on backdrop
   const alertBackdrop = document.querySelector('.alert-widget-backdrop');
@@ -6006,7 +6286,8 @@ function setupAlertWidget() {
       'raid': 'Raid',
       'gift-sub': 'Gifted Subscription',
       'bits': 'Bits Donation',
-      'daily-checkin': 'Daily Checkin'
+      'daily-checkin': 'Daily Checkin',
+      'first-chat-walkon': 'Walk On (First Chat)'
     };
     return typeNames[type] || type;
   }
@@ -6325,6 +6606,11 @@ function setupAlertWidget() {
           sendToChat: document.getElementById('daily-checkin-send-to-chat')?.checked ?? true,
           testMode: document.getElementById('daily-checkin-test-mode')?.checked ?? false
         } : null,
+        walkonUsers: type === 'first-chat-walkon' ? selectedWalkonUsers.map(u => ({
+          user_id: u.user_id,
+          username: u.username,
+          display_name: u.display_name
+        })) : [],
         variations: [],
         randomMode: false,
         createdAt: new Date().toISOString()
@@ -6549,6 +6835,19 @@ function setupAlertWidget() {
     // Hide all remove buttons
     updateRemoveButtons();
     
+    // Reset walkon selections
+    if (alertWalkonUsersGroup) {
+      selectedWalkonUsers = [];
+      if (alertWalkonSelected) renderWalkonSelected();
+      if (alertWalkonSearch) alertWalkonSearch.value = '';
+      if (alertWalkonFollowerList) {
+        alertWalkonFollowerList.innerHTML = '';
+        alertWalkonFollowerList.style.display = 'none';
+      }
+      const manualInput = document.getElementById('alert-walkon-manual-username');
+      if (manualInput) manualInput.value = '';
+    }
+    
     updatePreview().catch(console.error);
   }
   
@@ -6563,7 +6862,8 @@ function setupAlertWidget() {
       'raid': 'Raid',
       'bits': 'Bits',
       'channel-points': 'Channel Point Redemption',
-      'daily-checkin': 'Daily Checkin'
+      'daily-checkin': 'Daily Checkin',
+      'first-chat-walkon': 'Walk On (First Chat)'
     };
     return typeNames[alertType] || alertType;
   }
@@ -6894,6 +7194,21 @@ function setupAlertWidget() {
       if (testModeCheckbox) testModeCheckbox.checked = config.testMode ?? false;
       
       console.log('Loaded daily check-in config for editing');
+    }
+    
+    // Populate walk-on users if this is a first-chat-walkon alert
+    if (alertToEdit.type === 'first-chat-walkon' && alertToEdit.walkonUsers) {
+      selectedWalkonUsers = alertToEdit.walkonUsers || [];
+      if (allFollowers.length === 0) {
+        loadWalkonFollowers().then(() => {
+          renderWalkonSelected();
+          renderWalkonFollowerList();
+        });
+      } else {
+        renderWalkonSelected();
+        renderWalkonFollowerList();
+      }
+      console.log('Loaded walk-on users for editing:', selectedWalkonUsers.length);
     }
     
     // Store the alert ID and existing media for editing
@@ -7676,6 +7991,50 @@ let alertSystem = {
       return;
     }
     
+    // For first-chat-walkon, check if user is in selected walkon users list
+    if (eventType === 'first-chat-walkon') {
+      const username = (userData.username || userData.user_name || '').toLowerCase();
+      const userId = userData.user_id;
+      
+        const alertsMatchingUser = enabledAlerts.filter(alert => {
+        // If no walkonUsers specified, don't trigger (safety)
+        if (!alert.walkonUsers || alert.walkonUsers.length === 0) {
+          console.log(`⏭️ Alert "${alert.id}" has no walkon users configured, skipping`);
+          return false;
+        }
+        // Check if user is in the selected list (by username or user_id)
+        const isInList = alert.walkonUsers.some(wu => {
+          // Match by exact user_id (for followers from API)
+          if (wu.user_id && wu.user_id === userId) return true;
+          // Match by username (case-insensitive) - works for both API followers and manual entries
+          const wuUsername = (wu.username || '').toLowerCase();
+          if (wuUsername && wuUsername === username) return true;
+          return false;
+        });
+        
+        if (!isInList) {
+          console.log(`⏭️ User "${username}" not in walkon list for alert "${alert.id}", skipping`);
+        }
+        return isInList;
+      });
+      
+      if (alertsMatchingUser.length === 0) {
+        console.log(`⚠️ No alerts matched for walk-on user: ${username}`);
+        return;
+      }
+      
+      // Use alertsMatchingUser instead of enabledAlerts for the rest
+      const alertToTrigger = alertsMatchingUser[0].randomMode 
+        ? alertsMatchingUser[Math.floor(Math.random() * alertsMatchingUser.length)]
+        : alertsMatchingUser[0];
+      
+      console.log(`🎯 Triggering walk-on alert for ${username}:`, userData);
+      console.log(`🎯 Alert text before processing:`, alertToTrigger.text);
+      
+      alertQueue.addToQueue(alertToTrigger, userData);
+      return;
+    }
+    
     // Check bits threshold for bits alerts
     if (eventType === 'bits' && enabledAlerts[0].bitsThreshold) {
       const bitsAmount = parseInt(userData.bits) || 0;
@@ -7743,6 +8102,90 @@ window.testMultipleAlerts = () => {
   alertQueue.addToQueue(alert3, testData);
   
   console.log('Added 3 test alerts to queue');
+};
+
+// Reset first-time chatters (for testing)
+// Usage: resetWalkonTest() or resetWalkonTest(true) to skip confirmation
+window.resetWalkonTest = async function(skipConfirm = false) {
+  if (!skipConfirm && !confirm('Reset first-time chatters list? This will allow testing the same users again.')) {
+    return { cancelled: true };
+  }
+  
+  try {
+    if (window.electronAPI && window.electronAPI.resetFirstTimeChatters) {
+      const result = await window.electronAPI.resetFirstTimeChatters();
+      if (result.success) {
+        console.log('✅ First-time chatters list reset! You can now test again.');
+        return { success: true, message: result.message };
+      } else {
+        console.error('❌ Error resetting:', result.error);
+        return { success: false, error: result.error };
+      }
+    } else {
+      console.error('❌ Reset function not available');
+      return { success: false, error: 'Reset function not available' };
+    }
+  } catch (error) {
+    console.error('❌ Error resetting first-time chatters:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Test first-chat walk-on event through the full Twitch pipeline
+// Usage: 
+//   testFirstChatWalkon('Iflewthetardis')
+//   testFirstChatWalkon('deathblade', 'DeathBlade', '87654321')
+//   testFirstChatWalkon('TestUser')  // Uses default TestUser
+window.testFirstChatWalkon = function(username = 'TestUser', displayName = null, userId = null) {
+  console.log('🧪 Testing first-chat walk-on event for:', username);
+  
+  // Generate a random user ID if not provided
+  if (!userId) {
+    userId = Math.floor(Math.random() * 100000000).toString();
+  }
+  
+  const display = displayName || (username.charAt(0).toUpperCase() + username.slice(1));
+  const userLower = username.toLowerCase();
+  
+  // Simulate the event data that would come from main.js chat handler
+  const eventData = {
+    type: 'first-chat-walkon',
+    event: {
+      user_id: userId,
+      user_name: userLower,
+      display_name: display
+    }
+  };
+  
+  console.log('🧪 Simulating first-chat-walkon event:', eventData);
+  
+  // Create user data matching what the real handler expects
+  const userData = {
+    username: userLower,
+    display_name: display,
+    user_id: userId,
+    user_name: userLower,
+    ...eventData.event
+  };
+  
+  // Trigger through the same path as real events - directly call alertSystem
+  // This bypasses the IPC layer but tests the alert filtering and triggering logic
+  if (window.alertSystem) {
+    console.log('✅ Triggering first-chat-walkon alert for user:', username);
+    window.alertSystem.triggerAlertForEvent('first-chat-walkon', userData);
+    
+    // Also add to chat display if the function exists (simulates full pipeline)
+    if (typeof addTwitchEvent === 'function') {
+      addTwitchEvent('first-chat-walkon', eventData.event);
+    }
+    
+    console.log('✅ Test first-chat-walkon completed - alert should have triggered if user is in walkon list');
+    console.log('💡 To test, make sure the user is in your walk-on alert\'s selected followers list');
+    return { success: true, eventData, userData };
+  } else {
+    console.error('❌ Alert system not available');
+    return { success: false, error: 'Alert system not available' };
+  }
 };
 
 // Test media duration detection

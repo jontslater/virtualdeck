@@ -5,7 +5,7 @@ const fse = require('fs-extra'); // helpful for file copying
 const { ipcMain } = require('electron');
 const ws = require('windows-shortcuts'); // Import windows-shortcuts
 const { execFile } = require('child_process');
-const extractIcon = require('extract-file-icon');
+// const extractIcon = require('extract-file-icon'); // Temporarily disabled due to build issues
 const { nativeImage } = require('electron');
 const tmi = require('tmi.js'); // Import tmi.js for Twitch chat
 const WebSocket = require('ws');
@@ -1396,6 +1396,125 @@ ipcMain.handle('get-recent-subscribers', async () => {
   }
 });
 
+// IPC: Get followers with full user data (user_id -> username/display_name)
+ipcMain.handle('get-followers-with-users', async () => {
+  try {
+    if (!twitchUserId) await getUserId();
+    if (!twitchClientId || !twitchToken) return [];
+    
+    // Fetch ALL followers using pagination
+    const allFollowers = [];
+    let cursor = null;
+    let pageCount = 0;
+    const maxPages = 100; // Safety limit to prevent infinite loops
+    
+    console.log('[Followers] Starting to fetch all followers...');
+    
+    do {
+      let url = `https://api.twitch.tv/helix/channels/followers?broadcaster_id=${encodeURIComponent(twitchUserId)}&first=100`;
+      if (cursor) {
+        url += `&after=${encodeURIComponent(cursor)}`;
+      }
+      
+      const resp = await fetch(url, {
+        headers: {
+          'Client-ID': twitchClientId,
+          'Authorization': `Bearer ${twitchToken}`
+        }
+      });
+      
+      const followerData = await resp.json();
+      
+      if (followerData.data && followerData.data.length > 0) {
+        allFollowers.push(...followerData.data);
+        console.log(`[Followers] Fetched page ${pageCount + 1}: ${followerData.data.length} followers (total so far: ${allFollowers.length})`);
+      }
+      
+      cursor = followerData.pagination?.cursor || null;
+      pageCount++;
+      
+      // Safety check
+      if (pageCount >= maxPages) {
+        console.warn(`[Followers] Reached safety limit of ${maxPages} pages. Stopping pagination.`);
+        break;
+      }
+      
+      // Small delay to avoid rate limiting
+      if (cursor) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    } while (cursor);
+    
+    console.log(`[Followers] Total followers fetched: ${allFollowers.length}`);
+    
+    if (allFollowers.length === 0) {
+      console.log('[Followers] No followers found');
+      return [];
+    }
+    
+    // Get user IDs from all followers
+    const userIds = allFollowers.map(f => f.user_id);
+    
+    // Batch fetch user data (Twitch allows up to 100 users per request)
+    // Split into chunks of 100
+    const chunks = [];
+    for (let i = 0; i < userIds.length; i += 100) {
+      chunks.push(userIds.slice(i, i + 100));
+    }
+    
+    console.log(`[Followers] Fetching user data for ${userIds.length} users in ${chunks.length} batches...`);
+    
+    const allUsers = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const userIdsParam = chunk.join('&id=');
+      const userResp = await fetch(`https://api.twitch.tv/helix/users?id=${userIdsParam}`, {
+        headers: {
+          'Client-ID': twitchClientId,
+          'Authorization': `Bearer ${twitchToken}`
+        }
+      });
+      const userData = await userResp.json();
+      if (userData.data) {
+        allUsers.push(...userData.data);
+        console.log(`[Followers] Fetched user data batch ${i + 1}/${chunks.length}: ${userData.data.length} users`);
+      }
+      
+      // Small delay between batches to avoid rate limiting
+      if (i < chunks.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    
+    console.log(`[Followers] Total user data fetched: ${allUsers.length}`);
+    
+    // Combine follower data with user data
+    const followersWithUsers = allFollowers.map(follower => {
+      const user = allUsers.find(u => u.id === follower.user_id);
+      return {
+        user_id: follower.user_id,
+        followed_at: follower.followed_at,
+        username: user ? user.login : null,
+        display_name: user ? user.display_name : null,
+        profile_image_url: user ? user.profile_image_url : null
+      };
+    }).filter(f => f.username) // Only return followers with username data
+      .sort((a, b) => {
+        // Sort alphabetically by display_name (fallback to username)
+        const nameA = (a.display_name || a.username || '').toLowerCase();
+        const nameB = (b.display_name || b.username || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+    
+    console.log(`[Followers] Returning ${followersWithUsers.length} followers with user data (sorted alphabetically)`);
+    
+    return followersWithUsers;
+  } catch (err) {
+    console.error('Error fetching followers with user data:', err);
+    return [];
+  }
+});
+
 // Expose whether Twitch credentials are present for UI warnings
 ipcMain.handle('has-twitch-creds', async () => {
   try {
@@ -1890,6 +2009,25 @@ ipcMain.handle('get-app-icon', async (event, filePath) => {
 let twitchClient = null;
 // In-memory cache of recent chat user state (badges, mod flag) to enable simple VIP/mod checks
 const recentChatUserState = new Map();
+// Track users who have chatted this session (for walk-on alerts)
+const firstTimeChatters = new Set();
+
+// Function to reset first-time chatters (useful when restarting stream)
+function resetFirstTimeChatters() {
+  firstTimeChatters.clear();
+  console.log('[Walk On] First-time chatters list cleared');
+}
+
+// IPC handler to reset first-time chatters for testing
+ipcMain.handle('reset-first-time-chatters', async () => {
+  try {
+    resetFirstTimeChatters();
+    return { success: true, message: 'First-time chatters list reset' };
+  } catch (error) {
+    console.error('Error resetting first-time chatters:', error);
+    return { success: false, error: error.message };
+  }
+});
 
 function startTwitchChatConnection({ username, oauth, clientId }) {
   console.log('Starting Twitch chat connection for user:', username);
@@ -1909,6 +2047,8 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
   twitchClient = new tmi.Client(opts);
   twitchClient.connect().then(() => {
     console.log('Connected to Twitch chat as', username);
+    // Reset first-time chatters when connecting (new stream session)
+    resetFirstTimeChatters();
     // Notify renderer to update button state
     if (win && win.webContents) {
       win.webContents.send('twitch-connected');
@@ -1920,10 +2060,34 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
   });
   twitchClient.on('message', (channel, tags, message, self) => {
     if (self) return;
+    
+    const username = tags.username;
+    const userId = tags['user-id'];
+    const displayName = tags['display-name'] || username;
+    const uname = String(username).toLowerCase();
+    
+    // Check if this is first chat this session
+    const isFirstTime = !firstTimeChatters.has(uname);
+    
+    if (isFirstTime) {
+      firstTimeChatters.add(uname);
+      // Send first-chat walk-on event
+      if (win && win.webContents) {
+        win.webContents.send('twitch-eventsub', {
+          type: 'first-chat-walkon',
+          event: {
+            user_id: userId,
+            user_name: username,
+            display_name: displayName
+          }
+        });
+        console.log(`[Walk On] First-time chatter detected: ${username}`);
+      }
+    }
+    
     // Cache recent user state for quick VIP/mod checks later
     try {
       if (tags && tags.username) {
-        const uname = String(tags.username).toLowerCase();
         recentChatUserState.set(uname, {
           badges: tags.badges || {},
           mod: !!tags.mod
@@ -3342,7 +3506,8 @@ ipcMain.on('twitch-clear-creds', async (event) => {
     twitchUserName = null;
     lastFollowerIds = [];
     lastPollTime = null;
-    recentChatUserState.clear();
+      recentChatUserState.clear();
+      firstTimeChatters.clear();
 
     // Notify renderer with detailed result
     if (win && !win.isDestroyed()) {

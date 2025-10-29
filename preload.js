@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Get recent activity
   getRecentFollowers: async () => ipcRenderer.invoke('get-recent-followers'),
   getRecentSubscribers: async () => ipcRenderer.invoke('get-recent-subscribers'),
+  getFollowersWithUsers: async () => ipcRenderer.invoke('get-followers-with-users'),
+  resetFirstTimeChatters: async () => ipcRenderer.invoke('reset-first-time-chatters'),
   hasTwitchCreds: async () => ipcRenderer.invoke('has-twitch-creds'),
   // Clear stored Twitch credentials and shutdown connections
   clearTwitchCreds: (opts) => ipcRenderer.send('twitch-clear-creds', opts || {}),
