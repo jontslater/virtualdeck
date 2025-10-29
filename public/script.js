@@ -8279,6 +8279,7 @@ function hideOverlayWidget() {
 // In-memory storage for check-ins (will be persisted to file)
 let dailyCheckinData = {
   viewers: {},
+  liveDays: [], // Array of date strings (YYYY-MM-DD) when stream was live
   config: {
     enabled: true,
     rewardName: 'Daily Check-In',
@@ -8297,6 +8298,10 @@ async function loadDailyCheckinData() {
       const data = await window.electronAPI.loadDailyCheckins();
       if (data) {
         dailyCheckinData = data;
+        // Ensure liveDays array exists (for backward compatibility)
+        if (!dailyCheckinData.liveDays) {
+          dailyCheckinData.liveDays = [];
+        }
         console.log('📊 Loaded daily check-in data:', Object.keys(dailyCheckinData.viewers).length, 'viewers');
       }
     }
@@ -8337,6 +8342,17 @@ async function processDailyCheckin(userData, testMode = false) {
   const testModeCheckbox = document.getElementById('daily-checkin-test-mode');
   const isTestMode = testMode || (testModeCheckbox && testModeCheckbox.checked);
   
+  // Record that today is a live day when someone checks in (Twitch already restricts redemption when not live)
+  // Skip this in test mode so test check-ins don't affect live day tracking
+  if (!isTestMode) {
+    const now = new Date();
+    const todayStr = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().split('T')[0]; // YYYY-MM-DD
+    if (!dailyCheckinData.liveDays.includes(todayStr)) {
+      dailyCheckinData.liveDays.push(todayStr);
+      console.log('📅 Recorded live day:', todayStr);
+    }
+  }
+  
   // Check if user already checked in today (skip in test mode)
   if (!isTestMode && hasCheckedInToday(user_id)) {
     console.log('⚠️ User', user_name, 'already checked in today');
@@ -8366,23 +8382,81 @@ async function processDailyCheckin(userData, testMode = false) {
   }
   
   const viewer = dailyCheckinData.viewers[user_id];
+  const now = new Date();
+  const todayStr = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().split('T')[0];
+  const todayCheckinDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  // Save the previous last_checkin before updating (needed for streak calculation)
+  const previousLastCheckin = viewer.last_checkin;
   
   // Update check-in data
   viewer.total_checkins++;
-  viewer.last_checkin = new Date().toISOString();
+  viewer.last_checkin = now.toISOString();
   viewer.username = user_name; // Update in case username changed
   viewer.display_name = display_name || user_name;
   
   // Calculate streak if enabled
   if (dailyCheckinData.config.showStreak) {
-    // TODO: Implement streak calculation
-    // For now, just increment (will need to check if consecutive days)
+    if (!previousLastCheckin || !previousLastCheckin.includes('T')) {
+      // First check-in ever, start streak at 1
+      viewer.streak = 1;
+      console.log(`📈 First check-in for ${user_name}, streak started at 1`);
+    } else {
+      const lastCheckinDate = new Date(previousLastCheckin);
+      const lastCheckinDay = new Date(lastCheckinDate.getFullYear(), lastCheckinDate.getMonth(), lastCheckinDate.getDate());
+      
+      // Calculate days difference
+      const daysDiff = Math.floor((todayCheckinDate - lastCheckinDay) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff === 1) {
+        // Consecutive day - check if stream was live yesterday
+        const yesterdayStr = new Date(lastCheckinDay).toISOString().split('T')[0];
+        const wasLiveYesterday = dailyCheckinData.liveDays.includes(yesterdayStr);
+        
+        if (wasLiveYesterday) {
+          // Stream was live yesterday and they checked in today = consecutive
+          viewer.streak = (viewer.streak || 0) + 1;
+          console.log(`📈 Streak incremented for ${user_name}: ${viewer.streak} days (stream was live yesterday)`);
+        } else {
+          // Stream wasn't live yesterday, but they're checking in today - maintain streak
+          // Don't increment, but don't reset either (stream wasn't live so it doesn't count against them)
+          viewer.streak = viewer.streak || 1;
+          console.log(`📈 Streak maintained for ${user_name}: ${viewer.streak} days (stream wasn't live yesterday)`);
+        }
+      } else if (daysDiff === 0) {
+        // Same day - shouldn't happen due to hasCheckedInToday check, but safety
+        // Keep streak as is
+      } else {
+        // More than 1 day apart - check which days were missed
+        let missedLiveDays = 0;
+        const checkDate = new Date(lastCheckinDay);
+        checkDate.setDate(checkDate.getDate() + 1); // Start checking from the day after last check-in
+        
+        while (checkDate < todayCheckinDate) {
+          const checkDateStr = checkDate.toISOString().split('T')[0];
+          if (dailyCheckinData.liveDays.includes(checkDateStr)) {
+            missedLiveDays++;
+          }
+          checkDate.setDate(checkDate.getDate() + 1);
+        }
+        
+        if (missedLiveDays === 0) {
+          // No live days were missed - maintain streak
+          viewer.streak = viewer.streak || 1;
+          console.log(`📈 Streak maintained for ${user_name}: ${viewer.streak} days (no live days missed)`);
+        } else {
+          // At least one live day was missed - reset streak to 1
+          viewer.streak = 1;
+          console.log(`📈 Streak reset for ${user_name}: missed ${missedLiveDays} live day(s), streak reset to 1`);
+        }
+      }
+    }
   }
   
   // Save data
   await saveDailyCheckinData();
   
-  console.log('✅ Check-in processed for', user_name, '- Total:', viewer.total_checkins);
+  console.log('✅ Check-in processed for', user_name, '- Total:', viewer.total_checkins, 'Streak:', viewer.streak || 0);
   
   // Send chat response if enabled
   if (dailyCheckinData.config.sendToChat) {

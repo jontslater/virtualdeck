@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkUserMod: async (username) => ipcRenderer.invoke('check-user-mod', username),
   checkUserSubTier: async (username) => ipcRenderer.invoke('check-user-sub-tier', username),
   // Get channel statistics
+  isStreamLive: async () => ipcRenderer.invoke('is-stream-live'),
   getViewerCount: async () => ipcRenderer.invoke('get-viewer-count'),
   getFollowerCount: async () => ipcRenderer.invoke('get-follower-count'),
   getSubscriberStats: async () => ipcRenderer.invoke('get-subscriber-stats'),

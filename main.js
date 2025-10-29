@@ -58,6 +58,46 @@ const defaultSkinsDir = path.join(__dirname, 'skins');
 const tcConfigPath = path.join(userDataPath, 'tc_config.json');
 const dailyCheckinsPath = path.join(userDataPath, 'checkins.json');
 
+// Cooldown tracking for !checkin command (username -> timestamp)
+const checkinCommandCooldown = new Map();
+const CHECKIN_COMMAND_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+
+// Helper function to get check-in leaderboard
+function getCheckinLeaderboard(showStreak = false, limit = 5) {
+  try {
+    if (!fs.existsSync(dailyCheckinsPath)) {
+      return null;
+    }
+    const data = JSON.parse(fs.readFileSync(dailyCheckinsPath, 'utf-8'));
+    const viewers = data.viewers || {};
+    
+    // Convert to array and filter out users with no check-ins
+    const viewerArray = Object.values(viewers)
+      .filter(v => v && v.total_checkins > 0)
+      .map(v => ({
+        username: v.username || v.display_name || 'unknown',
+        display_name: v.display_name || v.username || 'unknown',
+        total_checkins: v.total_checkins || 0,
+        streak: v.streak || 0
+      }));
+    
+    // Sort by streak if enabled, otherwise by total check-ins
+    if (showStreak) {
+      viewerArray.sort((a, b) => {
+        if (b.streak !== a.streak) return b.streak - a.streak;
+        return b.total_checkins - a.total_checkins;
+      });
+    } else {
+      viewerArray.sort((a, b) => b.total_checkins - a.total_checkins);
+    }
+    
+    return viewerArray.slice(0, limit);
+  } catch (err) {
+    console.error('Error getting check-in leaderboard:', err);
+    return null;
+  }
+}
+
 // Ensure config and sounds exist in userData on first run
 function ensureUserData() {
   if (!fs.existsSync(configPath)) {
@@ -1055,6 +1095,7 @@ ipcMain.handle('loadDailyCheckins', async () => {
     // Return default structure if file doesn't exist
     return {
       viewers: {},
+      liveDays: [], // Array of date strings (YYYY-MM-DD) when stream was live
       config: {
         enabled: true,
         rewardName: 'Daily Check-In',
@@ -1218,6 +1259,27 @@ ipcMain.handle('check-user-subscriber', async (event, username) => {
     return (subData && Array.isArray(subData.data) && subData.data.length > 0);
   } catch (err) {
     console.error('Error checking subscriber status:', err);
+    return false;
+  }
+});
+
+// IPC: check if stream is currently live
+ipcMain.handle('is-stream-live', async () => {
+  try {
+    if (!twitchUserId) await getUserId();
+    if (!twitchClientId || !twitchToken) return false;
+    
+    const resp = await fetch(`https://api.twitch.tv/helix/streams?user_id=${encodeURIComponent(twitchUserId)}`, {
+      headers: {
+        'Client-ID': twitchClientId,
+        'Authorization': `Bearer ${twitchToken}`
+      }
+    });
+    const data = await resp.json();
+    // Stream is live if data.data is not empty
+    return data.data && data.data.length > 0;
+  } catch (err) {
+    console.error('Error checking stream status:', err);
     return false;
   }
 });
@@ -2117,8 +2179,92 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
     }
     // Trigger buttons with chat commands enabled if message starts with '!'
     if (message.startsWith('!')) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       const commandText = message.split(' ')[0].substring(1).toLowerCase();
+      
+      // Handle !checkin command specifically
+      if (commandText === 'checkin') {
+        const uname = String(username).toLowerCase();
+        const now = Date.now();
+        
+        // Check cooldown
+        const lastUsed = checkinCommandCooldown.get(uname);
+        if (lastUsed && (now - lastUsed) < CHECKIN_COMMAND_COOLDOWN_MS) {
+          const remainingSeconds = Math.ceil((CHECKIN_COMMAND_COOLDOWN_MS - (now - lastUsed)) / 1000);
+          const remainingMinutes = Math.floor(remainingSeconds / 60);
+          const remainingSecs = remainingSeconds % 60;
+          const timeLeft = remainingMinutes > 0 
+            ? `${remainingMinutes}m ${remainingSecs}s`
+            : `${remainingSecs}s`;
+          
+          if (twitchClient && twitchClient.readyState() === 'OPEN') {
+            const channels = twitchClient.getChannels();
+            if (channels && channels.length > 0) {
+              twitchClient.say(channels[0], `@${username}, the check-in leaderboard was recently shown. Please wait ${timeLeft} before using !checkin again.`);
+            }
+          }
+          return;
+        }
+        
+        // Update cooldown
+        checkinCommandCooldown.set(uname, now);
+        
+        // Get check-in config to see if streaks are enabled
+        let showStreak = false;
+        try {
+          if (fs.existsSync(dailyCheckinsPath)) {
+            const data = JSON.parse(fs.readFileSync(dailyCheckinsPath, 'utf-8'));
+            showStreak = data.config?.showStreak || false;
+          }
+        } catch (err) {
+          console.error('Error reading check-in config:', err);
+        }
+        
+        // Get leaderboard
+        const leaderboard = getCheckinLeaderboard(showStreak, 5);
+        
+        if (!leaderboard || leaderboard.length === 0) {
+          if (twitchClient && twitchClient.readyState() === 'OPEN') {
+            const channels = twitchClient.getChannels();
+            if (channels && channels.length > 0) {
+              twitchClient.say(channels[0], '📊 No check-in data available yet. Be the first to check in!');
+            }
+          }
+          return;
+        }
+        
+        // Format leaderboard message
+        let leaderboardMsg = '📊 Top Check-Ins: ';
+        const entries = [];
+        leaderboard.forEach((viewer, index) => {
+          let entry = `${index + 1}. ${viewer.display_name} (${viewer.total_checkins}`;
+          if (showStreak && viewer.streak > 0) {
+            entry += ` | ${viewer.streak}-day streak`;
+          }
+          entry += ')';
+          entries.push(entry);
+        });
+        
+        leaderboardMsg += entries.join(' • ');
+        
+        // Twitch chat message limit is 500 characters, truncate if needed
+        if (leaderboardMsg.length > 500) {
+          leaderboardMsg = leaderboardMsg.substring(0, 497) + '...';
+        }
+        
+        // Send to chat
+        if (twitchClient && twitchClient.readyState() === 'OPEN') {
+          const channels = twitchClient.getChannels();
+          if (channels && channels.length > 0) {
+            twitchClient.say(channels[0], leaderboardMsg);
+            console.log(`📊 Sent check-in leaderboard to chat for ${username}`);
+          }
+        }
+        
+        return;
+      }
+      
+      // Regular button command handling
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       config.buttons.forEach((btn) => {
         // Check if button has chat command enabled and keyword matches
         if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword === commandText) {
