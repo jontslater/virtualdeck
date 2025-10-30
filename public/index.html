@@ -82,6 +82,7 @@
       <div id="menu-help-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Help menu">
         <button id="menu-help-bug-report" class="menu-dropdown-item" role="menuitem">Report Bug</button>
         <div class="menu-divider"></div>
+        <button id="menu-help-commands" class="menu-dropdown-item" role="menuitem">Chat Commands</button>
         <button id="menu-help-placeholders" class="menu-dropdown-item" role="menuitem">Twitch Placeholders Guide</button>
         <div class="menu-divider"></div>
         <button id="menu-help-about" class="menu-dropdown-item" role="menuitem">About</button>
@@ -577,6 +578,29 @@
     </div>
   </div>
 
+  <!-- Chat Commands Guide Modal -->
+  <div id="commands-guide-modal" class="hidden">
+    <div class="modal-content placeholders-guide-content">
+      <div class="modal-header">
+        <h2>Chat Commands</h2>
+        <button id="commands-guide-close" class="modal-close">✕</button>
+      </div>
+      <div class="placeholders-guide-body">
+        <p style="margin-bottom: 15px; color: var(--text-secondary);">
+          Available chat commands viewers can use in your Twitch chat.
+        </p>
+        
+        <div id="commands-list">
+          <!-- Commands will be populated dynamically -->
+        </div>
+
+        <div style="margin-top: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 8px; border-left: 4px solid var(--accent);">
+          <strong>💡 Note:</strong> Commands are case-insensitive and must be typed exactly as shown (with the exclamation mark).
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Multi-Media Form Modal -->
   <div id="multi-media-modal" class="hidden">
     <div class="modal-content multi-media-modal-content">
@@ -928,6 +952,15 @@
       </div>
       <div class="preferences-content">
         
+        <!-- Twitch Setup Section -->
+        <div class="preferences-section">
+          <h3>Twitch Integration</h3>
+          <div class="preference-item">
+            <button id="preferences-twitch-setup" class="preference-button">Open Twitch Setup</button>
+            <small>Configure your Twitch OAuth token, Client ID, and Username to enable chat, alerts, and events</small>
+          </div>
+        </div>
+
         <!-- Updates Section -->
         <div class="preferences-section">
           <h3>Updates</h3>
@@ -1185,15 +1218,6 @@
               </div>
               
               <div class="setting-group">
-                <label for="alert-font-size">Font Size:</label>
-                <input type="range" id="alert-font-size" min="12" max="72" value="24" />
-                <div class="range-value" id="font-size-value">24px</div>
-              </div>
-            </div>
-            
-            <!-- Row 2: Font Weight | Text Color | Text Shadow | Text Stroke -->
-            <div class="styling-row">
-              <div class="setting-group">
                 <label for="alert-font-weight">Font Weight:</label>
                 <select id="alert-font-weight">
                   <option value="300">Light (300)</option>
@@ -1205,7 +1229,19 @@
                   <option value="900">Black (900)</option>
                 </select>
               </div>
-              
+            </div>
+            
+            <!-- Row 1b: Font Size under Text Position and Font Family -->
+            <div class="styling-row">
+              <div class="setting-group">
+                <label for="alert-font-size">Font Size:</label>
+                <input type="range" id="alert-font-size" min="12" max="72" value="24" />
+                <div class="range-value" id="font-size-value">24px</div>
+              </div>
+            </div>
+            
+            <!-- Row 2: Text Color | Text Shadow | Text Stroke -->
+            <div class="styling-row">
               <div class="setting-group">
                 <label for="alert-text-color">Text Color:</label>
                 <input type="color" id="alert-text-color" value="#ffffff" />
@@ -1236,7 +1272,7 @@
               </div>
             </div>
             
-            <!-- Row 3: Animation Type | Animation Duration | Animation Delay -->
+            <!-- Row 3: Animation Type -->
             <div class="styling-row">
               <div class="setting-group">
                 <label for="alert-animation">Animation Type:</label>
@@ -1259,13 +1295,19 @@
                   <option value="tada">Tada</option>
                 </select>
               </div>
-              
+            </div>
+            
+            <!-- Row 3b: Animation Duration -->
+            <div class="styling-row">
               <div class="setting-group">
                 <label for="alert-animation-duration">Animation Duration:</label>
                 <input type="range" id="alert-animation-duration" min="0.5" max="3" step="0.1" value="1" />
                 <div class="range-value" id="animation-duration-value">1.0s</div>
               </div>
-              
+            </div>
+            
+            <!-- Row 3c: Animation Delay under Animation Duration -->
+            <div class="styling-row">
               <div class="setting-group">
                 <label for="alert-animation-delay">Animation Delay:</label>
                 <input type="range" id="alert-animation-delay" min="0" max="2" step="0.1" value="0" />
@@ -1547,6 +1589,47 @@
 
   <!-- Custom Notification System -->
   <div id="notification-container" class="notification-container"></div>
+  <!-- First Run Twitch Setup Popup -->
+  <div id="first-run-twitch-popup" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+    <div class="modal-content" style="max-width: 500px; background: var(--bg-tertiary); color: var(--text-primary);">
+      <div class="modal-header">
+        <h2>Welcome to VirtualDeck! 🎉</h2>
+      </div>
+      <div style="padding: 20px;">
+        <p style="margin-bottom: 15px; line-height: 1.6;">
+          To enable Twitch chat, alerts, and events, you'll need to set up your Twitch credentials.
+        </p>
+        
+        <div style="margin-bottom: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 8px; border-left: 4px solid var(--accent-primary);">
+          <strong style="display: block; margin-bottom: 10px;">Quick Setup Guide:</strong>
+          <ol style="margin: 0; padding-left: 20px; line-height: 1.8; font-size: 14px;">
+            <li>Go to <a href="https://twitchtokengenerator.com" target="_blank" style="color: var(--accent-primary);">twitchtokengenerator.com</a></li>
+            <li>Choose <strong>Custom Token</strong> and select <strong>ALL token permissions</strong></li>
+            <li>Click <strong>Generate Token</strong> and log in with Twitch</li>
+            <li>Copy your <strong>ACCESS TOKEN</strong>, <strong>CLIENT_ID</strong>, and <strong>TWITCH_USER_NAME</strong></li>
+            <li>Paste them into the setup form</li>
+          </ol>
+        </div>
+
+        <p style="margin-bottom: 20px; line-height: 1.6; font-size: 13px;">
+          You can access Twitch Setup anytime from <strong>Edit → Preferences → Twitch Integration</strong>
+        </p>
+        
+        <div style="margin-bottom: 20px;">
+          <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" id="dont-show-welcome-again" style="margin-right: 8px; cursor: pointer;" />
+            <span>Don't show this message again</span>
+          </label>
+        </div>
+        
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button id="welcome-popup-setup" class="preference-button primary" style="flex: 1;">Open Twitch Setup</button>
+          <button id="welcome-popup-dismiss" class="preference-button" style="flex: 1;">Maybe Later</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="AddEditButtonForm.js"></script>
   <script src="script.js"></script>
   <script src="../TwitchConnected/tc.js"></script>

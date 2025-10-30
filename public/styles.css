@@ -1200,7 +1200,8 @@ body.vd-dragging .sound-card.draggable:hover {
 }
 
 /* Placeholders Guide Modal Styles */
-#placeholders-guide-modal {
+#placeholders-guide-modal,
+#commands-guide-modal {
   position: fixed;
   left: 50%;
   top: 50%;
@@ -1214,7 +1215,8 @@ body.vd-dragging .sound-card.draggable:hover {
   background: rgba(0,0,0,0.6);
 }
 
-#placeholders-guide-modal.hidden {
+#placeholders-guide-modal.hidden,
+#commands-guide-modal.hidden {
   display: none;
 }
 
@@ -2202,6 +2204,13 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   grid-column: auto !important;
 }
 
+/* Make sliders that are the only item in a row span all columns */
+.alert-widget .styling-row:has(input[type="range"]) .setting-group:only-child,
+.section .styling-row:has(input[type="range"]) .setting-group:only-child,
+.styling-row:has(input[type="range"]) .setting-group:only-child {
+  grid-column: 1 / -1 !important;
+}
+
 /* Unified setting groups */
 .alert-widget .setting-group,
 .section .setting-group,
@@ -2231,11 +2240,11 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
 }
 
 /* Unified form inputs */
-.alert-widget .setting-group input,
+.alert-widget .setting-group input:not([type="range"]):not([type="color"]),
 .alert-widget .setting-group select,
-.section .setting-group input,
+.section .setting-group input:not([type="range"]):not([type="color"]),
 .section .setting-group select,
-.setting-group input,
+.setting-group input:not([type="range"]):not([type="color"]),
 .setting-group select {
   width: 100% !important;
   padding: 8px 12px !important;
@@ -2247,6 +2256,31 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
   min-width: 0 !important;
   box-sizing: border-box !important;
+}
+
+/* Ensure setting-group containers allow full width */
+.alert-widget .setting-group,
+.setting-group {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* Special handling for range inputs to give maximum draggable width */
+.alert-widget .setting-group input[type="range"],
+.section .setting-group input[type="range"],
+.setting-group input[type="range"] {
+  /* Give maximum width - minimal margins */
+  width: calc(100% - 4px) !important;
+  margin: 0 2px 10px 2px !important;
+  padding: 0 !important;
+  border: none !important;
+  box-sizing: content-box !important;
+  position: relative !important;
+  z-index: 1 !important;
+  display: block !important;
+  max-width: 100% !important;
 }
 
 /* Unified focus states */
@@ -2273,6 +2307,9 @@ input[type="range"] {
   outline: none;
   appearance: none;
   cursor: pointer;
+  /* Remove padding from .setting-group that constrains interactive area */
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 input[type="range"]::-webkit-slider-thumb,
@@ -2284,12 +2321,31 @@ input[type="range"]::-moz-range-thumb {
   background: var(--accent-color);
   border: 2px solid var(--bg-primary);
   box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-  transition: transform 0.1s ease;
+  /* Removed transition to prevent pointer event issues during drag */
+  transition: none;
+  /* Ensure pointer events work reliably */
+  pointer-events: auto;
+  cursor: grab;
 }
 
 input[type="range"]::-webkit-slider-thumb:hover,
 input[type="range"]::-moz-range-thumb:hover {
-  transform: scale(1.1);
+  /* Removed transform scale to prevent hitbox shifting */
+  /* Visual feedback handled via box-shadow instead */
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+
+input[type="range"]::-webkit-slider-thumb:active,
+input[type="range"]::-moz-range-thumb:active {
+  cursor: grabbing;
+}
+
+/* Ensure track and input allow pointer events */
+input[type="range"],
+input[type="range"]::-webkit-slider-runnable-track,
+input[type="range"]::-moz-range-track {
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .range-value {
@@ -2560,7 +2616,7 @@ input[type="color"]::-webkit-color-swatch {
 
 .alert-widget-content {
   position: relative;
-  width: 1000px;
+  width: 1200px;
   max-width: calc(100vw - 40px);
   max-height: calc(100vh - 40px);
   background: var(--bg-secondary);

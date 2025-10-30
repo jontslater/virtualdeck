@@ -63,7 +63,6 @@
   },
   "dependencies": {
     "electron-updater": "^6.6.2",
-    "extract-file-icon": "^0.3.2",
     "fs-extra": "^11.3.0",
     "tmi.js": "^1.8.5",
     "windows-shortcuts": "^0.1.6"

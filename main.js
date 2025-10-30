@@ -1670,6 +1670,22 @@ ipcMain.handle('close-overlay-connections', async (event, overlayName) => {
 
 // Skin System IPC Handlers
 
+// Helper function to recursively search for JSON files in directory
+function findSkinFiles(dir, baseDir = dir, files = []) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      findSkinFiles(fullPath, baseDir, files);
+    } else if (entry.isFile() && entry.name.endsWith('.json')) {
+      files.push(fullPath);
+    }
+  }
+  
+  return files;
+}
+
 // Get available skins from the skins directory
 ipcMain.handle('get-available-skins', async () => {
   try {
@@ -1678,25 +1694,29 @@ ipcMain.handle('get-available-skins', async () => {
       return skins;
     }
     
-    const files = fs.readdirSync(userSkinsDir);
-    for (const file of files) {
-      if (file.endsWith('.json')) {
-        const skinPath = path.join(userSkinsDir, file);
-        try {
-          const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
-          if (skinData.name && skinData.version) {
-            skins.push({
-              id: path.basename(file, '.json'),
-              name: skinData.name,
-              description: skinData.description || '',
-              version: skinData.version,
-              author: skinData.author || '',
-              filename: file
-            });
-          }
-        } catch (err) {
-          console.warn(`Failed to parse skin file ${file}:`, err);
+    // Find all JSON files recursively
+    const skinFiles = findSkinFiles(userSkinsDir);
+    
+    for (const skinPath of skinFiles) {
+      try {
+        const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
+        if (skinData.name && skinData.version) {
+          // Get relative path from userSkinsDir for id generation
+          const relativePath = path.relative(userSkinsDir, skinPath);
+          const id = relativePath.replace(/\\/g, '/').replace(/\.json$/, '');
+          
+          skins.push({
+            id: id,
+            name: skinData.name,
+            description: skinData.description || '',
+            version: skinData.version,
+            author: skinData.author || '',
+            filename: path.basename(skinPath),
+            fullPath: relativePath
+          });
         }
+      } catch (err) {
+        console.warn(`Failed to parse skin file ${skinPath}:`, err);
       }
     }
     
@@ -1710,6 +1730,8 @@ ipcMain.handle('get-available-skins', async () => {
 // Load a specific skin by name
 ipcMain.handle('load-skin', async (event, skinId) => {
   try {
+    // Convert the skinId to a path (handles subdirectories)
+    // e.g., "HalloweenByTati/halloween" -> "HalloweenByTati/halloween.json"
     const skinPath = path.join(userSkinsDir, `${skinId}.json`);
     if (!fs.existsSync(skinPath)) {
       throw new Error(`Skin file not found: ${skinId}`);
@@ -1762,28 +1784,30 @@ ipcMain.handle('show-import-skin-dialog', async () => {
 // Handle delete skin dialog
 ipcMain.handle('show-delete-skin-dialog', async () => {
   try {
-    // Get available skins
+    // Get available skins using the same recursive function
     const skins = [];
     if (fs.existsSync(userSkinsDir)) {
-      const files = fs.readdirSync(userSkinsDir);
-      for (const file of files) {
-        if (file.endsWith('.json')) {
-          const skinPath = path.join(userSkinsDir, file);
-          try {
-            const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
-            if (skinData.name && skinData.version) {
-              skins.push({
-                id: path.basename(file, '.json'),
-                name: skinData.name,
-                description: skinData.description || '',
-                version: skinData.version,
-                author: skinData.author || '',
-                filename: file
-              });
-            }
-          } catch (err) {
-            console.warn(`Failed to parse skin file ${file}:`, err);
+      const skinFiles = findSkinFiles(userSkinsDir);
+      
+      for (const skinPath of skinFiles) {
+        try {
+          const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
+          if (skinData.name && skinData.version) {
+            const relativePath = path.relative(userSkinsDir, skinPath);
+            const id = relativePath.replace(/\\/g, '/').replace(/\.json$/, '');
+            
+            skins.push({
+              id: id,
+              name: skinData.name,
+              description: skinData.description || '',
+              version: skinData.version,
+              author: skinData.author || '',
+              filename: path.basename(skinPath),
+              fullPath: relativePath
+            });
           }
+        } catch (err) {
+          console.warn(`Failed to parse skin file ${skinPath}:`, err);
         }
       }
     }
@@ -1797,7 +1821,8 @@ ipcMain.handle('show-delete-skin-dialog', async () => {
       label: skin.name,
       detail: skin.description || `Version ${skin.version}`,
       id: skin.id,
-      filename: skin.filename
+      filename: skin.filename,
+      fullPath: skin.fullPath
     }));
     
     const result = await dialog.showMessageBox(win, {
@@ -1815,7 +1840,7 @@ ipcMain.handle('show-delete-skin-dialog', async () => {
     }
     
     const selectedSkin = skinOptions[result.response - 1];
-    const skinPath = path.join(userSkinsDir, selectedSkin.filename);
+    const skinPath = path.join(userSkinsDir, selectedSkin.fullPath);
     
     // Confirm deletion
     const confirmResult = await dialog.showMessageBox(win, {
@@ -3228,29 +3253,30 @@ app.whenReady().then(() => {
   async function rebuildMenu() {
     try {
       console.log('Rebuilding menu with themes and skins...');
-      // Get available skins
+      // Get available skins using recursive search
       const skins = [];
       if (fs.existsSync(userSkinsDir)) {
-        const files = fs.readdirSync(userSkinsDir);
-        console.log(`Found ${files.length} files in skins directory:`, files);
-        for (const file of files) {
-          if (file.endsWith('.json')) {
-            const skinPath = path.join(userSkinsDir, file);
-            try {
-              const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
-              if (skinData.name && skinData.version) {
-                skins.push({
-                  id: path.basename(file, '.json'),
-                  name: skinData.name,
-                  description: skinData.description || '',
-                  version: skinData.version,
-                  author: skinData.author || '',
-                  filename: file
-                });
-              }
-            } catch (err) {
-              console.warn(`Failed to parse skin file ${file}:`, err);
+        const skinFiles = findSkinFiles(userSkinsDir);
+        console.log(`Found ${skinFiles.length} skin files in skins directory (including subdirectories)`);
+        
+        for (const skinPath of skinFiles) {
+          try {
+            const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
+            if (skinData.name && skinData.version) {
+              const relativePath = path.relative(userSkinsDir, skinPath);
+              const id = relativePath.replace(/\\/g, '/').replace(/\.json$/, '');
+              
+              skins.push({
+                id: id,
+                name: skinData.name,
+                description: skinData.description || '',
+                version: skinData.version,
+                author: skinData.author || '',
+                filename: path.basename(skinPath)
+              });
             }
+          } catch (err) {
+            console.warn(`Failed to parse skin file ${skinPath}:`, err);
           }
         }
       }

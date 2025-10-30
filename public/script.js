@@ -2100,6 +2100,81 @@ if (window.electronAPI && window.electronAPI.onShowAbout) {
 }
 
 // Placeholders Guide Modal
+// Chat commands data structure (extensible for future commands)
+const chatCommands = [
+  {
+    command: '!checkin',
+    description: 'View the top 5 check-in leaderboard',
+    details: 'Shows the top 5 users with the most check-ins. If streaks are enabled, displays streak information. Each user has a 10-minute cooldown between uses.',
+    example: 'Type !checkin in chat to see the leaderboard.'
+  }
+  // Add more commands here in the future
+];
+
+function renderCommandsGuide() {
+  const commandsList = document.getElementById('commands-list');
+  if (!commandsList) return;
+  
+  if (chatCommands.length === 0) {
+    commandsList.innerHTML = '<p style="color: var(--text-secondary); padding: 20px; text-align: center;">No commands available yet.</p>';
+    return;
+  }
+  
+  let html = '';
+  chatCommands.forEach((cmd, index) => {
+    html += `
+      <div style="margin-bottom: ${index < chatCommands.length - 1 ? '30px' : '0'};">
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+          <code style="background: var(--bg-secondary); padding: 4px 8px; border-radius: 4px; color: var(--accent); font-size: 16px;">${cmd.command}</code>
+        </h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td style="width: 120px;"><strong>Description</strong></td>
+              <td>${cmd.description}</td>
+            </tr>
+            ${cmd.details ? `<tr>
+              <td><strong>Details</strong></td>
+              <td>${cmd.details}</td>
+            </tr>` : ''}
+            ${cmd.example ? `<tr>
+              <td><strong>Example</strong></td>
+              <td><code style="background: var(--bg-secondary); padding: 2px 6px; border-radius: 3px;">${cmd.example}</code></td>
+            </tr>` : ''}
+          </tbody>
+        </table>
+      </div>
+    `;
+  });
+  
+  commandsList.innerHTML = html;
+}
+
+function openCommandsGuide() {
+  const modal = document.getElementById('commands-guide-modal');
+  if (modal) {
+    renderCommandsGuide();
+    modal.classList.remove('hidden');
+    
+    // Disable hotkeys when modal is open
+    if (window.electronAPI && window.electronAPI.disableHotkeys) {
+      window.electronAPI.disableHotkeys();
+    }
+  }
+}
+
+function closeCommandsGuide() {
+  const modal = document.getElementById('commands-guide-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    
+    // Re-enable hotkeys when modal is closed
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+}
+
 function openPlaceholdersGuide() {
   const modal = document.getElementById('placeholders-guide-modal');
   if (modal) {
@@ -2138,6 +2213,24 @@ if (placeholdersGuideModal) {
   placeholdersGuideModal.addEventListener('click', (e) => {
     if (e.target === placeholdersGuideModal) {
       closePlaceholdersGuide();
+    }
+  });
+}
+
+// Close button for commands guide
+const commandsGuideCloseBtn = document.getElementById('commands-guide-close');
+if (commandsGuideCloseBtn) {
+  commandsGuideCloseBtn.onclick = () => {
+    closeCommandsGuide();
+  };
+}
+
+// Close on backdrop click
+const commandsGuideModal = document.getElementById('commands-guide-modal');
+if (commandsGuideModal) {
+  commandsGuideModal.addEventListener('click', (e) => {
+    if (e.target === commandsGuideModal) {
+      closeCommandsGuide();
     }
   });
 }
@@ -8982,6 +9075,16 @@ function setupLeftAppMenu() {
       if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
     });
   }
+  
+  const helpCommands = document.getElementById('menu-help-commands');
+  if (helpCommands) {
+    helpCommands.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openCommandsGuide();
+      if (helpDropdown) helpDropdown.classList.add('hidden');
+      if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
 
   // Edit menu wiring
   const editBtn = document.getElementById('menu-edit-btn');
@@ -12121,6 +12224,20 @@ function initializePreferencesModal() {
   if (checkUpdatesBtn) {
     checkUpdatesBtn.addEventListener('click', checkForUpdatesFromPreferences);
   }
+
+  // Twitch Setup button
+  const twitchSetupBtn = document.getElementById('preferences-twitch-setup');
+  if (twitchSetupBtn) {
+    twitchSetupBtn.addEventListener('click', () => {
+      closePreferencesModal();
+      // Show Twitch config modal (from TwitchConnected/tc.js)
+      if (typeof showTwitchConfigModal === 'function') {
+        showTwitchConfigModal();
+      } else {
+        console.error('showTwitchConfigModal function not found');
+      }
+    });
+  }
   
   // Close modal when clicking outside
   const preferencesModal = document.getElementById('preferences-modal');
@@ -12128,6 +12245,59 @@ function initializePreferencesModal() {
     preferencesModal.addEventListener('click', (e) => {
       if (e.target === preferencesModal) {
         closePreferencesModal();
+      }
+    });
+  }
+
+  // Initialize first-run popup
+  initializeFirstRunPopup();
+}
+
+function initializeFirstRunPopup() {
+  const firstRunPopup = document.getElementById('first-run-twitch-popup');
+  const dontShowCheckbox = document.getElementById('dont-show-welcome-again');
+  const setupBtn = document.getElementById('welcome-popup-setup');
+  const dismissBtn = document.getElementById('welcome-popup-dismiss');
+  const hideKey = 'vd-hide-welcome-twitch-popup';
+
+  // Check if user has opted to hide the popup
+  const shouldHide = localStorage.getItem(hideKey) === '1';
+  
+  // Show popup on first run if not hidden
+  if (!shouldHide && firstRunPopup) {
+    // Delay showing popup slightly to ensure TwitchConnected/tc.js is loaded
+    setTimeout(() => {
+      firstRunPopup.classList.remove('hidden');
+    }, 500);
+  }
+
+  // Handle setup button
+  if (setupBtn) {
+    setupBtn.addEventListener('click', () => {
+      firstRunPopup.classList.add('hidden');
+      
+      // Save "don't show" preference if checked
+      if (dontShowCheckbox && dontShowCheckbox.checked) {
+        localStorage.setItem(hideKey, '1');
+      }
+
+      // Open Twitch config modal
+      if (typeof showTwitchConfigModal === 'function') {
+        setTimeout(() => showTwitchConfigModal(), 300);
+      } else {
+        console.error('showTwitchConfigModal function not found');
+      }
+    });
+  }
+
+  // Handle dismiss button
+  if (dismissBtn) {
+    dismissBtn.addEventListener('click', () => {
+      firstRunPopup.classList.add('hidden');
+      
+      // Save "don't show" preference if checked
+      if (dontShowCheckbox && dontShowCheckbox.checked) {
+        localStorage.setItem(hideKey, '1');
       }
     });
   }

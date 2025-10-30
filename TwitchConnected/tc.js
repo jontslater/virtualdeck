@@ -47,17 +47,26 @@ function showTwitchConfigModal() {
     modal.style.maxWidth = '420px';
     modal.style.width = '95%';
     modal.innerHTML = `
-      <h2 style="text-align:center; margin-bottom:18px;">Setup Required</h2>
-      <div style="margin-bottom:18px;">
-        <strong>Instructions:</strong>
-        <ul style="margin-bottom:12px;">
-          <li>Go to https://twitchtokengenerator.com</li>
-          <li><strong>Important:</strong> Choose <b>Custom Token</b> and scroll down to bottom of the 'Available Token Scopes' and select <b>all token permissions</b> when generating your token.</li>
-          <li>When you click <b>Generate Token!</b> you will be asked to log in with your Twitch account.</li>
-          <li>Generate and copy your <b>ACCESS TOKEN</b>, <b>CLIENT_ID</b>, and <b>TWITCH_USER_NAME</b> from the site.</li>
-          <li>Paste each value below.</li>
-        </ul>
-        After entering these values, click <b>Save</b>. You can reset them later in the app under Settings if needed.
+      <h2 style="text-align:center; margin-bottom:18px;">Twitch Setup</h2>
+      <div style="margin-bottom:20px; padding:15px; background:#f0f0f0; border-radius:8px; border-left:4px solid #9147ff;">
+        <strong style="display:block; margin-bottom:10px; color:#9147ff;">Step-by-Step Guide:</strong>
+        <ol style="margin:0; padding-left:20px; line-height:2; font-size:13px; color:#222;">
+          <li>Visit <a href="https://twitchtokengenerator.com" target="_blank" style="color:#9147ff; text-decoration:underline;">twitchtokengenerator.com</a> in your browser</li>
+          <li>Select <strong>Custom Token</strong> from the token options</li>
+          <li><strong>Important:</strong> Scroll to "Available Token Scopes" and select <strong>ALL permissions</strong> (check the box at the top)</li>
+          <li>Click <strong>Generate Token</strong> and log in with your Twitch account</li>
+          <li>Copy your three credentials:
+            <ul style="margin-top:5px; padding-left:20px;">
+              <li><strong>ACCESS TOKEN</strong></li>
+              <li><strong>CLIENT_ID</strong></li>
+              <li><strong>TWITCH_USER_NAME</strong></li>
+            </ul>
+          </li>
+          <li>Paste each value into the fields below</li>
+        </ol>
+        <p style="margin-top:10px; margin-bottom:0; font-size:12px; color:#666;">
+          💡 You can access these settings later via <strong>Edit → Preferences → Twitch Integration</strong>
+        </p>
       </div>
       <label for="twitch-oauth" style="font-weight:bold;">ACCESS_TOKEN:</label><br>
       <div style="position:relative;margin-bottom:14px;">
