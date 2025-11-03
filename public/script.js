@@ -3,6 +3,434 @@
 /* ========================================================
  * Custom Alert System (Non-blocking, preserves focus)
  * ======================================================== */
+
+// Custom prompt dialog for Electron
+function showCustomPrompt(message, defaultValue = '') {
+  return new Promise((resolve) => {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+      background: var(--bg-primary, #1e1e1e);
+      color: var(--text-primary, #ffffff);
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      min-width: 400px;
+      max-width: 500px;
+    `;
+    
+    // Create message
+    const messageEl = document.createElement('div');
+    messageEl.textContent = message;
+    messageEl.style.cssText = `
+      margin-bottom: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+    `;
+    
+    // Create input
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = defaultValue;
+    input.style.cssText = `
+      width: 100%;
+      padding: 10px;
+      background: var(--bg-secondary, #2a2a2a);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      color: var(--text-primary, #ffffff);
+      font-size: 14px;
+      margin-bottom: 16px;
+      box-sizing: border-box;
+    `;
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.cssText = `
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    `;
+    
+    // Create OK button
+    const okButton = document.createElement('button');
+    okButton.textContent = 'OK';
+    okButton.style.cssText = `
+      padding: 10px 20px;
+      background: var(--accent, #6366f1);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    okButton.addEventListener('mouseenter', () => {
+      okButton.style.background = '#4f46e5';
+    });
+    okButton.addEventListener('mouseleave', () => {
+      okButton.style.background = 'var(--accent, #6366f1)';
+    });
+    
+    // Create Cancel button
+    const cancelButton = document.createElement('button');
+    cancelButton.textContent = 'Cancel';
+    cancelButton.style.cssText = `
+      padding: 10px 20px;
+      background: var(--bg-secondary, #2a2a2a);
+      color: var(--text-primary, #ffffff);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    cancelButton.addEventListener('mouseenter', () => {
+      cancelButton.style.background = '#3a3a3a';
+    });
+    cancelButton.addEventListener('mouseleave', () => {
+      cancelButton.style.background = 'var(--bg-secondary, #2a2a2a)';
+    });
+    
+    // Assemble dialog
+    buttonsContainer.appendChild(cancelButton);
+    buttonsContainer.appendChild(okButton);
+    dialog.appendChild(messageEl);
+    dialog.appendChild(input);
+    dialog.appendChild(buttonsContainer);
+    overlay.appendChild(dialog);
+    
+    // Event handlers
+    const cleanup = () => {
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    };
+    
+    okButton.addEventListener('click', () => {
+      resolve(input.value);
+      cleanup();
+    });
+    
+    cancelButton.addEventListener('click', () => {
+      resolve(null);
+      cleanup();
+    });
+    
+    // Close on Escape
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        resolve(null);
+        cleanup();
+        document.removeEventListener('keydown', handleKeydown);
+      } else if (e.key === 'Enter') {
+        resolve(input.value);
+        cleanup();
+        document.removeEventListener('keydown', handleKeydown);
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+    
+    // Show dialog
+    document.body.appendChild(overlay);
+    input.focus();
+    input.select();
+  });
+}
+
+// Custom profile delete dialog with dropdown
+function showProfileDeleteDialog(profiles) {
+  return new Promise((resolve) => {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+      background: var(--bg-primary, #1e1e1e);
+      color: var(--text-primary, #ffffff);
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      min-width: 400px;
+      max-width: 500px;
+    `;
+    
+    // Create message
+    const messageEl = document.createElement('div');
+    messageEl.textContent = 'Select profile to delete:';
+    messageEl.style.cssText = `
+      margin-bottom: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+    `;
+    
+    // Create select dropdown
+    const select = document.createElement('select');
+    select.style.cssText = `
+      width: 100%;
+      padding: 10px;
+      background: var(--bg-secondary, #2a2a2a);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      color: var(--text-primary, #ffffff);
+      font-size: 14px;
+      margin-bottom: 16px;
+      cursor: pointer;
+    `;
+    
+    profiles.forEach(profile => {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.name;
+      select.appendChild(option);
+    });
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.cssText = `
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    `;
+    
+    // Create Delete button
+    const deleteButton = document.createElement('button');
+    deleteButton.textContent = 'Delete';
+    deleteButton.style.cssText = `
+      padding: 10px 20px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    deleteButton.addEventListener('mouseenter', () => {
+      deleteButton.style.background = '#c82333';
+    });
+    deleteButton.addEventListener('mouseleave', () => {
+      deleteButton.style.background = '#dc3545';
+    });
+    
+    // Create Cancel button
+    const cancelButton = document.createElement('button');
+    cancelButton.textContent = 'Cancel';
+    cancelButton.style.cssText = `
+      padding: 10px 20px;
+      background: var(--bg-secondary, #2a2a2a);
+      color: var(--text-primary, #ffffff);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    cancelButton.addEventListener('mouseenter', () => {
+      cancelButton.style.background = '#3a3a3a';
+    });
+    cancelButton.addEventListener('mouseleave', () => {
+      cancelButton.style.background = 'var(--bg-secondary, #2a2a2a)';
+    });
+    
+    // Assemble dialog
+    buttonsContainer.appendChild(cancelButton);
+    buttonsContainer.appendChild(deleteButton);
+    dialog.appendChild(messageEl);
+    dialog.appendChild(select);
+    dialog.appendChild(buttonsContainer);
+    overlay.appendChild(dialog);
+    
+    // Event handlers
+    const cleanup = () => {
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    };
+    
+    deleteButton.addEventListener('click', () => {
+      const selectedProfile = profiles.find(p => p.id === select.value);
+      resolve(selectedProfile);
+      cleanup();
+    });
+    
+    cancelButton.addEventListener('click', () => {
+      resolve(null);
+      cleanup();
+    });
+    
+    // Close on Escape
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        resolve(null);
+        cleanup();
+        document.removeEventListener('keydown', handleKeydown);
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+    
+    // Show dialog
+    document.body.appendChild(overlay);
+    select.focus();
+  });
+}
+
+// Custom confirm dialog for Electron
+function showCustomConfirm(message) {
+  return new Promise((resolve) => {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+      background: var(--bg-primary, #1e1e1e);
+      color: var(--text-primary, #ffffff);
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      min-width: 400px;
+      max-width: 500px;
+    `;
+    
+    // Create message
+    const messageEl = document.createElement('div');
+    messageEl.textContent = message;
+    messageEl.style.cssText = `
+      margin-bottom: 20px;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-line;
+    `;
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.cssText = `
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    `;
+    
+    // Create Yes button
+    const yesButton = document.createElement('button');
+    yesButton.textContent = 'Yes';
+    yesButton.style.cssText = `
+      padding: 10px 20px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    yesButton.addEventListener('mouseenter', () => {
+      yesButton.style.background = '#c82333';
+    });
+    yesButton.addEventListener('mouseleave', () => {
+      yesButton.style.background = '#dc3545';
+    });
+    
+    // Create No button
+    const noButton = document.createElement('button');
+    noButton.textContent = 'No';
+    noButton.style.cssText = `
+      padding: 10px 20px;
+      background: var(--bg-secondary, #2a2a2a);
+      color: var(--text-primary, #ffffff);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    noButton.addEventListener('mouseenter', () => {
+      noButton.style.background = '#3a3a3a';
+    });
+    noButton.addEventListener('mouseleave', () => {
+      noButton.style.background = 'var(--bg-secondary, #2a2a2a)';
+    });
+    
+    // Assemble dialog
+    buttonsContainer.appendChild(noButton);
+    buttonsContainer.appendChild(yesButton);
+    dialog.appendChild(messageEl);
+    dialog.appendChild(buttonsContainer);
+    overlay.appendChild(dialog);
+    
+    // Event handlers
+    const cleanup = () => {
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    };
+    
+    yesButton.addEventListener('click', () => {
+      resolve(true);
+      cleanup();
+    });
+    
+    noButton.addEventListener('click', () => {
+      resolve(false);
+      cleanup();
+    });
+    
+    // Close on Escape
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        resolve(false);
+        cleanup();
+        document.removeEventListener('keydown', handleKeydown);
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+    
+    // Show dialog
+    document.body.appendChild(overlay);
+    yesButton.focus();
+  });
+}
+
 function showCustomAlert(message, type = 'info') {
   // Create alert container if it doesn't exist
   let alertContainer = document.getElementById('custom-alert-container');
@@ -79,6 +507,518 @@ function showCustomAlert(message, type = 'info') {
     }, 300);
   }, 4000);
 }
+
+/* ========================================================
+ * Profile Management System
+ * ======================================================== */
+class ProfileManager {
+  constructor() {
+    this.currentProfile = null;
+    this.profiles = [];
+  }
+
+  async initialize() {
+    try {
+      // Load profiles metadata
+      const meta = await window.electronAPI.getProfiles();
+      this.profiles = meta.profiles || [];
+      this.currentProfile = meta.activeProfile || 'default';
+      
+      // Populate profile selector
+      this.populateProfileSelector();
+      
+      // Load and apply current profile settings
+      await this.loadProfileSettings();
+      
+      // Start periodic autosave (every 30 seconds)
+      this.startPeriodicAutosave();
+      
+      console.log('ProfileManager initialized:', this.currentProfile);
+    } catch (error) {
+      console.error('Error initializing ProfileManager:', error);
+    }
+  }
+  
+  startPeriodicAutosave() {
+    // Clear any existing interval
+    if (this.autosaveInterval) {
+      clearInterval(this.autosaveInterval);
+    }
+    
+    // Save every 30 seconds
+    this.autosaveInterval = setInterval(() => {
+      this.saveCurrentSettings().catch(err => {
+        console.error('Periodic autosave failed:', err);
+      });
+    }, 30000);
+    
+    console.log('Periodic autosave started (every 30 seconds)');
+  }
+
+  populateProfileSelector() {
+    const selector = document.getElementById('profile-selector');
+    if (!selector) return;
+    
+    // Clear existing options
+    selector.innerHTML = '';
+    
+    // Add all profiles
+    this.profiles.forEach(profile => {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.name;
+      selector.appendChild(option);
+    });
+    
+    // Set current profile
+    selector.value = this.currentProfile;
+  }
+
+  async loadProfileSettings() {
+    try {
+      const profile = await window.electronAPI.getProfile(this.currentProfile);
+      
+      console.log('📋 Loading profile settings:', this.currentProfile);
+      console.log('📋 Profile data:', profile);
+      console.log('📋 UI Settings:', profile.uiSettings);
+      
+      // Apply UI settings from profile
+      if (profile.uiSettings) {
+        // Apply theme - this is the authoritative source
+        const themeToApply = profile.uiSettings.theme || 'dark'; // Default to dark if not set
+        console.log('🎨 Theme from profile uiSettings.theme:', themeToApply);
+        
+        if (window.themeSystem) {
+          // Ensure skins are loaded before applying
+          await window.themeSystem.loadAvailableSkins();
+          console.log('🎨 Available skins loaded:', window.themeSystem.availableSkins.map(s => s.id));
+          console.log('🎨 Built-in themes:', window.themeSystem.builtInThemes);
+          
+          // Check if theme exists
+          const isBuiltIn = window.themeSystem.builtInThemes.includes(themeToApply);
+          const isSkin = window.themeSystem.availableSkins.some(skin => skin.id === themeToApply);
+          console.log(`🎨 Theme "${themeToApply}" - Built-in: ${isBuiltIn}, Custom skin: ${isSkin}`);
+          
+          // Set the current theme (bypass validation)
+          window.themeSystem.currentTheme = themeToApply;
+          
+          // Force apply the theme (even if it's not in the validation list yet)
+          console.log('🎨 Calling applyTheme with:', themeToApply);
+          await window.themeSystem.applyTheme(themeToApply);
+          
+          // Sync with menu
+          if (window.electronAPI?.syncTheme) {
+            window.electronAPI.syncTheme(themeToApply);
+          }
+          console.log('✅ Theme applied from profile:', themeToApply);
+        } else {
+          console.warn('⚠️ ThemeSystem not available yet');
+        }
+        
+        // Apply component visibility
+        if (profile.uiSettings.componentVisibility) {
+          this.applyComponentVisibility(profile.uiSettings.componentVisibility);
+        }
+        
+        // Apply chat width
+        if (profile.uiSettings.chatWidth) {
+          const chatContainer = document.getElementById('twitch-chat-container');
+          if (chatContainer) {
+            chatContainer.style.width = profile.uiSettings.chatWidth + 'px';
+          }
+        }
+        
+        // Apply sound button order after buttons are loaded
+        if (profile.uiSettings.soundButtonOrder && profile.uiSettings.soundButtonOrder.length > 0) {
+          // Wait a bit for buttons to be in DOM, then apply order
+          setTimeout(() => {
+            this.applyButtonOrder(profile.uiSettings.soundButtonOrder);
+          }, 500);
+        }
+      } else {
+        // No UI settings, apply default theme
+        console.log('ℹ️ No uiSettings in profile, applying default theme');
+        if (window.themeSystem) {
+          window.themeSystem.currentTheme = 'dark';
+          await window.themeSystem.applyTheme('dark');
+          console.log('✅ Default theme applied: dark');
+        }
+      }
+      
+      console.log('✅ Profile settings loaded for:', this.currentProfile);
+    } catch (error) {
+      console.error('❌ Error loading profile settings:', error);
+    }
+  }
+  
+  applyButtonOrder(buttonOrder) {
+    const soundGrid = document.getElementById('sound-grid');
+    if (!soundGrid || !buttonOrder || buttonOrder.length === 0) return;
+    
+    const soundCards = Array.from(soundGrid.querySelectorAll('.sound-card'));
+    
+    // Create a map of button ID to card element
+    const cardMap = new Map();
+    soundCards.forEach(card => {
+      if (card.dataset.soundData && card.id !== 'add-sound-card') {
+        try {
+          const soundData = JSON.parse(card.dataset.soundData);
+          if (soundData.id) {
+            cardMap.set(soundData.id, card);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    });
+    
+    // Keep the add-sound-card first
+    const addCard = soundCards.find(card => card.id === 'add-sound-card');
+    soundGrid.innerHTML = '';
+    if (addCard) {
+      soundGrid.appendChild(addCard);
+    }
+    
+    // Reorder cards based on saved order
+    buttonOrder.forEach(buttonId => {
+      const card = cardMap.get(buttonId);
+      if (card) {
+        soundGrid.appendChild(card);
+        cardMap.delete(buttonId); // Remove from map so we don't add it twice
+      }
+    });
+    
+    // Append any remaining cards that weren't in the saved order
+    cardMap.forEach(card => {
+      soundGrid.appendChild(card);
+    });
+    
+    console.log('Applied button order from profile');
+  }
+
+  async saveCurrentSettings() {
+    try {
+      // Show saving indicator
+      this.showSaveIndicator('Saving...');
+      
+      // Get current config
+      const config = await window.electronAPI.getConfig();
+      
+      // Gather current UI settings
+      const uiSettings = {
+        theme: window.themeSystem ? window.themeSystem.currentTheme : null,
+        componentVisibility: this.getCurrentComponentVisibility(),
+        chatWidth: this.getCurrentChatWidth(),
+        soundButtonOrder: this.getCurrentButtonOrder()
+      };
+      
+      console.log('💾 Saving profile settings...');
+      console.log('💾 Current theme:', uiSettings.theme);
+      console.log('💾 UI Settings:', uiSettings);
+      
+      // Update config with UI settings
+      config.uiSettings = uiSettings;
+      
+      // Save to current profile
+      await window.electronAPI.saveProfile(this.currentProfile, config);
+      
+      console.log('✅ Profile settings saved for:', this.currentProfile);
+      
+      // Show saved indicator
+      this.showSaveIndicator('Saved ✓', 'success');
+    } catch (error) {
+      console.error('❌ Error saving profile settings:', error);
+      this.showSaveIndicator('Save failed', 'error');
+    }
+  }
+  
+  showSaveIndicator(message, type = 'info') {
+    // Find or create save indicator in profile panel
+    const profilePanel = document.getElementById('profile-panel');
+    if (!profilePanel) return;
+    
+    let indicator = document.getElementById('profile-save-indicator');
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.id = 'profile-save-indicator';
+      indicator.style.cssText = `
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        margin-top: 8px;
+        text-align: center;
+        transition: opacity 0.3s ease;
+      `;
+      profilePanel.appendChild(indicator);
+    }
+    
+    // Set color based on type
+    if (type === 'success') {
+      indicator.style.background = 'rgba(76, 175, 80, 0.2)';
+      indicator.style.color = '#4CAF50';
+    } else if (type === 'error') {
+      indicator.style.background = 'rgba(244, 67, 54, 0.2)';
+      indicator.style.color = '#f44336';
+    } else {
+      indicator.style.background = 'rgba(33, 150, 243, 0.2)';
+      indicator.style.color = '#2196F3';
+    }
+    
+    indicator.textContent = message;
+    indicator.style.opacity = '1';
+    
+    // Hide after 2 seconds for success messages
+    if (type === 'success') {
+      setTimeout(() => {
+        indicator.style.opacity = '0';
+      }, 2000);
+    }
+  }
+  
+  // Save buttons while preserving UI settings
+  async saveButtonsToProfile(buttons) {
+    try {
+      // Get current profile data
+      const profile = await window.electronAPI.getProfile(this.currentProfile);
+      
+      // Update buttons
+      profile.buttons = buttons;
+      
+      // Save back to profile
+      await window.electronAPI.saveProfile(this.currentProfile, profile);
+      
+      console.log('Buttons saved to profile:', this.currentProfile);
+      return { success: true };
+    } catch (error) {
+      console.error('Error saving buttons to profile:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  // Debounced autosave - waits 1 second after last change before saving
+  scheduleAutoSave() {
+    if (this.autoSaveTimeout) {
+      clearTimeout(this.autoSaveTimeout);
+    }
+    this.autoSaveTimeout = setTimeout(() => {
+      this.saveCurrentSettings().catch(err => {
+        console.error('Auto-save failed:', err);
+      });
+    }, 1000);
+  }
+
+  getCurrentComponentVisibility() {
+    const prefs = {};
+    const components = {
+      'sound-grid': document.getElementById('sound-grid'),
+      'twitch-stats-container': document.getElementById('twitch-stats-container'),
+      'recent-activity-container': document.getElementById('recent-activity-container'),
+      'twitch-chat-container': document.getElementById('twitch-chat-container'),
+      'sound-controls': document.getElementById('sound-controls'),
+      'queue-control-widget': document.getElementById('queue-control-widget'),
+      'profile-panel': document.getElementById('profile-panel')
+    };
+    
+    for (const [key, element] of Object.entries(components)) {
+      if (element) {
+        prefs[key] = !element.classList.contains('hidden');
+      }
+    }
+    
+    return prefs;
+  }
+
+  applyComponentVisibility(prefs) {
+    for (const [key, visible] of Object.entries(prefs)) {
+      const element = document.getElementById(key);
+      if (element) {
+        if (visible) {
+          element.classList.remove('hidden');
+        } else {
+          element.classList.add('hidden');
+        }
+      }
+    }
+  }
+
+  getCurrentChatWidth() {
+    const chatContainer = document.getElementById('twitch-chat-container');
+    return chatContainer ? chatContainer.offsetWidth : null;
+  }
+
+  getCurrentButtonOrder() {
+    // Get button order from the DOM (sound cards)
+    const soundGrid = document.getElementById('sound-grid');
+    if (!soundGrid) return [];
+    
+    const soundCards = Array.from(soundGrid.querySelectorAll('.sound-card'));
+    return soundCards
+      .filter(card => card.dataset.soundData)
+      .map(card => {
+        try {
+          const soundData = JSON.parse(card.dataset.soundData);
+          return soundData.id;
+        } catch (e) {
+          return null;
+        }
+      })
+      .filter(id => id);
+  }
+
+  async createProfile(profileName) {
+    try {
+      if (!profileName || profileName.trim() === '') {
+        showCustomAlert('Profile name cannot be empty', 'error');
+        return false;
+      }
+      
+      // Save current settings before creating new profile
+      await this.saveCurrentSettings();
+      
+      // Create new profile
+      const result = await window.electronAPI.createProfile(profileName);
+      
+      if (result.success) {
+        showCustomAlert(`Profile "${profileName}" created`, 'success');
+        
+        // Refresh profiles list
+        await this.initialize();
+        
+        // Switch to new profile
+        await this.switchProfile(result.profileId);
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to create profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error creating profile:', error);
+      showCustomAlert('Error creating profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+
+  async duplicateProfile(newProfileName) {
+    try {
+      if (!newProfileName || newProfileName.trim() === '') {
+        showCustomAlert('Profile name cannot be empty', 'error');
+        return false;
+      }
+      
+      // Save current settings first
+      await this.saveCurrentSettings();
+      
+      // Duplicate current profile
+      const result = await window.electronAPI.duplicateProfile(this.currentProfile, newProfileName);
+      
+      if (result.success) {
+        showCustomAlert(`Profile "${newProfileName}" created from current profile`, 'success');
+        
+        // Refresh profiles list
+        await this.initialize();
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to duplicate profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error duplicating profile:', error);
+      showCustomAlert('Error duplicating profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+
+  async renameProfile(newName) {
+    try {
+      if (!newName || newName.trim() === '') {
+        showCustomAlert('Profile name cannot be empty', 'error');
+        return false;
+      }
+      
+      const result = await window.electronAPI.renameProfile(this.currentProfile, newName);
+      
+      if (result.success) {
+        showCustomAlert(`Profile renamed to "${newName}"`, 'success');
+        
+        // Refresh profiles list
+        await this.initialize();
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to rename profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error renaming profile:', error);
+      showCustomAlert('Error renaming profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+
+  async deleteProfile() {
+    try {
+      const currentProfileName = this.profiles.find(p => p.id === this.currentProfile)?.name || 'current profile';
+      
+      const result = await window.electronAPI.deleteProfile(this.currentProfile);
+      
+      if (result.success) {
+        showCustomAlert(`Profile "${currentProfileName}" deleted`, 'success');
+        
+        // Refresh and switch to first available profile
+        await this.initialize();
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to delete profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error deleting profile:', error);
+      showCustomAlert('Error deleting profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+
+  async switchProfile(profileId) {
+    try {
+      // Save current profile settings before switching
+      await this.saveCurrentSettings();
+      
+      // Switch to new profile
+      const result = await window.electronAPI.switchProfile(profileId);
+      
+      if (result.success) {
+        this.currentProfile = profileId;
+        
+        const profileName = this.profiles.find(p => p.id === profileId)?.name || 'profile';
+        showCustomAlert(`Switched to "${profileName}"`, 'success');
+        
+        // Load new profile settings
+        await this.loadProfileSettings();
+        
+        // Reload buttons from new profile
+        if (typeof loadButtons === 'function') {
+          await loadButtons();
+        }
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to switch profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error switching profile:', error);
+      showCustomAlert('Error switching profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+}
+
+// Create global profile manager instance
+const profileManager = new ProfileManager();
+window.profileManager = profileManager;
 
 const soundGrid = document.getElementById("sound-grid");
 const visualContainer = document.getElementById("visual-container");
@@ -772,42 +1712,17 @@ function reorderButtons(fromIndex, toIndex) {
 }
 
 function saveButtonOrder() {
-  const soundGrid = document.getElementById('sound-grid');
-  const soundCards = Array.from(soundGrid.querySelectorAll('.sound-card'));
-  
-  const newOrder = soundCards
-    .filter(card => card.dataset.soundData) // Only include cards with sound data
-    .map(card => {
-      const soundData = JSON.parse(card.dataset.soundData);
-      return soundData;
-    });
-  
-  // Save to localStorage
-  localStorage.setItem('soundButtonOrder', JSON.stringify(newOrder));
-
-  // Also persist order to main config.json by sending ordered ids
-  try {
-    const orderedIds = newOrder.map(b => b.id).filter(Boolean);
-    if (window.electronAPI && typeof window.electronAPI.saveButtonOrder === 'function') {
-      window.electronAPI.saveButtonOrder(orderedIds);
-    } else if (window.electronAPI && window.electronAPI.send) {
-      // fallback if older API exposure
-      window.electronAPI.send('save-button-order', orderedIds);
-    }
-  } catch (e) {
-    console.warn('Failed to persist button order to main process:', e);
+  // Button order is now stored per-profile in uiSettings
+  // Just trigger profile autosave which will capture the current button order
+  if (profileManager && profileManager.scheduleAutoSave) {
+    profileManager.scheduleAutoSave();
   }
 }
 
 function loadButtonOrder() {
-  const savedOrder = localStorage.getItem('soundButtonOrder');
-  if (savedOrder) {
-    try {
-      return JSON.parse(savedOrder);
-    } catch (e) {
-      console.error('Error loading button order:', e);
-    }
-  }
+  // Button order is now stored in the profile's uiSettings
+  // This function is kept for backward compatibility but returns null
+  // The actual button order is applied when loading profile settings
   return null;
 }
 
@@ -974,6 +1889,11 @@ function initializeChatResize(resizeHandle, chatContainer) {
     // Save width to localStorage
     const currentWidth = chatContainer.offsetWidth;
     localStorage.setItem('twitchChatWidth', currentWidth.toString());
+    
+    // Trigger profile autosave
+    if (profileManager && profileManager.scheduleAutoSave) {
+      profileManager.scheduleAutoSave();
+    }
     
     // Trigger final layout update
     triggerLayoutUpdate();
@@ -1722,6 +2642,7 @@ function getVisibilityMap() {
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
     'toggle-queue-control': 'queue-control-widget',
+    'toggle-profile-panel': 'profile-panel',
     // move-bar removed
   };
 }
@@ -1840,6 +2761,8 @@ function initializeVisibilityDropdown() {
     const checkbox = document.getElementById(checkboxId);
     const componentId = checkboxes[checkboxId];
     
+    console.log(`Setting up visibility for: ${checkboxId} → ${componentId}`, checkbox ? '✓' : '✗');
+    
     if (checkbox && componentId) {
       // Handle direct checkbox clicks
       checkbox.addEventListener('click', (e) => {
@@ -1871,6 +2794,10 @@ function initializeVisibilityDropdown() {
             const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
             prefs[componentId] = checkbox.checked;
             localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+            // Trigger profile autosave
+            if (profileManager && profileManager.scheduleAutoSave) {
+              profileManager.scheduleAutoSave();
+            }
             // Notify main process so menu checkbox states can be synced
             if (window.electronAPI && typeof window.electronAPI.syncViewPrefs === 'function') {
               try { window.electronAPI.syncViewPrefs(prefs); } catch (err) { console.warn('Failed to send view prefs to main', err); }
@@ -1933,6 +2860,10 @@ function initializeVisibilityDropdown() {
             prefs[checkboxes[id]] = false;
           });
           localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+          // Trigger profile autosave
+          if (profileManager && profileManager.scheduleAutoSave) {
+            profileManager.scheduleAutoSave();
+          }
           if (window.electronAPI && typeof window.electronAPI.syncViewPrefs === 'function') {
             try { window.electronAPI.syncViewPrefs(prefs); } catch (err) { console.warn('Failed to send view prefs to main', err); }
           }
@@ -1971,6 +2902,10 @@ function initializeVisibilityDropdown() {
             prefs[checkboxes[id]] = true;
           });
           localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+          // Trigger profile autosave
+          if (profileManager && profileManager.scheduleAutoSave) {
+            profileManager.scheduleAutoSave();
+          }
           if (window.electronAPI && typeof window.electronAPI.syncViewPrefs === 'function') {
             try { window.electronAPI.syncViewPrefs(prefs); } catch (err) { console.warn('Failed to send view prefs to main', err); }
           }
@@ -2004,6 +2939,7 @@ function applyVisibilityPrefs() {
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
     'toggle-queue-control': 'queue-control-widget',
+    'toggle-profile-panel': 'profile-panel',
     // move-bar removed
   };
 
@@ -3548,11 +4484,23 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     audioCache.clear();
     console.log('🧹 Audio cache cleared after button edit');
     
-    // Refresh the entire button list to show updated data
-    setTimeout(() => {
-      loadButtons();
-      console.log('🔄 Buttons reloaded after edit');
-    }, 100);
+    // Force immediate profile save after button edit
+    if (profileManager && profileManager.saveCurrentSettings) {
+      setTimeout(async () => {
+        await profileManager.saveCurrentSettings();
+        console.log('✅ Profile saved after button edit');
+        
+        // Then reload buttons
+        loadButtons();
+        console.log('🔄 Buttons reloaded after edit');
+      }, 150);
+    } else {
+      // Refresh the entire button list to show updated data
+      setTimeout(() => {
+        loadButtons();
+        console.log('🔄 Buttons reloaded after edit');
+      }, 100);
+    }
     
     skipReload = true;
   } else if (fileInput.files.length || resolvedPath) {
@@ -3883,9 +4831,19 @@ window.deleteButtonByEl = async (btnEl) => {
     if (origIndex === -1) origIndex = parseInt(card.dataset.index || '-1');
     if (origIndex === -1) return;
     // Confirm and call existing delete flow
-    if (confirm("Delete this button?")) {
+    const confirmed = await showCustomConfirm("Delete this button?");
+    if (confirmed) {
       window.electronAPI.deleteButton(origIndex);
       window.electronAPI.refreshHotkeys();
+      
+      // Force immediate profile save after deletion
+      if (profileManager && profileManager.saveCurrentSettings) {
+        setTimeout(async () => {
+          await profileManager.saveCurrentSettings();
+          console.log('✅ Profile saved after button deletion');
+        }, 200);
+      }
+      
       // Refresh UI after deletion
       setTimeout(() => loadButtons(), 150);
     }
@@ -4426,24 +5384,12 @@ class ThemeManager {
     await this.loadAvailableSkins();
     await this.loadSavedTheme();
     this.setupEventListeners();
-    this.applyTheme(this.currentTheme);
     
-    // Ensure theme is applied after delays to handle any timing issues
-    setTimeout(() => {
-      this.applyTheme(this.currentTheme);
-    }, 100);
+    // DON'T apply theme here - let ProfileManager handle it
+    // This prevents the theme from being set before the profile loads
+    console.log('🎨 ThemeManager initialized, current theme:', this.currentTheme);
     
-    // Apply again after a longer delay to ensure it sticks
-    setTimeout(() => {
-      this.applyTheme(this.currentTheme);
-    }, 500);
-    
-    // Sync the menu state with the loaded theme
-    setTimeout(() => {
-      if (window.electronAPI?.syncTheme) {
-        window.electronAPI.syncTheme(this.currentTheme);
-      }
-    }, 600);
+    // Profile manager will apply the theme after loading profile settings
   }
 
   async loadAvailableSkins() {
@@ -4468,7 +5414,8 @@ class ThemeManager {
       if (window.electronAPI?.getConfig) {
         try {
           const config = await window.electronAPI.getConfig();
-          savedTheme = config?.theme;
+          // Theme is now stored in uiSettings.theme with the profile system
+          savedTheme = config?.uiSettings?.theme || config?.theme;
         } catch (error) {
           savedTheme = localStorage.getItem(this.storageKey);
         }
@@ -4543,22 +5490,31 @@ class ThemeManager {
 
 
   saveTheme(themeName) {
-    try {
-      // Try Electron API first (production)
-      if (window.electronAPI?.updateConfig) {
-        window.electronAPI.updateConfig({ theme: themeName });
-      } else {
-        // Fallback to localStorage (development)
-        localStorage.setItem(this.storageKey, themeName);
-      }
-    } catch (error) {
-      // Try localStorage as fallback
-      try {
-        localStorage.setItem(this.storageKey, themeName);
-      } catch (localError) {
-        // Silent fail if both methods fail
-      }
+    // Update current theme
+    this.currentTheme = themeName;
+    
+    // Save via updateConfig (which saves to profile's uiSettings.theme)
+    if (window.electronAPI?.updateConfig) {
+      window.electronAPI.updateConfig({ theme: themeName }).catch(err => {
+        console.error('Failed to save theme via updateConfig:', err);
+      });
     }
+    
+    // Also save to localStorage as fallback
+    try {
+      localStorage.setItem(this.storageKey, themeName);
+    } catch (e) {
+      console.warn('Failed to save theme to localStorage:', e);
+    }
+    
+    // Trigger immediate profile save to ensure theme is captured
+    if (window.profileManager && window.profileManager.saveCurrentSettings) {
+      window.profileManager.saveCurrentSettings().catch(err => {
+        console.error('Failed to save profile after theme change:', err);
+      });
+    }
+    
+    console.log('Theme saved:', themeName);
   }
 
   getCurrentTheme() {
@@ -5039,6 +5995,24 @@ function setupAppToolbar() {
 document.addEventListener('DOMContentLoaded', () => {
   console.log('🔧 DOMContentLoaded fired - initializing toolbar');
   
+  // CRITICAL: Initialize ThemeManager FIRST before ProfileManager needs it
+  if (typeof ThemeManager !== 'undefined') {
+    window.themeManager = new ThemeManager();
+    window.themeSystem = window.themeManager;
+    window.notificationManager = new NotificationManager();
+    console.log('🎨 ThemeManager and NotificationManager created early');
+    
+    // Add hotkey to cycle through themes (Ctrl+Shift+T)
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'T') {
+        e.preventDefault();
+        if (window.themeManager) {
+          window.themeManager.cycleTheme();
+        }
+      }
+    });
+  }
+  
   // Run overlay migration on app load
   migrateOverlayReferences();
   
@@ -5066,7 +6040,96 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     console.log('🔧 initializePreferencesModal function not found');
   }
+  
+  // Initialize profile management system (after ThemeManager is ready)
+  console.log('🔧 Initializing profile management system');
+  profileManager.initialize().catch(err => {
+    console.error('Failed to initialize profile manager:', err);
+  });
+  
+  // Setup profile panel event handlers
+  setupProfilePanelEventHandlers();
 });
+
+// Profile panel event handlers
+function setupProfilePanelEventHandlers() {
+  // Profile selector change
+  const profileSelector = document.getElementById('profile-selector');
+  if (profileSelector) {
+    profileSelector.addEventListener('change', async (e) => {
+      const newProfileId = e.target.value;
+      if (newProfileId !== profileManager.currentProfile) {
+        await profileManager.switchProfile(newProfileId);
+      }
+    });
+  }
+  
+  // Create new profile button
+  const createBtn = document.getElementById('profile-create');
+  if (createBtn) {
+    createBtn.addEventListener('click', async () => {
+      const profileName = await showCustomPrompt('Enter a name for the new profile:');
+      if (profileName) {
+        await profileManager.createProfile(profileName);
+      }
+    });
+  }
+  
+  // Duplicate profile button
+  const duplicateBtn = document.getElementById('profile-duplicate');
+  if (duplicateBtn) {
+    duplicateBtn.addEventListener('click', async () => {
+      const currentProfileName = profileManager.profiles.find(p => p.id === profileManager.currentProfile)?.name || '';
+      const defaultName = currentProfileName ? `${currentProfileName} (Copy)` : 'New Profile';
+      const profileName = await showCustomPrompt('Enter a name for the duplicated profile:', defaultName);
+      if (profileName) {
+        await profileManager.duplicateProfile(profileName);
+      }
+    });
+  }
+  
+  // Rename profile button
+  const renameBtn = document.getElementById('profile-rename');
+  if (renameBtn) {
+    renameBtn.addEventListener('click', async () => {
+      const currentProfileName = profileManager.profiles.find(p => p.id === profileManager.currentProfile)?.name || '';
+      const newName = await showCustomPrompt('Enter a new name for this profile:', currentProfileName);
+      if (newName && newName !== currentProfileName) {
+        await profileManager.renameProfile(newName);
+      }
+    });
+  }
+  
+  // Delete profile button
+  const deleteBtn = document.getElementById('profile-delete');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', async () => {
+      // Get list of profiles that can be deleted (not the current one)
+      const deletableProfiles = profileManager.profiles.filter(p => p.id !== profileManager.currentProfile);
+      
+      if (deletableProfiles.length === 0) {
+        showCustomAlert('Cannot delete the only profile. Create another profile first.', 'error');
+        return;
+      }
+      
+      // Create a custom prompt with dropdown
+      const profileToDelete = await showProfileDeleteDialog(deletableProfiles);
+      
+      if (profileToDelete) {
+        const result = await window.electronAPI.deleteProfile(profileToDelete.id);
+        if (result.success) {
+          showCustomAlert(`Profile "${profileToDelete.name}" deleted`, 'success');
+          // Refresh profile list
+          await profileManager.initialize();
+        } else {
+          showCustomAlert('Failed to delete profile: ' + (result.error || 'Unknown error'), 'error');
+        }
+      }
+    });
+  }
+  
+  console.log('✅ Profile panel event handlers setup complete');
+}
 
 // Overlay controls setup
 function setupOverlayControls() {
@@ -9489,24 +10552,11 @@ function setupLeftAppMenu() {
   }
 }
 
-// Wait for DOM to be ready before initializing theme manager
+// ThemeManager now initialized early in first DOMContentLoaded (before ProfileManager)
+// This ensures ThemeSystem is available when ProfileManager tries to load theme
+// Theme cycling hotkey (Ctrl+Shift+T) also registered in early DOMContentLoaded
+
 document.addEventListener('DOMContentLoaded', () => {
-  themeManager = new ThemeManager();
-  notificationManager = new NotificationManager();
-  
-  // Add hotkey to cycle through themes (Ctrl+Shift+T)
-  document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.shiftKey && e.key === 'T') {
-      e.preventDefault();
-      if (themeManager) {
-        themeManager.cycleTheme();
-      }
-    }
-  });
-  
-  // Export for potential use by other parts of the app
-  window.themeManager = themeManager;
-  window.notificationManager = notificationManager;
   
   // Overlay test functions
   window.testOverlayText = function() {
@@ -9631,30 +10681,9 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('- clearOverlay() - Clear all overlay content');
   
   // Watch for any changes to the document element's data-theme attribute
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
-        const currentTheme = document.documentElement.getAttribute('data-theme');
-        if (currentTheme !== themeManager.getCurrentTheme()) {
-          setTimeout(() => {
-            themeManager.applyTheme(themeManager.getCurrentTheme());
-          }, 10);
-        }
-      }
-    });
-  });
-  
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['data-theme']
-  });
-  
-  // Final theme application after everything else has loaded
-  window.addEventListener('load', () => {
-    setTimeout(() => {
-      themeManager.applyTheme(themeManager.getCurrentTheme());
-    }, 1000);
-  });
+  // Theme persistence is now handled by ProfileManager
+  // Removed MutationObserver and delayed theme application to prevent conflicts
+  // ProfileManager applies the correct theme from profile settings
 
   // Initialize AddEditButtonForm integration (minimal)
   if (window.AddEditButtonForm) {
@@ -9723,6 +10752,12 @@ document.addEventListener('DOMContentLoaded', () => {
           // Clear audio cache to ensure new audio files are loaded
           audioCache.clear();
           console.log('🧹 Audio cache cleared after multi-media button save');
+          
+          // Force immediate profile save to persist button changes
+          if (profileManager && profileManager.saveCurrentSettings) {
+            await profileManager.saveCurrentSettings();
+            console.log('✅ Profile saved after button edit');
+          }
           
           // Reload buttons
           await loadButtons();

@@ -50,6 +50,7 @@ function triggerButtonWithDebounce(label, source = 'unknown') {
 // Use Electron's userData directory for config and user files
 const userDataPath = app.getPath('userData');
 const configPath = path.join(userDataPath, 'config.json');
+const profilesMetaPath = path.join(userDataPath, 'profiles-meta.json');
 const userSoundsDir = path.join(userDataPath, 'sounds');
 const userSkinsDir = path.join(userDataPath, 'skins');
 const defaultConfigPath = path.join(__dirname, 'config.json');
@@ -57,6 +58,9 @@ const defaultSoundsDir = path.join(__dirname, 'public', 'assets', 'sounds');
 const defaultSkinsDir = path.join(__dirname, 'skins');
 const tcConfigPath = path.join(userDataPath, 'tc_config.json');
 const dailyCheckinsPath = path.join(userDataPath, 'checkins.json');
+
+// Profile management globals
+let currentActiveProfile = 'default';
 
 // Cooldown tracking for !checkin command (username -> timestamp)
 const checkinCommandCooldown = new Map();
@@ -139,6 +143,8 @@ function ensureUserData() {
   }
   // Run migration to backfill button ids if missing
   ensureButtonIds();
+  // Initialize profile system
+  ensureProfiles();
 }
 
 // Ensure each button in config has a stable unique id (migration/backfill)
@@ -168,6 +174,141 @@ function ensureButtonIds() {
     }
   } catch (err) {
     console.error('Error ensuring button ids:', err);
+  }
+}
+
+// ============================================================
+// PROFILE MANAGEMENT SYSTEM
+// ============================================================
+
+// Helper: Get path for a specific profile
+function getProfilePath(profileId) {
+  return path.join(userDataPath, `profile-${profileId}.json`);
+}
+
+// Helper: Load profiles metadata
+function loadProfilesMeta() {
+  try {
+    if (fs.existsSync(profilesMetaPath)) {
+      return JSON.parse(fs.readFileSync(profilesMetaPath, 'utf-8'));
+    }
+  } catch (err) {
+    console.error('Error loading profiles-meta.json:', err);
+  }
+  // Default structure
+  return {
+    activeProfile: 'default',
+    profiles: [
+      { id: 'default', name: 'Default Profile', created: new Date().toISOString() }
+    ]
+  };
+}
+
+// Helper: Save profiles metadata
+function saveProfilesMeta(meta) {
+  fs.writeFileSync(profilesMetaPath, JSON.stringify(meta, null, 2));
+}
+
+// Helper: Load a specific profile
+function loadProfile(profileId) {
+  try {
+    const profilePath = getProfilePath(profileId);
+    if (fs.existsSync(profilePath)) {
+      return JSON.parse(fs.readFileSync(profilePath, 'utf-8'));
+    }
+  } catch (err) {
+    console.error(`Error loading profile ${profileId}:`, err);
+  }
+  // Default profile structure
+  return {
+    buttons: [],
+    uiSettings: {
+      theme: null,
+      componentVisibility: {},
+      chatWidth: null,
+      soundButtonOrder: []
+    }
+  };
+}
+
+// Helper: Save a specific profile
+function saveProfile(profileId, profileData) {
+  const profilePath = getProfilePath(profileId);
+  fs.writeFileSync(profilePath, JSON.stringify(profileData, null, 2));
+  console.log(`Profile ${profileId} saved successfully`);
+}
+
+// Migration: Convert old config.json to profile system
+function migrateToProfiles() {
+  try {
+    // Check if migration is needed
+    if (fs.existsSync(profilesMetaPath)) {
+      console.log('Profiles system already exists, skipping migration');
+      return;
+    }
+
+    console.log('Migrating to profiles system...');
+
+    // Load old config
+    let oldConfig = { buttons: [] };
+    if (fs.existsSync(configPath)) {
+      try {
+        oldConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      } catch (err) {
+        console.error('Error reading old config:', err);
+      }
+    }
+
+    // Create default profile with old data
+    const defaultProfile = {
+      buttons: oldConfig.buttons || [],
+      uiSettings: {
+        theme: null,
+        componentVisibility: {},
+        chatWidth: null,
+        soundButtonOrder: []
+      }
+    };
+
+    // Save default profile
+    saveProfile('default', defaultProfile);
+
+    // Create profiles metadata
+    const profilesMeta = {
+      activeProfile: 'default',
+      profiles: [
+        { id: 'default', name: 'Default Profile', created: new Date().toISOString() }
+      ]
+    };
+    saveProfilesMeta(profilesMeta);
+
+    console.log('Migration to profiles system complete');
+  } catch (err) {
+    console.error('Error during profile migration:', err);
+  }
+}
+
+// Ensure profiles system is initialized
+function ensureProfiles() {
+  migrateToProfiles();
+  
+  // Load active profile
+  const meta = loadProfilesMeta();
+  currentActiveProfile = meta.activeProfile || 'default';
+  
+  // Ensure active profile exists
+  const profilePath = getProfilePath(currentActiveProfile);
+  if (!fs.existsSync(profilePath)) {
+    console.log(`Active profile ${currentActiveProfile} not found, creating it`);
+    saveProfile(currentActiveProfile, {
+      buttons: [],
+      uiSettings: {
+        theme: null,
+        componentVisibility: {},
+        chatWidth: null,
+        soundButtonOrder: []
+      }
+    });
   }
 }
 
@@ -643,7 +784,9 @@ function getOverlayServerUrl() {
 ipcMain.on('add-media', (event, data) => {
   console.log('add-media received:', data);
   console.log('Chat command data:', data.chatCommand);
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  // Load from active profile instead of old config.json
+  const profile = loadProfile(currentActiveProfile);
+  const config = profile; // Keep variable name for compatibility
 
   // Handle app files differently than audio files
   if (data.type === 'app') {
@@ -718,19 +861,22 @@ ipcMain.on('add-media', (event, data) => {
     if (existing && existing.id) newButton.id = existing.id;
     else newButton.id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
     config.buttons[data.editingIndex] = newButton;
+    console.log('✏️ Edited button at index', data.editingIndex, ':', newButton.label);
   } else {
     newButton.id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
     config.buttons.push(newButton);
+    console.log('➕ Added new button:', newButton.label);
   }
 
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-  //checking if data is still here after write
-  //console.log('Data still here?',data);
+  // Save back to active profile (preserves uiSettings)
+  saveProfile(currentActiveProfile, profile);
+  console.log('✅ Button saved to profile:', currentActiveProfile);
 });
 
 ipcMain.on('delete-button', (event, index) => {
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-  const removed = config.buttons.splice(index, 1);
+  // Load from active profile instead of old config.json
+  const profile = loadProfile(currentActiveProfile);
+  const removed = profile.buttons.splice(index, 1);
   
   // Delete the audio file from disk
   if (removed[0] && removed[0].src) {
@@ -744,7 +890,8 @@ ipcMain.on('delete-button', (event, index) => {
     }
   }
   
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  // Save back to active profile
+  saveProfile(currentActiveProfile, profile);
   
   // Notify renderer to refresh the UI
   if (win && !win.isDestroyed()) {
@@ -772,27 +919,225 @@ ipcMain.on('enable-hotkeys', () => {
   registerHotkeys();
 });
 
-// IPC handler to get config
+// IPC handler to get config (now loads from active profile)
 ipcMain.handle('get-config', async () => {
   try {
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const profile = loadProfile(currentActiveProfile);
     // Include userDataPath for constructing absolute paths in renderer
-    config.userDataPath = userDataPath;
-    return config;
+    profile.userDataPath = userDataPath;
+    return profile;
   } catch (e) {
-    return { buttons: [], userDataPath: userDataPath };
+    return { buttons: [], uiSettings: {}, userDataPath: userDataPath };
   }
 });
 
-// IPC handler to save config (complete replacement)
+// IPC handler to save config (now saves to active profile)
 ipcMain.handle('save-config', async (event, config) => {
   try {
-    // Write the complete config to file
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    console.log('Config saved successfully');
+    // Load current profile to preserve uiSettings
+    const currentProfile = loadProfile(currentActiveProfile);
+    
+    // Merge: keep existing uiSettings, update buttons and other data
+    const mergedConfig = {
+      ...config,
+      uiSettings: config.uiSettings || currentProfile.uiSettings || {
+        theme: null,
+        componentVisibility: {},
+        chatWidth: null,
+        soundButtonOrder: []
+      }
+    };
+    
+    // Save to active profile
+    saveProfile(currentActiveProfile, mergedConfig);
     return { success: true };
   } catch (error) {
     console.error('Error saving config:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================================
+// PROFILE IPC HANDLERS
+// ============================================================
+
+// Get all profiles metadata
+ipcMain.handle('get-profiles', async () => {
+  try {
+    return loadProfilesMeta();
+  } catch (error) {
+    console.error('Error getting profiles:', error);
+    return { activeProfile: 'default', profiles: [] };
+  }
+});
+
+// Get a specific profile
+ipcMain.handle('get-profile', async (event, profileId) => {
+  try {
+    const profile = loadProfile(profileId);
+    profile.userDataPath = userDataPath;
+    return profile;
+  } catch (error) {
+    console.error(`Error getting profile ${profileId}:`, error);
+    return { buttons: [], uiSettings: {}, userDataPath: userDataPath };
+  }
+});
+
+// Save a specific profile
+ipcMain.handle('save-profile', async (event, { profileId, profileData }) => {
+  try {
+    saveProfile(profileId, profileData);
+    return { success: true };
+  } catch (error) {
+    console.error(`Error saving profile ${profileId}:`, error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Create a new profile
+ipcMain.handle('create-profile', async (event, profileName) => {
+  try {
+    const meta = loadProfilesMeta();
+    
+    // Generate unique ID
+    const profileId = 'profile_' + Date.now();
+    
+    // Create new profile with empty data
+    const newProfile = {
+      buttons: [],
+      uiSettings: {
+        theme: null,
+        componentVisibility: {},
+        chatWidth: null,
+        soundButtonOrder: []
+      }
+    };
+    
+    saveProfile(profileId, newProfile);
+    
+    // Add to metadata
+    meta.profiles.push({
+      id: profileId,
+      name: profileName,
+      created: new Date().toISOString()
+    });
+    saveProfilesMeta(meta);
+    
+    console.log(`Created new profile: ${profileName} (${profileId})`);
+    return { success: true, profileId };
+  } catch (error) {
+    console.error('Error creating profile:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Duplicate an existing profile
+ipcMain.handle('duplicate-profile', async (event, { sourceProfileId, newProfileName }) => {
+  try {
+    const meta = loadProfilesMeta();
+    
+    // Load source profile
+    const sourceProfile = loadProfile(sourceProfileId);
+    
+    // Generate unique ID for new profile
+    const newProfileId = 'profile_' + Date.now();
+    
+    // Deep copy the source profile data
+    const newProfile = JSON.parse(JSON.stringify(sourceProfile));
+    
+    // Save the duplicated profile
+    saveProfile(newProfileId, newProfile);
+    
+    // Add to metadata
+    meta.profiles.push({
+      id: newProfileId,
+      name: newProfileName,
+      created: new Date().toISOString()
+    });
+    saveProfilesMeta(meta);
+    
+    console.log(`Duplicated profile ${sourceProfileId} to ${newProfileName} (${newProfileId})`);
+    return { success: true, profileId: newProfileId };
+  } catch (error) {
+    console.error('Error duplicating profile:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Rename a profile
+ipcMain.handle('rename-profile', async (event, { profileId, newName }) => {
+  try {
+    const meta = loadProfilesMeta();
+    
+    // Find and update the profile name
+    const profile = meta.profiles.find(p => p.id === profileId);
+    if (profile) {
+      profile.name = newName;
+      saveProfilesMeta(meta);
+      console.log(`Renamed profile ${profileId} to ${newName}`);
+      return { success: true };
+    } else {
+      return { success: false, error: 'Profile not found' };
+    }
+  } catch (error) {
+    console.error('Error renaming profile:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Delete a profile
+ipcMain.handle('delete-profile', async (event, profileId) => {
+  try {
+    const meta = loadProfilesMeta();
+    
+    // Prevent deleting the last profile
+    if (meta.profiles.length <= 1) {
+      return { success: false, error: 'Cannot delete the last profile' };
+    }
+    
+    // Can now delete any profile, frontend handles showing only non-active ones
+    
+    // Remove from metadata
+    meta.profiles = meta.profiles.filter(p => p.id !== profileId);
+    saveProfilesMeta(meta);
+    
+    // Delete the profile file
+    const profilePath = getProfilePath(profileId);
+    if (fs.existsSync(profilePath)) {
+      fs.unlinkSync(profilePath);
+    }
+    
+    console.log(`Deleted profile ${profileId}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting profile:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Switch to a different profile
+ipcMain.handle('switch-profile', async (event, profileId) => {
+  try {
+    const meta = loadProfilesMeta();
+    
+    // Verify profile exists
+    const profile = meta.profiles.find(p => p.id === profileId);
+    if (!profile) {
+      return { success: false, error: 'Profile not found' };
+    }
+    
+    // Update active profile
+    meta.activeProfile = profileId;
+    currentActiveProfile = profileId;
+    saveProfilesMeta(meta);
+    
+    // Re-register hotkeys for the new profile
+    registerHotkeys();
+    
+    console.log(`Switched to profile ${profileId}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error switching profile:', error);
     return { success: false, error: error.message };
   }
 });
@@ -952,18 +1297,24 @@ ipcMain.handle('get-media-file', async (event, relativePath) => {
 // IPC handler to update config
 ipcMain.handle('update-config', async (event, configUpdate) => {
   try {
-    // Read current config
-    let config = { buttons: [] };
-    if (fs.existsSync(configPath)) {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    // Load current profile instead of old config
+    const profile = loadProfile(currentActiveProfile);
+    
+    // If updating theme, save it in uiSettings
+    if (configUpdate.theme) {
+      if (!profile.uiSettings) {
+        profile.uiSettings = {};
+      }
+      profile.uiSettings.theme = configUpdate.theme;
+      delete configUpdate.theme; // Remove from top level
     }
     
-    // Merge the update with existing config
-    config = { ...config, ...configUpdate };
+    // Merge other updates with existing profile
+    const updatedProfile = { ...profile, ...configUpdate };
     
-    // Write back to file
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    console.log('Config updated successfully:', configUpdate);
+    // Save to active profile
+    saveProfile(currentActiveProfile, updatedProfile);
+    console.log('Profile updated successfully:', configUpdate);
     return true;
   } catch (e) {
     console.error('Error updating config:', e);
@@ -3042,8 +3393,10 @@ ipcMain.on('trigger-media-to-main', (event, label) => {
 
 function registerHotkeys() {
   globalShortcut.unregisterAll();
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-  config.buttons.forEach((btn) => {
+  // Load buttons from active profile
+  const profile = loadProfile(currentActiveProfile);
+  const buttons = profile.buttons || [];
+  buttons.forEach((btn) => {
     if (btn.hotkey) {
       // Register the full hotkey string, including modifiers
       try {

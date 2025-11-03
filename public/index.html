@@ -45,6 +45,7 @@
         <button data-toggle="toggle-twitch-chat" class="menu-dropdown-item" role="menuitem">Twitch Chat</button>
         <button data-toggle="toggle-sound-controls" class="menu-dropdown-item" role="menuitem">Sound Controls</button>
         <button data-toggle="toggle-queue-control" class="menu-dropdown-item" role="menuitem">Alert Queue</button>
+        <button data-toggle="toggle-profile-panel" class="menu-dropdown-item" role="menuitem">Profile Panel</button>
       </div>
     </div>
     <div class="menu-item" id="menu-tools" aria-haspopup="true">
@@ -108,40 +109,22 @@
   </div>
   
 
-  <!-- Component Visibility Dropdown -->
-  <div id="visibility-dropdown" class="visibility-dropdown visibility-menu hidden">
-    <button id="visibility-toggle" class="visibility-toggle-btn">⚙️ Components</button>
-    <div id="visibility-menu" class="visibility-menu hidden">
-      <div class="visibility-header">Show/Hide Components</div>
-      <label class="visibility-item">
-        <input type="checkbox" id="toggle-sound-grid" checked> Sound Grid
-      </label>
-      <label class="visibility-item">
-        <input type="checkbox" id="toggle-twitch-stats" checked> Twitch Statistics
-      </label>
-      <label class="visibility-item">
-        <input type="checkbox" id="toggle-recent-activity" checked> Recent Activity
-      </label>
-      <label class="visibility-item">
-        <input type="checkbox" id="toggle-twitch-chat" checked> Twitch Chat
-      </label>
-      <label class="visibility-item">
-        <input type="checkbox" id="toggle-sound-controls" checked> Sound Controls
-      </label>
-      <label class="visibility-item">
-        <input type="checkbox" id="toggle-queue-control" checked> Alert Queue
-      </label>
-      <label class="visibility-item">
-        <!-- Move Bar removed -->
-      </label>
-      <div class="visibility-actions">
-        <button id="hide-all-components" class="visibility-action-btn">Hide All</button>
-        <button id="show-all-components" class="visibility-action-btn">Show All</button>
-      </div>
-      <div class="version-info">
-        <div class="version-label">App Version:</div>
-        <div class="version-value" id="app-version">Loading...</div>
-      </div>
+  <!-- Component Visibility System (checkboxes used by View menu) -->
+  <!-- Note: Visibility dropdown UI hidden - using View menu instead -->
+  <div id="visibility-dropdown" class="visibility-dropdown visibility-menu" style="display: none;">
+    <div id="visibility-menu" class="visibility-menu">
+      <!-- Hidden checkboxes that View menu items reference via data-toggle -->
+      <input type="checkbox" id="toggle-sound-grid" checked style="display: none;">
+      <input type="checkbox" id="toggle-twitch-stats" checked style="display: none;">
+      <input type="checkbox" id="toggle-recent-activity" checked style="display: none;">
+      <input type="checkbox" id="toggle-twitch-chat" checked style="display: none;">
+      <input type="checkbox" id="toggle-sound-controls" checked style="display: none;">
+      <input type="checkbox" id="toggle-queue-control" checked style="display: none;">
+      <input type="checkbox" id="toggle-profile-panel" checked style="display: none;">
+      
+      <!-- Hidden buttons that View menu delegates to -->
+      <button id="hide-all-components" style="display: none;">Hide All</button>
+      <button id="show-all-components" style="display: none;">Show All</button>
     </div>
   </div>
   
@@ -218,6 +201,37 @@
         <button id="queue-widget-stop" class="queue-widget-btn" title="Stop Current">
           <span class="btn-icon">⏹️</span>
           <span class="btn-label">Stop</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Profile Management Panel -->
+    <div id="profile-panel" class="profile-panel">
+      <div class="profile-header">
+        <span class="profile-icon">👤</span>
+        <span class="profile-title">Profile</span>
+      </div>
+      <div class="profile-current">
+        <select id="profile-selector" class="profile-selector">
+          <option value="default">Default Profile</option>
+        </select>
+      </div>
+      <div class="profile-actions">
+        <button id="profile-create" class="profile-btn" title="Create New Profile">
+          <span class="btn-icon">➕</span>
+          <span class="btn-label">New</span>
+        </button>
+        <button id="profile-duplicate" class="profile-btn" title="Duplicate Current Profile">
+          <span class="btn-icon">📋</span>
+          <span class="btn-label">Duplicate</span>
+        </button>
+        <button id="profile-rename" class="profile-btn" title="Rename Current Profile">
+          <span class="btn-icon">✏️</span>
+          <span class="btn-label">Rename</span>
+        </button>
+        <button id="profile-delete" class="profile-btn" title="Delete Current Profile">
+          <span class="btn-icon">🗑️</span>
+          <span class="btn-label">Delete</span>
         </button>
       </div>
     </div>
@@ -992,7 +1006,7 @@
       <h3>Overlay Preview</h3>
       <button id="close-overlay-preview" class="close-preview-btn" title="Close Overlay Preview">×</button>
     </div>
-    <iframe id="overlay-iframe" src="overlay.html?name=dashboard-preview&muted=true" width="800" height="450" frameborder="0"></iframe>
+    <iframe id="overlay-iframe" src="" width="800" height="450" frameborder="0"></iframe>
   </div>
 
   <!-- Overlay Widget -->
