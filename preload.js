@@ -125,4 +125,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendTwitchChatMessage: async (message) => ipcRenderer.invoke('sendTwitchChatMessage', message),
   // Bug Report
   reportBug: async () => ipcRenderer.invoke('report-bug'),
+  // Profile Management
+  getProfiles: async () => ipcRenderer.invoke('get-profiles'),
+  getProfile: async (profileId) => ipcRenderer.invoke('get-profile', profileId),
+  saveProfile: async (profileId, profileData) => ipcRenderer.invoke('save-profile', { profileId, profileData }),
+  createProfile: async (profileName) => ipcRenderer.invoke('create-profile', profileName),
+  duplicateProfile: async (sourceProfileId, newProfileName) => ipcRenderer.invoke('duplicate-profile', { sourceProfileId, newProfileName }),
+  renameProfile: async (profileId, newName) => ipcRenderer.invoke('rename-profile', { profileId, newName }),
+  deleteProfile: async (profileId) => ipcRenderer.invoke('delete-profile', profileId),
+  switchProfile: async (profileId) => ipcRenderer.invoke('switch-profile', profileId),
 });
