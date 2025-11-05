@@ -6653,6 +6653,50 @@ function setupOverlayWidget() {
       }
     });
   }
+  
+  // Progression system handlers
+  const openProgressionManagerBtn = document.getElementById('open-progression-manager');
+  const copyProgressionUrlBtn = document.getElementById('copy-progression-url');
+  
+  if (openProgressionManagerBtn) {
+    console.log('✅ Progression manager button found, adding click handler');
+    console.log('✅ Button element:', openProgressionManagerBtn);
+    console.log('✅ Button ID:', openProgressionManagerBtn.id);
+    console.log('✅ Button parent:', openProgressionManagerBtn.parentElement);
+    console.log('✅ Button closest widget:', openProgressionManagerBtn.closest('.overlay-widget, .alert-widget'));
+    
+    // Remove any existing listeners by cloning the element
+    const newBtn = openProgressionManagerBtn.cloneNode(true);
+    openProgressionManagerBtn.parentNode.replaceChild(newBtn, openProgressionManagerBtn);
+    
+    newBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      console.log('🟢 PROGRESSION MANAGER button clicked from Overlay Widget');
+      console.log('🟢 Event target:', e.target);
+      console.log('🟢 Event currentTarget:', e.currentTarget);
+      console.log('🟢 Stack trace:');
+      console.trace();
+      openProgressionManager();
+    }, { once: false });
+  } else {
+    console.warn('⚠️ Progression manager button not found');
+  }
+  
+  if (copyProgressionUrlBtn) {
+    copyProgressionUrlBtn.addEventListener('click', () => {
+      const url = 'http://localhost:8080/progression';
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => {
+          showCustomAlert('Progression overlay URL copied to clipboard!', 'success');
+        }).catch(err => {
+          console.error('Failed to copy:', err);
+          showCustomAlert('Failed to copy URL to clipboard', 'error');
+        });
+      }
+    });
+  }
 }
 
 // Hydration Settings Functions
@@ -9711,8 +9755,10 @@ function showOverlayWidget() {
 
 // Function to show alert widget
 function showAlertWidget() {
+  console.log('📢 showAlertWidget() function called');
   const alertWidget = document.getElementById('alert-widget');
   if (alertWidget) {
+    console.log('📢 Alert widget found, showing it');
     alertWidget.classList.remove('hidden');
     
     // Disable hotkeys when alert widget is open to prevent conflicts
@@ -10665,6 +10711,7 @@ function setupLeftAppMenu() {
   const toolsAlerts = document.getElementById('menu-tools-alerts');
   if (toolsAlerts) {
     toolsAlerts.addEventListener('click', (e) => {
+      console.log('🔴 ALERT WIDGET button clicked from Tools menu');
       e.stopPropagation();
       showAlertWidget();
       if (toolsDropdown) toolsDropdown.classList.add('hidden');
@@ -13990,3 +14037,791 @@ window.testTwitchEventPipeline = function() {
 
 // Add a shorter alias for quick testing
 window.testTwitchEvents = window.testTwitchEventPipeline;
+
+// ========== Progression System Management ==========
+
+// Open progression manager modal
+async function openProgressionManager() {
+  console.log('🔵 Opening progression manager modal...');
+  
+  // Close overlay widget if it's open (so modal is visible)
+  const overlayWidget = document.getElementById('overlay-widget');
+  if (overlayWidget && !overlayWidget.classList.contains('hidden')) {
+    console.log('🔵 Closing overlay widget to show progression modal');
+    overlayWidget.classList.add('hidden');
+  }
+  
+  // Also close alert widget if it's open
+  const alertWidget = document.getElementById('alert-widget');
+  if (alertWidget && !alertWidget.classList.contains('hidden')) {
+    console.log('🔵 Closing alert widget to show progression modal');
+    alertWidget.classList.add('hidden');
+  }
+  
+  const modal = document.getElementById('progression-manager-modal');
+  if (!modal) {
+    console.error('Progression manager modal not found!');
+    showCustomAlert('Progression manager modal not found. Please restart the app.', 'error');
+    return;
+  }
+  
+  // Debug: Check all parent elements for visibility issues
+  console.log('🔍 Checking parent chain:');
+  let el = modal;
+  while (el) {
+    console.log(el.tagName, el.id || el.className, {
+      display: getComputedStyle(el).display,
+      visibility: getComputedStyle(el).visibility,
+      opacity: getComputedStyle(el).opacity
+    });
+    el = el.parentElement;
+  }
+  
+  // Remove hidden class first
+  modal.classList.remove('hidden');
+  
+  // Force a reflow to ensure browser recalculates layout
+  void modal.offsetHeight; // Forces reflow
+  
+  // Use requestAnimationFrame to defer the style changes to next paint
+  requestAnimationFrame(() => {
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex !important; justify-content: center; align-items: center; z-index: 100000; padding: 20px; box-sizing: border-box;';
+    
+    // Force another reflow after setting styles
+    void modal.offsetHeight;
+    
+    console.log('Modal opened, classes:', modal.className);
+    console.log('Modal display:', window.getComputedStyle(modal).display);
+    console.log('Modal z-index:', window.getComputedStyle(modal).zIndex);
+    console.log('Modal visibility:', window.getComputedStyle(modal).visibility);
+    console.log('Modal opacity:', window.getComputedStyle(modal).opacity);
+    console.log('🔵 Progression modal should now be visible!');
+  });
+  
+  // Load progressions list
+  await loadProgressionsList();
+  
+  // Setup close button if not already set up
+  const closeBtn = document.getElementById('progression-manager-close');
+  if (closeBtn && !closeBtn.hasAttribute('data-listener-attached')) {
+    closeBtn.setAttribute('data-listener-attached', 'true');
+    closeBtn.addEventListener('click', () => {
+      console.log('Closing progression manager...');
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    });
+  }
+  
+  // Setup create button if not already set up
+  const createBtn = document.getElementById('create-new-progression');
+  if (createBtn && !createBtn.hasAttribute('data-listener-attached')) {
+    createBtn.setAttribute('data-listener-attached', 'true');
+    createBtn.addEventListener('click', () => {
+      openProgressionEditor(null);
+    });
+  }
+  
+  // Setup test redeem button
+  const testRedeemBtn = document.getElementById('test-progression-redeem');
+  if (testRedeemBtn && !testRedeemBtn.hasAttribute('data-listener-attached')) {
+    testRedeemBtn.setAttribute('data-listener-attached', 'true');
+    testRedeemBtn.addEventListener('click', () => {
+      testProgressionRedeem();
+    });
+  }
+}
+
+// Test a single progression (called from progression card)
+window.testSingleProgression = async function(progressionId) {
+  try {
+    const result = await window.electronAPI.getProgressions();
+    const progression = result.progressions.find(p => p.id === progressionId);
+    
+    if (!progression) {
+      showCustomAlert('Progression not found!', 'error');
+      return;
+    }
+    
+    openProgressionTestModal(progression);
+  } catch (error) {
+    console.error('Error testing progression:', error);
+    showCustomAlert('Error: ' + error.message, 'error');
+  }
+};
+
+// Test progression redeem (with selection)
+async function testProgressionRedeem() {
+  try {
+    const result = await window.electronAPI.getProgressions();
+    const progressions = result.progressions || [];
+    
+    if (progressions.length === 0) {
+      showCustomAlert('No progressions configured yet. Create one first!', 'error');
+      return;
+    }
+    
+    // If only one progression, open it directly
+    if (progressions.length === 1) {
+      openProgressionTestModal(progressions[0]);
+      return;
+    }
+    
+    // Show custom alert to select which progression
+    const listHtml = progressions.map((prog, i) => 
+      `<button onclick="window.testSingleProgression('${prog.id}')" style="width:100%;padding:12px;margin:5px 0;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:6px;cursor:pointer;color:var(--text-primary);text-align:left;">
+        ${i + 1}. ${prog.name} (${prog.redeemKeyword})
+      </button>`
+    ).join('');
+    
+    showCustomAlert(`<div style="max-height:400px;overflow-y:auto;">${listHtml}</div>`, 'info');
+  } catch (error) {
+    console.error('Error testing progression redeem:', error);
+    showCustomAlert('Error: ' + error.message, 'error');
+  }
+}
+
+// Open progression test modal
+function openProgressionTestModal(progression) {
+  const modal = document.getElementById('progression-test-modal');
+  if (!modal) {
+    showCustomAlert('Test modal not found!', 'error');
+    return;
+  }
+  
+  // Populate progression info
+  const currentStage = progression.stages[progression.currentStageIndex];
+  document.getElementById('test-prog-name').textContent = progression.name;
+  document.getElementById('test-prog-keyword').textContent = progression.redeemKeyword;
+  document.getElementById('test-prog-stage').textContent = progression.currentStageIndex + 1;
+  document.getElementById('test-prog-total').textContent = progression.stages.length;
+  document.getElementById('test-prog-count').textContent = progression.currentCount;
+  document.getElementById('test-prog-required').textContent = currentStage ? currentStage.requiredCount : 0;
+  
+  // Store progression ID for later
+  modal.dataset.progressionId = progression.id;
+  
+  // Setup handlers
+  setupProgressionTestHandlers();
+  
+  // Show modal
+  modal.classList.remove('hidden');
+  void modal.offsetHeight;
+  requestAnimationFrame(() => {
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex !important; justify-content: center; align-items: center; z-index: 100001; padding: 20px; box-sizing: border-box;';
+  });
+}
+
+// Setup progression test modal handlers
+function setupProgressionTestHandlers() {
+  const modal = document.getElementById('progression-test-modal');
+  const closeBtn = document.getElementById('progression-test-close');
+  const cancelBtn = document.getElementById('progression-test-cancel');
+  const sendBtn = document.getElementById('progression-test-send');
+  
+  if (closeBtn && !closeBtn.hasAttribute('data-test-listener')) {
+    closeBtn.setAttribute('data-test-listener', 'true');
+    closeBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    });
+  }
+  
+  if (cancelBtn && !cancelBtn.hasAttribute('data-test-listener')) {
+    cancelBtn.setAttribute('data-test-listener', 'true');
+    cancelBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    });
+  }
+  
+  if (sendBtn && !sendBtn.hasAttribute('data-test-listener')) {
+    sendBtn.setAttribute('data-test-listener', 'true');
+    sendBtn.addEventListener('click', async () => {
+      const progressionId = modal.dataset.progressionId;
+      const username = document.getElementById('test-progression-username').value || 'TestUser';
+      
+      // Get the progression
+      const result = await window.electronAPI.getProgressions();
+      const progression = result.progressions.find(p => p.id === progressionId);
+      
+      if (!progression) {
+        showCustomAlert('Progression not found!', 'error');
+        return;
+      }
+      
+      // Send test redemption
+      await sendTestRedemption(progression, username);
+      
+      // Refresh progression info in the modal
+      setTimeout(async () => {
+        const updatedResult = await window.electronAPI.getProgressions();
+        const updatedProg = updatedResult.progressions.find(p => p.id === progressionId);
+        if (updatedProg) {
+          const currentStage = updatedProg.stages[updatedProg.currentStageIndex];
+          document.getElementById('test-prog-stage').textContent = updatedProg.currentStageIndex + 1;
+          document.getElementById('test-prog-count').textContent = updatedProg.currentCount;
+          document.getElementById('test-prog-required').textContent = currentStage ? currentStage.requiredCount : 0;
+        }
+      }, 300);
+      
+      // Don't close modal - let user test multiple times
+      // modal.classList.add('hidden');
+      // modal.style.display = 'none';
+    });
+  }
+}
+
+// Helper to send test redemption (global so it can be used from anywhere)
+window.sendTestRedemption = async function sendTestRedemption(progression, username) {
+  try {
+    
+    // Send fake Twitch redemption event
+    const fakeEvent = {
+      type: 'redeem',
+      user_name: username,
+      user: username,
+      event: {
+        user_name: username,
+        user_login: username.toLowerCase(),
+        reward: {
+          title: progression.redeemKeyword,
+          name: progression.redeemKeyword
+        },
+        user_input: ''
+      }
+    };
+    
+    console.log('🧪 Sending test redemption:', fakeEvent);
+    
+    // Send the event through the Twitch event system
+    if (window.electronAPI && window.electronAPI.sendFakeTwitchEventHandle) {
+      const sendResult = await window.electronAPI.sendFakeTwitchEventHandle(fakeEvent);
+      console.log('Test event sent:', sendResult);
+      showCustomAlert(`Test redeem sent for "${progression.name}" by ${username}! Check the progression overlay.`, 'success');
+      
+      // Refresh the list to show updated counts
+      setTimeout(async () => {
+        await loadProgressionsList();
+      }, 500);
+    } else {
+      showCustomAlert('Test event API not available', 'error');
+    }
+  } catch (error) {
+    console.error('Error testing progression redeem:', error);
+    showCustomAlert('Error: ' + error.message, 'error');
+  }
+}
+
+// Load progressions list
+async function loadProgressionsList() {
+  console.log('Loading progressions list...');
+  const listContainer = document.getElementById('progressions-list');
+  const noMessage = document.getElementById('no-progressions-message');
+  
+  if (!listContainer) {
+    console.warn('Progressions list container not found!');
+    return;
+  }
+  
+  try {
+    console.log('Fetching progressions from backend...');
+    
+    if (!window.electronAPI || !window.electronAPI.getProgressions) {
+      console.error('electronAPI.getProgressions not available!');
+      listContainer.innerHTML = '<div style="padding:20px;color:red;">Error: Progression API not available. Please restart the app.</div>';
+      return;
+    }
+    
+    const result = await window.electronAPI.getProgressions();
+    console.log('Progressions result:', result);
+    const progressions = result.progressions || [];
+    
+    if (progressions.length === 0) {
+      listContainer.innerHTML = '';
+      if (noMessage) noMessage.style.display = 'block';
+      return;
+    }
+    
+    if (noMessage) noMessage.style.display = 'none';
+    
+    listContainer.innerHTML = progressions.map(prog => {
+      const currentStage = prog.stages[prog.currentStageIndex];
+      return `
+        <div class="progression-card" style="padding:15px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;">
+            <div>
+              <h4 style="margin:0 0 5px 0;">${prog.name}</h4>
+              <div style="font-size:12px;color:var(--text-tertiary);">
+                Redeem: <code>${prog.redeemKeyword}</code> | 
+                Action: <span style="color:var(--accent);">${prog.actionWord || 'contributed'}</span> | 
+                Stage ${prog.currentStageIndex + 1}/${prog.stages.length} | 
+                ${prog.currentCount}/${currentStage ? currentStage.requiredCount : 0}
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button onclick="testSingleProgression('${prog.id}')" style="padding:6px 12px;background:#10b981;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">🧪 Test</button>
+              <button onclick="openProgressionEditor('${prog.id}')" style="padding:6px 12px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Edit</button>
+              <button onclick="resetProgression('${prog.id}')" style="padding:6px 12px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:4px;cursor:pointer;font-size:12px;">Reset</button>
+              <button onclick="deleteProgression('${prog.id}')" style="padding:6px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Delete</button>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--text-secondary);">
+            Total Redeems: ${prog.totalRedeems} | 
+            Top Contributor: ${prog.topRedeemers && prog.topRedeemers.length > 0 ? prog.topRedeemers[0].username + ' (' + prog.topRedeemers[0].count + ')' : 'None yet'}
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (error) {
+    console.error('Error loading progressions:', error);
+    showCustomAlert('Failed to load progressions: ' + error.message, 'error');
+  }
+}
+
+// Open progression editor (global so onclick handlers can call it)
+window.openProgressionEditor = async function openProgressionEditor(progressionId) {
+  console.log('📝 Opening progression editor for:', progressionId || 'new progression');
+  
+  const editorModal = document.getElementById('progression-editor-modal');
+  const managerModal = document.getElementById('progression-manager-modal');
+  
+  if (!editorModal) {
+    showCustomAlert('Progression editor modal not found!', 'error');
+    return;
+  }
+  
+  // Close manager modal
+  if (managerModal) {
+    managerModal.classList.add('hidden');
+    managerModal.style.display = 'none';
+  }
+  
+  // Reset form
+  const form = document.getElementById('progression-form');
+  form.reset();
+  form.dataset.progressionId = ''; // Clear progression ID
+  document.getElementById('progression-stages-list').innerHTML = '';
+  document.getElementById('progression-editor-title').textContent = 'New Progression';
+  
+  // Load existing progression if editing
+  if (progressionId) {
+    const result = await window.electronAPI.getProgressions();
+    const progression = result.progressions.find(p => p.id === progressionId);
+    if (progression) {
+      await loadProgressionIntoEditor(progression);
+    }
+  } else {
+    // Add one default stage for new progressions
+    addProgressionStage();
+  }
+  
+  // Setup form handlers
+  setupProgressionEditorHandlers();
+  
+  // Show modal
+  editorModal.classList.remove('hidden');
+  void editorModal.offsetHeight;
+  requestAnimationFrame(() => {
+    editorModal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex !important; justify-content: center; align-items: center; z-index: 100001; padding: 20px; box-sizing: border-box;';
+  });
+}
+
+// Setup progression editor event handlers
+function setupProgressionEditorHandlers() {
+  const form = document.getElementById('progression-form');
+  const closeBtn = document.getElementById('progression-editor-close');
+  const cancelBtn = document.getElementById('progression-form-cancel');
+  const addStageBtn = document.getElementById('add-progression-stage');
+  const uniformCheckbox = document.getElementById('progression-uniform-count');
+  const uniformCountValue = document.getElementById('progression-uniform-count-value');
+  const displayModeSelect = document.getElementById('progression-display-mode');
+  const durationContainer = document.getElementById('progression-duration-container');
+  const helpBtn = document.getElementById('progression-placeholders-help');
+  
+  // Help button (placeholders guide)
+  if (helpBtn && !helpBtn.hasAttribute('data-editor-listener')) {
+    helpBtn.setAttribute('data-editor-listener', 'true');
+    helpBtn.addEventListener('click', () => {
+      openPlaceholdersGuide();
+    });
+  }
+  
+  // Close button
+  if (closeBtn && !closeBtn.hasAttribute('data-editor-listener')) {
+    closeBtn.setAttribute('data-editor-listener', 'true');
+    closeBtn.addEventListener('click', () => {
+      closeProgressionEditor();
+    });
+  }
+  
+  // Cancel button
+  if (cancelBtn && !cancelBtn.hasAttribute('data-editor-listener')) {
+    cancelBtn.setAttribute('data-editor-listener', 'true');
+    cancelBtn.addEventListener('click', () => {
+      closeProgressionEditor();
+    });
+  }
+  
+  // Add stage button
+  if (addStageBtn && !addStageBtn.hasAttribute('data-editor-listener')) {
+    addStageBtn.setAttribute('data-editor-listener', 'true');
+    addStageBtn.addEventListener('click', () => {
+      addProgressionStage();
+    });
+  }
+  
+  // Uniform count checkbox
+  if (uniformCheckbox && !uniformCheckbox.hasAttribute('data-editor-listener')) {
+    uniformCheckbox.setAttribute('data-editor-listener', 'true');
+    uniformCheckbox.addEventListener('change', () => {
+      if (uniformCheckbox.checked) {
+        uniformCountValue.style.display = 'block';
+        // Hide individual stage count inputs
+        document.querySelectorAll('.stage-required-count').forEach(input => {
+          input.style.display = 'none';
+        });
+      } else {
+        uniformCountValue.style.display = 'none';
+        // Show individual stage count inputs
+        document.querySelectorAll('.stage-required-count').forEach(input => {
+          input.style.display = 'block';
+        });
+      }
+    });
+  }
+  
+  // Display mode change
+  if (displayModeSelect && !displayModeSelect.hasAttribute('data-editor-listener')) {
+    displayModeSelect.setAttribute('data-editor-listener', 'true');
+    displayModeSelect.addEventListener('change', () => {
+      if (displayModeSelect.value === 'duration') {
+        durationContainer.style.display = 'block';
+      } else {
+        durationContainer.style.display = 'none';
+      }
+    });
+    
+    // Set initial state
+    if (displayModeSelect.value === 'duration') {
+      durationContainer.style.display = 'block';
+    } else {
+      durationContainer.style.display = 'none';
+    }
+  }
+  
+  // Form submit
+  if (form && !form.hasAttribute('data-editor-listener')) {
+    form.setAttribute('data-editor-listener', 'true');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await saveProgression();
+    });
+  }
+}
+
+// Close progression editor
+function closeProgressionEditor() {
+  const editorModal = document.getElementById('progression-editor-modal');
+  if (editorModal) {
+    editorModal.classList.add('hidden');
+    editorModal.style.display = 'none';
+  }
+  
+  // Reopen manager modal
+  openProgressionManager();
+}
+
+// Add a stage to the progression
+let stageCounter = 0;
+function addProgressionStage(stageData = null) {
+  const stagesList = document.getElementById('progression-stages-list');
+  if (!stagesList) return;
+  
+  const stageId = stageData?.id || `stage_${Date.now()}_${stageCounter++}`;
+  const stageNum = stagesList.children.length + 1;
+  
+  const existingMedia = stageData?.mediaPath ? `<div style="color:var(--text-secondary);font-size:12px;margin-top:4px;">Current: ${stageData.mediaPath.split(/[\\/]/).pop()}</div>` : '';
+  const existingAudio = stageData?.audioPath ? `<div style="color:var(--text-secondary);font-size:12px;margin-top:4px;">Current: ${stageData.audioPath.split(/[\\/]/).pop()}</div>` : '';
+  
+  const stageHtml = `
+    <div class="progression-stage-item" data-stage-id="${stageId}" 
+         data-media-path="${stageData?.mediaPath || ''}" 
+         data-media-type="${stageData?.mediaType || ''}"
+         data-audio-path="${stageData?.audioPath || ''}"
+         style="padding:15px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <h4 style="margin:0;">Stage ${stageNum}</h4>
+        <button type="button" class="remove-stage-btn" data-stage-id="${stageId}" style="padding:6px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Remove</button>
+      </div>
+      
+      <div style="display:grid;gap:12px;">
+        <div class="stage-required-count">
+          <label style="display:block;margin-bottom:5px;font-weight:600;font-size:14px;">Redeems Required</label>
+          <input type="number" class="stage-count-input" data-stage-id="${stageId}" min="1" value="${stageData?.requiredCount || 5}" required style="width:100%;padding:8px;border-radius:4px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+        </div>
+        
+        <div>
+          <label style="display:block;margin-bottom:5px;font-weight:600;font-size:14px;">Media File (Image/GIF/Video)</label>
+          <input type="file" class="stage-media-input" data-stage-id="${stageId}" accept="image/*,video/*" style="width:100%;padding:8px;border-radius:4px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+          ${existingMedia}
+          <div class="stage-media-preview" data-stage-id="${stageId}" style="margin-top:8px;min-height:40px;display:none;"></div>
+        </div>
+        
+        <div>
+          <label style="display:block;margin-bottom:5px;font-weight:600;font-size:14px;">Audio File (Optional)</label>
+          <input type="file" class="stage-audio-input" data-stage-id="${stageId}" accept="audio/*" style="width:100%;padding:8px;border-radius:4px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+          ${existingAudio}
+        </div>
+      </div>
+    </div>
+  `;
+  
+  stagesList.insertAdjacentHTML('beforeend', stageHtml);
+  
+  // Add remove handler
+  const removeBtn = stagesList.querySelector(`[data-stage-id="${stageId}"].remove-stage-btn`);
+  if (removeBtn) {
+    removeBtn.addEventListener('click', () => {
+      const stageItem = stagesList.querySelector(`[data-stage-id="${stageId}"].progression-stage-item`);
+      if (stageItem) {
+        stageItem.remove();
+        // Renumber remaining stages
+        renumberStages();
+      }
+    });
+  }
+  
+  // Add media preview handler
+  const mediaInput = stagesList.querySelector(`[data-stage-id="${stageId}"].stage-media-input`);
+  if (mediaInput) {
+    mediaInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const preview = stagesList.querySelector(`[data-stage-id="${stageId}"].stage-media-preview`);
+        if (preview) {
+          preview.style.display = 'block';
+          if (file.type.startsWith('image/')) {
+            preview.innerHTML = `<img src="${URL.createObjectURL(file)}" style="max-width:200px;max-height:150px;border-radius:4px;">`;
+          } else if (file.type.startsWith('video/')) {
+            preview.innerHTML = `<video src="${URL.createObjectURL(file)}" style="max-width:200px;max-height:150px;border-radius:4px;" controls></video>`;
+          }
+        }
+      }
+    });
+  }
+}
+
+// Renumber stages
+function renumberStages() {
+  const stages = document.querySelectorAll('.progression-stage-item');
+  stages.forEach((stage, index) => {
+    const header = stage.querySelector('h4');
+    if (header) {
+      header.textContent = `Stage ${index + 1}`;
+    }
+  });
+}
+
+// Load progression into editor
+async function loadProgressionIntoEditor(progression) {
+  document.getElementById('progression-editor-title').textContent = 'Edit Progression';
+  document.getElementById('progression-name').value = progression.name || '';
+  document.getElementById('progression-redeem-keyword').value = progression.redeemKeyword || '';
+  document.getElementById('progression-action-word').value = progression.actionWord || 'contributed';
+  document.getElementById('progression-overlay-text').value = progression.overlayText || '';
+  document.getElementById('progression-chat-command').value = progression.chatCommand || '';
+  document.getElementById('progression-chat-message').value = progression.chatMessage || '';
+  document.getElementById('progression-display-mode').value = progression.displayMode || 'always';
+  document.getElementById('progression-duration').value = progression.duration || 10;
+  document.getElementById('progression-persistence').value = progression.persistenceMode || 'permanent';
+  document.getElementById('progression-uniform-count').checked = progression.uniformCount || false;
+  
+  if (progression.uniformCount) {
+    document.getElementById('progression-uniform-count-value').style.display = 'block';
+    document.getElementById('progression-uniform-count-input').value = progression.stages[0]?.requiredCount || 5;
+  }
+  
+  // Load stages
+  if (progression.stages && progression.stages.length > 0) {
+    progression.stages.forEach(stage => {
+      addProgressionStage(stage);
+    });
+  }
+  
+  // Store progression ID for update
+  document.getElementById('progression-form').dataset.progressionId = progression.id;
+}
+
+// Save progression
+async function saveProgression() {
+  try {
+    console.log('💾 Saving progression...');
+    
+    const form = document.getElementById('progression-form');
+    const progressionId = form.dataset.progressionId;
+    
+    const uniformCount = document.getElementById('progression-uniform-count').checked;
+    const uniformCountValue = uniformCount ? parseInt(document.getElementById('progression-uniform-count-input').value) : null;
+    
+    // Collect stage data
+    const stages = [];
+    const stageItems = document.querySelectorAll('.progression-stage-item');
+    
+    for (let i = 0; i < stageItems.length; i++) {
+      const stageItem = stageItems[i];
+      const stageId = stageItem.dataset.stageId;
+      const countInput = stageItem.querySelector('.stage-count-input');
+      const mediaInput = stageItem.querySelector('.stage-media-input');
+      const audioInput = stageItem.querySelector('.stage-audio-input');
+      
+      const requiredCount = uniformCount ? uniformCountValue : parseInt(countInput.value);
+      
+      const stage = {
+        id: stageId,
+        requiredCount: requiredCount
+      };
+      
+      // Check for existing media data
+      const existingMediaPath = stageItem.dataset.mediaPath;
+      const existingMediaType = stageItem.dataset.mediaType;
+      const existingAudioPath = stageItem.dataset.audioPath;
+      
+      // Handle media file
+      if (mediaInput && mediaInput.files && mediaInput.files.length > 0) {
+        const file = mediaInput.files[0];
+        const filePath = window.electronAPI.getFilePathFromFile(file);
+        
+        if (filePath) {
+          // Save media file
+          const mediaResult = await window.electronAPI.saveProgressionMedia({
+            sourcePath: filePath,
+            progressionId: progressionId || 'temp_' + Date.now(),
+            stageId: stageId,
+            mediaType: file.type.startsWith('image/') ? 'image' : 'video',
+            originalName: file.name
+          });
+          
+          if (mediaResult.success) {
+            stage.mediaPath = mediaResult.filePath;
+            stage.mediaType = file.type.startsWith('image/') ? 'image' : 'video';
+          }
+        }
+      } else if (existingMediaPath) {
+        // Use existing media if no new file uploaded
+        stage.mediaPath = existingMediaPath;
+        stage.mediaType = existingMediaType;
+      }
+      
+      // Handle audio file
+      if (audioInput && audioInput.files && audioInput.files.length > 0) {
+        const file = audioInput.files[0];
+        const filePath = window.electronAPI.getFilePathFromFile(file);
+        
+        if (filePath) {
+          const audioResult = await window.electronAPI.saveProgressionMedia({
+            sourcePath: filePath,
+            progressionId: progressionId || 'temp_' + Date.now(),
+            stageId: stageId,
+            mediaType: 'audio',
+            originalName: file.name
+          });
+          
+          if (audioResult.success) {
+            stage.audioPath = audioResult.filePath;
+          }
+        }
+      } else if (existingAudioPath) {
+        // Use existing audio if no new file uploaded
+        stage.audioPath = existingAudioPath;
+      }
+      
+      stages.push(stage);
+    }
+    
+    if (stages.length === 0) {
+      showCustomAlert('Please add at least one stage!', 'error');
+      return;
+    }
+    
+    // Build progression object
+    const progression = {
+      id: progressionId,
+      name: document.getElementById('progression-name').value,
+      redeemKeyword: document.getElementById('progression-redeem-keyword').value,
+      targetOverlay: 'progressionOverlay', // Always use dedicated progression overlay
+      actionWord: document.getElementById('progression-action-word').value || 'contributed',
+      overlayText: document.getElementById('progression-overlay-text').value,
+      chatCommand: document.getElementById('progression-chat-command').value,
+      chatMessage: document.getElementById('progression-chat-message').value,
+      displayMode: document.getElementById('progression-display-mode').value,
+      duration: parseInt(document.getElementById('progression-duration').value),
+      persistenceMode: document.getElementById('progression-persistence').value,
+      uniformCount: uniformCount,
+      stages: stages,
+      currentStageIndex: 0,
+      currentCount: 0,
+      totalRedeems: 0,
+      topRedeemers: []
+    };
+    
+    console.log('Saving progression:', progression);
+    
+    // Save to backend
+    const result = await window.electronAPI.saveProgression(progression);
+    
+    if (result.success) {
+      showCustomAlert('Progression saved successfully!', 'success');
+      closeProgressionEditor();
+      // Refresh the manager list
+      await loadProgressionsList();
+    } else {
+      showCustomAlert('Failed to save progression: ' + result.error, 'error');
+    }
+  } catch (error) {
+    console.error('Error saving progression:', error);
+    showCustomAlert('Error saving progression: ' + error.message, 'error');
+  }
+}
+
+// Reset progression
+window.resetProgression = async function(progressionId) {
+  if (!confirm('Reset this progression? This will clear all progress and leaderboard data.')) {
+    return;
+  }
+  
+  try {
+    const result = await window.electronAPI.resetProgression(progressionId);
+    if (result.success) {
+      showCustomAlert('Progression reset successfully!', 'success');
+      await loadProgressionsList();
+    } else {
+      showCustomAlert('Failed to reset progression: ' + result.error, 'error');
+    }
+  } catch (error) {
+    console.error('Error resetting progression:', error);
+    showCustomAlert('Error resetting progression: ' + error.message, 'error');
+  }
+};
+
+// Delete progression
+window.deleteProgression = async function(progressionId) {
+  if (!confirm('Delete this progression? This action cannot be undone.')) {
+    return;
+  }
+  
+  try {
+    const result = await window.electronAPI.deleteProgression(progressionId);
+    if (result.success) {
+      showCustomAlert('Progression deleted successfully!', 'success');
+      await loadProgressionsList();
+    } else {
+      showCustomAlert('Failed to delete progression: ' + result.error, 'error');
+    }
+  } catch (error) {
+    console.error('Error deleting progression:', error);
+    showCustomAlert('Error deleting progression: ' + error.message, 'error');
+  }
+};
+
+// Progression system is initialized via setupOverlayWidget()
+console.log('✅ Progression system functions loaded');

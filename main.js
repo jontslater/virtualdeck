@@ -59,6 +59,8 @@ const defaultSkinsDir = path.join(__dirname, 'skins');
 const tcConfigPath = path.join(userDataPath, 'tc_config.json');
 const dailyCheckinsPath = path.join(userDataPath, 'checkins.json');
 const hydrationConfigPath = path.join(userDataPath, 'hydration-config.json');
+const progressionsPath = path.join(userDataPath, 'progressions.json');
+const progressionsMediaPath = path.join(userDataPath, 'media', 'progressions');
 
 // Profile management globals
 let currentActiveProfile = 'default';
@@ -66,6 +68,11 @@ let currentActiveProfile = 'default';
 // Cooldown tracking for !checkin command (username -> timestamp)
 const checkinCommandCooldown = new Map();
 const CHECKIN_COMMAND_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+
+// Progression system globals
+let progressionsData = { progressions: [] };
+const progressionCommandCooldown = new Map();
+const PROGRESSION_COMMAND_COOLDOWN_MS = 30 * 1000; // 30 seconds
 
 // Helper function to get check-in leaderboard
 function getCheckinLeaderboard(showStreak = false, limit = 5) {
@@ -368,6 +375,117 @@ function saveHydrationConfig(cfg) {
   }
 }
 
+// Progression system management
+function loadProgressions() {
+  try {
+    if (fs.existsSync(progressionsPath)) {
+      const data = JSON.parse(fs.readFileSync(progressionsPath, 'utf-8'));
+      // Ensure proper structure
+      if (!data.progressions) {
+        data.progressions = [];
+      }
+      // Initialize runtime state for session-only progressions
+      data.progressions.forEach(prog => {
+        if (prog.persistenceMode === 'session') {
+          prog.currentStageIndex = 0;
+          prog.currentCount = 0;
+        }
+        // Ensure required fields exist
+        if (!prog.topRedeemers) prog.topRedeemers = [];
+        if (typeof prog.totalRedeems !== 'number') prog.totalRedeems = 0;
+        if (typeof prog.currentStageIndex !== 'number') prog.currentStageIndex = 0;
+        if (typeof prog.currentCount !== 'number') prog.currentCount = 0;
+      });
+      return data;
+    }
+  } catch (e) {
+    console.error('Error loading progressions:', e);
+  }
+  // Default empty structure
+  return { progressions: [] };
+}
+
+function saveProgressions(data) {
+  try {
+    // Ensure progressions media directory exists
+    if (!fs.existsSync(progressionsMediaPath)) {
+      fs.mkdirSync(progressionsMediaPath, { recursive: true });
+    }
+    fs.writeFileSync(progressionsPath, JSON.stringify(data, null, 2));
+    console.log('Progressions saved');
+  } catch (e) {
+    console.error('Error saving progressions:', e);
+  }
+}
+
+function getProgressionByRedeemKeyword(keyword) {
+  if (!keyword || !progressionsData || !progressionsData.progressions) {
+    return null;
+  }
+  const lowerKeyword = keyword.toLowerCase().trim();
+  return progressionsData.progressions.find(prog => 
+    prog.redeemKeyword && prog.redeemKeyword.toLowerCase().trim() === lowerKeyword
+  );
+}
+
+function incrementProgression(progressionId, username) {
+  const progression = progressionsData.progressions.find(p => p.id === progressionId);
+  if (!progression) {
+    console.error('Progression not found:', progressionId);
+    return null;
+  }
+
+  // Update leaderboard first
+  if (!progression.topRedeemers) {
+    progression.topRedeemers = [];
+  }
+  const redeemer = progression.topRedeemers.find(r => r.username === username);
+  if (redeemer) {
+    redeemer.count++;
+  } else {
+    progression.topRedeemers.push({ username, count: 1 });
+  }
+  // Sort and keep top 10
+  progression.topRedeemers.sort((a, b) => b.count - a.count);
+  progression.topRedeemers = progression.topRedeemers.slice(0, 10);
+
+  // Increment total redeems
+  progression.totalRedeems++;
+  
+  // Check if previous redeem completed a stage (currentCount equals requiredCount)
+  const currentStage = progression.stages[progression.currentStageIndex];
+  let stageAdvanced = false;
+  
+  if (currentStage && progression.currentCount >= currentStage.requiredCount) {
+    // Stage was completed - advance to next stage if available
+    if (progression.currentStageIndex < progression.stages.length - 1) {
+      progression.currentStageIndex++;
+      progression.currentCount = 1; // This redeem is the first toward new stage
+      stageAdvanced = true;
+      console.log(`Progression "${progression.name}" advanced to stage ${progression.currentStageIndex + 1}`);
+    } else {
+      // At final stage - just increment count
+      progression.currentCount++;
+      console.log(`Progression "${progression.name}" is at final stage`);
+    }
+  } else {
+    // Normal increment
+    progression.currentCount++;
+  }
+
+  // Save if permanent mode
+  if (progression.persistenceMode === 'permanent') {
+    saveProgressions(progressionsData);
+  }
+
+  return {
+    progression,
+    stageAdvanced,
+    currentStage: progression.stages[progression.currentStageIndex],
+    currentStageIndex: progression.currentStageIndex
+  };
+}
+
 function broadcastHydrationUpdate(config) {
   const percentage = config.streamGoal > 0 ? (config.currentProgress / config.streamGoal) * 100 : 0;
   const payload = {
@@ -391,6 +509,8 @@ function broadcastHydrationUpdate(config) {
     }
   });
 }
+
+// Progression broadcast functions (removed - now handled inline in increment handler)
 
 // Stream monitor for auto-reset hydration
 let lastStreamLiveState = false;
@@ -549,6 +669,23 @@ function startOverlayServer() {
         if (err) {
           res.writeHead(500);
           res.end('Error loading hydration overlay');
+          return;
+        }
+        res.writeHead(200, { 
+          'Content-Type': 'text/html',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        });
+        res.end(data);
+      });
+    } else if (req.url === '/progression') {
+      // Serve the progression system overlay
+      const progressionPath = path.join(__dirname, 'overlays', 'progressionOverlay', 'index.html');
+      fs.readFile(progressionPath, (err, data) => {
+        if (err) {
+          res.writeHead(500);
+          res.end('Error loading progression overlay');
           return;
         }
         res.writeHead(200, { 
@@ -1417,6 +1554,164 @@ ipcMain.handle('test-hydration', async () => {
     return { success: true };
   } catch (error) {
     console.error('Error testing hydration:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ========== Progression System IPC Handlers ==========
+
+// Get all progressions
+ipcMain.handle('get-progressions', async () => {
+  try {
+    return { success: true, progressions: progressionsData.progressions };
+  } catch (error) {
+    console.error('Error getting progressions:', error);
+    return { success: false, error: error.message, progressions: [] };
+  }
+});
+
+// Save progression (create or update)
+ipcMain.handle('save-progression', async (event, progression) => {
+  try {
+    console.log('Saving progression:', progression.name);
+    
+    // Generate ID if new
+    if (!progression.id) {
+      progression.id = `prog_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+    
+    // Ensure required fields
+    if (!progression.topRedeemers) progression.topRedeemers = [];
+    if (typeof progression.totalRedeems !== 'number') progression.totalRedeems = 0;
+    if (typeof progression.currentStageIndex !== 'number') progression.currentStageIndex = 0;
+    if (typeof progression.currentCount !== 'number') progression.currentCount = 0;
+    if (!progression.stages) progression.stages = [];
+    
+    // Find existing or add new
+    const existingIndex = progressionsData.progressions.findIndex(p => p.id === progression.id);
+    if (existingIndex >= 0) {
+      progressionsData.progressions[existingIndex] = progression;
+    } else {
+      progressionsData.progressions.push(progression);
+    }
+    
+    saveProgressions(progressionsData);
+    return { success: true, progression };
+  } catch (error) {
+    console.error('Error saving progression:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Delete progression
+ipcMain.handle('delete-progression', async (event, progressionId) => {
+  try {
+    console.log('Deleting progression:', progressionId);
+    progressionsData.progressions = progressionsData.progressions.filter(p => p.id !== progressionId);
+    saveProgressions(progressionsData);
+    
+    // Also delete media files
+    const progressionMediaDir = path.join(progressionsMediaPath, progressionId);
+    if (fs.existsSync(progressionMediaDir)) {
+      fse.removeSync(progressionMediaDir);
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting progression:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Reset progression state
+ipcMain.handle('reset-progression', async (event, progressionId) => {
+  try {
+    console.log('Resetting progression:', progressionId);
+    const progression = progressionsData.progressions.find(p => p.id === progressionId);
+    if (!progression) {
+      return { success: false, error: 'Progression not found' };
+    }
+    
+    progression.currentStageIndex = 0;
+    progression.currentCount = 0;
+    progression.totalRedeems = 0;
+    progression.topRedeemers = [];
+    
+    if (progression.persistenceMode === 'permanent') {
+      saveProgressions(progressionsData);
+    }
+    
+    return { success: true, progression };
+  } catch (error) {
+    console.error('Error resetting progression:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get progression state
+ipcMain.handle('get-progression-state', async (event, progressionId) => {
+  try {
+    const progression = progressionsData.progressions.find(p => p.id === progressionId);
+    if (!progression) {
+      return { success: false, error: 'Progression not found' };
+    }
+    
+    return {
+      success: true,
+      state: {
+        currentStageIndex: progression.currentStageIndex,
+        currentCount: progression.currentCount,
+        totalRedeems: progression.totalRedeems,
+        currentStage: progression.stages[progression.currentStageIndex]
+      }
+    };
+  } catch (error) {
+    console.error('Error getting progression state:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get progression leaderboard
+ipcMain.handle('get-progression-leaderboard', async (event, progressionId) => {
+  try {
+    const progression = progressionsData.progressions.find(p => p.id === progressionId);
+    if (!progression) {
+      return { success: false, error: 'Progression not found' };
+    }
+    
+    return {
+      success: true,
+      leaderboard: progression.topRedeemers || []
+    };
+  } catch (error) {
+    console.error('Error getting progression leaderboard:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Save progression media file
+ipcMain.handle('save-progression-media', async (event, { sourcePath, progressionId, stageId, mediaType, originalName }) => {
+  try {
+    console.log('Saving progression media:', { progressionId, stageId, mediaType });
+    
+    // Create progression-specific directory
+    const progressionMediaDir = path.join(progressionsMediaPath, progressionId);
+    if (!fs.existsSync(progressionMediaDir)) {
+      fs.mkdirSync(progressionMediaDir, { recursive: true });
+    }
+    
+    const extension = path.extname(originalName || sourcePath);
+    const timestamp = Date.now();
+    const filename = `${stageId}_${mediaType}_${timestamp}${extension}`;
+    const destPath = path.join(progressionMediaDir, filename);
+    
+    fse.copySync(sourcePath, destPath);
+    console.log('Progression media saved:', destPath);
+    
+    const relativePath = path.relative(userDataPath, destPath);
+    return { success: true, filePath: relativePath };
+  } catch (error) {
+    console.error('Error saving progression media:', error);
     return { success: false, error: error.message };
   }
 });
@@ -2920,6 +3215,73 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
         return;
       }
       
+      // Handle progression commands
+      // Check if command matches any progression's chat command
+      const matchingProgression = progressionsData.progressions.find(prog => 
+        prog.chatCommand && prog.chatCommand.toLowerCase().replace('!', '') === commandText
+      );
+      
+      if (matchingProgression) {
+        const uname = String(username).toLowerCase();
+        const now = Date.now();
+        
+        // Check cooldown
+        const lastUsed = progressionCommandCooldown.get(uname + '_' + matchingProgression.id);
+        if (lastUsed && (now - lastUsed) < PROGRESSION_COMMAND_COOLDOWN_MS) {
+          const remainingSeconds = Math.ceil((PROGRESSION_COMMAND_COOLDOWN_MS - (now - lastUsed)) / 1000);
+          
+          if (twitchClient && twitchClient.readyState() === 'OPEN') {
+            const channels = twitchClient.getChannels();
+            if (channels && channels.length > 0) {
+              twitchClient.say(channels[0], `@${username}, please wait ${remainingSeconds}s before using ${matchingProgression.chatCommand} again.`);
+            }
+          }
+          return;
+        }
+        
+        // Update cooldown
+        progressionCommandCooldown.set(uname + '_' + matchingProgression.id, now);
+        
+        // Get leaderboard
+        const leaderboard = matchingProgression.topRedeemers || [];
+        
+        if (leaderboard.length === 0) {
+          if (twitchClient && twitchClient.readyState() === 'OPEN') {
+            const channels = twitchClient.getChannels();
+            if (channels && channels.length > 0) {
+              twitchClient.say(channels[0], `🏆 No contributions to "${matchingProgression.name}" yet. Be the first!`);
+            }
+          }
+          return;
+        }
+        
+        // Format leaderboard message
+        const currentStage = matchingProgression.stages[matchingProgression.currentStageIndex];
+        let leaderboardMsg = `🏆 ${matchingProgression.name} - Stage ${matchingProgression.currentStageIndex + 1}/${matchingProgression.stages.length} (${matchingProgression.currentCount}/${currentStage.requiredCount}) | Top Contributors: `;
+        
+        const entries = [];
+        leaderboard.slice(0, 5).forEach((contrib, index) => {
+          entries.push(`${index + 1}. ${contrib.username} (${contrib.count})`);
+        });
+        
+        leaderboardMsg += entries.join(' • ');
+        
+        // Truncate if needed
+        if (leaderboardMsg.length > 500) {
+          leaderboardMsg = leaderboardMsg.substring(0, 497) + '...';
+        }
+        
+        // Send to chat
+        if (twitchClient && twitchClient.readyState() === 'OPEN') {
+          const channels = twitchClient.getChannels();
+          if (channels && channels.length > 0) {
+            twitchClient.say(channels[0], leaderboardMsg);
+            console.log(`🏆 Sent progression leaderboard to chat for ${username}: ${matchingProgression.name}`);
+          }
+        }
+        return;
+      }
+      
       // Regular button command handling
       const profile = loadProfile(currentActiveProfile);
       profile.buttons.forEach((btn) => {
@@ -3672,6 +4034,173 @@ ipcMain.on('trigger-media-to-main', (event, label) => {
   }
 });
 
+// Handle progression increment from Twitch redemptions
+ipcMain.on('progression-increment', (event, data) => {
+  try {
+    const { progressionId, username, redeemTitle } = data;
+    console.log(`🎯🎯🎯 PROGRESSION INCREMENT HANDLER CALLED!`);
+    console.log(`🎯 Progression ID: ${progressionId}`);
+    console.log(`🎯 Username: ${username}`);
+    console.log(`🎯 Redeem Title: ${redeemTitle}`);
+    
+    const result = incrementProgression(progressionId, username);
+    if (!result) {
+      console.error('❌ Failed to increment progression:', progressionId);
+      return;
+    }
+    
+    const { progression, stageAdvanced, currentStage } = result;
+    
+    console.log(`✅ Increment successful!`);
+    console.log(`✅ Stage advanced: ${stageAdvanced}`);
+    console.log(`✅ Current stage:`, currentStage);
+    
+    // Send current stage media to overlay (exactly like hydration)
+    console.log(`📡 Sending progression media to overlay...`);
+    console.log(`📡 Target overlay: ${progression.targetOverlay || 'main'}`);
+    
+    if (currentStage && currentStage.mediaPath) {
+      const targetOverlay = progression.targetOverlay || 'main';
+      const mediaUrl = `http://localhost:${overlayServerPort}/media/${currentStage.mediaPath}`;
+      
+      // If using dedicated progression overlay, send progression-specific update
+      if (targetOverlay === 'progressionOverlay') {
+        console.log('📡 Sending to dedicated progression overlay');
+        // Build overlay text if configured
+        console.log('📝 Progression overlay text template:', progression.overlayText);
+        let overlayTextToShow = '';
+        if (progression.overlayText && progression.overlayText.trim() !== '') {
+          const actionWord = progression.actionWord || 'contributed';
+          overlayTextToShow = progression.overlayText
+            .replace(/{username}/gi, username)
+            .replace(/{action}/gi, actionWord)
+            .replace(/{object}/gi, progression.name)
+            .replace(/{stage}/gi, (progression.currentStageIndex + 1).toString())
+            .replace(/{count}/gi, progression.currentCount.toString())
+            .replace(/{required}/gi, currentStage.requiredCount.toString())
+            .replace(/{total_stages}/gi, progression.stages.length.toString());
+          console.log('📝 Overlay text after replacement:', overlayTextToShow);
+        } else {
+          console.log('📝 No overlay text configured for this progression');
+        }
+        
+        const progressionPayload = {
+          type: stageAdvanced ? 'progressionStageAdvance' : 'progressionUpdate',
+          data: {
+            progressionId: progression.id,
+            name: progression.name,
+            currentStageIndex: progression.currentStageIndex,
+            currentCount: progression.currentCount,
+            totalRedeems: progression.totalRedeems,
+            currentStage: currentStage,
+            displayMode: progression.displayMode,
+            duration: progression.duration,
+            showCounter: true,
+            overlayText: overlayTextToShow
+          }
+        };
+        
+        // Use the existing broadcastToOverlay function with targetOverlay parameter
+        broadcastToOverlay(progressionPayload, 'progressionOverlay');
+      } else {
+        // Send to main overlay using button trigger format (like alerts)
+        console.log('📡 Sending to main/all overlays (button trigger format)');
+        const mediaPayload = {
+          type: 'buttonTrigger',
+          options: {
+            clearPrevious: true,
+            duration: progression.displayMode === 'duration' ? progression.duration : null,
+            name: `${progression.name} - Stage ${progression.currentStageIndex + 1}`
+          },
+          centerMedia: []
+        };
+        
+        // Add the stage media
+        if (currentStage.mediaType === 'image') {
+          mediaPayload.centerMedia.push({
+            type: 'image',
+            src: mediaUrl
+          });
+        } else if (currentStage.mediaType === 'video') {
+          mediaPayload.centerMedia.push({
+            type: 'video',
+            src: mediaUrl,
+            loop: false,
+            muted: false,
+            volume: 1.0
+          });
+        }
+        
+        // Add audio if present
+        if (currentStage.audioPath) {
+          const audioUrl = `http://localhost:${overlayServerPort}/media/${currentStage.audioPath}`;
+          mediaPayload.centerMedia.push({
+            type: 'audio',
+            src: audioUrl,
+            volume: 1.0
+          });
+        }
+        
+        // Broadcast to main overlay (or null for all overlays if not specified)
+        console.log('📡 Broadcasting to main overlay:', mediaPayload);
+        broadcastToOverlay(mediaPayload, targetOverlay === 'main' ? 'main' : null);
+      }
+    } else {
+      console.log('⚠️ No media path for current stage');
+    }
+    
+    // Send chat message if configured
+    if (progression.chatMessage) {
+      console.log(`💬 Sending chat message`);
+      sendProgressionChatMessage(progression, username, redeemTitle, stageAdvanced);
+    }
+    
+    console.log(`✅ Progression "${progression.name}" incremented: ${progression.currentCount}/${currentStage.requiredCount} (Stage ${progression.currentStageIndex + 1}/${progression.stages.length})`);
+  } catch (e) {
+    console.error('❌ Error handling progression increment:', e);
+    console.error('❌ Stack:', e.stack);
+  }
+});
+
+// Helper to send progression chat message
+function sendProgressionChatMessage(progression, username, redeemTitle, stageAdvanced) {
+  if (!twitchClient || !twitchClient.readyState || twitchClient.readyState() !== 'OPEN') {
+    console.log('Twitch client not connected, skipping chat message');
+    return;
+  }
+  
+  const channels = twitchClient.getChannels();
+  if (!channels || channels.length === 0) {
+    console.log('No Twitch channels available');
+    return;
+  }
+  
+  // Replace template variables
+  let message = progression.chatMessage;
+  const currentStage = progression.stages[progression.currentStageIndex];
+  const actionWord = progression.actionWord || 'contributed';
+  
+  message = message.replace(/{username}/gi, username);
+  // Use action word as-is, don't modify it when stage advances
+  message = message.replace(/{action}/gi, actionWord);
+  message = message.replace(/{object}/gi, progression.name);
+  message = message.replace(/{count}/gi, progression.totalRedeems.toString());
+  message = message.replace(/{stage}/gi, (progression.currentStageIndex + 1).toString());
+  message = message.replace(/{total_stages}/gi, progression.stages.length.toString());
+  
+  // Truncate if too long (Twitch limit is 500 characters)
+  if (message.length > 500) {
+    message = message.substring(0, 497) + '...';
+  }
+  
+  try {
+    twitchClient.say(channels[0], message);
+    console.log(`💬 Sent progression chat message: ${message}`);
+  } catch (error) {
+    console.error('Error sending progression chat message:', error);
+  }
+}
+
 function registerHotkeys() {
   globalShortcut.unregisterAll();
   // Load buttons from active profile
@@ -3813,6 +4342,57 @@ function checkForUpdates() {
 
 app.whenReady().then(() => {
   ensureUserData();
+  // Load progressions data
+  progressionsData = loadProgressions();
+  console.log('Loaded progressions:', progressionsData.progressions.length);
+  
+  // Broadcast initial progression state for "always visible" progressions
+  setTimeout(() => {
+    progressionsData.progressions.forEach(prog => {
+      if (prog.displayMode === 'always' && prog.stages && prog.stages.length > 0) {
+        console.log('Broadcasting initial state for always-visible progression:', prog.name);
+        const currentStage = prog.stages[prog.currentStageIndex];
+        const targetOverlay = prog.targetOverlay || 'main';
+        
+        if (currentStage && currentStage.mediaPath) {
+          const mediaUrl = `http://localhost:${overlayServerPort}/media/${currentStage.mediaPath}`;
+          
+          if (targetOverlay === 'progressionOverlay') {
+            const progressionPayload = {
+              type: 'progressionUpdate',
+              data: {
+                progressionId: prog.id,
+                name: prog.name,
+                currentStageIndex: prog.currentStageIndex,
+                currentCount: prog.currentCount,
+                totalRedeems: prog.totalRedeems,
+                currentStage: currentStage,
+                displayMode: prog.displayMode,
+                duration: prog.duration,
+                showCounter: true
+              }
+            };
+            broadcastToOverlay(progressionPayload, 'progressionOverlay');
+          } else {
+            const mediaPayload = {
+              type: 'buttonTrigger',
+              options: {
+                clearPrevious: true,
+                duration: null,
+                name: `${prog.name} - Stage ${prog.currentStageIndex + 1}`
+              },
+              centerMedia: [{
+                type: currentStage.mediaType,
+                src: mediaUrl
+              }]
+            };
+            broadcastToOverlay(mediaPayload, 'main');
+          }
+        }
+      }
+    });
+  }, 2000); // Wait for overlay server to start
+  
   createWindow();
   registerHotkeys();
   startOverlayServer();
