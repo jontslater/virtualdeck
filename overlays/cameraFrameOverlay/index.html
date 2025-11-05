@@ -405,16 +405,34 @@
             } else if (media.type === 'video') {
                 const video = document.createElement('video');
                 video.className = 'media-element';
-                video.src = media.src || media.url || '';
-                video.autoplay = true;
+                
+                // Set muted FIRST (before src) for autoplay to work reliably
+                video.muted = media.muted !== false; // Default to muted unless explicitly set to false
                 video.loop = media.loop || false;
-                video.muted = true;
                 video.volume = media.volume || 1.0;
+                
+                // Set autoplay attribute BEFORE setting src
+                video.setAttribute('autoplay', '');
+                video.setAttribute('playsinline', ''); // Required for mobile devices
+                
+                // Set src AFTER autoplay and muted are configured
+                video.src = media.src || media.url || '';
                 video.style.animation = 'fadeIn 0.5s ease-in-out';
                 
-                video.onloadeddata = () => {
-                    console.log('🎥 Camera video loaded:', video.src);
-                    video.play();
+                video.onloadedmetadata = () => {
+                    console.log('🎥 Camera video metadata loaded:', video.src);
+                };
+                
+                video.oncanplay = () => {
+                    console.log('🎥 Camera video can play, attempting to play...');
+                    const playPromise = video.play();
+                    if (playPromise !== undefined) {
+                        playPromise.then(() => {
+                            console.log('✅ Camera video playing successfully');
+                        }).catch(error => {
+                            console.error('❌ Camera video play failed:', error);
+                        });
+                    }
                 };
                 
                 video.onerror = () => {
@@ -422,6 +440,18 @@
                 };
                 
                 content.appendChild(video);
+                
+                // Attempt to play immediately after appending (belt-and-suspenders approach)
+                setTimeout(() => {
+                    if (video.paused) {
+                        console.log('🎬 Camera video is paused, attempting immediate play...');
+                        video.play().then(() => {
+                            console.log('✅ Camera immediate play successful');
+                        }).catch(err => {
+                            console.warn('⚠️ Camera immediate play failed:', err.message);
+                        });
+                    }
+                }, 100);
             }
         }
 

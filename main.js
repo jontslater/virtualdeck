@@ -58,6 +58,7 @@ const defaultSoundsDir = path.join(__dirname, 'public', 'assets', 'sounds');
 const defaultSkinsDir = path.join(__dirname, 'skins');
 const tcConfigPath = path.join(userDataPath, 'tc_config.json');
 const dailyCheckinsPath = path.join(userDataPath, 'checkins.json');
+const hydrationConfigPath = path.join(userDataPath, 'hydration-config.json');
 
 // Profile management globals
 let currentActiveProfile = 'default';
@@ -329,6 +330,118 @@ function saveTcConfig(cfg) {
   fs.writeFileSync(tcConfigPath, JSON.stringify(cfg, null, 2));
 }
 
+// Hydration config management
+function loadHydrationConfig() {
+  try {
+    if (fs.existsSync(hydrationConfigPath)) {
+      return JSON.parse(fs.readFileSync(hydrationConfigPath, 'utf-8'));
+    }
+  } catch (e) {
+    console.error('Error loading hydration config:', e);
+  }
+  // Default config
+  return {
+    streamGoal: 64,
+    incrementAmount: 8,
+    redemptionKeyword: "hydrate",
+    currentProgress: 0,
+    gaugeStyle: "circular",
+    waterColor: "#4fc3f7",
+    backgroundColor: "transparent",
+    textColor: "#ffffff",
+    gaugeSize: 200,
+    positionX: 50,
+    positionY: 50,
+    borderWidth: 0,
+    borderColor: "#ffffff",
+    borderRadius: 10,
+    resetOnLive: true
+  };
+}
+
+function saveHydrationConfig(cfg) {
+  try {
+    fs.writeFileSync(hydrationConfigPath, JSON.stringify(cfg, null, 2));
+    console.log('Hydration config saved');
+  } catch (e) {
+    console.error('Error saving hydration config:', e);
+  }
+}
+
+function broadcastHydrationUpdate(config) {
+  const percentage = config.streamGoal > 0 ? (config.currentProgress / config.streamGoal) * 100 : 0;
+  const payload = {
+    type: 'hydrationUpdate',
+    data: {
+      current: config.currentProgress,
+      goal: config.streamGoal,
+      percentage: percentage,
+      config: config
+    }
+  };
+  
+  // Broadcast to all connected overlay clients
+  overlayClients.forEach(client => {
+    if (client.readyState === 1) { // WebSocket.OPEN
+      try {
+        client.send(JSON.stringify(payload));
+      } catch (error) {
+        console.error('Error broadcasting hydration update:', error);
+      }
+    }
+  });
+}
+
+// Stream monitor for auto-reset hydration
+let lastStreamLiveState = false;
+let streamMonitorInterval = null;
+
+async function checkStreamAndResetHydration() {
+  try {
+    const config = loadHydrationConfig();
+    if (!config.resetOnLive) return;
+    
+    // Check if stream is live
+    if (!twitchClientId || !twitchToken || !twitchUserId) return;
+    
+    const resp = await fetch(`https://api.twitch.tv/helix/streams?user_id=${encodeURIComponent(twitchUserId)}`, {
+      headers: {
+        'Client-ID': twitchClientId,
+        'Authorization': `Bearer ${twitchToken}`
+      }
+    });
+    const data = await resp.json();
+    const isLive = data.data && data.data.length > 0;
+    
+    // If stream just went live (transition from offline to live), reset hydration
+    if (isLive && !lastStreamLiveState) {
+      console.log('Stream went live - resetting hydration tracker');
+      config.currentProgress = 0;
+      saveHydrationConfig(config);
+      broadcastHydrationUpdate(config);
+    }
+    
+    lastStreamLiveState = isLive;
+  } catch (error) {
+    console.error('Error in stream monitor:', error);
+  }
+}
+
+function startStreamMonitor() {
+  if (streamMonitorInterval) return;
+  // Check every 2 minutes
+  streamMonitorInterval = setInterval(checkStreamAndResetHydration, 120000);
+  // Also check immediately on start
+  checkStreamAndResetHydration();
+}
+
+function stopStreamMonitor() {
+  if (streamMonitorInterval) {
+    clearInterval(streamMonitorInterval);
+    streamMonitorInterval = null;
+  }
+}
+
 let win;
 let overlayWindow;
 let overlayServer;
@@ -428,6 +541,23 @@ function startOverlayServer() {
           'Access-Control-Allow-Headers': 'Content-Type'
         });
         res.end(html);
+      });
+    } else if (req.url === '/hydration') {
+      // Serve the hydration tracker overlay
+      const hydrationPath = path.join(__dirname, 'overlays', 'hydrationOverlay', 'index.html');
+      fs.readFile(hydrationPath, (err, data) => {
+        if (err) {
+          res.writeHead(500);
+          res.end('Error loading hydration overlay');
+          return;
+        }
+        res.writeHead(200, { 
+          'Content-Type': 'text/html',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        });
+        res.end(data);
       });
     } else if (req.url.startsWith('/overlay/') || req.url.startsWith('/overlay?')) {
       // Handle custom overlays - /overlay/name or /overlay?name=name
@@ -782,11 +912,21 @@ function getOverlayServerUrl() {
 }
 
 ipcMain.on('add-media', (event, data) => {
-  console.log('add-media received:', data);
-  console.log('Chat command data:', data.chatCommand);
-  // Load from active profile instead of old config.json
-  const profile = loadProfile(currentActiveProfile);
-  const config = profile; // Keep variable name for compatibility
+  try {
+    console.log('add-media received:', data);
+    console.log('Chat command data:', data.chatCommand);
+    // Load from active profile instead of old config.json
+    const profile = loadProfile(currentActiveProfile);
+    const config = profile; // Keep variable name for compatibility
+
+    // Validate required data
+    if (!data.originalPath) {
+      console.error('Error: originalPath is missing from add-media data:', data);
+      if (win && !win.isDestroyed()) {
+        dialog.showErrorBox('Save Error', 'Failed to save button: File path is missing. Please select a file and try again.');
+      }
+      return;
+    }
 
   // Handle app files differently than audio files
   if (data.type === 'app') {
@@ -828,13 +968,52 @@ ipcMain.on('add-media', (event, data) => {
       const newFileName = `${data.label}${ext}`;
       const newFilePath = path.join(path.dirname(oldFilePath), newFileName);
       const newTargetPath = path.relative(userDataPath, newFilePath).replace(/\\/g, '/');
+      
       // If label changed and file exists and file name doesn't match new label
       if (data.label !== oldLabel && fs.existsSync(oldFilePath) && !oldSrc.endsWith(newFileName)) {
+        // Check if any other button in ANY profile uses this same file
+        let fileInUseByOther = false;
+        
         try {
-          fs.renameSync(oldFilePath, newFilePath);
-          data.targetPath = newTargetPath;
+          const meta = loadProfilesMeta();
+          for (const profileInfo of meta.profiles) {
+            const otherProfile = loadProfile(profileInfo.id);
+            if (otherProfile.buttons && Array.isArray(otherProfile.buttons)) {
+              // Check all buttons in this profile
+              for (let i = 0; i < otherProfile.buttons.length; i++) {
+                const btn = otherProfile.buttons[i];
+                // Skip the button we're currently editing
+                if (profileInfo.id === currentActiveProfile && i === data.editingIndex) {
+                  continue;
+                }
+                // If another button uses the same file, don't rename it
+                if (btn.src === oldSrc) {
+                  fileInUseByOther = true;
+                  console.log(`⚠️ File ${oldSrc} is used by button "${btn.label}" in profile ${profileInfo.id}, skipping rename`);
+                  break;
+                }
+              }
+              if (fileInUseByOther) break;
+            }
+          }
         } catch (err) {
-          data.targetPath = oldSrc; // fallback
+          console.warn('Error checking if file is used by other buttons:', err);
+        }
+        
+        // Only rename if no other button uses this file
+        if (!fileInUseByOther) {
+          try {
+            fs.renameSync(oldFilePath, newFilePath);
+            data.targetPath = newTargetPath;
+            console.log(`✅ Renamed ${oldFilePath} to ${newFilePath}`);
+          } catch (err) {
+            console.warn('Failed to rename file:', err);
+            data.targetPath = oldSrc; // fallback
+          }
+        } else {
+          // Keep using the old file path since other buttons need it
+          data.targetPath = oldSrc;
+          console.log(`⏭️ Keeping original file path ${oldSrc} (shared with other buttons)`);
         }
       }
     }
@@ -871,6 +1050,12 @@ ipcMain.on('add-media', (event, data) => {
   // Save back to active profile (preserves uiSettings)
   saveProfile(currentActiveProfile, profile);
   console.log('✅ Button saved to profile:', currentActiveProfile);
+  } catch (error) {
+    console.error('Error in add-media handler:', error);
+    if (win && !win.isDestroyed()) {
+      dialog.showErrorBox('Save Error', `Failed to save button: ${error.message}`);
+    }
+  }
 });
 
 ipcMain.on('delete-button', (event, index) => {
@@ -878,15 +1063,40 @@ ipcMain.on('delete-button', (event, index) => {
   const profile = loadProfile(currentActiveProfile);
   const removed = profile.buttons.splice(index, 1);
   
-  // Delete the audio file from disk
+  // Only delete the audio file from disk if no other profile is using it
   if (removed[0] && removed[0].src) {
     const filePath = path.join(userDataPath, removed[0].src);
+    const srcToDelete = removed[0].src;
+    
     try {
-      if (fs.existsSync(filePath)) {
+      // Check if any other profile uses this same file
+      const meta = loadProfilesMeta();
+      let fileStillInUse = false;
+      
+      for (const profileInfo of meta.profiles) {
+        // Skip the current profile (we already removed the button from it)
+        if (profileInfo.id === currentActiveProfile) continue;
+        
+        const otherProfile = loadProfile(profileInfo.id);
+        if (otherProfile.buttons && Array.isArray(otherProfile.buttons)) {
+          // Check if any button in this profile uses the same file
+          const stillUsed = otherProfile.buttons.some(btn => btn.src === srcToDelete);
+          if (stillUsed) {
+            fileStillInUse = true;
+            console.log(`File ${srcToDelete} is still used by profile ${profileInfo.id}, not deleting`);
+            break;
+          }
+        }
+      }
+      
+      // Only delete the file if no other profile uses it
+      if (!fileStillInUse && fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
+        console.log(`Deleted file ${filePath} (not used by any other profile)`);
       }
     } catch (err) {
       // File might not exist or be locked, continue anyway
+      console.warn('Error checking/deleting file:', err);
     }
   }
   
@@ -1142,6 +1352,75 @@ ipcMain.handle('switch-profile', async (event, profileId) => {
   }
 });
 
+// ============================================================
+// HYDRATION TRACKER IPC HANDLERS
+// ============================================================
+
+// Get hydration config
+ipcMain.handle('get-hydration-config', async () => {
+  try {
+    return loadHydrationConfig();
+  } catch (error) {
+    console.error('Error getting hydration config:', error);
+    return loadHydrationConfig(); // Return default
+  }
+});
+
+// Save hydration config
+ipcMain.handle('save-hydration-config', async (event, config) => {
+  try {
+    saveHydrationConfig(config);
+    broadcastHydrationUpdate(config);
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving hydration config:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Update hydration progress (increment)
+ipcMain.handle('update-hydration-progress', async () => {
+  try {
+    const config = loadHydrationConfig();
+    // Allow currentProgress to exceed streamGoal (for numerical display)
+    config.currentProgress = config.currentProgress + config.incrementAmount;
+    saveHydrationConfig(config);
+    broadcastHydrationUpdate(config);
+    console.log(`Hydration updated: ${config.currentProgress}/${config.streamGoal} oz`);
+    return { success: true, config };
+  } catch (error) {
+    console.error('Error updating hydration progress:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Reset hydration progress
+ipcMain.handle('reset-hydration', async () => {
+  try {
+    const config = loadHydrationConfig();
+    config.currentProgress = 0;
+    saveHydrationConfig(config);
+    broadcastHydrationUpdate(config);
+    console.log('Hydration progress reset to 0');
+    return { success: true, config };
+  } catch (error) {
+    console.error('Error resetting hydration:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Test hydration (for preview)
+ipcMain.handle('test-hydration', async () => {
+  try {
+    const config = loadHydrationConfig();
+    broadcastHydrationUpdate(config);
+    return { success: true };
+  } catch (error) {
+    console.error('Error testing hydration:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Create media storage directory for multi-media button assets
 const mediaStoragePath = path.join(userDataPath, 'media');
 if (!fs.existsSync(mediaStoragePath)) {
@@ -1322,33 +1601,33 @@ ipcMain.handle('update-config', async (event, configUpdate) => {
   }
 });
 
-// Persist button order sent from renderer to config.json
+// Persist button order sent from renderer to active profile
 ipcMain.on('save-button-order', (event, orderedIds) => {
   try {
     if (!Array.isArray(orderedIds)) return;
-    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    if (!Array.isArray(cfg.buttons)) cfg.buttons = [];
-    const byId = new Map(cfg.buttons.map(b => [b.id, b]));
+    const profile = loadProfile(currentActiveProfile);
+    if (!Array.isArray(profile.buttons)) profile.buttons = [];
+    const byId = new Map(profile.buttons.map(b => [b.id, b]));
     const newButtons = [];
     for (const id of orderedIds) {
       if (byId.has(id)) newButtons.push(byId.get(id));
     }
     // append any missing buttons that weren't included in orderedIds
-    for (const b of cfg.buttons) if (!newButtons.includes(b)) newButtons.push(b);
-    cfg.buttons = newButtons;
-    fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2), 'utf-8');
+    for (const b of profile.buttons) if (!newButtons.includes(b)) newButtons.push(b);
+    profile.buttons = newButtons;
+    saveProfile(currentActiveProfile, profile);
     if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
   } catch (err) {
     console.error('Failed to save button order:', err);
   }
 });
 
-// Event->Sound mappings helpers stored inside config.json under 'mappings'
+// Event->Sound mappings helpers stored inside active profile under 'mappings'
 function loadMappings() {
   try {
-    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    if (!Array.isArray(cfg.mappings)) cfg.mappings = [];
-    return cfg.mappings;
+    const profile = loadProfile(currentActiveProfile);
+    if (!Array.isArray(profile.mappings)) profile.mappings = [];
+    return profile.mappings;
   } catch (e) {
     return [];
   }
@@ -1356,9 +1635,9 @@ function loadMappings() {
 
 function saveMappings(maps) {
   try {
-    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    cfg.mappings = maps;
-    fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2));
+    const profile = loadProfile(currentActiveProfile);
+    profile.mappings = maps;
+    saveProfile(currentActiveProfile, profile);
     return true;
   } catch (e) {
     console.error('Error saving mappings:', e);
@@ -2495,6 +2774,8 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
     if (username && oauth && twitchClientId) {
       startTwitchEventSub({ username, oauth, clientId: twitchClientId });
     }
+    // Start stream monitor for hydration auto-reset
+    startStreamMonitor();
   });
   twitchClient.on('message', (channel, tags, message, self) => {
     if (self) return;
@@ -2640,10 +2921,10 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
       }
       
       // Regular button command handling
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      config.buttons.forEach((btn) => {
+      const profile = loadProfile(currentActiveProfile);
+      profile.buttons.forEach((btn) => {
         // Check if button has chat command enabled and keyword matches
-        if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword === commandText) {
+        if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword && btn.chatCommand.keyword.toLowerCase() === commandText) {
           const triggerMethod = btn.chatCommand.triggerMethod || 'command';
           console.log(`🔍 main.js checking button "${btn.label || btn.name}" with chatCommand:`, btn.chatCommand);
           console.log(`🔍 main.js checking button "${btn.label || btn.name}" with triggerMethod: "${triggerMethod}" for command: "${commandText}"`);
@@ -3322,11 +3603,11 @@ ipcMain.on('twitch-fake-event', (event, evt) => {
       });
       // also run command matching logic to trigger media
       if (evt.message && evt.message.startsWith('!')) {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        const profile = loadProfile(currentActiveProfile);
         const commandText = evt.message.split(' ')[0].substring(1).toLowerCase();
-        config.buttons.forEach((btn) => {
+        profile.buttons.forEach((btn) => {
           // Check if button has chat command enabled and keyword matches
-          if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword === commandText) {
+          if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword && btn.chatCommand.keyword.toLowerCase() === commandText) {
             const triggerMethod = btn.chatCommand.triggerMethod || 'command';
             if (triggerMethod === 'command' || triggerMethod === 'both') {
               triggerButtonWithDebounce(btn.label || btn.name, `fake chat command !${commandText}`);
@@ -3359,11 +3640,11 @@ ipcMain.handle('send-fake-twitch-event', async (event, evt) => {
       });
       // also run command matching logic to trigger media
       if (evt.message && evt.message.startsWith('!')) {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        const profile = loadProfile(currentActiveProfile);
         const commandText = evt.message.split(' ')[0].substring(1).toLowerCase();
-        config.buttons.forEach((btn) => {
+        profile.buttons.forEach((btn) => {
           // Check if button has chat command enabled and keyword matches
-          if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword === commandText) {
+          if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword && btn.chatCommand.keyword.toLowerCase() === commandText) {
             const triggerMethod = btn.chatCommand.triggerMethod || 'command';
             if (triggerMethod === 'command' || triggerMethod === 'both') {
               triggerButtonWithDebounce(btn.label || btn.name, `fake event handle chat command !${commandText}`);
@@ -3570,6 +3851,9 @@ app.whenReady().then(() => {
   { id: 'view_recent_activity', label: 'Recent Activity', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'recent-activity-container', checked: menuItem.checked }); } },
   { id: 'view_twitch_chat', label: 'Twitch Chat', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'twitch-chat-container', checked: menuItem.checked }); } },
   { id: 'view_sound_controls', label: 'Sound Controls', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-controls', checked: menuItem.checked }); } }
+    ] },
+    { label: 'Profile', submenu: [
+      { label: 'Profile Manager...', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-profile-manager'); } }
     ] },
     { label: 'Tools', submenu: [
       { label: 'Check for Updates...', click: () => { checkForUpdates(); } },
@@ -3979,6 +4263,8 @@ ipcMain.on('twitch-clear-creds', async (event) => {
       pollIntervalId = null;
       console.log('Stopped follower polling');
     }
+    // Stop stream monitor for hydration
+    stopStreamMonitor();
     // Close EventSub websocket if present
     try {
       if (eventSubWs) {

@@ -420,11 +420,25 @@
             }
             
             // Process center media SECOND (after text is already in DOM)
+            console.log('🎬 === CENTER MEDIA DEBUG ===');
+            console.log('🎬 centerMedia exists?', !!payload.centerMedia);
+            console.log('🎬 centerMedia is array?', Array.isArray(payload.centerMedia));
+            console.log('🎬 centerMedia length:', payload.centerMedia ? payload.centerMedia.length : 0);
             if (payload.centerMedia && payload.centerMedia.length > 0) {
                 console.log('🎬 Processing centerMedia:', payload.centerMedia.length, 'items');
+                console.log('🎬 centerMedia items:', payload.centerMedia.map((m, i) => ({
+                    index: i,
+                    type: m.type,
+                    hasSrc: !!m.src,
+                    hasUrl: !!m.url,
+                    srcPreview: m.src ? m.src.substring(0, 100) : 'NO SRC'
+                })));
                 payload.centerMedia.forEach((media, index) => {
+                    console.log(`🎬 [${index}] About to render media:`, media.type);
                     renderMedia(media, index);
                 });
+            } else {
+                console.log('🎬 ⚠️ NO centerMedia to process!');
             }
             
             // Process fullscreen media
@@ -562,11 +576,18 @@
             
             const video = document.createElement('video');
             video.className = 'media-element';
-            video.src = payload.src || payload.url || '';
-            video.autoplay = true;
-            video.loop = payload.loop || false;
+            
+            // Set muted FIRST (before src) for autoplay to work reliably in browsers
             video.muted = payload.muted !== false; // Default to muted unless explicitly set to false
+            video.loop = payload.loop || false;
             video.volume = payload.volume || 1.0;
+            
+            // Set autoplay attribute BEFORE setting src
+            video.setAttribute('autoplay', '');
+            video.setAttribute('playsinline', ''); // Required for mobile devices
+            
+            // Set src AFTER autoplay and muted are configured
+            video.src = payload.src || payload.url || '';
             
             console.log('🎬 Video element created:', {
                 src: video.src,
@@ -589,21 +610,29 @@
                 z-index: 1;
             `;
             
-            video.onloadeddata = () => {
-                console.log('🎥 Video loaded successfully:', video.src);
+            video.onloadedmetadata = () => {
+                console.log('🎥 Video metadata loaded successfully:', video.src);
                 // Force video to stay behind text when it loads
                 video.style.setProperty('z-index', '1', 'important');
                 console.log('🎯 Video z-index forced to 1 on load');
-                console.log('🎥 Attempting to play video...');
-                video.play().then(() => {
-                    console.log('✅ Video playing successfully');
-                }).catch(error => {
-                    console.error('❌ Video play failed:', error);
-                    if (error.name === 'NotAllowedError') {
-                        console.log('🎬 Autoplay blocked - adding click-to-play overlay');
-                        showPlayOverlay(video);
-                    }
-                });
+            };
+            
+            video.oncanplay = () => {
+                console.log('🎥 Video can play, attempting to play...');
+                // Explicitly call play() to ensure video starts
+                const playPromise = video.play();
+                
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        console.log('✅ Video playing successfully');
+                    }).catch(error => {
+                        console.error('❌ Video play failed:', error);
+                        if (error.name === 'NotAllowedError') {
+                            console.log('🎬 Autoplay blocked - adding click-to-play overlay');
+                            showPlayOverlay(video);
+                        }
+                    });
+                }
             };
             
             video.onerror = (error) => {
@@ -627,6 +656,18 @@
             
             document.querySelector('.overlay-content').appendChild(video);
             console.log('🎬 Video element appended to DOM');
+            
+            // Attempt to play immediately after appending (belt-and-suspenders approach)
+            setTimeout(() => {
+                if (video.paused) {
+                    console.log('🎬 Video is paused, attempting immediate play...');
+                    video.play().then(() => {
+                        console.log('✅ Immediate play successful');
+                    }).catch(err => {
+                        console.warn('⚠️ Immediate play failed (will retry on canplay):', err.message);
+                    });
+                }
+            }, 100);
         }
         
         // Show play overlay for autoplay-blocked videos
@@ -782,13 +823,26 @@
         // Render media element
         function renderMedia(media, index) {
             console.log('🎨 Rendering media:', media.type, media);
+            console.log('🎨 Media details:', {
+                type: media.type,
+                src: media.src,
+                hasUrl: !!media.url,
+                loop: media.loop,
+                muted: media.muted,
+                volume: media.volume
+            });
             
             if (media.type === 'image') {
+                console.log('🎨 -> Calling handleImage');
                 handleImage(media);
             } else if (media.type === 'video') {
+                console.log('🎨 -> Calling handleVideo');
                 handleVideo(media);
             } else if (media.type === 'audio') {
+                console.log('🎨 -> Calling handleAudio');
                 handleAudio(media);
+            } else {
+                console.warn('🎨 -> Unknown media type:', media.type);
             }
         }
 
