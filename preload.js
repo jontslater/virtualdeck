@@ -1,7 +1,16 @@
 //const twitchConnected = require('./TwitchConnected/tc.js');
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  // Get file path from File object (Electron-specific)
+  getFilePathFromFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch (error) {
+      console.error('Error getting file path:', error);
+      return null;
+    }
+  },
   addMedia: (data) => ipcRenderer.send('add-media', data),
   deleteButton: (index) => ipcRenderer.send('delete-button', index),
   refreshHotkeys: () => ipcRenderer.send('refresh-hotkeys'),
@@ -73,6 +82,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onOpenEventSubSubscriptions: (callback) => ipcRenderer.on('open-eventsub-subscriptions', callback),
   onClearTwitchCreds: (callback) => ipcRenderer.on('clear-twitch-creds', callback),
   onOpenTwitchMapping: (callback) => ipcRenderer.on('open-twitch-mapping', callback),
+  onOpenProfileManager: (callback) => ipcRenderer.on('open-profile-manager', callback),
   onRendererReady: (callback) => ipcRenderer.on('renderer-ready', callback),
   // Allow renderer to request opening Preferences in main
   openPreferences: () => ipcRenderer.send('open-preferences'),
@@ -134,4 +144,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   renameProfile: async (profileId, newName) => ipcRenderer.invoke('rename-profile', { profileId, newName }),
   deleteProfile: async (profileId) => ipcRenderer.invoke('delete-profile', profileId),
   switchProfile: async (profileId) => ipcRenderer.invoke('switch-profile', profileId),
+  // Hydration Tracker
+  getHydrationConfig: async () => ipcRenderer.invoke('get-hydration-config'),
+  saveHydrationConfig: async (config) => ipcRenderer.invoke('save-hydration-config', config),
+  updateHydrationProgress: async () => ipcRenderer.invoke('update-hydration-progress'),
+  resetHydration: async () => ipcRenderer.invoke('reset-hydration'),
+  testHydration: async () => ipcRenderer.invoke('test-hydration'),
+  // Progression System
+  getProgressions: async () => ipcRenderer.invoke('get-progressions'),
+  saveProgression: async (progression) => ipcRenderer.invoke('save-progression', progression),
+  deleteProgression: async (progressionId) => ipcRenderer.invoke('delete-progression', progressionId),
+  resetProgression: async (progressionId) => ipcRenderer.invoke('reset-progression', progressionId),
+  getProgressionState: async (progressionId) => ipcRenderer.invoke('get-progression-state', progressionId),
+  getProgressionLeaderboard: async (progressionId) => ipcRenderer.invoke('get-progression-leaderboard', progressionId),
+  saveProgressionMedia: async (mediaData) => ipcRenderer.invoke('save-progression-media', mediaData),
+  incrementProgression: (data) => ipcRenderer.send('progression-increment', data),
 });

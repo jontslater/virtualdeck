@@ -440,6 +440,61 @@ window.checkRedemptionAgainstButtonKeywords = async function checkRedemptionAgai
   }
 }
 
+// Helper to check if a redemption matches any progression and increment it
+window.checkRedemptionAgainstProgressions = async function checkRedemptionAgainstProgressions(evt) {
+  try {
+    if (!evt || evt.type !== 'redeem') return false;
+    
+    // Get reward title from redemption event
+    const title = evt.event?.reward?.title || evt.event?.reward?.name || evt.event?.reward_title || evt.event?.reward || '';
+    const username = evt.event?.user_name || evt.event?.user || evt.event?.user_login || evt.user_name || evt.user || 'unknown';
+    
+    if (!title) return false;
+    
+    console.log(`🔍 checkRedemptionAgainstProgressions: Checking redemption "${title}" by ${username}`);
+    
+    // Get all progressions
+    const result = await window.electronAPI.getProgressions();
+    if (!result.success || !result.progressions || result.progressions.length === 0) {
+      console.log('🔍 No progressions configured');
+      return false;
+    }
+    
+    const progressions = result.progressions;
+    console.log(`🔍 Found ${progressions.length} progressions`);
+    
+    // Look for progression with matching redeem keyword
+    const lowerTitle = title.toLowerCase().trim();
+    const matchingProgression = progressions.find(prog => 
+      prog.redeemKeyword && prog.redeemKeyword.toLowerCase().trim() === lowerTitle
+    );
+    
+    if (!matchingProgression) {
+      console.log(`🔍 No progression matched redemption "${title}"`);
+      return false;
+    }
+    
+    console.log(`✅ Found matching progression: "${matchingProgression.name}"`);
+    
+    // Send increment request to main process
+    if (window.electronAPI && window.electronAPI.incrementProgression) {
+      console.log('📤 Sending progression increment to main process');
+      window.electronAPI.incrementProgression({
+        progressionId: matchingProgression.id,
+        username: username,
+        redeemTitle: title
+      });
+    } else {
+      console.error('❌ electronAPI.incrementProgression not available!');
+    }
+    
+    return true;
+  } catch (e) {
+    console.error('Error checking redemption against progressions:', e);
+    return false;
+  }
+};
+
 function parseEmotes(message, emotes) {
   // TODO: implement real emote parsing. For now, escape HTML and return.
   return escapeHtml(message || '');
@@ -609,7 +664,7 @@ if (window.electronAPI && window.electronAPI.onTwitchChatEvent) {
 }
 
 if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
-  window.electronAPI.onTwitchEventSub((e) => {
+  window.electronAPI.onTwitchEventSub(async (e) => {
   // Normalize eventsub redemption topics to 'redeem' for cleaner rendering
   let t = e.type || 'eventsub';
   if (typeof t === 'string' && t.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
@@ -618,9 +673,26 @@ if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
   if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
   if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.ban')) t = 'ban';
   pushTwitchEvent({ type: t, event: e.event });
+  
+  // Check for hydration redemption
+  if (t === 'redeem' && e.event) {
+    const rewardTitle = (e.event.reward && (e.event.reward.title || e.event.reward.name)) || e.event.reward_title || e.event.reward || '';
+    if (window.electronAPI && window.electronAPI.getHydrationConfig && window.electronAPI.updateHydrationProgress) {
+      try {
+        const hydrationConfig = await window.electronAPI.getHydrationConfig();
+        const keyword = (hydrationConfig.redemptionKeyword || 'hydrate').toLowerCase();
+        if (rewardTitle && String(rewardTitle).toLowerCase().includes(keyword)) {
+          console.log(`💧 Hydration redemption detected: "${rewardTitle}" - incrementing tracker`);
+          await window.electronAPI.updateHydrationProgress();
+        }
+      } catch (error) {
+        console.error('Error checking hydration redemption:', error);
+      }
+    }
+  }
   });
 } else if (window.ipcRenderer) {
-  window.ipcRenderer.on('twitch-eventsub', (event, e) => {
+  window.ipcRenderer.on('twitch-eventsub', async (event, e) => {
     console.debug('renderer received twitch-eventsub:', e);
   let t = e.type || 'eventsub';
   if (typeof t === 'string' && t.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
@@ -628,6 +700,23 @@ if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
   if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
   if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.ban')) t = 'ban';
   pushTwitchEvent({ type: t, event: e.event });
+  
+  // Check for hydration redemption
+  if (t === 'redeem' && e.event) {
+    const rewardTitle = (e.event.reward && (e.event.reward.title || e.event.reward.name)) || e.event.reward_title || e.event.reward || '';
+    if (window.electronAPI && window.electronAPI.getHydrationConfig && window.electronAPI.updateHydrationProgress) {
+      try {
+        const hydrationConfig = await window.electronAPI.getHydrationConfig();
+        const keyword = (hydrationConfig.redemptionKeyword || 'hydrate').toLowerCase();
+        if (rewardTitle && String(rewardTitle).toLowerCase().includes(keyword)) {
+          console.log(`💧 Hydration redemption detected: "${rewardTitle}" - incrementing tracker`);
+          await window.electronAPI.updateHydrationProgress();
+        }
+      } catch (error) {
+        console.error('Error checking hydration redemption:', error);
+      }
+    }
+  }
   });
 }
 
@@ -811,14 +900,15 @@ const _origPush = pushTwitchEvent;
 pushTwitchEvent = async function(evt) {
   _origPush(evt);
   try {
-    // Skip processing chat commands entirely - let main.js handle them
-    if (evt && evt.type === 'chat' && evt.message && evt.message.startsWith('!')) {
-      console.log(`⏭️ tc.js skipping chat command processing for: ${evt.message} (handled by main.js)`);
-      return; // Don't process chat commands in tc.js
-    }
-    
     // ONLY for redemptions, check if any button has a matching chat command keyword
     if (evt && evt.type === 'redeem') {
+      // First check if this redemption matches a progression
+      const progressionMatched = await checkRedemptionAgainstProgressions(evt);
+      if (progressionMatched) {
+        console.log('✅ Progression matched and incremented');
+        // Don't return - still allow buttons to trigger too if they match
+      }
+      
       const matchingButtonLabel = await checkRedemptionAgainstButtonKeywords(evt);
       if (matchingButtonLabel && window.electronAPI && window.electronAPI.sendTrigger) {
         console.log(`🚀 Triggering button "${matchingButtonLabel}" from channel point redemption`);
@@ -827,7 +917,7 @@ pushTwitchEvent = async function(evt) {
       }
     }
     
-    // First try standard matching
+    // First try standard matching (includes chat commands)
     let m = matchMappingForEvent(evt);
     // If bits event, try best-match algorithm
     if (!m && evt && ((evt.type && evt.type.includes('bits')) || (evt.event && (evt.event.bits || evt.event.amount)))) {

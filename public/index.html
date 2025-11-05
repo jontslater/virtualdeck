@@ -45,7 +45,6 @@
         <button data-toggle="toggle-twitch-chat" class="menu-dropdown-item" role="menuitem">Twitch Chat</button>
         <button data-toggle="toggle-sound-controls" class="menu-dropdown-item" role="menuitem">Sound Controls</button>
         <button data-toggle="toggle-queue-control" class="menu-dropdown-item" role="menuitem">Alert Queue</button>
-        <button data-toggle="toggle-profile-panel" class="menu-dropdown-item" role="menuitem">Profile Panel</button>
       </div>
     </div>
     <div class="menu-item" id="menu-tools" aria-haspopup="true">
@@ -120,7 +119,6 @@
       <input type="checkbox" id="toggle-twitch-chat" checked style="display: none;">
       <input type="checkbox" id="toggle-sound-controls" checked style="display: none;">
       <input type="checkbox" id="toggle-queue-control" checked style="display: none;">
-      <input type="checkbox" id="toggle-profile-panel" checked style="display: none;">
       
       <!-- Hidden buttons that View menu delegates to -->
       <button id="hide-all-components" style="display: none;">Hide All</button>
@@ -130,7 +128,6 @@
   
   <div class="container">
     <div class="hotkey-info">
-      <strong>Numpad Currently Not supported</strong>
       <div class="hotkey-help">
         <small>💡 Tip: Press Ctrl+Shift+T to cycle through themes</small>
       </div>
@@ -205,34 +202,39 @@
       </div>
     </div>
 
-    <!-- Profile Management Panel -->
-    <div id="profile-panel" class="profile-panel">
-      <div class="profile-header">
-        <span class="profile-icon">👤</span>
-        <span class="profile-title">Profile</span>
-      </div>
-      <div class="profile-current">
-        <select id="profile-selector" class="profile-selector">
-          <option value="default">Default Profile</option>
-        </select>
-      </div>
-      <div class="profile-actions">
-        <button id="profile-create" class="profile-btn" title="Create New Profile">
-          <span class="btn-icon">➕</span>
-          <span class="btn-label">New</span>
-        </button>
-        <button id="profile-duplicate" class="profile-btn" title="Duplicate Current Profile">
-          <span class="btn-icon">📋</span>
-          <span class="btn-label">Duplicate</span>
-        </button>
-        <button id="profile-rename" class="profile-btn" title="Rename Current Profile">
-          <span class="btn-icon">✏️</span>
-          <span class="btn-label">Rename</span>
-        </button>
-        <button id="profile-delete" class="profile-btn" title="Delete Current Profile">
-          <span class="btn-icon">🗑️</span>
-          <span class="btn-label">Delete</span>
-        </button>
+    <!-- Profile Management Modal -->
+    <div id="profile-modal" class="modal-overlay hidden">
+      <div class="modal-content" style="max-width: 500px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <h2 style="margin:0;">Profile Manager</h2>
+          <button id="profile-modal-close" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-primary);">&times;</button>
+        </div>
+        
+        <div style="margin-bottom:20px;">
+          <label style="display:block;margin-bottom:8px;font-weight:600;">Current Profile</label>
+          <select id="profile-selector" class="profile-selector" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+            <option value="default">Default Profile</option>
+          </select>
+        </div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <button id="profile-create" class="profile-btn" style="padding:12px;border-radius:6px;background:var(--accent);color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+            <span>➕</span>
+            <span>New Profile</span>
+          </button>
+          <button id="profile-duplicate" class="profile-btn" style="padding:12px;border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+            <span>📋</span>
+            <span>Duplicate</span>
+          </button>
+          <button id="profile-rename" class="profile-btn" style="padding:12px;border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+            <span>✏️</span>
+            <span>Rename</span>
+          </button>
+          <button id="profile-delete" class="profile-btn" style="padding:12px;border-radius:6px;background:#dc3545;color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+            <span>🗑️</span>
+            <span>Delete</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -241,6 +243,9 @@
         🔒 Lock
       </button>
       <span class="drag-status">Sound buttons are locked</span>
+      <button id="open-profile-manager-btn" class="profile-manager-btn" title="Open Profile Manager">
+        👤 Profile
+      </button>
     </div>
     
     <div class="main-content">
@@ -558,6 +563,47 @@
           </tbody>
         </table>
 
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">🎯 Progression System</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Username who redeemed</td>
+              <td>contributor123</td>
+            </tr>
+            <tr>
+              <td><code>{action}</code></td>
+              <td><strong>Your custom action word</strong></td>
+              <td>watered, built, fed (based on your Action Word setting)</td>
+            </tr>
+            <tr>
+              <td><code>{object}</code></td>
+              <td>The progression name</td>
+              <td>Building a House</td>
+            </tr>
+            <tr>
+              <td><code>{count}</code></td>
+              <td>Total redemptions across all stages</td>
+              <td>15</td>
+            </tr>
+            <tr>
+              <td><code>{stage}</code></td>
+              <td>Current stage number</td>
+              <td>2</td>
+            </tr>
+            <tr>
+              <td><code>{total_stages}</code></td>
+              <td>Total number of stages</td>
+              <td>5</td>
+            </tr>
+            <tr>
+              <td><code>{required}</code></td>
+              <td><strong>(Overlay Text only)</strong> Redeems required for current stage</td>
+              <td>10</td>
+            </tr>
+          </tbody>
+        </table>
+
         <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">💡 Usage Examples</h3>
         <div class="usage-examples">
           <div class="example-item">
@@ -582,6 +628,18 @@
             <strong>Daily Check-In:</strong>
             <code>Welcome back {username}! You've checked in {total_checkins} times!</code>
             <div class="example-result">→ Welcome back dailyviewer! You've checked in 42 times!</div>
+          </div>
+          
+          <div class="example-item">
+            <strong>Progression Chat Message (Action Word: "watered"):</strong>
+            <code>{username} {action} the tree! {count} total contributions (Stage {stage}/{total_stages})</code>
+            <div class="example-result">→ contributor123 watered the tree! 15 total contributions (Stage 2/5)</div>
+          </div>
+          
+          <div class="example-item">
+            <strong>Progression Overlay Text:</strong>
+            <code>Stage {stage}: {count}/{required}</code>
+            <div class="example-result">→ Stage 2: 3/10</div>
           </div>
         </div>
 
@@ -1084,6 +1142,143 @@
           </div>
         </div>
       </div>
+      
+      <div class="overlay-section">
+        <h4>Hydration Tracker</h4>
+        <div class="overlay-info">
+          <p>Track your water intake with an animated overlay that updates when viewers redeem a specific channel point reward.</p>
+        </div>
+        <button id="open-hydration-settings" class="overlay-action-btn" style="width: 100%; padding: 12px; margin-bottom: 12px;">⚙️ Configure Hydration Tracker</button>
+        <div class="overlay-url-display">
+          <label>Hydration Overlay URL:</label>
+          <div class="url-display">
+            <code>http://localhost:8080/hydration</code>
+            <button id="copy-hydration-url" class="copy-btn" title="Copy URL">📋</button>
+          </div>
+          <small style="color: var(--text-tertiary); display: block; margin-top: 8px;">Add this as a Browser Source in OBS (1920x1080)</small>
+        </div>
+      </div>
+      
+      <!-- Progression System -->
+      <div class="overlay-section">
+        <h4>Progression System</h4>
+        <div class="overlay-info">
+          <p>Create multi-stage progressions that advance when viewers redeem channel points. Perfect for building projects, leveling up characters, or any goal-based interaction.</p>
+          <p style="margin-top:8px;font-size:13px;">Choose per progression: display on your main overlay or use a dedicated progression overlay.</p>
+        </div>
+        <button id="open-progression-manager" class="overlay-action-btn" style="width: 100%; padding: 12px; margin-bottom: 12px;">⚙️ Manage Progressions</button>
+        <div class="overlay-url-display">
+          <label>Dedicated Progression Overlay:</label>
+          <div class="url-display">
+            <code>http://localhost:8080/progression</code>
+            <button id="copy-progression-url" class="copy-btn" title="Copy URL">📋</button>
+          </div>
+          <small style="color: var(--text-tertiary); display: block; margin-top: 8px;">Optional dedicated overlay. Or choose "Main Overlay" when creating progressions.</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hydration Settings Modal -->
+  <div id="hydration-settings-modal" class="modal-overlay hidden" style="z-index: 10002;">
+    <div class="modal-content" style="max-width: 700px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h2 style="margin:0;">Hydration Tracker Settings</h2>
+        <button id="hydration-settings-close" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-primary);">&times;</button>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <!-- Left Column - Tracking Settings -->
+        <div>
+          <h3 style="margin-bottom:15px;font-size:16px;border-bottom:2px solid var(--accent);padding-bottom:8px;">Tracking Settings</h3>
+          
+          <div style="margin-bottom:15px;">
+            <label style="display:block;margin-bottom:5px;font-weight:600;">Stream Goal (oz)</label>
+            <input type="number" id="hydration-goal" min="1" max="500" value="64" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+            <small style="color:var(--text-tertiary);">Total water goal for the stream</small>
+          </div>
+          
+          <div style="margin-bottom:15px;">
+            <label style="display:block;margin-bottom:5px;font-weight:600;">Increment per Redeem (oz)</label>
+            <input type="number" id="hydration-increment" min="1" max="100" value="8" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+            <small style="color:var(--text-tertiary);">Water amount added per redemption</small>
+          </div>
+          
+          <div style="margin-bottom:15px;">
+            <label style="display:block;margin-bottom:5px;font-weight:600;">Redemption Keyword</label>
+            <input type="text" id="hydration-keyword" placeholder="hydrate" value="hydrate" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+            <small style="color:var(--text-tertiary);">Channel point reward name to trigger (case-insensitive)</small>
+          </div>
+          
+          <div style="margin-bottom:15px;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="checkbox" id="hydration-reset-on-live" checked style="width:auto;">
+              <span style="font-weight:600;">Auto-reset when stream goes live</span>
+            </label>
+            <small style="color:var(--text-tertiary);display:block;margin-left:28px;">Automatically reset progress when you start streaming</small>
+          </div>
+          
+          <div style="margin-bottom:15px;">
+            <button id="hydration-manual-reset" style="width:100%;padding:10px;background:#dc3545;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Reset Progress to 0</button>
+          </div>
+        </div>
+        
+        <!-- Right Column - Appearance Settings -->
+        <div>
+          <h3 style="margin-bottom:15px;font-size:16px;border-bottom:2px solid var(--accent);padding-bottom:8px;">Appearance</h3>
+          
+          <div style="margin-bottom:15px;">
+            <label style="display:block;margin-bottom:5px;font-weight:600;">Gauge Style</label>
+            <div style="display:flex;gap:10px;">
+              <label style="flex:1;cursor:pointer;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:6px;text-align:center;transition:all 0.2s;">
+                <input type="radio" name="gauge-style" value="vertical" style="display:none;">
+                <span>Vertical Bar</span>
+              </label>
+              <label style="flex:1;cursor:pointer;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:6px;text-align:center;transition:all 0.2s;">
+                <input type="radio" name="gauge-style" value="circular" checked style="display:none;">
+                <span>Circular</span>
+              </label>
+              <label style="flex:1;cursor:pointer;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:6px;text-align:center;transition:all 0.2s;">
+                <input type="radio" name="gauge-style" value="horizontal" style="display:none;">
+                <span>Horizontal Bar</span>
+              </label>
+            </div>
+          </div>
+          
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">
+            <div>
+              <label style="display:block;margin-bottom:5px;font-weight:600;">Water Color</label>
+              <input type="color" id="hydration-water-color" value="#4fc3f7" style="width:100%;height:40px;border:none;border-radius:6px;cursor:pointer;">
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:5px;font-weight:600;">Text Color</label>
+              <input type="color" id="hydration-text-color" value="#ffffff" style="width:100%;height:40px;border:none;border-radius:6px;cursor:pointer;">
+            </div>
+          </div>
+          
+          <div style="margin-bottom:15px;">
+            <label style="display:block;margin-bottom:5px;font-weight:600;">Gauge Size</label>
+            <input type="range" id="hydration-size" min="50" max="500" value="200" style="width:100%;">
+            <div style="text-align:center;color:var(--text-tertiary);"><span id="hydration-size-value">200</span>px</div>
+          </div>
+          
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">
+            <div>
+              <label style="display:block;margin-bottom:5px;font-weight:600;">Position X (%)</label>
+              <input type="number" id="hydration-pos-x" min="0" max="100" value="50" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:5px;font-weight:600;">Position Y (%)</label>
+              <input type="number" id="hydration-pos-y" min="0" max="100" value="50" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div style="display:flex;gap:10px;margin-top:20px;padding-top:20px;border-top:1px solid var(--border-color);">
+        <button id="hydration-test" style="flex:1;padding:12px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Test Update (+8 oz)</button>
+        <button id="hydration-save" style="flex:1;padding:12px;background:#28a745;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Save Settings</button>
+      </div>
     </div>
   </div>
 
@@ -1537,6 +1732,7 @@
       </div>
     </div>
   </div>
+  </div>
 
   <!-- Daily Check-In Statistics Modal -->
   <div id="checkin-stats-modal" class="hidden">
@@ -1641,6 +1837,170 @@
           <button id="welcome-popup-dismiss" class="preference-button" style="flex: 1;">Maybe Later</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Progression Manager Modal -->
+  <div id="progression-manager-modal" class="modal-overlay hidden" style="z-index: 100000;">
+    <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h2 style="margin:0;">Progression Manager</h2>
+        <button id="progression-manager-close" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-primary);">&times;</button>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
+        <button id="create-new-progression" style="padding:12px;background:var(--accent);color:white;border:none;border-radius:6px;font-weight:600;cursor:pointer;">+ Create New Progression</button>
+        <button id="test-progression-redeem" style="padding:12px;background:#10b981;color:white;border:none;border-radius:6px;font-weight:600;cursor:pointer;">🧪 Test Redeem</button>
+      </div>
+      
+      <div id="progressions-list" style="display:grid;gap:15px;">
+        <!-- Progression cards will be inserted here -->
+      </div>
+      
+      <div id="no-progressions-message" style="text-align:center;padding:40px;color:var(--text-secondary);">
+        <p>No progressions yet. Create your first progression to get started!</p>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Progression Test Modal -->
+  <div id="progression-test-modal" class="modal-overlay hidden" style="z-index: 100001;">
+    <div class="modal-content" style="max-width: 500px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h2 style="margin:0;">Test Progression Redeem</h2>
+        <button id="progression-test-close" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-primary);">&times;</button>
+      </div>
+      
+      <div style="display:grid;gap:15px;">
+        <div>
+          <label style="display:block;margin-bottom:8px;font-weight:600;">Test Username</label>
+          <input type="text" id="test-progression-username" value="TestUser" placeholder="Enter username" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+          <small style="color:var(--text-tertiary);">The username that will trigger the redeem</small>
+        </div>
+        
+        <div id="test-progression-info" style="padding:12px;background:var(--bg-secondary);border-radius:6px;border:1px solid var(--border-color);">
+          <div style="font-size:14px;margin-bottom:8px;"><strong>Progression:</strong> <span id="test-prog-name">--</span></div>
+          <div style="font-size:12px;color:var(--text-tertiary);"><strong>Redeem:</strong> <span id="test-prog-keyword">--</span></div>
+          <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;"><strong>Current:</strong> Stage <span id="test-prog-stage">1</span>/<span id="test-prog-total">1</span> (<span id="test-prog-count">0</span>/<span id="test-prog-required">0</span>)</div>
+        </div>
+        
+        <div style="padding:12px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:6px;">
+          <div style="font-size:13px;line-height:1.5;">
+            <strong>What this test does:</strong><br>
+            • Simulates a Twitch channel point redemption<br>
+            • Increments the progression counter<br>
+            • Advances to next stage when threshold is met<br>
+            • Updates the progression overlay<br>
+            • Sends chat message (if configured)<br>
+            • Updates leaderboard
+          </div>
+        </div>
+        
+        <div style="display:flex;gap:10px;">
+          <button type="button" id="progression-test-cancel" style="flex:1;padding:10px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:6px;cursor:pointer;color:var(--text-primary);">Cancel</button>
+          <button type="button" id="progression-test-send" style="flex:1;padding:10px;background:#10b981;color:white;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Send Test Redeem</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Progression Editor Modal -->
+  <div id="progression-editor-modal" class="modal-overlay hidden" style="z-index: 100002;">
+    <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h2 style="margin:0;" id="progression-editor-title">New Progression</h2>
+        <div style="display: flex; gap: 8px;">
+          <button id="progression-placeholders-help" class="help-btn" title="View Placeholders Guide" style="background: var(--accent); color: white; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;">?</button>
+          <button id="progression-editor-close" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-primary);">&times;</button>
+        </div>
+      </div>
+      
+      <form id="progression-form" style="display:grid;gap:20px;">
+        <!-- Basic Info -->
+        <div>
+          <label style="display:block;margin-bottom:8px;font-weight:600;">Progression Name</label>
+          <input type="text" id="progression-name" required placeholder="e.g., Building a House" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+        </div>
+        
+        <div>
+          <label style="display:block;margin-bottom:8px;font-weight:600;">Redeem Keyword</label>
+          <input type="text" id="progression-redeem-keyword" required placeholder="e.g., build" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+          <small style="color:var(--text-tertiary);">Channel point reward name that triggers this progression</small>
+        </div>
+        
+        <div>
+          <label style="display:block;margin-bottom:8px;font-weight:600;">Action Word</label>
+          <input type="text" id="progression-action-word" placeholder="e.g., watered, built, fed" value="contributed" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+          <small style="color:var(--text-tertiary);">Used in {action} variable. Example: "watered" → "{username} watered the tree"</small>
+        </div>
+        
+        <div>
+          <label style="display:block;margin-bottom:8px;font-weight:600;">Chat Command (Optional)</label>
+          <input type="text" id="progression-chat-command" placeholder="e.g., !progress" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+          <small style="color:var(--text-tertiary);">Command viewers can use to see leaderboard</small>
+        </div>
+        
+        <div>
+          <label style="display:block;margin-bottom:8px;font-weight:600;">Overlay Text (Optional)</label>
+          <input type="text" id="progression-overlay-text" placeholder="e.g., {username} is {action} the {object}!" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+          <small style="color:var(--text-tertiary);">Text shown on overlay. Variables: {username}, {action}, {object}, {stage}, {count}, {required}, {total_stages}</small>
+        </div>
+        
+        <div>
+          <label style="display:block;margin-bottom:8px;font-weight:600;">Chat Message Template (Optional)</label>
+          <input type="text" id="progression-chat-message" placeholder="{username} {action} the {object}! {count} total" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+          <small style="color:var(--text-tertiary);">Variables: {username}, {action} (uses your action word), {object}, {count}, {stage}, {total_stages}</small>
+        </div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+          <div>
+            <label style="display:block;margin-bottom:8px;font-weight:600;">Display Mode</label>
+            <select id="progression-display-mode" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+              <option value="always">Always Visible</option>
+              <option value="duration" selected>Show During Redeem</option>
+            </select>
+          </div>
+          
+          <div id="progression-duration-container" style="display:block;">
+            <label style="display:block;margin-bottom:8px;font-weight:600;">Duration (seconds)</label>
+            <input type="number" id="progression-duration" min="1" max="60" value="10" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+          </div>
+        </div>
+        
+        <div>
+          <label style="display:block;margin-bottom:8px;font-weight:600;">State Persistence</label>
+          <select id="progression-persistence" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+            <option value="permanent">Permanent (Saves across sessions)</option>
+            <option value="session">Session Only (Resets on app restart)</option>
+          </select>
+        </div>
+        
+        <div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="progression-uniform-count" style="cursor:pointer;">
+            <span>Use same redeem count for all stages</span>
+          </label>
+        </div>
+        
+        <div id="progression-uniform-count-value" style="display:none;">
+          <label style="display:block;margin-bottom:8px;font-weight:600;">Redeems Required Per Stage</label>
+          <input type="number" id="progression-uniform-count-input" min="1" value="5" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+        </div>
+        
+        <!-- Stages -->
+        <div>
+          <h3 style="margin-bottom:15px;font-size:16px;border-bottom:2px solid var(--accent);padding-bottom:8px;">Stages</h3>
+          <div id="progression-stages-list" style="display:grid;gap:15px;">
+            <!-- Stages will be inserted here -->
+          </div>
+          <button type="button" id="add-progression-stage" style="width:100%;padding:10px;margin-top:15px;background:var(--bg-secondary);border:1px dashed var(--border-color);border-radius:6px;cursor:pointer;color:var(--text-primary);">+ Add Stage</button>
+        </div>
+        
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button type="button" id="progression-form-cancel" style="padding:10px 20px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:6px;cursor:pointer;color:var(--text-primary);">Cancel</button>
+          <button type="submit" style="padding:10px 20px;background:var(--accent);color:white;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Save Progression</button>
+        </div>
+      </form>
     </div>
   </div>
 
