@@ -733,9 +733,13 @@ class ProfileManager {
   }
   
   showSaveIndicator(message, type = 'info') {
-    // Find or create save indicator in profile panel
-    const profilePanel = document.getElementById('profile-panel');
-    if (!profilePanel) return;
+    // Find or create save indicator in profile modal
+    const profileModal = document.getElementById('profile-modal');
+    if (!profileModal || profileModal.classList.contains('hidden')) {
+      // Modal is not open, just log it
+      console.log(`Profile: ${message}`);
+      return;
+    }
     
     let indicator = document.getElementById('profile-save-indicator');
     if (!indicator) {
@@ -749,7 +753,7 @@ class ProfileManager {
         text-align: center;
         transition: opacity 0.3s ease;
       `;
-      profilePanel.appendChild(indicator);
+      profileModal.querySelector('.modal-content').appendChild(indicator);
     }
     
     // Set color based on type
@@ -815,8 +819,7 @@ class ProfileManager {
       'recent-activity-container': document.getElementById('recent-activity-container'),
       'twitch-chat-container': document.getElementById('twitch-chat-container'),
       'sound-controls': document.getElementById('sound-controls'),
-      'queue-control-widget': document.getElementById('queue-control-widget'),
-      'profile-panel': document.getElementById('profile-panel')
+      'queue-control-widget': document.getElementById('queue-control-widget')
     };
     
     for (const [key, element] of Object.entries(components)) {
@@ -2641,8 +2644,7 @@ function getVisibilityMap() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
-    'toggle-queue-control': 'queue-control-widget',
-    'toggle-profile-panel': 'profile-panel',
+    'toggle-queue-control': 'queue-control-widget'
     // move-bar removed
   };
 }
@@ -2743,7 +2745,7 @@ function initializeVisibilityDropdown() {
 
   // Close dropdown when clicking outside
   document.addEventListener('click', (e) => {
-    if (menu && !menu.contains(e.target) && !toggleBtn.contains(e.target)) {
+    if (menu && !menu.contains(e.target) && toggleBtn && !toggleBtn.contains(e.target)) {
       menu.classList.add('hidden');
     }
   });
@@ -2938,8 +2940,7 @@ function applyVisibilityPrefs() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
-    'toggle-queue-control': 'queue-control-widget',
-    'toggle-profile-panel': 'profile-panel',
+    'toggle-queue-control': 'queue-control-widget'
     // move-bar removed
   };
 
@@ -4027,6 +4028,26 @@ async function handleMultiMediaTrigger(button) {
   const centerMediaData = button.centerMedia || [];
   const optionsData = button.options || { clearPrevious: true };
   
+  console.log('🎬 === INITIAL BUTTON DATA DEBUG ===');
+  console.log('🎬 centerMediaData exists?', !!centerMediaData);
+  console.log('🎬 centerMediaData is array?', Array.isArray(centerMediaData));
+  console.log('🎬 centerMediaData length:', centerMediaData.length);
+  console.log('🎬 centerMediaData content:', centerMediaData);
+  if (centerMediaData.length > 0) {
+    centerMediaData.forEach((item, idx) => {
+      console.log(`🎬 centerMedia[${idx}]:`, {
+        type: item.type,
+        id: item.id,
+        hasSrc: !!item.src,
+        srcPreview: item.src ? item.src.substring(0, 100) : 'NO SRC',
+        loop: item.loop,
+        widthPct: item.widthPct
+      });
+    });
+  } else {
+    console.log('🎬 ⚠️ NO centerMediaData in button!');
+  }
+  
   // Debug: Log the button data to see what we're working with
   console.log('🔍 Button.slots:', button.slots);
   console.log('🔍 SlotsData:', slotsData);
@@ -4167,12 +4188,25 @@ async function handleMultiMediaTrigger(button) {
     slots: Object.keys(overlayPayload.slots || {}),
     centerMedia: overlayPayload.centerMedia.map(item => ({
       type: item.type,
+      src: item.src ? (item.src.substring(0, 100) + '...') : 'NO SRC',
       volume: item.volume
     })),
     audioCount: processedAudio.length,
     videoCount: processedCenterMedia.filter(i => i.type === 'video').length,
     imageCount: processedCenterMedia.filter(i => i.type === 'image').length,
     options: overlayPayload.options
+  });
+  console.log('🎬 DETAILED VIDEO DEBUG:');
+  console.log('  - Total centerMedia items:', overlayPayload.centerMedia.length);
+  console.log('  - Videos in centerMedia:', overlayPayload.centerMedia.filter(i => i.type === 'video').length);
+  overlayPayload.centerMedia.filter(i => i.type === 'video').forEach((vid, idx) => {
+    console.log(`  - Video ${idx + 1}:`, {
+      type: vid.type,
+      src: vid.src,
+      loop: vid.loop,
+      muted: vid.muted,
+      volume: vid.volume
+    });
   });
   console.log(`🎯 Sending to overlay: ${overlayPayload.targetOverlay}`);
 
@@ -4443,6 +4477,19 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   
   // Debug logging
   console.log('Form submission debug:');
+  console.log('- Type:', type);
+  console.log('- FileInput element:', fileInput);
+  console.log('- FileInput exists:', !!fileInput);
+  if (fileInput) {
+    console.log('- FileInput.files:', fileInput.files);
+    console.log('- FileInput.files.length:', fileInput.files.length);
+    if (fileInput.files.length > 0) {
+      console.log('- FileInput.files[0]:', fileInput.files[0]);
+      console.log('- FileInput.files[0].path:', fileInput.files[0].path);
+      console.log('- FileInput.files[0].name:', fileInput.files[0].name);
+    }
+  }
+  console.log('- ResolvedPath:', resolvedPath);
   console.log('- Label:', label);
   console.log('- Type:', type);
   console.log('- Base hotkey:', hotkey);
@@ -4503,16 +4550,53 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     }
     
     skipReload = true;
-  } else if (fileInput.files.length || resolvedPath) {
+  } else if ((fileInput && fileInput.files.length) || resolvedPath) {
     // New file selected or resolved path from drag-and-drop
     console.log('Form submission - resolvedPath:', resolvedPath);
-    console.log('Form submission - fileInput.files.length:', fileInput.files.length);
-    if (fileInput.files.length > 0) {
-      console.log('Form submission - fileInput.files[0]:', fileInput.files[0]);
+    console.log('Form submission - fileInput:', fileInput);
+    console.log('Form submission - fileInput.files.length:', fileInput ? fileInput.files.length : 0);
+    
+    let filePath = resolvedPath;
+    let fileName = null;
+    
+    if (!filePath && fileInput && fileInput.files.length > 0) {
+      const file = fileInput.files[0];
+      console.log('Form submission - fileInput.files[0]:', file);
+      console.log('Form submission - fileInput.files[0].name:', file.name);
+      console.log('Form submission - fileInput.files[0].type:', file.type);
+      console.log('Form submission - fileInput.files[0].size:', file.size);
+      
+      // Use Electron's webUtils to get the file path
+      if (window.electronAPI && window.electronAPI.getFilePathFromFile) {
+        filePath = window.electronAPI.getFilePathFromFile(file);
+        console.log('Form submission - got file path from webUtils:', filePath);
+      } else {
+        console.warn('electronAPI.getFilePathFromFile not available, falling back to file.path');
+        filePath = file.path;
+      }
+      
+      fileName = file.name;
+    } else if (resolvedPath) {
+      fileName = resolvedPath.split('\\').pop() || resolvedPath.split('/').pop();
     }
     
-    const filePath = resolvedPath || fileInput.files[0].path;
-    const fileName = resolvedPath ? (resolvedPath.split('\\').pop() || resolvedPath.split('/').pop()) : fileInput.files[0].name;
+    // Validate that we have a valid file path
+    if (!filePath) {
+      console.error('Error: No valid file path found');
+      console.error('- resolvedPath:', resolvedPath);
+      console.error('- fileInput:', fileInput);
+      console.error('- fileInput exists:', !!fileInput);
+      if (fileInput) {
+        console.error('- fileInput.files:', fileInput.files);
+        console.error('- fileInput.files.length:', fileInput.files.length);
+        console.error('- fileInput.files[0]:', fileInput.files[0]);
+        if (fileInput.files[0]) {
+          console.error('- fileInput.files[0].path:', fileInput.files[0].path);
+          console.error('- fileInput.files[0].name:', fileInput.files[0].name);
+        }
+      }
+      return alert('Error: Could not get file path. Please try selecting the file again.\n\nTip: Try clicking "Browse" and selecting your file from the file picker.');
+    }
     
     // For app files, use the resolved path directly; for audio files, create a target path
     let targetPath;
@@ -6023,6 +6107,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupAppToolbar();
   setupOverlayControls();
   setupOverlayWidget();
+  setupHydrationSettings();
   setupAlertWidget();
   initDailyCheckinSystem();
   // initialize left app menu
@@ -6129,6 +6214,55 @@ function setupProfilePanelEventHandlers() {
   }
   
   console.log('✅ Profile panel event handlers setup complete');
+  
+  // Profile modal close button
+  const modalCloseBtn = document.getElementById('profile-modal-close');
+  if (modalCloseBtn) {
+    modalCloseBtn.addEventListener('click', () => {
+      closeProfileModal();
+    });
+  }
+  
+  // Close modal on backdrop click
+  const profileModal = document.getElementById('profile-modal');
+  if (profileModal) {
+    profileModal.addEventListener('click', (e) => {
+      if (e.target === profileModal) {
+        closeProfileModal();
+      }
+    });
+  }
+}
+
+// Open profile manager modal
+function openProfileModal() {
+  const modal = document.getElementById('profile-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    // Disable hotkeys when modal is open
+    if (window.electronAPI && window.electronAPI.disableHotkeys) {
+      window.electronAPI.disableHotkeys();
+    }
+  }
+}
+
+// Close profile manager modal
+function closeProfileModal() {
+  const modal = document.getElementById('profile-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    // Re-enable hotkeys when modal closes
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+}
+
+// Listen for open-profile-manager from main process
+if (window.electronAPI && window.electronAPI.onOpenProfileManager) {
+  window.electronAPI.onOpenProfileManager(() => {
+    openProfileModal();
+  });
 }
 
 // Overlay controls setup
@@ -6495,6 +6629,217 @@ function setupOverlayWidget() {
     updateAllOverlaySelects();
     console.log('🔄 Refreshed overlay selects after delay');
   }, 1000);
+  
+  // Hydration tracker handlers
+  const openHydrationSettingsBtn = document.getElementById('open-hydration-settings');
+  const copyHydrationUrlBtn = document.getElementById('copy-hydration-url');
+  
+  if (openHydrationSettingsBtn) {
+    openHydrationSettingsBtn.addEventListener('click', () => {
+      openHydrationSettings();
+    });
+  }
+  
+  if (copyHydrationUrlBtn) {
+    copyHydrationUrlBtn.addEventListener('click', () => {
+      const url = 'http://localhost:8080/hydration';
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => {
+          showCustomAlert('Hydration overlay URL copied to clipboard!', 'success');
+        }).catch(err => {
+          console.error('Failed to copy:', err);
+          showCustomAlert('Failed to copy URL to clipboard', 'error');
+        });
+      }
+    });
+  }
+}
+
+// Hydration Settings Functions
+async function openHydrationSettings() {
+  const modal = document.getElementById('hydration-settings-modal');
+  if (!modal) return;
+  
+  // Load current config
+  if (window.electronAPI && window.electronAPI.getHydrationConfig) {
+    try {
+      const config = await window.electronAPI.getHydrationConfig();
+      
+      // Populate form fields
+      document.getElementById('hydration-goal').value = config.streamGoal || 64;
+      document.getElementById('hydration-increment').value = config.incrementAmount || 8;
+      document.getElementById('hydration-keyword').value = config.redemptionKeyword || 'hydrate';
+      document.getElementById('hydration-reset-on-live').checked = config.resetOnLive !== false;
+      document.getElementById('hydration-water-color').value = config.waterColor || '#4fc3f7';
+      document.getElementById('hydration-text-color').value = config.textColor || '#ffffff';
+      document.getElementById('hydration-size').value = config.gaugeSize || 200;
+      document.getElementById('hydration-size-value').textContent = config.gaugeSize || 200;
+      document.getElementById('hydration-pos-x').value = config.positionX || 50;
+      document.getElementById('hydration-pos-y').value = config.positionY || 50;
+      
+      // Set gauge style radio button
+      const gaugeStyleRadio = document.querySelector(`input[name="gauge-style"][value="${config.gaugeStyle || 'circular'}"]`);
+      if (gaugeStyleRadio) gaugeStyleRadio.checked = true;
+      updateGaugeStyleButtons();
+    } catch (error) {
+      console.error('Error loading hydration config:', error);
+    }
+  }
+  
+  modal.classList.remove('hidden');
+  
+  // Disable hotkeys when modal is open
+  if (window.electronAPI && window.electronAPI.disableHotkeys) {
+    window.electronAPI.disableHotkeys();
+  }
+}
+
+function closeHydrationSettings() {
+  const modal = document.getElementById('hydration-settings-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    
+    // Re-enable hotkeys
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+}
+
+async function saveHydrationSettings() {
+  if (!window.electronAPI || !window.electronAPI.saveHydrationConfig) {
+    console.error('electronAPI not available');
+    return;
+  }
+  
+  try {
+    const config = {
+      streamGoal: parseInt(document.getElementById('hydration-goal').value) || 64,
+      incrementAmount: parseInt(document.getElementById('hydration-increment').value) || 8,
+      redemptionKeyword: document.getElementById('hydration-keyword').value.trim() || 'hydrate',
+      currentProgress: 0, // Keep existing progress, will be loaded from saved config
+      gaugeStyle: document.querySelector('input[name="gauge-style"]:checked')?.value || 'circular',
+      waterColor: document.getElementById('hydration-water-color').value,
+      backgroundColor: 'transparent',
+      textColor: document.getElementById('hydration-text-color').value,
+      gaugeSize: parseInt(document.getElementById('hydration-size').value) || 200,
+      positionX: parseInt(document.getElementById('hydration-pos-x').value) || 50,
+      positionY: parseInt(document.getElementById('hydration-pos-y').value) || 50,
+      borderWidth: 0,
+      borderColor: '#ffffff',
+      borderRadius: 10,
+      resetOnLive: document.getElementById('hydration-reset-on-live').checked
+    };
+    
+    // Load existing config to preserve currentProgress
+    const existingConfig = await window.electronAPI.getHydrationConfig();
+    config.currentProgress = existingConfig.currentProgress || 0;
+    
+    const result = await window.electronAPI.saveHydrationConfig(config);
+    if (result.success) {
+      showCustomAlert('Hydration settings saved!', 'success');
+      closeHydrationSettings();
+    } else {
+      showCustomAlert('Failed to save hydration settings', 'error');
+    }
+  } catch (error) {
+    console.error('Error saving hydration settings:', error);
+    showCustomAlert('Error saving settings: ' + error.message, 'error');
+  }
+}
+
+function updateGaugeStyleButtons() {
+  const radioLabels = document.querySelectorAll('label:has(input[name="gauge-style"])');
+  radioLabels.forEach(label => {
+    const radio = label.querySelector('input[type="radio"]');
+    if (radio && radio.checked) {
+      label.style.background = 'var(--accent)';
+      label.style.color = 'white';
+      label.style.borderColor = 'var(--accent)';
+    } else {
+      label.style.background = 'var(--bg-secondary)';
+      label.style.color = 'var(--text-primary)';
+      label.style.borderColor = 'var(--border-color)';
+    }
+  });
+}
+
+// Setup hydration settings event handlers
+function setupHydrationSettings() {
+  // Close button
+  const closeBtn = document.getElementById('hydration-settings-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => closeHydrationSettings());
+  }
+  
+  // Close on backdrop click
+  const modal = document.getElementById('hydration-settings-modal');
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeHydrationSettings();
+      }
+    });
+  }
+  
+  // Save button
+  const saveBtn = document.getElementById('hydration-save');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => saveHydrationSettings());
+  }
+  
+  // Test button
+  const testBtn = document.getElementById('hydration-test');
+  if (testBtn) {
+    testBtn.addEventListener('click', async () => {
+      if (window.electronAPI && window.electronAPI.updateHydrationProgress) {
+        try {
+          await window.electronAPI.updateHydrationProgress();
+          showCustomAlert('Hydration updated! Check your overlay.', 'success');
+        } catch (error) {
+          console.error('Error testing hydration:', error);
+          showCustomAlert('Error testing hydration', 'error');
+        }
+      }
+    });
+  }
+  
+  // Manual reset button
+  const resetBtn = document.getElementById('hydration-manual-reset');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async () => {
+      if (confirm('Are you sure you want to reset hydration progress to 0?')) {
+        if (window.electronAPI && window.electronAPI.resetHydration) {
+          try {
+            await window.electronAPI.resetHydration();
+            showCustomAlert('Hydration progress reset to 0', 'success');
+          } catch (error) {
+            console.error('Error resetting hydration:', error);
+            showCustomAlert('Error resetting hydration', 'error');
+          }
+        }
+      }
+    });
+  }
+  
+  // Gauge style radio buttons
+  const gaugeStyleRadios = document.querySelectorAll('input[name="gauge-style"]');
+  gaugeStyleRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      updateGaugeStyleButtons();
+    });
+  });
+  
+  // Size slider update
+  const sizeSlider = document.getElementById('hydration-size');
+  const sizeValue = document.getElementById('hydration-size-value');
+  if (sizeSlider && sizeValue) {
+    sizeSlider.addEventListener('input', () => {
+      sizeValue.textContent = sizeSlider.value;
+    });
+  }
+  
+  console.log('✅ Hydration settings handlers setup complete');
 }
 
 // Predefined overlay cards function removed - only user-created overlays are supported
@@ -10166,6 +10511,15 @@ function setupLeftAppMenu() {
       if (!editBtn.contains(e.target) && !editDropdown.contains(e.target)) { editDropdown.classList.add('hidden'); editBtn.setAttribute('aria-expanded', 'false'); }
     });
   }
+  
+  // Profile Manager button (on dashboard)
+  const openProfileManagerBtn = document.getElementById('open-profile-manager-btn');
+  if (openProfileManagerBtn) {
+    openProfileManagerBtn.addEventListener('click', () => {
+      openProfileModal();
+    });
+  }
+  
   // Tools menu wiring (new)
   const toolsBtn = document.getElementById('menu-tools-btn');
   const toolsDropdown = document.getElementById('menu-tools-dropdown');
