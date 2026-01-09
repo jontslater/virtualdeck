@@ -2644,7 +2644,9 @@ function getVisibilityMap() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
-    'toggle-queue-control': 'queue-control-widget'
+    'toggle-queue-control': 'queue-control-widget',
+    'toggle-profile-panel': 'profile-panel',
+    'toggle-ai-management-panel': 'ai-management-panel'
     // move-bar removed
   };
 }
@@ -2940,7 +2942,9 @@ function applyVisibilityPrefs() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
-    'toggle-queue-control': 'queue-control-widget'
+    'toggle-queue-control': 'queue-control-widget',
+    'toggle-profile-panel': 'profile-panel',
+    'toggle-ai-management-panel': 'ai-management-panel'
     // move-bar removed
   };
 
@@ -6494,6 +6498,1504 @@ function setupOverlayWidget() {
     });
   }
   
+  // Setup AI Management Panel (Dashboard Widget)
+  function setupAIManagementPanel() {
+    console.log('🤖 Setting up AI Management Panel');
+    
+    // Setup AI On/Off Toggle (Dashboard)
+    setupAIDashboardToggle();
+    
+    const segmentSelector = document.getElementById('ai-segment-selector');
+    const triviaBtn = document.getElementById('ai-trivia-btn');
+    const qaBtn = document.getElementById('ai-qa-btn');
+    const statusBtn = document.getElementById('ai-status-btn');
+    const settingsBtn = document.getElementById('ai-settings-btn');
+    const statusText = document.getElementById('ai-status-text');
+    
+    console.log('🔍 AI Management Panel elements found:', {
+      segmentSelector: !!segmentSelector,
+      triviaBtn: !!triviaBtn,
+      qaBtn: !!qaBtn,
+      statusBtn: !!statusBtn,
+      settingsBtn: !!settingsBtn,
+      statusText: !!statusText
+    });
+    
+    // Segment selector - update AI behavior
+    if (segmentSelector) {
+      segmentSelector.addEventListener('change', async (e) => {
+        const segment = e.target.value;
+        console.log('📺 Segment changed to:', segment);
+        
+        // Set appropriate behavior based on segment
+        const behaviorMap = {
+          'normal': 'normal',
+          'gaming': 'chatty',
+          'just-chatting': 'chatty',
+          'special-event': 'hype',
+          'hype': 'hype'
+        };
+        
+        const behavior = behaviorMap[segment] || 'normal';
+        
+        // TODO: Call API to update segment settings
+        console.log(`Segment: ${segment}, Behavior: ${behavior}`);
+        
+        // Update AI Control Panel if open
+        const segmentBehaviorEl = document.getElementById('segment-behavior');
+        if (segmentBehaviorEl) {
+          segmentBehaviorEl.value = behavior;
+        }
+        const segmentSelectorEl = document.getElementById('segment-selector');
+        if (segmentSelectorEl) {
+          segmentSelectorEl.value = segment;
+        }
+      });
+    } else {
+      console.warn('⚠️ Segment selector not found');
+    }
+    
+    // Trivia button - open trivia modal
+    if (triviaBtn) {
+      console.log('✅ Trivia button found, adding click handler');
+      // Remove any existing listeners first
+      const newTriviaBtn = triviaBtn.cloneNode(true);
+      triviaBtn.parentNode.replaceChild(newTriviaBtn, triviaBtn);
+      
+      newTriviaBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('🎮 Trivia button clicked!');
+        try {
+          openTriviaModal();
+        } catch (err) {
+          console.error('❌ Error opening trivia modal:', err);
+          alert(`Error opening trivia modal: ${err.message}`);
+        }
+      });
+    } else {
+      console.error('❌ Trivia button NOT found! Looking for #ai-trivia-btn');
+      // Try to find it again after a delay
+      setTimeout(() => {
+        const retryBtn = document.getElementById('ai-trivia-btn');
+        if (retryBtn) {
+          console.log('✅ Found trivia button on retry');
+          retryBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🎮 Trivia button clicked (retry)!');
+            openTriviaModal();
+          });
+        } else {
+          console.error('❌ Trivia button still not found after retry');
+        }
+      }, 1000);
+    }
+    
+    // Q&A button - toggle Q&A mode
+    if (qaBtn) {
+      qaBtn.addEventListener('click', () => {
+        const qaEnabled = document.getElementById('qa-mode-enabled');
+        if (qaEnabled) {
+          const isEnabled = qaEnabled.checked;
+          qaEnabled.checked = !isEnabled;
+          
+          if (!isEnabled) {
+            // Starting Q&A
+            const qaStartBtn = document.getElementById('qa-start-btn');
+            if (qaStartBtn) {
+              qaStartBtn.click();
+            }
+            qaBtn.classList.add('active');
+            qaBtn.title = 'Q&A Mode Active - Click to Stop';
+          } else {
+            // Stopping Q&A
+            const qaStopBtn = document.getElementById('qa-stop-btn');
+            if (qaStopBtn) {
+              qaStopBtn.click();
+            }
+            qaBtn.classList.remove('active');
+            qaBtn.title = 'Toggle Q&A Mode';
+          }
+          updateAIStatus();
+        }
+      });
+    }
+    
+    // Status button - show AI status/details (toggle status indicator visibility or open details)
+    if (statusBtn) {
+      statusBtn.addEventListener('click', () => {
+        // Toggle status indicator visibility or show detailed status
+        const statusIndicator = document.getElementById('ai-status-indicator');
+        if (statusIndicator) {
+          // If hidden, show it; if visible, could show more details
+          if (statusIndicator.style.display === 'none') {
+            statusIndicator.style.display = 'block';
+          } else {
+            // Already visible - could show a detailed modal or just highlight it
+            statusIndicator.style.animation = 'pulse 0.5s ease-in-out';
+            setTimeout(() => {
+              statusIndicator.style.animation = '';
+            }, 500);
+          }
+        }
+      });
+    }
+    
+    // Settings button - open AI settings
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', () => {
+      // Open overlay widget to AI Control Panel (Q&A tab)
+      const overlayWidget = document.getElementById('overlay-widget');
+      if (overlayWidget) {
+        overlayWidget.classList.remove('hidden');
+        // Switch to Q&A tab (default)
+        const qaTab = document.querySelector('.ai-tab-btn[data-tab="qa"]');
+        if (qaTab) {
+          qaTab.click();
+        }
+      }
+      });
+    }
+    
+    // Update status indicator more frequently for real-time state (every 1 second)
+    setInterval(() => {
+      updateAIManagementStatus();
+    }, 1000);
+    
+    // Initial status update
+    updateAIManagementStatus();
+  }
+  
+  // Setup AI On/Off Toggle (Dashboard)
+  function setupAIDashboardToggle() {
+    console.log('🔌 Setting up AI Dashboard Toggle');
+    
+    const toggleSwitch = document.getElementById('ai-dashboard-toggle-switch');
+    const toggleContainer = document.getElementById('ai-dashboard-toggle-container');
+    const toggleLabel = document.getElementById('ai-dashboard-toggle-label');
+    const toggleStatus = document.getElementById('ai-dashboard-toggle-status');
+    
+    if (!toggleSwitch || !toggleContainer) {
+      console.warn('⚠️ Dashboard toggle elements not found');
+      return;
+    }
+    
+    // Check current mode on load
+    checkAIDashboardMode();
+    
+    // Update toggle every 2 seconds to stay in sync
+    setInterval(checkAIDashboardMode, 2000);
+    
+    // Click handler for the toggle
+    toggleContainer.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Get current state from the switch style
+      const isCurrentlyOn = toggleSwitch.style.background === 'var(--accent-primary)' || 
+                           toggleSwitch.style.background.includes('rgb') ||
+                           toggleSwitch.style.background === '';
+      const isOn = !isCurrentlyOn;
+      
+      try {
+        console.log(`🔌 ${isOn ? 'Turning AI ON' : 'Turning AI OFF'}...`);
+        
+        // Set mode to MUTED if turning off, or CHILL if turning on
+        const mode = isOn ? 'CHILL' : 'MUTED';
+        
+        const response = await fetch('http://localhost:3004/api/ai/mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to ${isOn ? 'enable' : 'disable'} AI: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        console.log(`✅ AI ${isOn ? 'enabled' : 'disabled'}:`, result);
+        
+        // Update UI
+        updateDashboardToggleUI(isOn);
+        
+      } catch (err) {
+        console.error(`❌ Error ${isOn ? 'enabling' : 'disabling'} AI:`, err);
+        alert(`Error ${isOn ? 'enabling' : 'disabling'} AI: ${err instanceof Error ? err.message : String(err)}`);
+        // Revert toggle on error
+        updateDashboardToggleUI(!isOn);
+      }
+    });
+    
+    // Update toggle UI based on state
+    function updateDashboardToggleUI(isOn) {
+      if (toggleSwitch) {
+        if (isOn) {
+          // ON state - green/primary color, slider on right
+          toggleSwitch.style.background = 'var(--accent-primary)';
+          const slider = toggleSwitch.querySelector('div');
+          if (slider) {
+            slider.style.left = '20px'; // Move to right (40px width - 18px slider - 2px margin)
+          }
+        } else {
+          // OFF state - gray/error color, slider on left
+          toggleSwitch.style.background = 'var(--error-color)';
+          const slider = toggleSwitch.querySelector('div');
+          if (slider) {
+            slider.style.left = '2px'; // Move to left
+          }
+        }
+      }
+      if (toggleLabel) {
+        toggleLabel.textContent = isOn ? 'ON' : 'OFF';
+        toggleLabel.style.color = isOn ? 'var(--accent-primary)' : 'var(--error-color)';
+      }
+      if (toggleStatus) {
+        toggleStatus.textContent = isOn ? 'Active' : 'Muted';
+        toggleStatus.style.color = isOn ? 'var(--success-color)' : 'var(--error-color)';
+      }
+    }
+    
+    // Check current AI mode
+    async function checkAIDashboardMode() {
+      try {
+        const response = await fetch('http://localhost:3004/api/ai/mode');
+        if (response.ok) {
+          const data = await response.json();
+          const isMuted = data.mode === 'MUTED';
+          
+          updateDashboardToggleUI(!isMuted);
+        }
+      } catch (err) {
+        // Silently fail - API might not be available
+        console.debug('Could not check AI mode:', err);
+      }
+    }
+  }
+  
+  // Update AI Management Panel status indicator
+  async function updateAIManagementStatus() {
+    try {
+      const statusText = document.getElementById('ai-status-text');
+      const triviaBtn = document.getElementById('ai-trivia-btn');
+      const qaBtn = document.getElementById('ai-qa-btn');
+      
+      if (!statusText) return;
+      
+      // Fetch detailed AI status from controller
+      let aiState = 'idle';
+      let aiStateDisplay = 'Idle';
+      let statusColor = 'var(--text-tertiary)';
+      
+      try {
+        const aiStatusResponse = await fetch('http://localhost:3004/api/ai/status');
+        if (aiStatusResponse.ok) {
+          const aiStatus = await aiStatusResponse.json();
+          aiState = aiStatus.state || 'idle';
+          
+          // Map states to display text and colors
+          const stateMap = {
+            'idle': { text: 'Idle', color: 'var(--text-tertiary)', emoji: '💤' },
+            'listening': { text: 'Listening...', color: 'var(--accent-primary)', emoji: '👂' },
+            'thinking': { text: 'Thinking...', color: '#ffa500', emoji: '🧠' },
+            'speaking': { text: 'Speaking...', color: '#28a745', emoji: '🗣️' },
+          };
+          
+          const stateInfo = stateMap[aiState] || stateMap['idle'];
+          aiStateDisplay = `${stateInfo.emoji} ${stateInfo.text}`;
+          statusColor = stateInfo.color;
+        }
+      } catch (e) {
+        // AI Status API might not be available, fall back to feature-based status
+        console.debug('AI Status API not available, using feature-based status');
+      }
+      
+      // Check trivia status
+      let triviaActive = false;
+      try {
+        const triviaResponse = await fetch('http://localhost:3003/api/trivia/status');
+        if (triviaResponse.ok) {
+          const triviaStatus = await triviaResponse.json();
+          triviaActive = triviaStatus && triviaStatus.active;
+        }
+      } catch (e) {
+        // Trivia API might not be available
+      }
+      
+      // Check Q&A status
+      const qaEnabled = document.getElementById('qa-mode-enabled');
+      const qaActive = qaEnabled && qaEnabled.checked;
+      
+      // Update buttons
+      if (triviaBtn) {
+        if (triviaActive) {
+          triviaBtn.classList.add('active');
+          triviaBtn.title = 'Trivia Active - Click to Stop';
+        } else {
+          triviaBtn.classList.remove('active');
+          triviaBtn.title = 'Start/Stop Trivia';
+        }
+      }
+      
+      if (qaBtn) {
+        if (qaActive) {
+          qaBtn.classList.add('active');
+          qaBtn.title = 'Q&A Mode Active - Click to Stop';
+        } else {
+          qaBtn.classList.remove('active');
+          qaBtn.title = 'Toggle Q&A Mode';
+        }
+      }
+      
+      // Update status text with AI state (or fallback to feature-based)
+      const statusDetails = document.getElementById('ai-status-details');
+      
+      if (aiState !== 'idle' || (!triviaActive && !qaActive)) {
+        // Show detailed AI state
+        statusText.textContent = aiStateDisplay;
+        statusText.style.color = statusColor;
+        
+        // Show additional details if available
+        if (statusDetails) {
+          try {
+            const aiStatusResponse = await fetch('http://localhost:3004/api/ai/status');
+            if (aiStatusResponse.ok) {
+              const aiStatus = await aiStatusResponse.json();
+              const details = [];
+              if (aiStatus.queueDepth > 0) {
+                details.push(`${aiStatus.queueDepth} in queue`);
+              }
+              if (aiStatus.currentMode) {
+                details.push(`Mode: ${aiStatus.currentMode}`);
+              }
+              statusDetails.textContent = details.length > 0 ? details.join(' • ') : '';
+            }
+          } catch (e) {
+            statusDetails.textContent = '';
+          }
+        }
+      } else {
+        // Fallback: show active features if AI is idle but features are active
+        const activeFeatures = [];
+        if (triviaActive) activeFeatures.push('Trivia');
+        if (qaActive) activeFeatures.push('Q&A');
+        
+        if (activeFeatures.length > 0) {
+          statusText.textContent = `Active: ${activeFeatures.join(', ')}`;
+          statusText.style.color = 'var(--accent-primary)';
+          if (statusDetails) statusDetails.textContent = '';
+        } else {
+          statusText.textContent = aiStateDisplay;
+          statusText.style.color = statusColor;
+          if (statusDetails) statusDetails.textContent = '';
+        }
+      }
+    } catch (err) {
+      console.debug('AI management status update failed:', err);
+    }
+  }
+  
+  // Setup AI Control Panel
+  function setupAIControlPanel() {
+    // Setup tab switching
+    const tabButtons = document.querySelectorAll('.ai-tab-btn');
+    const tabContents = document.querySelectorAll('.ai-tab-content');
+    
+    // Initialize: Show only the active tab (Analytics by default)
+    tabContents.forEach(content => {
+      content.style.display = 'none';
+    });
+    const activeTab = document.querySelector('.ai-tab-btn.active');
+    if (activeTab) {
+      const targetTab = activeTab.dataset.tab;
+      const targetContent = document.getElementById(`ai-tab-${targetTab}`);
+      if (targetContent) {
+        targetContent.style.display = 'block';
+      }
+    }
+    
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetTab = btn.dataset.tab;
+        
+        // Update button states
+        tabButtons.forEach(b => {
+          b.classList.remove('active');
+          b.style.borderBottom = 'none';
+          b.style.color = 'var(--text-secondary)';
+          b.style.fontWeight = 'normal';
+        });
+        btn.classList.add('active');
+        btn.style.borderBottom = '2px solid var(--accent-primary)';
+        btn.style.color = 'var(--accent-primary)';
+        btn.style.fontWeight = '600';
+        
+        // Show/hide tab contents
+        tabContents.forEach(content => {
+          content.style.display = 'none';
+        });
+        const targetContent = document.getElementById(`ai-tab-${targetTab}`);
+        if (targetContent) {
+          targetContent.style.display = 'block';
+        }
+      });
+    });
+    
+    // Setup Analytics Dashboard
+    setupAnalyticsDashboard();
+    
+    // Setup Q&A Mode controls
+    setupQAModeControls();
+    
+    // Setup Segment controls
+    setupSegmentControls();
+    
+    // Update AI status periodically
+    updateAIStatus();
+    setInterval(updateAIStatus, 5000); // Update every 5 seconds
+  }
+  
+  
+  // Setup Analytics Dashboard
+  function setupAnalyticsDashboard() {
+    console.log('📊 Setting up Analytics Dashboard');
+    
+    // Export buttons
+    const exportJsonBtn = document.getElementById('analytics-export-json');
+    const exportCsvBtn = document.getElementById('analytics-export-csv');
+    
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener('click', async () => {
+        try {
+          const response = await fetch('http://localhost:3005/api/analytics/export?format=json');
+          if (!response.ok) throw new Error('Export failed');
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `analytics-export-${Date.now()}.json`;
+          a.click();
+          window.URL.revokeObjectURL(url);
+        } catch (err) {
+          console.error('❌ Error exporting JSON:', err);
+          alert('Failed to export analytics data');
+        }
+      });
+    }
+    
+    if (exportCsvBtn) {
+      exportCsvBtn.addEventListener('click', async () => {
+        try {
+          const response = await fetch('http://localhost:3005/api/analytics/export?format=csv');
+          if (!response.ok) throw new Error('Export failed');
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `analytics-export-${Date.now()}.csv`;
+          a.click();
+          window.URL.revokeObjectURL(url);
+        } catch (err) {
+          console.error('❌ Error exporting CSV:', err);
+          alert('Failed to export analytics data');
+        }
+      });
+    }
+    
+    // Update analytics every 2 seconds
+    updateAnalytics();
+    setInterval(updateAnalytics, 2000);
+  }
+  
+  // Update Analytics Dashboard
+  async function updateAnalytics() {
+    try {
+      const response = await fetch('http://localhost:3005/api/analytics/realtime');
+      if (!response.ok) return;
+      
+      const data = await response.json();
+      
+      // Update real-time metrics
+      const responseRateEl = document.getElementById('analytics-response-rate');
+      const queueDepthEl = document.getElementById('analytics-queue-depth');
+      const totalCostEl = document.getElementById('analytics-total-cost');
+      const totalTokensEl = document.getElementById('analytics-total-tokens');
+      const totalResponsesEl = document.getElementById('analytics-total-responses');
+      const avgResponseTimeEl = document.getElementById('analytics-avg-response-time');
+      const uptimeEl = document.getElementById('analytics-uptime');
+      const lastMinuteEl = document.getElementById('analytics-last-minute');
+      const lastHourEl = document.getElementById('analytics-last-hour');
+      const costHourEl = document.getElementById('analytics-cost-hour');
+      
+      if (responseRateEl) responseRateEl.textContent = `${data.current.responseRate}/min`;
+      if (queueDepthEl) queueDepthEl.textContent = data.current.queueDepth;
+      if (totalCostEl) totalCostEl.textContent = `$${data.session.totalCost.toFixed(4)}`;
+      if (totalTokensEl) totalTokensEl.textContent = data.tokens.total.toLocaleString();
+      if (totalResponsesEl) totalResponsesEl.textContent = data.session.totalResponses;
+      if (avgResponseTimeEl) {
+        const avgMs = data.session.avgResponseTime || 0;
+        avgResponseTimeEl.textContent = avgMs > 1000 ? `${(avgMs / 1000).toFixed(1)}s` : `${Math.round(avgMs)}ms`;
+      }
+      if (uptimeEl) {
+        const seconds = data.current.uptime;
+        const hours = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+        uptimeEl.textContent = hours > 0 ? `${hours}h ${mins}m` : `${mins}m ${secs}s`;
+      }
+      if (lastMinuteEl) lastMinuteEl.textContent = data.recent.responsesLastMinute;
+      if (lastHourEl) lastHourEl.textContent = data.recent.responsesLastHour;
+      if (costHourEl) costHourEl.textContent = `$${data.recent.costLastHour.toFixed(4)}`;
+      
+      // Update top chatters
+      try {
+        const chattersResponse = await fetch('http://localhost:3005/api/analytics/top-chatters?limit=5');
+        if (chattersResponse.ok) {
+          const chattersData = await chattersResponse.json();
+          const chattersEl = document.getElementById('analytics-top-chatters');
+          if (chattersEl) {
+            if (chattersData.chatters && chattersData.chatters.length > 0) {
+              chattersEl.innerHTML = chattersData.chatters.map((chatter, idx) => 
+                `<div style="margin-bottom: 4px;">
+                  <span style="color: var(--text-primary); font-weight: 600;">${idx + 1}. ${chatter.username}</span>
+                  <span style="color: var(--text-tertiary); margin-left: 8px;">${chatter.messageCount} messages</span>
+                </div>`
+              ).join('');
+            } else {
+              chattersEl.textContent = 'No chat data yet';
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore errors for top chatters
+      }
+    } catch (err) {
+      // Silently fail - analytics API might not be available
+      console.debug('Analytics update failed:', err);
+    }
+  }
+  
+  // Setup Q&A Mode Controls
+  function setupQAModeControls() {
+    const qaStartBtn = document.getElementById('qa-start-btn');
+    const qaStopBtn = document.getElementById('qa-stop-btn');
+    const qaEnabledCheckbox = document.getElementById('qa-mode-enabled');
+    
+    if (qaStartBtn) {
+      qaStartBtn.addEventListener('click', async () => {
+        try {
+          console.log('🎯 Starting Q&A mode...');
+          
+          // Call API to set mode to QA
+          const response = await fetch('http://localhost:3004/api/ai/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'QA' }),
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to start Q&A mode: ${response.statusText}`);
+          }
+          
+          const result = await response.json();
+          console.log('✅ Q&A mode started:', result);
+          
+          if (qaEnabledCheckbox) qaEnabledCheckbox.checked = true;
+          qaStartBtn.disabled = true;
+          if (qaStopBtn) qaStopBtn.disabled = false;
+          updateAIStatus();
+        } catch (err) {
+          console.error('❌ Error starting Q&A mode:', err);
+          alert(`Error starting Q&A mode: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    }
+    
+    if (qaStopBtn) {
+      qaStopBtn.addEventListener('click', async () => {
+        try {
+          console.log('🎯 Stopping Q&A mode...');
+          
+          // Call API to set mode back to CHILL (or get current default)
+          const response = await fetch('http://localhost:3004/api/ai/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'CHILL' }),
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to stop Q&A mode: ${response.statusText}`);
+          }
+          
+          const result = await response.json();
+          console.log('✅ Q&A mode stopped:', result);
+          
+          if (qaEnabledCheckbox) qaEnabledCheckbox.checked = false;
+          if (qaStartBtn) qaStartBtn.disabled = false;
+          qaStopBtn.disabled = true;
+          updateAIStatus();
+        } catch (err) {
+          console.error('❌ Error stopping Q&A mode:', err);
+          alert(`Error stopping Q&A mode: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    }
+    
+    // Check current mode on load
+    checkCurrentMode();
+  }
+  
+  // Check current mode and update UI
+  async function checkCurrentMode() {
+    try {
+      const response = await fetch('http://localhost:3004/api/ai/mode');
+      if (response.ok) {
+        const data = await response.json();
+        const qaEnabledCheckbox = document.getElementById('qa-mode-enabled');
+        const qaStartBtn = document.getElementById('qa-start-btn');
+        const qaStopBtn = document.getElementById('qa-stop-btn');
+        
+        if (data.mode === 'QA') {
+          if (qaEnabledCheckbox) qaEnabledCheckbox.checked = true;
+          if (qaStartBtn) qaStartBtn.disabled = true;
+          if (qaStopBtn) qaStopBtn.disabled = false;
+        } else {
+          if (qaEnabledCheckbox) qaEnabledCheckbox.checked = false;
+          if (qaStartBtn) qaStartBtn.disabled = false;
+          if (qaStopBtn) qaStopBtn.disabled = true;
+        }
+      }
+    } catch (err) {
+      console.debug('Could not check current mode:', err);
+    }
+  }
+  
+  // Setup Segment Controls
+  function setupSegmentControls() {
+    const segmentSaveBtn = document.getElementById('segment-save-btn');
+    const quickBtns = document.querySelectorAll('.segment-quick-btn');
+    
+    if (segmentSaveBtn) {
+      segmentSaveBtn.addEventListener('click', async () => {
+        try {
+          const segmentSelector = document.getElementById('segment-selector');
+          const segmentBehavior = document.getElementById('segment-behavior');
+          const segment = segmentSelector ? segmentSelector.value : 'normal';
+          const behavior = segmentBehavior ? segmentBehavior.value : 'normal';
+          
+          // TODO: Call API to save segment settings
+          console.log('Saving segment settings:', { segment, behavior });
+          if (window.notificationManager) {
+            window.notificationManager.show('Segment settings saved!', 'success');
+          } else {
+            alert('Segment settings saved!');
+          }
+        } catch (err) {
+          console.error('Error saving segment settings:', err);
+        }
+      });
+    }
+    
+    quickBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const segment = btn.dataset.segment;
+        const segmentSelector = document.getElementById('segment-selector');
+        const segmentBehavior = document.getElementById('segment-behavior');
+        
+        if (segmentSelector) segmentSelector.value = segment;
+        
+        // Set appropriate behavior based on segment
+        const behaviorMap = {
+          'normal': 'normal',
+          'gaming': 'chatty',
+          'just-chatting': 'chatty',
+          'hype': 'hype'
+        };
+        if (segmentBehavior) {
+          segmentBehavior.value = behaviorMap[segment] || 'normal';
+        }
+        
+        console.log('Quick switch to segment:', segment);
+      });
+    });
+  }
+  
+  // Update AI Status Overview
+  async function updateAIStatus() {
+    try {
+      // Check trivia status
+      let triviaActive = false;
+      try {
+        const triviaResponse = await fetch('http://localhost:3003/api/trivia/status');
+        if (triviaResponse.ok) {
+          const triviaStatus = await triviaResponse.json();
+          triviaActive = triviaStatus && triviaStatus.active;
+        }
+      } catch (e) {
+        // Trivia API might not be available
+      }
+      
+      const activeFeatures = [];
+      if (triviaActive) {
+        activeFeatures.push('Trivia');
+      }
+      
+      const qaEnabled = document.getElementById('qa-mode-enabled');
+      if (qaEnabled && qaEnabled.checked) {
+        activeFeatures.push('Q&A');
+      }
+      
+      // Update status display
+      const statusText = document.getElementById('ai-status-text');
+      const featuresText = document.getElementById('ai-features-text');
+      
+      if (statusText) {
+        statusText.textContent = activeFeatures.length > 0 ? 'Active' : 'Idle';
+      }
+      if (featuresText) {
+        featuresText.textContent = activeFeatures.length > 0 ? activeFeatures.join(', ') : 'None';
+      }
+    } catch (err) {
+      // Silently fail
+      console.debug('AI status update failed:', err);
+    }
+  }
+  
+  // Trivia Controls
+  function setupTriviaControls() {
+    console.log('🎮 Setting up Trivia controls');
+    
+    // Category selector - show/hide custom category input
+    const categorySelect = document.getElementById('trivia-category');
+    const customCategoryInput = document.getElementById('trivia-custom-category');
+    if (categorySelect && customCategoryInput) {
+      categorySelect.addEventListener('change', (e) => {
+        if (e.target.value === 'custom') {
+          customCategoryInput.style.display = 'block';
+        } else {
+          customCategoryInput.style.display = 'none';
+        }
+      });
+    }
+    
+    // Start Trivia button
+    const startTriviaBtn = document.getElementById('start-trivia-btn');
+    if (startTriviaBtn) {
+      startTriviaBtn.addEventListener('click', async () => {
+        await startTriviaSession();
+      });
+    }
+    
+    // Stop Trivia button
+    const stopTriviaBtn = document.getElementById('stop-trivia-btn');
+    if (stopTriviaBtn) {
+      stopTriviaBtn.addEventListener('click', () => {
+        stopTriviaSession();
+      });
+    }
+    
+    // Award All Winners button
+    const awardAllBtn = document.getElementById('award-all-winners-btn');
+    if (awardAllBtn) {
+      awardAllBtn.addEventListener('click', async () => {
+        await awardAllWinners();
+      });
+    }
+    
+    // Export Winners button
+    const exportWinnersBtn = document.getElementById('export-winners-btn');
+    if (exportWinnersBtn) {
+      exportWinnersBtn.addEventListener('click', () => {
+        exportWinnersList();
+      });
+    }
+    
+    // Load pending awards on overlay widget open
+    const overlayWidget = document.getElementById('overlay-widget');
+    if (overlayWidget) {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+            if (!overlayWidget.classList.contains('hidden')) {
+              loadPendingAwards();
+              updateTriviaUI();
+            }
+          }
+        });
+      });
+      observer.observe(overlayWidget, { attributes: true });
+    }
+    
+    // Auto-refresh trivia UI every 5 seconds when active
+    setInterval(() => {
+      updateTriviaUI();
+    }, 5000);
+  }
+  
+  // Start Trivia Session
+  async function startTriviaSession() {
+    try {
+      const categorySelect = document.getElementById('trivia-category');
+      const customCategoryInput = document.getElementById('trivia-custom-category');
+      const difficultySelect = document.getElementById('trivia-difficulty');
+      const questionCountInput = document.getElementById('trivia-question-count');
+      const startBtn = document.getElementById('start-trivia-btn');
+      const statusEl = document.getElementById('trivia-generating-status');
+      
+      const category = categorySelect.value === 'custom' 
+        ? customCategoryInput.value.trim() 
+        : categorySelect.value;
+      const difficulty = difficultySelect.value;
+      const questionCount = parseInt(questionCountInput.value) || 10;
+      
+      if (!category) {
+        alert('Please select or enter a category');
+        return;
+      }
+      
+      if (questionCount < 5 || questionCount > 50) {
+        alert('Question count must be between 5 and 50');
+        return;
+      }
+      
+      // Show generating status
+      startBtn.disabled = true;
+      statusEl.style.display = 'block';
+      statusEl.textContent = `Generating ${questionCount} questions...`;
+      
+      // Call trivia API to start session
+      const response = await fetch('http://localhost:3003/api/trivia/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category,
+          difficulty,
+          questionCount,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(errorData.error || `Failed to start trivia: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Trivia session started:', data);
+      
+      // Update UI to show active trivia panel
+      document.getElementById('trivia-start-panel').style.display = 'none';
+      document.getElementById('trivia-active-panel').style.display = 'block';
+      document.getElementById('trivia-winners-panel').style.display = 'none';
+      
+      statusEl.textContent = 'Trivia started!';
+      setTimeout(() => {
+        statusEl.style.display = 'none';
+      }, 2000);
+      
+      // Start updating trivia UI
+      updateTriviaUI();
+    } catch (err) {
+      console.error('❌ Error starting trivia:', err);
+      alert(`Error starting trivia: ${err.message}`);
+      document.getElementById('start-trivia-btn').disabled = false;
+      document.getElementById('trivia-generating-status').style.display = 'none';
+    }
+  }
+  
+  // Stop Trivia Session
+  async function stopTriviaSession() {
+    try {
+      if (!confirm('Stop trivia session? Winners list will be compiled automatically.')) {
+        return;
+      }
+      
+      const response = await fetch('http://localhost:3003/api/trivia/stop', {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to stop trivia: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Trivia session stopped:', data);
+      
+      // Update UI to show winners panel (works for both modal and overlay)
+      const activePanel = document.getElementById('trivia-active-panel');
+      const winnersPanel = document.getElementById('trivia-winners-panel');
+      
+      if (activePanel) activePanel.style.display = 'none';
+      if (winnersPanel) winnersPanel.style.display = 'block';
+      
+      // Load pending awards
+      loadPendingAwards();
+      
+      // Add "Back to Start" button after winners are displayed
+      setupTriviaResetButton();
+      
+      // Ensure modal stays open
+      const triviaModal = document.getElementById('trivia-modal');
+      if (triviaModal) {
+        triviaModal.classList.remove('hidden');
+      }
+    } catch (err) {
+      console.error('❌ Error stopping trivia:', err);
+      alert(`Error stopping trivia: ${err.message}`);
+    }
+  }
+  
+  // Update Trivia UI (current question, timer, leaderboard)
+  async function updateTriviaUI() {
+    try {
+      const response = await fetch('http://localhost:3003/api/trivia/status');
+      if (!response.ok) return;
+      
+      const data = await response.json();
+      
+      if (data.active) {
+        // Show active panel, hide start and winners
+        document.getElementById('trivia-start-panel').style.display = 'none';
+        document.getElementById('trivia-active-panel').style.display = 'block';
+        document.getElementById('trivia-winners-panel').style.display = 'none';
+        
+        // Update current question
+        if (data.currentQuestion) {
+          document.getElementById('trivia-question-number').textContent = data.currentQuestion.number || '-';
+          document.getElementById('trivia-total-questions').textContent = data.totalQuestions || '-';
+          document.getElementById('trivia-question-text').textContent = data.currentQuestion.text || '-';
+          document.getElementById('trivia-timer').textContent = formatTime(data.timeRemaining || 0);
+        }
+        
+        // Update leaderboard
+        if (data.leaderboard && data.leaderboard.length > 0) {
+          const leaderboardList = document.getElementById('trivia-leaderboard-list');
+          leaderboardList.innerHTML = data.leaderboard.slice(0, 10).map((user, idx) => 
+            `<div style="padding: 4px 0; border-bottom: 1px solid var(--border-color);">
+              <span style="font-weight: 600;">${idx + 1}.</span> 
+              <span>${user.displayName || user.username}</span> 
+              <span style="float: right; color: var(--accent-primary);">${user.totalPoints} pts</span>
+            </div>`
+          ).join('');
+        } else {
+          document.getElementById('trivia-leaderboard-list').innerHTML = 'No scores yet...';
+        }
+      } else {
+        // Not active - check if there are pending awards
+        try {
+          const pendingResponse = await fetch('http://localhost:3003/api/trivia/pending-awards');
+          if (pendingResponse.ok) {
+            const pendingData = await pendingResponse.json();
+            if (pendingData && pendingData.awards && pendingData.awards.length > 0) {
+              // Show winners panel (loadPendingAwards will handle this)
+              await loadPendingAwards();
+              return;
+            }
+          }
+        } catch (e) {
+          // Ignore errors
+        }
+        // No pending awards - reset to start
+        resetTriviaUI();
+      }
+    } catch (err) {
+      // Silently fail - trivia might not be active
+      console.debug('Trivia status update failed:', err);
+      resetTriviaUI();
+    }
+  }
+  
+  // Reset Trivia UI to start state
+  function resetTriviaUI() {
+    document.getElementById('trivia-start-panel').style.display = 'block';
+    document.getElementById('trivia-active-panel').style.display = 'none';
+    document.getElementById('trivia-winners-panel').style.display = 'none';
+    
+    // Remove reset button if it exists
+    const resetBtn = document.getElementById('trivia-reset-btn');
+    if (resetBtn) {
+      resetBtn.remove();
+    }
+  }
+  
+  // Setup "Back to Start" button in winners panel
+  function setupTriviaResetButton() {
+    const winnersPanel = document.getElementById('trivia-winners-panel');
+    const resetBtn = document.getElementById('trivia-reset-btn');
+    
+    if (winnersPanel && !resetBtn) {
+      // Create reset button
+      const btn = document.createElement('button');
+      btn.id = 'trivia-reset-btn';
+      btn.className = 'overlay-action-btn';
+      btn.style.cssText = 'width: 100%; margin-top: 12px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color);';
+      btn.textContent = '🔄 Back to Start New Trivia';
+      btn.onclick = resetTriviaUI;
+      
+      // Insert after award actions
+      const awardActions = document.getElementById('trivia-award-actions');
+      if (awardActions && awardActions.parentNode) {
+        awardActions.parentNode.insertBefore(btn, awardActions.nextSibling);
+      }
+    }
+  }
+  
+  // Load Pending Awards
+  async function loadPendingAwards() {
+    try {
+      const response = await fetch('http://localhost:3003/api/trivia/pending-awards');
+      if (!response.ok) {
+        // No pending awards
+        document.getElementById('trivia-winners-panel').style.display = 'none';
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (data && !data.awarded && data.awards && data.awards.length > 0) {
+        // Show winners panel
+        document.getElementById('trivia-winners-panel').style.display = 'block';
+        
+        // Update summary
+        document.getElementById('trivia-total-winners').textContent = data.totalAwards || 0;
+        document.getElementById('trivia-total-channel-points').textContent = data.totalChannelPoints || 0;
+        document.getElementById('trivia-award-status-text').textContent = 'Pending';
+        
+        // Update winners table
+        const tbody = document.getElementById('trivia-winners-table-body');
+        tbody.innerHTML = data.awards.map((award, idx) => 
+          `<tr>
+            <td style="padding: 6px; text-align: center;">${award.position || idx + 1}</td>
+            <td style="padding: 6px;">${award.displayName || award.username}</td>
+            <td style="padding: 6px; text-align: right;">${award.triviaPoints}</td>
+            <td style="padding: 6px; text-align: right; color: var(--accent-primary); font-weight: 600;">${award.channelPoints}</td>
+            <td style="padding: 6px; text-align: right;">${award.correctAnswers || 0}</td>
+          </tr>`
+        ).join('');
+        
+        // Enable award button
+        document.getElementById('award-all-winners-btn').disabled = false;
+        document.getElementById('award-all-winners-btn').textContent = `🎁 Award All Winners (${data.totalChannelPoints} points)`;
+      } else if (data && data.awarded) {
+        // Already awarded - add back to start option
+        document.getElementById('trivia-award-status-text').textContent = `Awarded on ${new Date(data.awardedAt).toLocaleString()}`;
+        document.getElementById('award-all-winners-btn').disabled = true;
+        document.getElementById('award-all-winners-btn').textContent = '✅ Already Awarded';
+        
+        // Add "Back to Start" button if not already present
+        setupTriviaResetButton();
+      } else {
+        // No pending awards - reset to start panel
+        resetTriviaUI();
+      }
+    } catch (err) {
+      console.error('❌ Error loading pending awards:', err);
+    }
+  }
+  
+  // Award All Winners
+  async function awardAllWinners() {
+    try {
+      const pendingAwards = await fetch('http://localhost:3003/api/trivia/pending-awards').then(r => r.json());
+      if (!pendingAwards || pendingAwards.awarded) {
+        alert('Awards already processed or no pending awards');
+        return;
+      }
+      
+      const confirmed = confirm(`Award ${pendingAwards.totalChannelPoints} channel points to ${pendingAwards.totalAwards} winners?`);
+      if (!confirmed) return;
+      
+      // Show progress
+      const progressEl = document.getElementById('trivia-award-progress');
+      const progressText = document.getElementById('trivia-award-progress-text');
+      const progressBar = document.getElementById('trivia-award-progress-bar');
+      const awardBtn = document.getElementById('award-all-winners-btn');
+      
+      progressEl.style.display = 'block';
+      awardBtn.disabled = true;
+      
+      // Call API to award all
+      const response = await fetch('http://localhost:3003/api/trivia/award-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to award winners: ${response.statusText}`);
+      }
+      
+      const results = await response.json();
+      console.log('✅ Awards completed:', results);
+      
+      // Hide progress, show results
+      progressEl.style.display = 'none';
+      const resultsEl = document.getElementById('trivia-award-results');
+      resultsEl.style.display = 'block';
+      
+      document.getElementById('trivia-award-successful').textContent = results.successful || 0;
+      document.getElementById('trivia-award-failed').textContent = results.failed || 0;
+      document.getElementById('trivia-award-skipped').textContent = results.skipped || 0;
+      
+      // Show failed users if any
+      if (results.errors && results.errors.length > 0) {
+        const failedList = document.getElementById('trivia-award-failed-list');
+        failedList.innerHTML = results.errors.map(err => 
+          `<li>${err.username}: ${err.error}</li>`
+        ).join('');
+        document.getElementById('trivia-award-failed-users').style.display = 'block';
+      }
+      
+      // Update button state
+      awardBtn.disabled = true;
+      awardBtn.textContent = '✅ Already Awarded';
+      document.getElementById('trivia-award-status-text').textContent = 'Awarded';
+      
+      alert(`Awarded ${results.successful} winners! ${results.failed > 0 ? `${results.failed} failed.` : ''}`);
+      
+      // Reload pending awards to refresh UI
+      await loadPendingAwards();
+      
+      // Setup reset button after awards are processed
+      setupTriviaResetButton();
+    } catch (err) {
+      console.error('❌ Error awarding winners:', err);
+      alert(`Error awarding winners: ${err.message}`);
+      document.getElementById('trivia-award-progress').style.display = 'none';
+      document.getElementById('award-all-winners-btn').disabled = false;
+    }
+  }
+  
+  // Export Winners List
+  function exportWinnersList() {
+    // TODO: Implement CSV export
+    alert('CSV export coming soon!');
+  }
+  
+  // Format Time (MM:SS)
+  function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  
+  // Open Trivia Modal
+  function openTriviaModal() {
+    console.log('🔄 Opening Trivia Modal...');
+    const triviaModal = document.getElementById('trivia-modal');
+    if (triviaModal) {
+      console.log('✅ Trivia modal found, removing hidden class');
+      console.log('   Modal classes before:', triviaModal.className);
+      triviaModal.classList.remove('hidden');
+      console.log('   Modal classes after:', triviaModal.className);
+      console.log('   Modal display style:', window.getComputedStyle(triviaModal).display);
+      
+      // Ensure modal is visible
+      triviaModal.style.display = 'flex';
+      
+      // Load current trivia status
+      updateTriviaUI();
+      loadPendingAwards();
+    } else {
+      console.error('❌ Trivia modal not found in DOM! Looking for #trivia-modal');
+      // Try to find it in different ways
+      const allModals = document.querySelectorAll('[id*="trivia"]');
+      console.log('   Found elements with "trivia" in ID:', Array.from(allModals).map(el => el.id));
+      alert('Trivia modal not found. Please refresh the page.');
+    }
+  }
+  
+  // Close Trivia Modal
+  function closeTriviaModal() {
+    const triviaModal = document.getElementById('trivia-modal');
+    if (triviaModal) {
+      triviaModal.classList.add('hidden');
+    }
+  }
+  
+  // Setup Trivia Modal
+  function setupTriviaModal() {
+    const closeBtn = document.getElementById('trivia-modal-close');
+    const triviaModal = document.getElementById('trivia-modal');
+    
+    if (closeBtn) {
+      closeBtn.addEventListener('click', closeTriviaModal);
+    } else {
+      console.warn('⚠️ Trivia modal close button not found');
+    }
+    
+    // Close modal when clicking outside
+    if (triviaModal) {
+      triviaModal.addEventListener('click', (e) => {
+        if (e.target === triviaModal) {
+          closeTriviaModal();
+        }
+      });
+    } else {
+      console.warn('⚠️ Trivia modal not found in DOM');
+    }
+  }
+  
+  // VTuber Controls
+  function setupVTuberControls() {
+    console.log('🎭 Setting up VTuber controls');
+    
+    // Load VTuber config when overlay widget opens
+    const overlayWidget = document.getElementById('overlay-widget');
+    if (overlayWidget) {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+            if (!overlayWidget.classList.contains('hidden')) {
+              loadVTuberConfig();
+            }
+          }
+        });
+      });
+      observer.observe(overlayWidget, { attributes: true });
+    }
+    
+    // Copy VTuber URL button
+    const copyVTuberUrlBtn = document.getElementById('copy-vtuber-url');
+    if (copyVTuberUrlBtn) {
+      copyVTuberUrlBtn.addEventListener('click', () => {
+        const urlEl = document.getElementById('vtuber-overlay-url');
+        const url = urlEl ? urlEl.textContent : 'http://localhost:8080/overlay?name=vtuberOverlay';
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(url).then(() => {
+            const originalText = copyVTuberUrlBtn.textContent;
+            copyVTuberUrlBtn.textContent = '✓';
+            setTimeout(() => {
+              copyVTuberUrlBtn.textContent = originalText;
+            }, 1500);
+          });
+        }
+      });
+    }
+    
+    // State buttons
+    const stateButtons = document.querySelectorAll('.vtuber-state-btn');
+    stateButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const state = btn.dataset.state;
+        setVTuberState(state);
+      });
+    });
+    
+    // Image upload inputs (will need IPC handler for file uploads)
+    const imageInputs = document.querySelectorAll('.vtuber-image-input');
+    imageInputs.forEach(input => {
+      input.addEventListener('change', (e) => {
+        const state = input.dataset.state;
+        const file = e.target.files[0];
+        if (file) {
+          console.log(`📤 Would upload ${state} image:`, file.name);
+          showCustomAlert('File upload via UI coming soon. For now, place images in: {userDataPath}/vtuber/images/', 'info');
+        }
+      });
+    });
+    
+    // Position controls
+    const applyPositionBtn = document.getElementById('apply-vtuber-position');
+    if (applyPositionBtn) {
+      applyPositionBtn.addEventListener('click', () => {
+        applyVTuberPosition();
+      });
+    }
+    
+    // VTuber type selector
+    const vtuberTypeSelect = document.getElementById('vtuber-type-select');
+    const iframeConfig = document.getElementById('vtuber-iframe-config');
+    const saveVTuberTypeBtn = document.getElementById('save-vtuber-type');
+    
+    if (vtuberTypeSelect) {
+      vtuberTypeSelect.addEventListener('change', (e) => {
+        const type = e.target.value;
+        if (type === 'iframe') {
+          iframeConfig.style.display = 'block';
+        } else {
+          iframeConfig.style.display = 'none';
+        }
+      });
+    }
+    
+    if (saveVTuberTypeBtn) {
+      saveVTuberTypeBtn.addEventListener('click', () => {
+        saveVTuberType();
+      });
+    }
+  }
+  
+  // Save VTuber type configuration
+  async function saveVTuberType() {
+    try {
+      const typeSelect = document.getElementById('vtuber-type-select');
+      const iframeUrl = document.getElementById('vtuber-iframe-url');
+      const type = typeSelect.value;
+      
+      let vtuberConfig = {
+        type: type === 'pngtuber' ? 'pngtuber' : 'vtuber',
+        vtuberConfig: {
+          type: type === 'pngtuber' ? null : type,
+          url: type === 'iframe' ? iframeUrl.value : null,
+          modelPath: null,
+        }
+      };
+      
+      const response = await fetch('http://localhost:8080/api/vtuber/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vtuberConfig)
+      });
+      
+      if (response.ok) {
+        const config = await response.json();
+        console.log('✅ VTuber type saved:', config);
+        showCustomAlert('VTuber type saved!', 'success');
+        loadVTuberConfig(); // Reload to update UI
+      } else {
+        console.error('❌ Failed to save VTuber type:', response.status);
+      }
+    } catch (err) {
+      console.error('❌ Error saving VTuber type:', err);
+    }
+  }
+  
+  // Load VTuber configuration
+  async function loadVTuberConfig() {
+    try {
+      const response = await fetch('http://localhost:8080/api/vtuber/config');
+      if (response.ok) {
+        const config = await response.json();
+        console.log('✅ VTuber config loaded:', config);
+        
+        // Update image status indicators
+        if (config.images) {
+          Object.keys(config.images).forEach(state => {
+            const statusEl = document.querySelector(`.image-status[data-state="${state}"]`);
+            if (statusEl) {
+              const imageInfo = config.images[state];
+              if (imageInfo && imageInfo.exists) {
+                statusEl.textContent = `✓ ${imageInfo.filename}`;
+                statusEl.style.color = 'var(--success, #4caf50)';
+              } else {
+                statusEl.textContent = 'No image';
+                statusEl.style.color = 'var(--text-tertiary, #999)';
+              }
+            }
+          });
+        }
+        
+        // Update VTuber type selector
+        const typeSelect = document.getElementById('vtuber-type-select');
+        const iframeConfig = document.getElementById('vtuber-iframe-config');
+        const iframeUrl = document.getElementById('vtuber-iframe-url');
+        
+        if (typeSelect) {
+          if (config.type === 'vtuber' && config.vtuberConfig && config.vtuberConfig.type) {
+            typeSelect.value = config.vtuberConfig.type;
+            if (config.vtuberConfig.type === 'iframe') {
+              iframeConfig.style.display = 'block';
+              if (iframeUrl && config.vtuberConfig.url) {
+                iframeUrl.value = config.vtuberConfig.url;
+              }
+            }
+          } else {
+            typeSelect.value = 'pngtuber';
+            if (iframeConfig) iframeConfig.style.display = 'none';
+          }
+        }
+        
+        // Update position controls
+        if (config.position) {
+          const pos = config.position;
+          const xInput = document.getElementById('vtuber-pos-x');
+          const yInput = document.getElementById('vtuber-pos-y');
+          const widthInput = document.getElementById('vtuber-width');
+          const heightInput = document.getElementById('vtuber-height');
+          const scaleInput = document.getElementById('vtuber-scale');
+          const opacityInput = document.getElementById('vtuber-opacity');
+          
+          if (xInput) xInput.value = pos.x || 0;
+          if (yInput) yInput.value = pos.y || 0;
+          if (widthInput) widthInput.value = pos.width || 500;
+          if (heightInput) heightInput.value = pos.height || 500;
+          if (scaleInput) scaleInput.value = config.scale || 1.0;
+          if (opacityInput) opacityInput.value = config.opacity || 1.0;
+        }
+      } else {
+        console.warn('⚠️ Could not load VTuber config:', response.status);
+      }
+    } catch (err) {
+      console.error('❌ Error loading VTuber config:', err);
+    }
+  }
+  
+  // Set VTuber state
+  async function setVTuberState(state) {
+    try {
+      const response = await fetch('http://localhost:8080/api/vtuber/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ VTuber state set:', result);
+        
+        // Update button states
+        document.querySelectorAll('.vtuber-state-btn').forEach(btn => {
+          btn.classList.remove('active');
+          if (btn.dataset.state === state) {
+            btn.classList.add('active');
+          }
+        });
+      } else {
+        console.error('❌ Failed to set VTuber state:', response.status);
+      }
+    } catch (err) {
+      console.error('❌ Error setting VTuber state:', err);
+    }
+  }
+  
+  // Apply VTuber position
+  async function applyVTuberPosition() {
+    try {
+      const x = parseInt(document.getElementById('vtuber-pos-x').value) || 0;
+      const y = parseInt(document.getElementById('vtuber-pos-y').value) || 0;
+      const width = parseInt(document.getElementById('vtuber-width').value) || 500;
+      const height = parseInt(document.getElementById('vtuber-height').value) || 500;
+      const scale = parseFloat(document.getElementById('vtuber-scale').value) || 1.0;
+      const opacity = parseFloat(document.getElementById('vtuber-opacity').value) || 1.0;
+      
+      const response = await fetch('http://localhost:8080/api/vtuber/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          position: { x, y, width, height, anchor: 'top-left' },
+          scale,
+          opacity
+        })
+      });
+      
+      if (response.ok) {
+        const config = await response.json();
+        console.log('✅ VTuber position updated:', config);
+        showCustomAlert('Position updated!', 'success');
+      } else {
+        console.error('❌ Failed to update position:', response.status);
+      }
+    } catch (err) {
+      console.error('❌ Error updating position:', err);
+    }
+  }
+  
+  setupAIControlPanel(); // Must be called before setupTriviaControls
+  setupVTuberControls();
+  setupTriviaControls();
+  setupAIManagementPanel(); // Setup the dashboard widget
+  setupTriviaModal(); // Setup trivia modal
   
   // Overlay Management Functionality
   if (createOverlayBtn && newOverlayNameInput) {

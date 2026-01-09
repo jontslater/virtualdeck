@@ -715,6 +715,176 @@ html[data-theme], body[data-theme] {
   border-color: #dc3545;
 }
 
+/* AI Management Panel (similar to profile panel) - positioned above profile panel */
+.ai-management-panel {
+  position: fixed;
+  bottom: 190px; /* Position above profile panel (which is at bottom: 20px with ~170px height) */
+  left: 20px;
+  z-index: 10000;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 12px;
+  padding-bottom: 16px;
+  min-width: 220px;
+  font-size: 12px;
+  pointer-events: auto;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(var(--accent-primary-rgb, 100, 150, 255), 0.7);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 0 4px rgba(var(--accent-primary-rgb, 100, 150, 255), 0);
+  }
+}
+
+.ai-management-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ai-management-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.ai-management-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.ai-management-current {
+  margin-bottom: 10px;
+}
+
+.ai-management-selector {
+  width: 100%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ai-management-selector:hover {
+  border-color: var(--accent);
+}
+
+.ai-management-selector:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.ai-management-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.ai-management-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px 6px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
+}
+
+.ai-management-btn .btn-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.ai-management-btn .btn-label {
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.ai-management-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.ai-management-btn:active {
+  transform: scale(0.95);
+}
+
+.ai-management-btn.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.ai-status-indicator {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+/* AI Management button specific styles */
+#ai-trivia-btn.active {
+  background: #28a745;
+  border-color: #28a745;
+}
+
+#ai-trivia-btn.active:hover {
+  background: #218838;
+  border-color: #1e7e34;
+}
+
+#ai-qa-btn.active {
+  background: #17a2b8;
+  border-color: #17a2b8;
+}
+
+#ai-qa-btn.active:hover {
+  background: #138496;
+  border-color: #117a8b;
+}
+
+#ai-status-btn.active {
+  background: #ffc107;
+  border-color: #ffc107;
+  color: #000;
+}
+
+#ai-status-btn.active:hover {
+  background: #e0a800;
+  border-color: #d39e00;
+}
+
 .drag-status {
   color: var(--text-tertiary);
   font-size: 0.7vw;
@@ -2117,7 +2287,49 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   font-size: 14px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+}
+
+/* AI Control Panel Styles */
+.ai-tab-btn {
+  position: relative;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+}
+
+.ai-tab-btn:hover {
+  color: var(--text-primary);
+  background: var(--hover-bg);
+}
+
+.ai-tab-btn.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.ai-tab-content {
+  display: none;
+}
+
+.ai-tab-content.active {
+  display: block;
+}
+
+.segment-quick-btn {
+  transition: all 0.2s ease;
+}
+
+.segment-quick-btn:hover {
+  background: var(--hover-bg) !important;
+  border-color: var(--accent-primary) !important;
+  transform: translateY(-1px);
 }
 
 .text-box-grid {
@@ -2245,6 +2457,46 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   padding: 12px;
   border-radius: 6px;
   border: 1px solid var(--border-secondary);
+}
+
+.url-display code {
+  flex: 1;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  word-break: break-all;
+}
+
+.copy-btn {
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.copy-btn:hover {
+  background: var(--accent-secondary);
+  transform: translateY(-1px);
+}
+
+.copy-btn:active {
+  transform: translateY(0);
+}
+
+/* VTuber state button active state */
+.vtuber-state-btn.active {
+  background: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+}
+
+.vtuber-state-btn.active:hover {
+  background: var(--accent-secondary);
 }
 
 .url-display code {
