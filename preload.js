@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Media file storage for multi-media buttons
   saveMediaFile: async (mediaData) => ipcRenderer.invoke('save-media-file', mediaData),
   saveMediaFileByPath: async (mediaData) => ipcRenderer.invoke('save-media-file-by-path', mediaData),
+  saveAudioFileToSounds: async (mediaData) => ipcRenderer.invoke('save-audio-file-to-sounds', mediaData),
   getMediaFile: async (relativePath) => ipcRenderer.invoke('get-media-file', relativePath),
   getMediaFilePath: async (relativePath) => ipcRenderer.invoke('get-media-file-path', relativePath),
   getConnectedOverlays: async () => ipcRenderer.invoke('get-connected-overlays'),

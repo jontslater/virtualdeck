@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VirtualDeck Overlay - {{OVERLAY_NAME}}</title>
+    <style>
+        :root {
+            --overlay-width: 1920px;
+            --overlay-height: 1080px;
+            --background-mode: {{BACKGROUND_MODE}};
+            --chroma-color: {{CHROMA_COLOR}};
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            width: var(--overlay-width);
+            height: var(--overlay-height);
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            
+            /* Background mode handling */
+            background: var(--background-mode) === 'transparent' ? transparent : var(--chroma-color);
+        }
+        
+        /* Connection Status Indicator */
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 9999;
+            pointer-events: none;
+            display: none;
+        }
+        
+        #connection-status.error {
+            color: #ff0000;
+        }
+        
+        #connection-status.warning {
+            color: #ffaa00;
+        }
+
+        /* Overlay Content Container */
+        .overlay-content {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            /* Remove flexbox centering to avoid conflicts with absolute positioning */
+        }
+
+        /* VTuber Avatar Container */
+        #vtuber-avatar {
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            object-fit: contain;
+            transition: opacity 0.3s ease;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #vtuber-avatar.hidden {
+            display: none;
+        }
+
+        /* Media Elements */
+        .media-element {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: contain;
+            /* Enhanced visibility for streaming alerts */
+            filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
+            border-radius: 8px;
+        }
+
+        .media-element.hidden {
+            display: none;
+        }
+
+        /* Text Elements */
+        .text-element {
+            position: absolute;
+            color: white;
+            text-shadow: 4px 4px 8px rgba(0, 0, 0, 1.0), -2px -2px 4px rgba(0, 0, 0, 0.8);
+            font-size: 64px;
+            font-weight: bold;
+            text-align: center;
+            white-space: nowrap;
+            /* Enhanced visibility for streaming alerts over images */
+            filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.9));
+            z-index: 100;
+        }
+
+        /* Animation Keyframes */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideInLeft {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes slideInUp {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        @keyframes slideInDown {
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        @keyframes zoomIn {
+            from { transform: scale(0.3); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        
+        @keyframes bounceIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.05); opacity: 1; }
+            70% { transform: scale(0.9); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+            20%, 40%, 60%, 80% { transform: translateX(10px); }
+        }
+        
+        @keyframes rotateIn {
+            from { transform: rotate(-200deg); opacity: 0; }
+            to { transform: rotate(0deg); opacity: 1; }
+        }
+        
+        @keyframes flipInX {
+            from { transform: perspective(400px) rotateX(90deg); opacity: 0; }
+            to { transform: perspective(400px) rotateX(0deg); opacity: 1; }
+        }
+        
+        @keyframes flipInY {
+            from { transform: perspective(400px) rotateY(90deg); opacity: 0; }
+            to { transform: perspective(400px) rotateY(0deg); opacity: 1; }
+        }
+        
+        @keyframes wobble {
+            0% { transform: translateX(0%); }
+            15% { transform: translateX(-25%) rotate(-5deg); }
+            30% { transform: translateX(20%) rotate(3deg); }
+            45% { transform: translateX(-15%) rotate(-3deg); }
+            60% { transform: translateX(10%) rotate(2deg); }
+            75% { transform: translateX(-5%) rotate(-1deg); }
+            100% { transform: translateX(0%); }
+        }
+        
+        @keyframes rubberBand {
+            0% { transform: scale(1); }
+            30% { transform: scaleX(1.25) scaleY(0.75); }
+            40% { transform: scaleX(0.75) scaleY(1.25); }
+            50% { transform: scaleX(1.15) scaleY(0.85); }
+            65% { transform: scaleX(0.95) scaleY(1.05); }
+            75% { transform: scaleX(1.05) scaleY(0.95); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes tada {
+            0% { transform: scale(1) rotate(0deg); }
+            10%, 20% { transform: scale(0.9) rotate(-3deg); }
+            30%, 50%, 70%, 90% { transform: scale(1.1) rotate(3deg); }
+            40%, 60%, 80% { transform: scale(1.1) rotate(-3deg); }
+            100% { transform: scale(1) rotate(0deg); }
+        }
+
+        /* Layout Classes */
+        .layout-center {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .layout-fullscreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .layout-text-only {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body>
+    <div id="connection-status">Connecting...</div>
+    <img id="vtuber-avatar" src="" alt="VTuber Avatar" />
+    <div class="overlay-content {{LAYOUT_CLASS}}">
+        <!-- Dynamic content will be inserted here -->
+    </div>
+
+    <script>
+        // Overlay Configuration
+        const OVERLAY_CONFIG = {
+            name: 'vtuber',
+            backgroundMode: 'transparent',
+            chromaColor: '#00ff00',
+            layout: 'center-media'
+        };
+
+        // Global variables
+        let overlayWS = null;
+        let messageCount = 0;
+        let overlayResetTimer = null;
+        let messageHistory = new Map();
+        let hasUserDefinedDuration = false; // Track if user set a custom duration
+        const MESSAGE_DEDUP_WINDOW = 5000; // 5 seconds
+
+        // VTuber state
+        let vtuberConfig = null;
+        let currentAvatarState = 'idle';
+
+        // Initialize overlay
+        function initOverlay() {
+            console.log('🚀 Initializing overlay:', OVERLAY_CONFIG.name);
+            console.log('🎨 Background mode:', OVERLAY_CONFIG.backgroundMode);
+            console.log('🎯 Layout:', OVERLAY_CONFIG.layout);
+            
+            // Load VTuber configuration
+            loadVTuberConfig();
+            
+            connectWebSocket();
+            showConnectionStatus('🔄 Connecting...', 'warning');
+        }
+
+        // Load VTuber configuration from API
+        async function loadVTuberConfig() {
+            try {
+                const response = await fetch('http://localhost:8080/api/vtuber/config');
+                if (response.ok) {
+                    vtuberConfig = await response.json();
+                    console.log('✅ VTuber config loaded:', vtuberConfig);
+                    updateAvatarDisplay();
+                } else {
+                    console.warn('⚠️ Could not load VTuber config:', response.status);
+                }
+            } catch (err) {
+                console.error('❌ Error loading VTuber config:', err);
+            }
+        }
+
+        // Update avatar display based on current state
+        function updateAvatarDisplay() {
+            if (!vtuberConfig) {
+                console.log('⚠️ No VTuber config available');
+                return;
+            }
+
+            // Check if using actual VTuber (iframe/API) or PNGtuber
+            if (vtuberConfig.type === 'vtuber' && vtuberConfig.vtuberConfig && vtuberConfig.vtuberConfig.type) {
+                // Handle actual VTuber
+                updateVTuberDisplay();
+            } else {
+                // Handle PNGtuber
+                updatePNGtuberDisplay();
+            }
+        }
+
+        // Update PNGtuber display (static images)
+        function updatePNGtuberDisplay() {
+            if (!vtuberConfig.images) {
+                console.log('⚠️ No PNGtuber images available');
+                return;
+            }
+
+            const avatarImg = document.getElementById('vtuber-avatar');
+            const vtuberIframe = document.getElementById('vtuber-iframe');
+            
+            // Hide iframe if showing PNGtuber
+            if (vtuberIframe) {
+                vtuberIframe.style.display = 'none';
+            }
+            
+            if (!avatarImg) return;
+
+            // Get image URL for current state
+            const state = currentAvatarState || vtuberConfig.currentState || 'idle';
+            const imageInfo = vtuberConfig.images[state];
+            
+            if (imageInfo && imageInfo.url) {
+                const imageUrl = `http://localhost:8080${imageInfo.url}`;
+                avatarImg.src = imageUrl;
+                avatarImg.style.display = 'block';
+                
+                // Apply position and size from config
+                applyAvatarPosition(avatarImg);
+                
+                console.log(`🎭 PNGtuber updated to state: ${state}`);
+            } else {
+                console.warn(`⚠️ No image found for state: ${state}`);
+                avatarImg.style.display = 'none';
+            }
+        }
+
+        // Update actual VTuber display (iframe/API)
+        function updateVTuberDisplay() {
+            const vtuberConfigData = vtuberConfig.vtuberConfig;
+            const avatarImg = document.getElementById('vtuber-avatar');
+            
+            // Hide PNGtuber image
+            if (avatarImg) {
+                avatarImg.style.display = 'none';
+            }
+
+            // Get or create iframe container
+            let vtuberIframe = document.getElementById('vtuber-iframe');
+            if (!vtuberIframe) {
+                vtuberIframe = document.createElement('iframe');
+                vtuberIframe.id = 'vtuber-iframe';
+                vtuberIframe.style.position = 'absolute';
+                vtuberIframe.style.border = 'none';
+                vtuberIframe.style.background = 'transparent';
+                document.body.appendChild(vtuberIframe);
+            }
+
+            if (vtuberConfigData.type === 'iframe' && vtuberConfigData.url) {
+                // Iframe mode - embed web-based VTuber
+                vtuberIframe.src = vtuberConfigData.url;
+                vtuberIframe.style.display = 'block';
+                applyAvatarPosition(vtuberIframe);
+                console.log('🎭 VTuber iframe loaded:', vtuberConfigData.url);
+            } else if (vtuberConfigData.type === 'vseeface' || vtuberConfigData.type === 'vtubestudio') {
+                // VSeeFace/VTube Studio - show instructions
+                vtuberIframe.style.display = 'none';
+                console.log('⚠️ VSeeFace/VTube Studio requires window capture in OBS. Use OBS Window Capture source.');
+                // Could show a message or fallback image
+            } else if (vtuberConfigData.type === 'live2d' && vtuberConfigData.modelPath) {
+                // Live2D - would need Cubism SDK integration
+                vtuberIframe.style.display = 'none';
+                console.log('⚠️ Live2D requires Cubism SDK integration (not yet implemented)');
+            } else {
+                vtuberIframe.style.display = 'none';
+                console.warn('⚠️ Unknown VTuber type or missing configuration');
+            }
+        }
+
+        // Apply position and size to avatar element
+        function applyAvatarPosition(element) {
+            if (!vtuberConfig.position) return;
+            
+            const pos = vtuberConfig.position;
+            if (pos.anchor === 'center') {
+                element.style.left = '50%';
+                element.style.top = '50%';
+                element.style.transform = `translate(-50%, -50%) scale(${vtuberConfig.scale || 1.0})`;
+            } else {
+                element.style.left = pos.x + 'px';
+                element.style.top = pos.y + 'px';
+                element.style.transform = `scale(${vtuberConfig.scale || 1.0})`;
+            }
+            element.style.width = (pos.width || 500) + 'px';
+            element.style.height = (pos.height || 500) + 'px';
+            element.style.opacity = vtuberConfig.opacity || 1.0;
+        }
+
+        // Handle VTuber state change from WebSocket
+        function handleVTuberStateChange(state) {
+            console.log(`🎭 VTuber state change: ${currentAvatarState} → ${state}`);
+            currentAvatarState = state;
+            updateAvatarDisplay();
+        }
+
+        // WebSocket connection
+        function connectWebSocket() {
+            try {
+                const wsUrl = `ws://localhost:8080?overlay=${OVERLAY_CONFIG.name}`;
+                console.log('🔗 Connecting to:', wsUrl);
+                
+                overlayWS = new WebSocket(wsUrl);
+                
+                overlayWS.onopen = function() {
+                    console.log('✅ WebSocket connected successfully!');
+                    showConnectionStatus('✅ Connected', 'success');
+                };
+                
+                overlayWS.onmessage = function(event) {
+                    try {
+                        console.log('🔥 Raw WebSocket message received:', event.data);
+                        const payload = JSON.parse(event.data);
+                        console.log('🔥 Parsed payload:', payload);
+                        
+                        // Check for duplicate messages
+                        const isDuplicate = isDuplicateMessage(payload);
+                        console.log('🔥 Is duplicate message?', isDuplicate);
+                        if (isDuplicate) {
+                            console.log('⚠️ Duplicate message ignored:', payload.type);
+                            // TEMPORARILY DISABLE DUPLICATE CHECK FOR DEBUGGING
+                            console.log('🔥 TEMPORARILY ALLOWING DUPLICATE FOR DEBUGGING');
+                            // return;
+                        }
+                        
+                        // Add to message history for deduplication
+                        addToMessageHistory(payload);
+                        
+                        messageCount++;
+                        console.log('📨 Received message:', payload.type);
+                        console.log('📊 Message count:', messageCount);
+                        
+                        // Handle VTuber state changes
+                        if (payload.type === 'vtuber-state') {
+                            handleVTuberStateChange(payload.state);
+                            return;
+                        }
+                        
+                        renderPayload(payload);
+                    } catch (error) {
+                        console.error('❌ Error parsing WebSocket message:', error);
+                    }
+                };
+                
+                overlayWS.onclose = function(event) {
+                    console.log('🔌 WebSocket disconnected');
+                    console.log('📊 Close code:', event.code, 'Reason:', event.reason);
+                    showConnectionStatus('❌ Disconnected', 'error');
+                };
+                
+                overlayWS.onerror = function(error) {
+                    console.error('❌ WebSocket error:', error);
+                    showConnectionStatus('❌ Connection Error', 'error');
+                };
+                
+            } catch (error) {
+                console.error('❌ Failed to create WebSocket connection:', error);
+                showConnectionStatus('❌ Connection Failed', 'error');
+            }
+        }
+
+        // Show connection status indicator
+        function showConnectionStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('connection-status');
+            if (!statusDiv) return;
+            
+            statusDiv.textContent = `${message} - ${OVERLAY_CONFIG.name}`;
+            statusDiv.className = type === 'success' ? '' : type;
+            statusDiv.style.display = 'block';
+            
+            // Auto-hide success messages after 3 seconds
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // Message deduplication
+        function isDuplicateMessage(payload) {
+            const messageId = generateMessageId(payload);
+            const now = Date.now();
+            
+            if (messageHistory.has(messageId)) {
+                const lastSeen = messageHistory.get(messageId);
+                if (now - lastSeen < MESSAGE_DEDUP_WINDOW) {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+
+        function addToMessageHistory(payload) {
+            const messageId = generateMessageId(payload);
+            messageHistory.set(messageId, Date.now());
+            
+            // Clean up old messages
+            const now = Date.now();
+            for (const [id, timestamp] of messageHistory.entries()) {
+                if (now - timestamp > MESSAGE_DEDUP_WINDOW) {
+                    messageHistory.delete(id);
+                }
+            }
+        }
+
+        function generateMessageId(payload) {
+            return JSON.stringify({
+                type: payload.type,
+                timestamp: payload.timestamp || 0,
+                id: payload.id || ''
+            });
+        }
+
+        // Render payload to overlay
+        function renderPayload(payload) {
+            console.log('🎯 Rendering payload:', payload.type);
+            console.log('🎯 Full payload received:', payload);
+            
+            if (payload.type === 'buttonTrigger') {
+                console.log('🎯 Calling handleButtonTrigger...');
+                handleButtonTrigger(payload);
+            } else if (payload.type === 'alert') {
+                console.log('🎯 Calling handleAlert...');
+                handleAlert(payload);
+            } else if (payload.type === 'clear') {
+                console.log('🎯 Calling clearOverlay...');
+                clearOverlay();
+            } else if (payload.type === 'text') {
+                console.log('🎯 Calling handleText...');
+                handleText(payload);
+            } else if (payload.type === 'image') {
+                console.log('🎯 Calling handleImage...');
+                handleImage(payload);
+            } else if (payload.type === 'video') {
+                console.log('🎯 Calling handleVideo...');
+                handleVideo(payload);
+            } else {
+                console.log('❓ Unknown payload type:', payload.type);
+            }
+        }
+
+        // Handle button trigger
+        function handleButtonTrigger(payload) {
+            console.log('🎮 Button triggered:', payload.options?.name || 'Unknown');
+            console.log('🎮 Full payload received:', JSON.stringify(payload, null, 2));
+            
+            // Clear any existing timer
+            if (overlayResetTimer) {
+                clearTimeout(overlayResetTimer);
+                overlayResetTimer = null;
+            }
+            
+            // Clear existing content
+            clearOverlay();
+            
+            // Process text slots FIRST (so text is added first and stays on top)
+            console.log('📝 Payload slots:', payload.slots);
+            console.log('📝 Slots type:', typeof payload.slots);
+            console.log('📝 Slots keys:', payload.slots ? Object.keys(payload.slots) : 'no slots');
+            
+            if (payload.slots && Object.keys(payload.slots).length > 0) {
+                console.log('📝 Processing text slots:', Object.keys(payload.slots));
+                Object.entries(payload.slots).forEach(([position, slotData]) => {
+                    console.log(`📝 Slot entry: ${position} =`, slotData);
+                    if (slotData && slotData.text) {
+                        console.log(`📝 Rendering text slot: ${position}`, slotData);
+                        renderTextSlot(position, slotData);
+                    } else {
+                        console.log(`📝 Slot ${position} has no text:`, slotData);
+                    }
+                });
+            } else {
+                console.log('📝 No slots to process or slots is empty');
+            }
+            
+            // Process center media SECOND (after text is already in DOM)
+            console.log('🎬 === CENTER MEDIA DEBUG ===');
+            console.log('🎬 centerMedia exists?', !!payload.centerMedia);
+            console.log('🎬 centerMedia is array?', Array.isArray(payload.centerMedia));
+            console.log('🎬 centerMedia length:', payload.centerMedia ? payload.centerMedia.length : 0);
+            if (payload.centerMedia && payload.centerMedia.length > 0) {
+                console.log('🎬 Processing centerMedia:', payload.centerMedia.length, 'items');
+                console.log('🎬 centerMedia items:', payload.centerMedia.map((m, i) => ({
+                    index: i,
+                    type: m.type,
+                    hasSrc: !!m.src,
+                    hasUrl: !!m.url,
+                    srcPreview: m.src ? m.src.substring(0, 100) : 'NO SRC'
+                })));
+                payload.centerMedia.forEach((media, index) => {
+                    console.log(`🎬 [${index}] About to render media:`, media.type);
+                    renderMedia(media, index);
+                });
+            } else {
+                console.log('🎬 ⚠️ NO centerMedia to process!');
+            }
+            
+            // Process fullscreen media
+            if (payload.fullscreenMedia && payload.fullscreenMedia.length > 0) {
+                console.log('🖥️ Processing fullscreenMedia:', payload.fullscreenMedia.length, 'items');
+                payload.fullscreenMedia.forEach((media, index) => {
+                    setTimeout(() => {
+                        renderMedia(media, index);
+                    }, index * 100); // Stagger media appearance
+                });
+            }
+            
+            // Set auto-clear timer if duration is specified
+            // Support both durationMs (milliseconds) and duration (seconds)
+            const durationMs = payload.options?.durationMs || (payload.options?.duration ? payload.options.duration * 1000 : null);
+            
+            if (durationMs && durationMs > 0) {
+                hasUserDefinedDuration = true; // User set a custom duration
+                overlayResetTimer = setTimeout(() => {
+                    console.log('⏰ Auto-clearing overlay after user-defined duration:', durationMs, 'ms', `(${(durationMs/1000).toFixed(1)}s)`);
+                    triggerClearAll();
+                }, durationMs);
+                console.log('✅ Timer armed for user-defined duration:', durationMs, 'ms', `(${(durationMs/1000).toFixed(1)}s)`);
+            } else {
+                hasUserDefinedDuration = false; // No user duration - media ended event will clear
+                console.log('ℹ️ No user-defined duration - overlay will clear when media ends');
+            }
+        }
+
+        // Handle alert
+        function handleAlert(payload) {
+            console.log('🚨 Alert triggered:', payload.alertType || 'Unknown');
+            
+            // Clear any existing timer
+            if (overlayResetTimer) {
+                clearTimeout(overlayResetTimer);
+                overlayResetTimer = null;
+            }
+            
+            // Clear existing content
+            clearOverlay();
+            
+            // Process alert media
+            if (payload.media && payload.media.length > 0) {
+                payload.media.forEach((media, index) => {
+                    setTimeout(() => {
+                        renderMedia(media, index);
+                    }, index * 100);
+                });
+            }
+            
+            // Set auto-clear timer
+            // Support both durationMs (milliseconds) and duration (seconds)
+            const durationMs = payload.options?.durationMs || (payload.duration ? payload.duration * 1000 : 60000);
+            
+            if (durationMs > 0) {
+                overlayResetTimer = setTimeout(() => {
+                    console.log('⏰ Auto-clearing alert after', durationMs, 'ms', `(${(durationMs/1000).toFixed(1)}s)`);
+                    triggerClearAll();
+                }, durationMs);
+                console.log('✅ Alert timer armed for', durationMs, 'ms', `(${(durationMs/1000).toFixed(1)}s)`);
+            }
+        }
+
+        // Handle text
+        function handleText(payload) {
+            const textDiv = document.createElement('div');
+            textDiv.className = 'text-element';
+            textDiv.textContent = payload.text || '';
+            textDiv.style.cssText = `
+                position: absolute;
+                top: ${payload.position?.top || '50%'};
+                left: ${payload.position?.left || '50%'};
+                transform: translate(-50%, -50%);
+                color: ${payload.color || 'white'};
+                font-size: ${payload.fontSize || '24px'};
+                font-weight: ${payload.fontWeight || 'bold'};
+                text-align: center;
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+                animation: fadeIn 0.5s ease-in-out;
+            `;
+            
+            document.querySelector('.overlay-content').appendChild(textDiv);
+        }
+
+        // Handle image
+        function handleImage(payload) {
+            const img = document.createElement('img');
+            img.className = 'media-element';
+            img.src = payload.src || payload.url || '';
+            img.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                object-fit: contain;
+                animation: fadeIn 0.5s ease-in-out;
+                filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
+                border-radius: 8px;
+                z-index: 1;
+            `;
+            
+            img.onload = () => {
+                console.log('🖼️ Image loaded successfully:', img.src);
+                console.log('🖼️ Image dimensions:', img.naturalWidth, 'x', img.naturalHeight);
+                console.log('🖼️ Image display size:', img.offsetWidth, 'x', img.offsetHeight);
+                // Force image to stay behind text when it loads
+                img.style.setProperty('z-index', '1', 'important');
+                console.log('🎯 Image z-index forced to 1 on load');
+                
+                // Also ensure all text elements are brought to front
+                const textElements = document.querySelectorAll('.text-element');
+                console.log('🎯 Found', textElements.length, 'text elements');
+                textElements.forEach((textEl, index) => {
+                    textEl.style.setProperty('z-index', '100', 'important');
+                    console.log(`🎯 Text element ${index} z-index boosted to 100:`, textEl.textContent);
+                });
+                
+                console.log('🎯 Image z-index:', img.style.zIndex);
+                console.log('🎯 Image computed style:', window.getComputedStyle(img).zIndex);
+            };
+            
+            img.onerror = () => {
+                console.error('❌ Failed to load image:', img.src);
+            };
+            
+            document.querySelector('.overlay-content').appendChild(img);
+        }
+
+        // Handle video
+        function handleVideo(payload) {
+            console.log('🎬 handleVideo called with payload:', payload);
+            console.log('🎬 Video src:', payload.src || payload.url || 'NO SRC');
+            
+            const video = document.createElement('video');
+            video.className = 'media-element';
+            
+            // Set muted FIRST (before src) for autoplay to work reliably in browsers
+            video.muted = payload.muted !== false; // Default to muted unless explicitly set to false
+            video.loop = payload.loop || false;
+            video.volume = payload.volume || 1.0;
+            
+            // Set autoplay attribute BEFORE setting src
+            video.setAttribute('autoplay', '');
+            video.setAttribute('playsinline', ''); // Required for mobile devices
+            
+            // Set src AFTER autoplay and muted are configured
+            video.src = payload.src || payload.url || '';
+            
+            console.log('🎬 Video element created:', {
+                src: video.src,
+                autoplay: video.autoplay,
+                loop: video.loop,
+                muted: video.muted,
+                volume: video.volume
+            });
+            
+            video.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                object-fit: contain;
+                animation: fadeIn 0.5s ease-in-out;
+                filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
+                border-radius: 8px;
+                z-index: 1;
+            `;
+            
+            video.onloadedmetadata = () => {
+                console.log('🎥 Video metadata loaded successfully:', video.src);
+                // Force video to stay behind text when it loads
+                video.style.setProperty('z-index', '1', 'important');
+                console.log('🎯 Video z-index forced to 1 on load');
+            };
+            
+            video.oncanplay = () => {
+                console.log('🎥 Video can play, attempting to play...');
+                // Explicitly call play() to ensure video starts
+                const playPromise = video.play();
+                
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        console.log('✅ Video playing successfully');
+                    }).catch(error => {
+                        console.error('❌ Video play failed:', error);
+                        if (error.name === 'NotAllowedError') {
+                            console.log('🎬 Autoplay blocked - adding click-to-play overlay');
+                            showPlayOverlay(video);
+                        }
+                    });
+                }
+            };
+            
+            video.onerror = (error) => {
+                console.error('❌ Failed to load video:', video.src);
+                console.error('❌ Video error details:', error);
+            };
+            
+            // Listen for ended event to clear overlay when video finishes
+            // ONLY if user didn't set a custom duration (prioritize user input)
+            if (!payload.loop && !hasUserDefinedDuration) {
+                video.addEventListener('ended', () => {
+                    console.log('🎬 Video finished playing - triggering clear all (no user duration set)');
+                    triggerClearAll();
+                }, { once: true });
+                console.log('🎬 Added ended event listener to video (will clear on video end)');
+            } else if (payload.loop) {
+                console.log('🎬 Video has loop attribute - no ended listener added');
+            } else if (hasUserDefinedDuration) {
+                console.log('🎬 User-defined duration set - video ended listener skipped (timer will handle clearing)');
+            }
+            
+            document.querySelector('.overlay-content').appendChild(video);
+            console.log('🎬 Video element appended to DOM');
+            
+            // Attempt to play immediately after appending (belt-and-suspenders approach)
+            setTimeout(() => {
+                if (video.paused) {
+                    console.log('🎬 Video is paused, attempting immediate play...');
+                    video.play().then(() => {
+                        console.log('✅ Immediate play successful');
+                    }).catch(err => {
+                        console.warn('⚠️ Immediate play failed (will retry on canplay):', err.message);
+                    });
+                }
+            }, 100);
+        }
+        
+        // Show play overlay for autoplay-blocked videos
+        function showPlayOverlay(video) {
+            const overlay = document.createElement('div');
+            overlay.style.position = 'absolute';
+            overlay.style.top = '50%';
+            overlay.style.left = '50%';
+            overlay.style.transform = 'translate(-50%, -50%)';
+            overlay.style.background = 'rgba(0, 0, 0, 0.8)';
+            overlay.style.color = 'white';
+            overlay.style.padding = '20px 40px';
+            overlay.style.borderRadius = '10px';
+            overlay.style.cursor = 'pointer';
+            overlay.style.zIndex = '1000';
+            overlay.style.fontSize = '24px';
+            overlay.style.fontWeight = 'bold';
+            overlay.style.textAlign = 'center';
+            overlay.innerHTML = '▶️ Click to Play Video';
+            
+            overlay.addEventListener('click', () => {
+                video.play().catch(err => console.warn('Manual play failed:', err));
+                overlay.remove();
+            });
+            
+            // Add to the overlay content container
+            const content = document.querySelector('.overlay-content');
+            content.style.position = 'relative';
+            content.appendChild(overlay);
+            console.log('🎬 Click-to-play overlay added');
+        }
+
+        // Render text slot
+        function renderTextSlot(position, slotData) {
+            console.log('📝 Rendering text slot:', position, slotData);
+            
+            const textElement = document.createElement('div');
+            textElement.className = 'text-element';
+            textElement.textContent = slotData.text;
+            
+            // Apply styling
+            const style = slotData.style || {};
+            
+            // Apply webkit-text-stroke if specified
+            const webkitTextStroke = style.webkitTextStroke || '';
+            
+            // Build positioning styles based on position
+            let positioningStyles = '';
+            let flexDirection = 'row'; // Default for horizontal centering
+            
+            switch (position) {
+                case 'topCenter':
+                    positioningStyles = 'top: 10vh; left: 0; right: 0; width: 100vw;';
+                    flexDirection = 'row';
+                    break;
+                case 'topLeft':
+                    positioningStyles = 'top: 10vh; left: 10vw; width: auto;';
+                    flexDirection = 'row';
+                    break;
+                case 'topRight':
+                    positioningStyles = 'top: 10vh; right: 10vw; width: auto;';
+                    flexDirection = 'row';
+                    break;
+                case 'midLeft':
+                    positioningStyles = 'top: 50vh; left: 10vw; width: auto; transform: translateY(-50%);';
+                    flexDirection = 'row';
+                    break;
+                case 'center':
+                    positioningStyles = 'top: 50vh; left: 0; right: 0; width: 100vw; transform: translateY(-50%);';
+                    flexDirection = 'row';
+                    break;
+                case 'midRight':
+                    positioningStyles = 'top: 50vh; right: 10vw; width: auto; transform: translateY(-50%);';
+                    flexDirection = 'row';
+                    break;
+                case 'bottomCenter':
+                    positioningStyles = 'bottom: 10vh; left: 0; right: 0; width: 100vw;';
+                    flexDirection = 'row';
+                    break;
+                case 'bottomLeft':
+                    positioningStyles = 'bottom: 10vh; left: 10vw; width: auto;';
+                    flexDirection = 'row';
+                    break;
+                case 'bottomRight':
+                    positioningStyles = 'bottom: 10vh; right: 10vw; width: auto;';
+                    flexDirection = 'row';
+                    break;
+                default:
+                    positioningStyles = 'top: 50vh; left: 0; right: 0; width: 100vw; transform: translateY(-50%);';
+                    flexDirection = 'row';
+            }
+            
+            textElement.style.cssText = `
+                position: absolute;
+                color: ${style.color || 'white'};
+                font-family: ${style.fontFamily || 'Arial, sans-serif'};
+                font-size: ${style.fontSize || '64px'};
+                font-weight: ${style.fontWeight || 'bold'};
+                text-shadow: ${style.textShadow || '3px 3px 6px rgba(0, 0, 0, 0.9)'};
+                -webkit-text-stroke: ${webkitTextStroke};
+                text-align: center;
+                white-space: nowrap;
+                z-index: ${style.zIndex || '100'};
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-direction: ${flexDirection};
+                pointer-events: none;
+                margin: 0;
+                padding: 0;
+                /* Enhanced visibility for streaming */
+                filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.8));
+                ${positioningStyles}
+            `;
+            
+            // Apply animation if specified
+            if (slotData.animation && slotData.animation.name !== 'none') {
+                const anim = slotData.animation;
+                console.log('🎬 Applying animation:', anim);
+                
+                // Build animation string
+                let animationString = anim.name;
+                if (anim.duration) animationString += ` ${anim.duration}`;
+                if (anim.timingFunction) animationString += ` ${anim.timingFunction}`;
+                if (anim.delay) animationString += ` ${anim.delay}`;
+                if (anim.iterationCount) animationString += ` ${anim.iterationCount}`;
+                animationString += ' forwards';
+                
+                textElement.style.animation = animationString;
+                textElement.style.animationFillMode = 'both';
+                console.log('🎬 Animation string:', animationString);
+            } else {
+                console.log('🎬 No animation or animation is "none"');
+            }
+            
+            document.querySelector('.overlay-content').appendChild(textElement);
+            
+            // Force z-index to be applied after DOM insertion
+            setTimeout(() => {
+                textElement.style.setProperty('z-index', '100', 'important');
+                console.log('🎯 Forced text z-index to 100 with !important after DOM insertion');
+            }, 0);
+            
+            console.log('✅ Text element added to DOM:', slotData.text);
+            console.log('🎯 Text element position:', textElement.style.top, textElement.style.left);
+            console.log('🎯 Text element dimensions:', textElement.offsetWidth, 'x', textElement.offsetHeight);
+            console.log('🎯 Text element z-index:', textElement.style.zIndex);
+            console.log('🎯 Text element computed style:', window.getComputedStyle(textElement).zIndex);
+            console.log('🎯 Text element visibility:', window.getComputedStyle(textElement).visibility);
+            console.log('🎯 Text element display:', window.getComputedStyle(textElement).display);
+        }
+        
+        // Render media element
+        function renderMedia(media, index) {
+            console.log('🎨 Rendering media:', media.type, media);
+            console.log('🎨 Media details:', {
+                type: media.type,
+                src: media.src,
+                hasUrl: !!media.url,
+                loop: media.loop,
+                muted: media.muted,
+                volume: media.volume
+            });
+            
+            if (media.type === 'image') {
+                console.log('🎨 -> Calling handleImage');
+                handleImage(media);
+            } else if (media.type === 'video') {
+                console.log('🎨 -> Calling handleVideo');
+                handleVideo(media);
+            } else if (media.type === 'audio') {
+                console.log('🎨 -> Calling handleAudio');
+                handleAudio(media);
+            } else {
+                console.warn('🎨 -> Unknown media type:', media.type);
+            }
+        }
+
+        // Handle audio
+        function handleAudio(payload) {
+            const audio = document.createElement('audio');
+            audio.src = payload.src || payload.url || '';
+            audio.volume = payload.volume || 1.0;
+            audio.loop = payload.loop || false;
+            audio.autoplay = true;
+            
+            audio.onloadeddata = () => {
+                console.log('🔊 Audio loaded successfully:', audio.src);
+                console.log('🔊 Attempting to play audio...');
+                audio.play().then(() => {
+                    console.log('✅ Audio playing successfully');
+                }).catch(error => {
+                    console.error('❌ Audio play failed:', error);
+                    if (error.name === 'NotAllowedError') {
+                        console.log('🎵 Autoplay blocked - audio will play on next interaction');
+                        // Audio autoplay blocking is less critical than video
+                        // The audio will play on the next user interaction (like clicking the video)
+                    }
+                });
+            };
+            
+            audio.onerror = (error) => {
+                console.error('❌ Failed to load audio:', audio.src);
+                console.error('❌ Audio error details:', error);
+            };
+            
+            // Listen for ended event to clear overlay when audio finishes
+            // ONLY if user didn't set a custom duration (prioritize user input)
+            if (!payload.loop && !hasUserDefinedDuration) {
+                audio.addEventListener('ended', () => {
+                    console.log('🎵 Audio finished playing - triggering clear all (no user duration set)');
+                    triggerClearAll();
+                }, { once: true });
+                console.log('🎵 Added ended event listener to audio (will clear on audio end)');
+            } else if (payload.loop) {
+                console.log('🎵 Audio has loop attribute - no ended listener added');
+            } else if (hasUserDefinedDuration) {
+                console.log('🎵 User-defined duration set - audio ended listener skipped (timer will handle clearing)');
+            }
+            
+            document.body.appendChild(audio);
+        }
+
+        // Trigger clear all - mimics the "Clear All" button functionality
+        function triggerClearAll() {
+            console.log('🔄 Triggering clear all button functionality...');
+            console.log('🧹 Calling clearOverlay() directly (same as Clear All button)');
+            clearOverlay();
+        }
+        
+        // Clear overlay
+        function clearOverlay() {
+            console.log('🧹 Clearing overlay');
+            
+            const content = document.querySelector('.overlay-content');
+            if (content) {
+                content.innerHTML = '';
+            }
+            
+            // Clear all audio elements
+            const audioElements = document.querySelectorAll('audio');
+            audioElements.forEach(audio => {
+                audio.pause();
+                audio.remove();
+            });
+            
+            // Clear timer
+            if (overlayResetTimer) {
+                clearTimeout(overlayResetTimer);
+                overlayResetTimer = null;
+                console.log('⏰ Cleared existing reset timer');
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initOverlay);
+        
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (overlayWS) {
+                overlayWS.close();
+            }
+        });
+    </script>
+</body>
+</html>

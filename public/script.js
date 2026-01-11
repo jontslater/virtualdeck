@@ -4471,6 +4471,18 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   
   console.log(`🔍 Saving button with chatCommand:`, chatCommand);
   console.log(`🔍 Form values - enabled: ${chatCommandEnabled}, keyword: "${chatCommandKeyword}", redeemName: "${redeemName}", triggerMethod: "${triggerMethod}"`);
+  
+  // Get AI use settings (only for audio buttons)
+  const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+  const aiDescriptionInput = document.getElementById('ai-description-input');
+  const aiAllowed = type === 'audio' && aiAllowedCheckbox?.checked || false;
+  const aiDescription = type === 'audio' && aiDescriptionInput?.value?.trim() || '';
+  
+  console.log('AI use elements found:');
+  console.log('- Checkbox element:', aiAllowedCheckbox);
+  console.log('- Description input element:', aiDescriptionInput);
+  console.log('- AI allowed:', aiAllowed);
+  console.log('- AI description:', aiDescription);
 
   // Get the appropriate file input based on type
   const fileInput = type === 'app' ? document.getElementById('app-file-input') : document.getElementById('file-input');
@@ -4518,6 +4530,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     const existingFile = form.dataset.existingFile;
     if (!existingFile) return alert("No existing file found.");
 
+    // Get AI use settings (only for audio buttons)
+    const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+    const aiDescriptionInput = document.getElementById('ai-description-input');
+    const aiAllowed = type === 'audio' && aiAllowedCheckbox?.checked || false;
+    const aiDescription = type === 'audio' && aiDescriptionInput?.value?.trim() || '';
+    
     // Send update without file change
     window.electronAPI.addMedia({
       label,
@@ -4527,7 +4545,9 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       targetPath: existingFile,
       originalPath: existingFile,
       editingIndex: parseInt(form.dataset.editingIndex),
-      chatCommand: chatCommand
+      chatCommand: chatCommand,
+      aiAllowed: type === 'audio' ? aiAllowed : undefined,
+      description: type === 'audio' ? aiDescription : undefined
     });
     window.electronAPI.refreshHotkeys();
     
@@ -4569,14 +4589,53 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       console.log('Form submission - fileInput.files[0].name:', file.name);
       console.log('Form submission - fileInput.files[0].type:', file.type);
       console.log('Form submission - fileInput.files[0].size:', file.size);
+      console.log('Form submission - fileInput.files[0].path:', file.path);
       
-      // Use Electron's webUtils to get the file path
-      if (window.electronAPI && window.electronAPI.getFilePathFromFile) {
-        filePath = window.electronAPI.getFilePathFromFile(file);
-        console.log('Form submission - got file path from webUtils:', filePath);
-      } else {
-        console.warn('electronAPI.getFilePathFromFile not available, falling back to file.path');
+      // Check if file has a path (selected via Electron dialog)
+      if (file.path) {
         filePath = file.path;
+        console.log('Form submission - using file.path:', filePath);
+      } else {
+        // File doesn't have a path - need to save it first
+        // This happens when file is selected via browser file input
+        console.log('Form submission - file has no path, saving file directly to sounds directory...');
+        
+        try {
+          // Convert File to base64
+          const fileToBase64 = (file) => {
+            return new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.readAsDataURL(file);
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = error => reject(error);
+            });
+          };
+          
+          const base64Data = await fileToBase64(file);
+          
+          // Save file directly to sounds directory using the button label as filename
+          if (window.electronAPI && window.electronAPI.saveAudioFileToSounds) {
+            const result = await window.electronAPI.saveAudioFileToSounds({
+              base64Data: base64Data,
+              label: label, // Use the button label as the filename
+              originalName: file.name
+            });
+            
+            if (result.success) {
+              // File was already saved to sounds directory via saveAudioFileToSounds
+              // Pass the relative path directly - add-media handler will detect it's already in sounds directory
+              filePath = result.filePath;
+              console.log('Form submission - file saved to sounds directory, using relative path:', filePath);
+            } else {
+              throw new Error(result.error || 'Failed to save file');
+            }
+          } else {
+            throw new Error('saveAudioFileToSounds API not available');
+          }
+        } catch (error) {
+          console.error('Error saving file:', error);
+          return alert(`Error: Could not save file: ${error.message}\n\nPlease try selecting the file again.`);
+        }
       }
       
       fileName = file.name;
@@ -4634,7 +4693,9 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       originalPath: filePath,
       args,
       editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined,
-      chatCommand: chatCommand
+      chatCommand: chatCommand,
+      aiAllowed: type === 'audio' ? aiAllowed : undefined,
+      description: type === 'audio' ? aiDescription : undefined
     };
     
     console.log('Final addMediaData object:', addMediaData);
@@ -4736,6 +4797,33 @@ window.editButton = async (index) => {
     hotkeyInput.value = btn.hotkey;
   } else {
     hotkeyInput.value = '';
+  }
+  
+  // Set AI use fields (only for audio buttons)
+  if (btn.type === 'audio') {
+    const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+    const aiDescriptionInput = document.getElementById('ai-description-input');
+    const aiDescriptionContainer = document.getElementById('ai-description-container');
+    
+    if (aiAllowedCheckbox && aiDescriptionInput && aiDescriptionContainer) {
+      // Set checkbox state
+      const aiAllowed = btn.aiAllowed !== false; // Default to true if not explicitly false
+      aiAllowedCheckbox.checked = aiAllowed;
+      
+      // Set description if it exists
+      if (btn.description) {
+        aiDescriptionInput.value = btn.description;
+      } else {
+        aiDescriptionInput.value = '';
+      }
+      
+      // Show/hide description container based on checkbox state
+      if (aiAllowed) {
+        aiDescriptionContainer.style.display = 'block';
+      } else {
+        aiDescriptionContainer.style.display = 'none';
+      }
+    }
   }
   
   // Set chat command fields
@@ -5121,6 +5209,20 @@ document.addEventListener('DOMContentLoaded', () => {
     settingsCloseBtn.addEventListener('click', closeSettingsModal);
   }
   
+  // AI use checkbox toggle - show/hide description field
+  const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+  const aiDescriptionContainer = document.getElementById('ai-description-container');
+  
+  if (aiAllowedCheckbox && aiDescriptionContainer) {
+    aiAllowedCheckbox.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        aiDescriptionContainer.style.display = 'block';
+      } else {
+        aiDescriptionContainer.style.display = 'none';
+      }
+    });
+  }
+  
   // Multi-media modal close button
   const multiMediaCloseBtn = document.getElementById('multi-media-modal-close');
   if (multiMediaCloseBtn) {
@@ -5286,6 +5388,14 @@ function handleFileDrop(file) {
   if (chatCommandKeyword) chatCommandKeyword.value = '';
   if (redeemName) redeemName.value = '';
   if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+  
+  // Clear AI use fields
+  const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+  const aiDescriptionContainer = document.getElementById('ai-description-container');
+  const aiDescriptionInput = document.getElementById('ai-description-input');
+  if (aiAllowedCheckbox) aiAllowedCheckbox.checked = false;
+  if (aiDescriptionInput) aiDescriptionInput.value = '';
+  if (aiDescriptionContainer) aiDescriptionContainer.style.display = 'none';
   
   document.querySelector('#settings-modal h2').textContent = 'Add New ' + (type === 'audio' ? 'Sound' : 'App');
   
@@ -6506,20 +6616,103 @@ function setupOverlayWidget() {
     setupAIDashboardToggle();
     
     const segmentSelector = document.getElementById('ai-segment-selector');
+    const modeSelector = document.getElementById('ai-mode-selector');
     const triviaBtn = document.getElementById('ai-trivia-btn');
     const qaBtn = document.getElementById('ai-qa-btn');
+    const dndBtn = document.getElementById('ai-dnd-btn');
     const statusBtn = document.getElementById('ai-status-btn');
     const settingsBtn = document.getElementById('ai-settings-btn');
     const statusText = document.getElementById('ai-status-text');
     
     console.log('🔍 AI Management Panel elements found:', {
       segmentSelector: !!segmentSelector,
+      modeSelector: !!modeSelector,
       triviaBtn: !!triviaBtn,
       qaBtn: !!qaBtn,
+      dndBtn: !!dndBtn,
       statusBtn: !!statusBtn,
       settingsBtn: !!settingsBtn,
       statusText: !!statusText
     });
+    
+    // AI Mode selector - change AI mode (CHILL, HYPE, QA, DND, etc.)
+    if (modeSelector) {
+      // Load current mode on startup
+      async function loadCurrentMode() {
+        try {
+          const response = await fetch('http://localhost:3004/api/ai/mode');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.mode) {
+              modeSelector.value = data.mode;
+              console.log('✅ Loaded current AI mode:', data.mode);
+            }
+          }
+        } catch (err) {
+          console.debug('Could not load current AI mode:', err);
+        }
+      }
+      
+      // Handle mode change
+      modeSelector.addEventListener('change', async (e) => {
+        const selectedMode = e.target.value;
+        console.log('🎯 Changing AI mode to:', selectedMode);
+        
+        try {
+          const response = await fetch('http://localhost:3004/api/ai/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: selectedMode }),
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Failed to set mode: ${response.statusText}`);
+          }
+          
+          const result = await response.json();
+          console.log('✅ AI mode changed:', result);
+          
+          // Update status display
+          updateAIManagementStatus();
+          
+          // Show success notification if available
+          if (window.notificationManager) {
+            window.notificationManager.show(`AI mode set to ${selectedMode}`, 'success');
+          }
+        } catch (err) {
+          console.error('❌ Error changing AI mode:', err);
+          alert(`Error changing AI mode: ${err instanceof Error ? err.message : String(err)}`);
+          // Revert selector to previous value
+          loadCurrentMode();
+        }
+      });
+      
+      // Load current mode on startup
+      loadCurrentMode();
+      
+      // Update mode selector when status updates
+      const originalUpdateAIManagementStatus = window.updateAIManagementStatus;
+      if (originalUpdateAIManagementStatus) {
+        window.updateAIManagementStatus = async function() {
+          await originalUpdateAIManagementStatus();
+          // Update mode selector if mode changed externally
+          try {
+            const response = await fetch('http://localhost:3004/api/ai/mode');
+            if (response.ok) {
+              const data = await response.json();
+              if (data.mode && modeSelector.value !== data.mode) {
+                modeSelector.value = data.mode;
+              }
+            }
+          } catch (err) {
+            // Silently fail
+          }
+        };
+      }
+    } else {
+      console.warn('⚠️ Mode selector not found');
+    }
     
     // Segment selector - update AI behavior
     if (segmentSelector) {
@@ -6622,6 +6815,30 @@ function setupOverlayWidget() {
       });
     }
     
+    // D&D button - toggle D&D campaign panel
+    if (dndBtn) {
+      dndBtn.addEventListener('click', () => {
+        const dndPanel = document.getElementById('dnd-campaign-panel');
+        if (dndPanel) {
+          const isVisible = dndPanel.style.display !== 'none';
+          dndPanel.style.display = isVisible ? 'none' : 'block';
+          
+          if (!isVisible) {
+            // Panel opened - load campaign state
+            loadDndCampaignState();
+            dndBtn.classList.add('active');
+            dndBtn.title = 'D&D Campaign Active - Click to Hide';
+          } else {
+            dndBtn.classList.remove('active');
+            dndBtn.title = 'D&D Campaign';
+          }
+        }
+      });
+    }
+    
+    // Setup D&D controls
+    setupDndControls();
+    
     // Status button - show AI status/details (toggle status indicator visibility or open details)
     if (statusBtn) {
       statusBtn.addEventListener('click', () => {
@@ -6662,6 +6879,14 @@ function setupOverlayWidget() {
     setInterval(() => {
       updateAIManagementStatus();
     }, 1000);
+    
+    // Update D&D campaign state periodically (every 5 seconds)
+    setInterval(() => {
+      const dndPanel = document.getElementById('dnd-campaign-panel');
+      if (dndPanel && dndPanel.style.display !== 'none') {
+        loadDndCampaignState();
+      }
+    }, 5000);
     
     // Initial status update
     updateAIManagementStatus();
@@ -6766,11 +6991,299 @@ function setupOverlayWidget() {
           const isMuted = data.mode === 'MUTED';
           
           updateDashboardToggleUI(!isMuted);
+          
+          // Update mode selector if it exists
+          const modeSelector = document.getElementById('ai-mode-selector');
+          if (modeSelector && data.mode && modeSelector.value !== data.mode) {
+            modeSelector.value = data.mode;
+          }
         }
       } catch (err) {
         // Silently fail - API might not be available
         console.debug('Could not check AI mode:', err);
       }
+    }
+  }
+  
+  // Setup D&D Controls
+  function setupDndControls() {
+    const dndStartBtn = document.getElementById('dnd-start-btn');
+    const dndStopBtn = document.getElementById('dnd-stop-btn');
+    
+    if (!dndStartBtn) {
+      console.error('❌ D&D Start button not found!');
+      return;
+    }
+    if (!dndStopBtn) {
+      console.warn('⚠️ D&D Stop button not found');
+    }
+    console.log('✅ D&D controls setup: Start button found');
+    
+    // Start D&D Campaign
+    if (dndStartBtn) {
+      console.log('✅ D&D Start button found, attaching click handler');
+      dndStartBtn.addEventListener('click', async () => {
+        try {
+          console.log('🎲 Starting D&D campaign...');
+          console.log('   Button clicked, beginning startup sequence...');
+          
+          // Disable button immediately for feedback
+          if (dndStartBtn) {
+            dndStartBtn.disabled = true;
+            dndStartBtn.textContent = 'Starting...';
+          }
+          
+          // Step 1: Enable D&D mode first
+          console.log('   Step 1: Setting AI mode to DND...');
+          try {
+            const modeResponse = await fetch('http://localhost:3004/api/ai/mode', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mode: 'DND' }),
+            });
+            
+            if (!modeResponse.ok) {
+              const errorText = await modeResponse.text();
+              console.warn(`⚠️ Mode API returned ${modeResponse.status}: ${errorText}`);
+              // Continue anyway - mode might already be set
+            } else {
+              console.log('   ✅ AI mode set to DND');
+            }
+          } catch (modeErr) {
+            console.error('❌ Error setting AI mode:', modeErr);
+            throw new Error(`Failed to set AI mode: ${modeErr.message}`);
+          }
+          
+          // Step 2: Enable D&D mode via D&D API
+          console.log('   Step 2: Enabling D&D mode...');
+          try {
+            const dndModeResponse = await fetch('http://localhost:3007/api/dnd/mode/enable', {
+              method: 'POST',
+            });
+            
+            if (!dndModeResponse.ok) {
+              const errorText = await dndModeResponse.text();
+              console.warn(`⚠️ D&D mode API error: ${dndModeResponse.status} ${errorText}`);
+              // Continue anyway - might already be enabled
+            } else {
+              console.log('   ✅ D&D mode enabled');
+            }
+          } catch (dndModeErr) {
+            console.error('❌ Error enabling D&D mode:', dndModeErr);
+            throw new Error(`Failed to enable D&D mode: ${dndModeErr.message}`);
+          }
+          
+          // Step 3: Check if campaign exists, if not start new series
+          console.log('   Step 3: Checking campaign state...');
+          let campaignState = null;
+          try {
+            const stateResponse = await fetch('http://localhost:3007/api/dnd/state');
+            
+            if (stateResponse.ok) {
+              campaignState = await stateResponse.json();
+              console.log('   ✅ Campaign state retrieved:', campaignState?.seriesId ? `Series ${campaignState.seriesId}` : 'No series');
+            } else {
+              console.log(`   ⚠️ No existing campaign found (${stateResponse.status})`);
+            }
+          } catch (stateErr) {
+            console.error('❌ Error checking campaign state:', stateErr);
+            throw new Error(`Failed to check campaign state: ${stateErr.message}`);
+          }
+          
+          if (!campaignState || !campaignState.seriesId) {
+            // Start new series with default party
+            console.log('   Step 4: Starting new campaign series...');
+            const defaultParty = {
+              characters: [
+                { name: 'Aria', class: 'Wizard', race: 'Elf', level: 3, xp: 900, xpToNext: 600, hp: 20, maxHp: 20, ac: 12, spellSlots: { '1': 4, '2': 2 }, skills: { 'Arcana': 5, 'Investigation': 4, 'History': 4 }, conditions: [], inventory: ['Staff', 'Spellbook'] },
+                { name: 'Thorin', class: 'Fighter', race: 'Dwarf', level: 3, xp: 900, xpToNext: 600, hp: 32, maxHp: 32, ac: 18, skills: { 'Athletics': 5, 'Intimidation': 3, 'Survival': 4 }, conditions: [], inventory: ['Longsword', 'Shield', 'Chainmail'] },
+                { name: 'Luna', class: 'Rogue', race: 'Halfling', level: 3, xp: 900, xpToNext: 600, hp: 24, maxHp: 24, ac: 15, skills: { 'Stealth': 7, 'Sleight of Hand': 6, 'Perception': 5 }, conditions: [], inventory: ['Daggers', 'Thieves\' Tools'] },
+                { name: 'Kael', class: 'Cleric', race: 'Human', level: 3, xp: 900, xpToNext: 600, hp: 28, maxHp: 28, ac: 16, spellSlots: { '1': 4, '2': 2 }, skills: { 'Medicine': 5, 'Religion': 4, 'Insight': 4 }, conditions: [], inventory: ['Mace', 'Holy Symbol', 'Chain Shirt'] },
+              ],
+              gold: 150,
+              level: 3,
+            };
+            
+            console.log('   Sending series start request...');
+            const seriesResponse = await fetch('http://localhost:3007/api/dnd/series/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ party: defaultParty }),
+            });
+            
+            if (!seriesResponse.ok) {
+              const errorText = await seriesResponse.text();
+              console.error(`❌ Series start failed: ${seriesResponse.status} ${errorText}`);
+              throw new Error(`Failed to start new campaign series: ${seriesResponse.status} ${errorText}`);
+            }
+            
+            campaignState = await seriesResponse.json();
+            console.log('   ✅ Started new D&D campaign series:', campaignState?.seriesId || 'Unknown ID');
+          } else {
+            console.log('   ✅ Using existing campaign');
+          }
+          
+          // Step 5: Update UI
+          console.log('   Step 5: Updating UI...');
+          if (dndStartBtn) {
+            dndStartBtn.disabled = true;
+            dndStartBtn.textContent = 'Started';
+          }
+          if (dndStopBtn) dndStopBtn.disabled = false;
+          
+          // Load and display campaign state
+          loadDndCampaignState();
+          
+          // Show success
+          if (window.notificationManager) {
+            window.notificationManager.show('D&D campaign started!', 'success');
+          }
+          
+          console.log('✅ D&D campaign started successfully');
+        } catch (err) {
+          console.error('❌ Error starting D&D campaign:', err);
+          
+          // Re-enable button on error
+          if (dndStartBtn) {
+            dndStartBtn.disabled = false;
+            dndStartBtn.textContent = 'Start';
+          }
+          
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          alert(`Error starting D&D campaign:\n\n${errorMsg}\n\nCheck console for details.`);
+        }
+      });
+    }
+    
+    // Stop D&D Campaign
+    if (dndStopBtn) {
+      dndStopBtn.addEventListener('click', async () => {
+        try {
+          console.log('🎲 Stopping D&D campaign...');
+          
+          // Disable D&D mode
+          const dndModeResponse = await fetch('http://localhost:3007/api/dnd/mode/disable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fallbackMode: 'CHILL' }),
+          });
+          
+          // Set mode back to CHILL
+          await fetch('http://localhost:3004/api/ai/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'CHILL' }),
+          });
+          
+          // Update UI
+          if (dndStartBtn) dndStartBtn.disabled = false;
+          if (dndStopBtn) dndStopBtn.disabled = true;
+          
+          // Hide panel
+          const dndPanel = document.getElementById('dnd-campaign-panel');
+          if (dndPanel) {
+            dndPanel.style.display = 'none';
+          }
+          
+          const dndBtn = document.getElementById('ai-dnd-btn');
+          if (dndBtn) {
+            dndBtn.classList.remove('active');
+            dndBtn.title = 'D&D Campaign';
+          }
+          
+          if (window.notificationManager) {
+            window.notificationManager.show('D&D campaign stopped', 'info');
+          }
+          
+          console.log('✅ D&D campaign stopped');
+        } catch (err) {
+          console.error('❌ Error stopping D&D campaign:', err);
+          alert(`Error stopping D&D campaign: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    }
+  }
+  
+  // Load and display D&D campaign state
+  async function loadDndCampaignState() {
+    try {
+      const response = await fetch('http://localhost:3007/api/dnd/state');
+      if (!response.ok) {
+        // Campaign not started yet
+        const partyList = document.getElementById('dnd-party-list');
+        const locationEl = document.getElementById('dnd-location');
+        const goldEl = document.getElementById('dnd-gold');
+        const sessionInfo = document.getElementById('dnd-session-info');
+        
+        if (partyList) partyList.textContent = 'No campaign active';
+        if (locationEl) locationEl.textContent = '-';
+        if (goldEl) goldEl.textContent = '-';
+        if (sessionInfo) sessionInfo.textContent = 'Not started';
+        
+        const dndStartBtn = document.getElementById('dnd-start-btn');
+        const dndStopBtn = document.getElementById('dnd-stop-btn');
+        if (dndStartBtn) dndStartBtn.disabled = false;
+        if (dndStopBtn) dndStopBtn.disabled = true;
+        return;
+      }
+      
+      const state = await response.json();
+      
+      // Update session info
+      const sessionInfo = document.getElementById('dnd-session-info');
+      if (sessionInfo) {
+        sessionInfo.textContent = `Session ${state.sessionNumber || 1}`;
+      }
+      
+      // Update location
+      const locationEl = document.getElementById('dnd-location');
+      if (locationEl && state.story) {
+        locationEl.textContent = state.story.location || 'Unknown';
+      }
+      
+      // Update gold
+      const goldEl = document.getElementById('dnd-gold');
+      if (goldEl && state.party) {
+        goldEl.textContent = state.party.gold || 0;
+      }
+      
+      // Update party display
+      const partyList = document.getElementById('dnd-party-list');
+      if (partyList && state.party && state.party.characters) {
+        const partyHtml = state.party.characters.map(char => {
+          const hpPercent = Math.round((char.hp / char.maxHp) * 100);
+          const hpColor = hpPercent > 60 ? 'var(--success-color)' : hpPercent > 30 ? '#ffa500' : 'var(--error-color)';
+          const raceDisplay = char.race ? ` ${char.race}` : '';
+          return `
+            <div style="margin-bottom: 6px; padding: 6px; background: var(--bg-primary); border-radius: 4px; border-left: 3px solid ${hpColor};">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <span style="font-weight: 600; color: var(--text-primary);">${char.name}</span>
+                <span style="font-size: 9px; color: var(--text-tertiary);">Lv.${char.level} ${char.class}${raceDisplay}</span>
+              </div>
+              <div style="font-size: 9px; color: var(--text-secondary);">
+                HP: <span style="color: ${hpColor};">${char.hp}/${char.maxHp}</span> | AC: ${char.ac}
+                ${char.conditions && char.conditions.length > 0 ? ` | ${char.conditions.join(', ')}` : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+        partyList.innerHTML = partyHtml || 'No party members';
+      }
+      
+      // Update button states
+      const dndStartBtn = document.getElementById('dnd-start-btn');
+      const dndStopBtn = document.getElementById('dnd-stop-btn');
+      const dndModeStatus = await fetch('http://localhost:3007/api/dnd/mode/status').catch(() => null);
+      
+      if (dndModeStatus && dndModeStatus.ok) {
+        const modeData = await dndModeStatus.json();
+        const isActive = modeData.dndModeActive || modeData.isDndMode;
+        
+        if (dndStartBtn) dndStartBtn.disabled = isActive;
+        if (dndStopBtn) dndStopBtn.disabled = !isActive;
+      }
+    } catch (err) {
+      console.debug('Could not load D&D campaign state:', err);
     }
   }
   
@@ -6794,6 +7307,12 @@ function setupOverlayWidget() {
           const aiStatus = await aiStatusResponse.json();
           aiState = aiStatus.state || 'idle';
           
+          // Update mode selector if mode is available
+          const modeSelector = document.getElementById('ai-mode-selector');
+          if (modeSelector && aiStatus.currentMode && modeSelector.value !== aiStatus.currentMode) {
+            modeSelector.value = aiStatus.currentMode;
+          }
+          
           // Map states to display text and colors
           const stateMap = {
             'idle': { text: 'Idle', color: 'var(--text-tertiary)', emoji: '💤' },
@@ -6809,6 +7328,20 @@ function setupOverlayWidget() {
       } catch (e) {
         // AI Status API might not be available, fall back to feature-based status
         console.debug('AI Status API not available, using feature-based status');
+      }
+      
+      // Also check mode separately to ensure mode selector stays in sync
+      try {
+        const modeResponse = await fetch('http://localhost:3004/api/ai/mode');
+        if (modeResponse.ok) {
+          const modeData = await modeResponse.json();
+          const modeSelector = document.getElementById('ai-mode-selector');
+          if (modeSelector && modeData.mode && modeSelector.value !== modeData.mode) {
+            modeSelector.value = modeData.mode;
+          }
+        }
+      } catch (e) {
+        // Silently fail
       }
       
       // Check trivia status
@@ -6868,6 +7401,28 @@ function setupOverlayWidget() {
               }
               if (aiStatus.currentMode) {
                 details.push(`Mode: ${aiStatus.currentMode}`);
+                
+                // Update mode selector dropdown
+                const modeSelector = document.getElementById('ai-mode-selector');
+                if (modeSelector && modeSelector.value !== aiStatus.currentMode) {
+                  modeSelector.value = aiStatus.currentMode;
+                }
+                
+                // Update mode display text
+                const modeText = document.getElementById('ai-mode-text');
+                if (modeText) {
+                  const modeLabels = {
+                    'CHILL': 'Chill',
+                    'HYPE': 'Hype',
+                    'QA': 'Q&A',
+                    'STORYTIME': 'Storytime',
+                    'DND': 'D&D',
+                    'AFK': 'AFK',
+                    'SAFE': 'Safe',
+                    'MUTED': 'Muted'
+                  };
+                  modeText.textContent = modeLabels[aiStatus.currentMode] || aiStatus.currentMode;
+                }
               }
               statusDetails.textContent = details.length > 0 ? details.join(' • ') : '';
             }
@@ -7223,6 +7778,37 @@ function setupOverlayWidget() {
   
   // Update AI Status Overview
   async function updateAIStatus() {
+    // Also update mode selector if it exists
+    const modeSelector = document.getElementById('ai-mode-selector');
+    if (modeSelector) {
+      try {
+        const modeResponse = await fetch('http://localhost:3004/api/ai/mode');
+        if (modeResponse.ok) {
+          const modeData = await modeResponse.json();
+          if (modeData.mode && modeSelector.value !== modeData.mode) {
+            modeSelector.value = modeData.mode;
+            
+            // Update mode display text
+            const modeText = document.getElementById('ai-mode-text');
+            if (modeText) {
+              const modeLabels = {
+                'CHILL': 'Chill',
+                'HYPE': 'Hype',
+                'QA': 'Q&A',
+                'STORYTIME': 'Storytime',
+                'DND': 'D&D',
+                'AFK': 'AFK',
+                'SAFE': 'Safe',
+                'MUTED': 'Muted'
+              };
+              modeText.textContent = modeLabels[modeData.mode] || modeData.mode;
+            }
+          }
+        }
+      } catch (err) {
+        // Silently fail - API might not be available
+      }
+    }
     try {
       // Check trivia status
       let triviaActive = false;

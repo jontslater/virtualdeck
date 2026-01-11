@@ -229,12 +229,22 @@
       </div>
       
       <div class="ai-management-current">
-        <select id="ai-segment-selector" class="ai-management-selector">
+        <select id="ai-segment-selector" class="ai-management-selector" style="margin-bottom: 8px;">
           <option value="normal">Normal Chat</option>
           <option value="gaming">Gaming</option>
           <option value="just-chatting">Just Chatting</option>
           <option value="special-event">Special Event</option>
           <option value="hype">Hype Mode</option>
+        </select>
+        <select id="ai-mode-selector" class="ai-management-selector">
+          <option value="CHILL">Chill</option>
+          <option value="HYPE">Hype</option>
+          <option value="QA">Q&A</option>
+          <option value="STORYTIME">Storytime</option>
+          <option value="DND">D&D</option>
+          <option value="AFK">AFK</option>
+          <option value="SAFE">Safe</option>
+          <option value="MUTED">Muted</option>
         </select>
       </div>
       <div class="ai-management-actions">
@@ -246,6 +256,10 @@
           <span class="btn-icon">💬</span>
           <span class="btn-label">Q&A</span>
         </button>
+        <button id="ai-dnd-btn" class="ai-management-btn" title="D&D Campaign">
+          <span class="btn-icon">🎲</span>
+          <span class="btn-label">D&D</span>
+        </button>
         <button id="ai-status-btn" class="ai-management-btn" title="AI Status">
           <span class="btn-icon">📊</span>
           <span class="btn-label">Status</span>
@@ -254,6 +268,47 @@
           <span class="btn-icon">⚙️</span>
           <span class="btn-label">Settings</span>
         </button>
+      </div>
+      <!-- D&D Campaign Panel (hidden by default) -->
+      <div id="dnd-campaign-panel" class="dnd-campaign-panel" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h4 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--text-primary);">🎲 D&D Campaign</h4>
+          <div id="dnd-session-info" style="font-size: 10px; color: var(--text-tertiary);">Session 1</div>
+        </div>
+        
+        <!-- Party Display -->
+        <div id="dnd-party-display" style="margin-bottom: 12px;">
+          <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Party</div>
+          <div id="dnd-party-list" style="font-size: 11px; color: var(--text-secondary);">
+            No party loaded
+          </div>
+        </div>
+        
+        <!-- Campaign Info -->
+        <div id="dnd-campaign-info" style="margin-bottom: 12px; padding: 8px; background: var(--bg-primary); border-radius: 6px; font-size: 10px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div>
+              <span style="color: var(--text-tertiary);">Location:</span>
+              <span id="dnd-location" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">-</span>
+            </div>
+            <div>
+              <span style="color: var(--text-tertiary);">Gold:</span>
+              <span id="dnd-gold" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">-</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- D&D Controls -->
+        <div style="display: flex; gap: 6px;">
+          <button id="dnd-start-btn" class="ai-management-btn" style="flex: 1; padding: 8px; font-size: 11px;">
+            <span class="btn-icon">▶️</span>
+            <span class="btn-label">Start</span>
+          </button>
+          <button id="dnd-stop-btn" class="ai-management-btn" style="flex: 1; padding: 8px; font-size: 11px;" disabled>
+            <span class="btn-icon">⏹️</span>
+            <span class="btn-label">Stop</span>
+          </button>
+        </div>
       </div>
       <div id="ai-status-indicator" class="ai-status-indicator" style="margin-top: 12px; padding: 10px; background: var(--bg-secondary); border-radius: 6px; border: 1px solid var(--border-color); text-align: center;">
         <div style="font-size: 9px; color: var(--text-tertiary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">AI Status</div>
@@ -416,6 +471,26 @@
           </label>
           <label for="volume-input" class="volume-label">Volume: <span id="volume-value">100%</span></label>
           <input type="range" id="volume-input" name="volume" min="0" max="100" value="100" />
+          <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color, #333);">
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; cursor: pointer;">
+              <input type="checkbox" id="ai-allowed-checkbox" name="aiAllowed" />
+              <span>For AI use</span>
+            </label>
+            <div id="ai-description-container" style="display: none;">
+              <label for="ai-description-input" style="display: block; margin-bottom: 5px; font-size: 14px;">
+                Description for AI (when to use this sound):
+              </label>
+              <textarea 
+                id="ai-description-input" 
+                name="aiDescription" 
+                placeholder="e.g., Drum roll - use after jokes or punchlines"
+                style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid var(--border-color, #333); border-radius: 4px; background: var(--bg-primary, #000); color: var(--text-primary, #fff); font-size: 14px; font-family: inherit; resize: vertical;"
+              ></textarea>
+              <div style="margin-top: 5px; font-size: 12px; color: var(--text-secondary, #999);">
+                💡 Describe when Cashe should use this sound (e.g., "Celebration sound - use for subs, raids, big wins")
+              </div>
+            </div>
+          </div>
         </div>
         <div id="app-file-section">
           <label>App File:
@@ -1260,7 +1335,7 @@
         
         <!-- AI Status Overview -->
         <div id="ai-status-overview" style="margin-bottom: 20px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--accent-primary);">
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 11px;">
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 11px; margin-bottom: 12px;">
             <div>
               <div style="color: var(--text-tertiary); margin-bottom: 4px;">AI Status:</div>
               <div id="ai-status-text" style="color: var(--text-primary); font-weight: 600;">Active</div>

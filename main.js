@@ -12,6 +12,7 @@ const WebSocket = require('ws');
 const fetch = require('node-fetch');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
+const VTuberManager = require('./vtuber-manager');
 
 // Configure auto-updater
 autoUpdater.autoDownload = false; // Don't auto-download, ask user first
@@ -54,11 +55,24 @@ const profilesMetaPath = path.join(userDataPath, 'profiles-meta.json');
 const userSoundsDir = path.join(userDataPath, 'sounds');
 const userSkinsDir = path.join(userDataPath, 'skins');
 const defaultConfigPath = path.join(__dirname, 'config.json');
+
+// Initialize VTuber Manager
+let vtuberManager;
+try {
+  vtuberManager = new VTuberManager(userDataPath);
+  console.log('✅ VTuber Manager initialized');
+} catch (err) {
+  console.error('❌ Error initializing VTuber Manager:', err);
+  vtuberManager = null;
+}
 const defaultSoundsDir = path.join(__dirname, 'public', 'assets', 'sounds');
 const defaultSkinsDir = path.join(__dirname, 'skins');
 const tcConfigPath = path.join(userDataPath, 'tc_config.json');
 const dailyCheckinsPath = path.join(userDataPath, 'checkins.json');
 const hydrationConfigPath = path.join(userDataPath, 'hydration-config.json');
+const aiEventsLogPath = path.join(userDataPath, 'ai-events.log');
+const aiCommandsPath = path.join(userDataPath, 'ai-commands.json');
+const aiTtsSoundsDir = path.join(userDataPath, 'sounds', 'ai-tts');
 
 // Profile management globals
 let currentActiveProfile = 'default';
@@ -575,7 +589,7 @@ function startOverlayServer() {
       console.log(`🎯 Serving overlay: ${overlayName}`);
       
       // Check if it's a predefined overlay
-      const predefinedOverlays = ['hudOverlay', 'cameraFrameOverlay', 'chatOverlay'];
+      const predefinedOverlays = ['hudOverlay', 'cameraFrameOverlay', 'chatOverlay', 'vtuberOverlay'];
       if (predefinedOverlays.includes(overlayName)) {
         // Serve predefined overlay
         const overlayPath = path.join(__dirname, 'overlays', overlayName, 'index.html');
@@ -733,6 +747,9 @@ function startOverlayServer() {
           res.end(data);
         });
       });
+    } else if (req.url && req.url.startsWith('/api/vtuber/')) {
+      // VTuber API endpoints
+      handleVTuberAPI(req, res);
     } else {
       res.writeHead(404);
       res.end('Not found');
@@ -831,6 +848,112 @@ function startOverlayServer() {
   tryStartServer(port);
 }
 
+// VTuber API handler
+function handleVTuberAPI(req, res) {
+  if (!req.url) {
+    res.writeHead(400);
+    res.end('Invalid request');
+    return;
+  }
+  
+  const url = new URL(req.url, `http://localhost:${overlayServerPort || 8080}`);
+  const path = url.pathname;
+  
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+  
+  if (!vtuberManager) {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'VTuber Manager not initialized' }));
+    return;
+  }
+  
+  try {
+    if (path === '/api/vtuber/config' && req.method === 'GET') {
+      // Get VTuber configuration
+      const config = vtuberManager.getConfig();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(config));
+    } else if (path === '/api/vtuber/config' && req.method === 'PUT') {
+      // Update VTuber configuration
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', () => {
+        try {
+          const updates = JSON.parse(body);
+          if (updates.state) vtuberManager.setState(updates.state);
+          if (updates.position) vtuberManager.updatePosition(updates.position);
+          if (updates.scale !== undefined || updates.opacity !== undefined) {
+            vtuberManager.updateDisplay(updates.scale, updates.opacity);
+          }
+          const config = vtuberManager.getConfig();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(config));
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+    } else if (path === '/api/vtuber/state' && req.method === 'POST') {
+      // Set avatar state
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', () => {
+        try {
+          const { state } = JSON.parse(body);
+          if (vtuberManager.setState(state)) {
+            // Broadcast state change to overlay
+            broadcastVTuberState(state);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, state }));
+          } else {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid state' }));
+          }
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+    } else {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not found' }));
+    }
+  } catch (err) {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: err.message }));
+  }
+}
+
+// Broadcast VTuber state change to overlay
+function broadcastVTuberState(state) {
+  if (!overlayWSS) return;
+  
+  const message = JSON.stringify({
+    type: 'vtuber-state',
+    state: state,
+    timestamp: Date.now(),
+  });
+  
+  // Broadcast to vtuberOverlay clients
+  const vtuberClients = overlayRegistry.get('vtuberOverlay');
+  if (vtuberClients) {
+    vtuberClients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+}
+
 // Generate overlay HTML based on overlay name and template
 function generateOverlayHTML(overlayName, callback) {
   try {
@@ -906,6 +1029,142 @@ function broadcastToOverlay(message, targetOverlay = null) {
   console.log(`📊 Registry status:`, Array.from(overlayRegistry.entries()).map(([name, clients]) => `${name}:${clients.size}`));
 }
 
+// AI Integration: Handle audio commands from AI controller
+function handleAIAudioCommands() {
+  if (!fs.existsSync(aiCommandsPath)) {
+    return; // No commands file yet
+  }
+  
+  try {
+    const content = fs.readFileSync(aiCommandsPath, 'utf-8');
+    if (!content.trim()) {
+      return; // Empty file
+    }
+    
+    console.log(`🎵 [AI Audio] Command file found, content length: ${content.length} bytes`);
+    const commands = content.trim().split('\n').filter(line => line.trim());
+    console.log(`🎵 [AI Audio] Found ${commands.length} command(s) to process`);
+    
+    commands.forEach((line, index) => {
+      console.log(`🎵 [AI Audio] Processing command ${index + 1}/${commands.length}: ${line.substring(0, 100)}...`);
+      try {
+        const command = JSON.parse(line);
+        
+        if (command.action === 'play-audio-file' && command.filePath) {
+          // Verify file exists
+          const audioPath = path.isAbsolute(command.filePath) 
+            ? command.filePath 
+            : path.join(userDataPath, command.filePath);
+            
+          if (fs.existsSync(audioPath)) {
+            console.log(`🎵 [AI Audio] Playing audio file through overlay: ${audioPath}`);
+            
+            // Calculate relative path from userDataPath for /media/ endpoint
+            let relativePath = path.relative(userDataPath, audioPath);
+            // Normalize path separators for URL
+            relativePath = relativePath.replace(/\\/g, '/');
+            
+            // Serve audio via HTTP instead of file:// (browsers block file:// URLs)
+            const audioUrl = `http://localhost:8080/media/${relativePath}?t=${Date.now()}`;
+            
+            console.log(`🎵 [AI Audio] Original path: ${audioPath}`);
+            console.log(`🎵 [AI Audio] Relative path: ${relativePath}`);
+            console.log(`🎵 [AI Audio] HTTP URL: ${audioUrl}`);
+            
+            // Use VirtualDeck's existing buttonTrigger format
+            const buttonTriggerMessage = {
+              type: 'buttonTrigger',
+              options: {
+                name: 'AI TTS',
+                clearPrevious: true,
+              },
+              centerMedia: [
+                {
+                  type: 'audio',
+                  src: audioUrl,
+                  url: audioUrl,
+                  volume: command.volume || 1.0,
+                  loop: false,
+                }
+              ],
+              slots: {},
+            };
+            
+            console.log(`🎵 [AI Audio] Broadcasting buttonTrigger message`);
+            console.log(`🎵 [AI Audio] Overlay clients: ${overlayClients.size}`);
+            
+            if (overlayClients.size === 0) {
+              console.warn(`⚠️ [AI Audio] WARNING: No overlay clients connected!`);
+              console.warn(`   Make sure overlay is open: http://localhost:8080/overlay`);
+            } else {
+              console.log(`✅ [AI Audio] Found ${overlayClients.size} overlay client(s)`);
+            }
+            
+            // Target the "vtuber" overlay (dedicated VTuber audio overlay)
+            const targetOverlay = 'vtuber';
+            broadcastToOverlay(buttonTriggerMessage, targetOverlay);
+            console.log(`🎵 [AI Audio] ButtonTrigger message broadcast completed (target: ${targetOverlay})`);
+            console.log('═══════════════════════════════════════════════════════\n');
+          } else {
+            console.warn(`🎵 [AI Audio] Audio file not found: ${audioPath}`);
+          }
+        }
+      } catch (err) {
+        console.error('🎵 [AI Audio] Error parsing command:', err);
+      }
+    });
+    
+    // Clear the commands file after processing
+    fs.writeFileSync(aiCommandsPath, '', 'utf-8');
+  } catch (err) {
+    // File might not exist yet, that's okay
+    if (err.code !== 'ENOENT') {
+      console.error('🎵 [AI Audio] Error reading commands file:', err);
+    }
+  }
+}
+
+// AI Integration: Watch for AI audio commands every 500ms
+let aiCommandWatcherInterval = null;
+
+function startAICommandWatcher() {
+  if (aiCommandWatcherInterval) {
+    clearInterval(aiCommandWatcherInterval);
+  }
+  console.log('🎵 [AI Audio] Starting command watcher...');
+  console.log('🎵 [AI Audio] Watching file: ' + aiCommandsPath);
+  
+  // Write to a log file so we can verify it's running
+  const logPath = path.join(userDataPath, 'ai-audio-watcher.log');
+  try {
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] Command watcher started\n`, 'utf-8');
+  } catch (err) {
+    // Ignore log file errors
+  }
+  
+  aiCommandWatcherInterval = setInterval(() => {
+    try {
+      handleAIAudioCommands();
+    } catch (err) {
+      console.error('🎵 [AI Audio] Error in command watcher:', err);
+      try {
+        fs.appendFileSync(logPath, `[${new Date().toISOString()}] Error: ${err.message}\n`, 'utf-8');
+      } catch (logErr) {
+        // Ignore
+      }
+    }
+  }, 500);
+  console.log('🎵 [AI Audio] ✅ Command watcher started (checking every 500ms)');
+  console.log('🎵 [AI Audio] Log file: ' + logPath);
+}
+
+function stopAICommandWatcher() {
+  if (aiCommandWatcherInterval) {
+    clearInterval(aiCommandWatcherInterval);
+    aiCommandWatcherInterval = null;
+  }
+}
+
 // Function to get the current overlay server URL
 function getOverlayServerUrl() {
   return `http://localhost:${overlayServerPort || 8080}/overlay`;
@@ -935,23 +1194,35 @@ ipcMain.on('add-media', (event, data) => {
     data.targetPath = data.originalPath;
   } else {
     console.log('Processing as audio file');
-    // Only copy file if it's a new file (not editing existing) and it's an audio file
-    if (data.originalPath !== data.targetPath) {
-      // Save to userData/sounds
-      const ext = path.extname(data.originalPath);
+    // Check if originalPath is already in the sounds directory (file was already saved via saveAudioFileToSounds)
+    // If it's a relative path starting with "sounds/", it's already in the right place
+    const isAlreadyInSoundsDir = !path.isAbsolute(data.originalPath) && data.originalPath.startsWith('sounds/');
+    const originalPathAbsolute = path.isAbsolute(data.originalPath) ? data.originalPath : path.join(userDataPath, data.originalPath);
+    
+    if (isAlreadyInSoundsDir || originalPathAbsolute.startsWith(userSoundsDir)) {
+      // File is already in sounds directory, use its relative path directly
+      if (isAlreadyInSoundsDir) {
+        data.targetPath = data.originalPath; // Already a relative path
+      } else {
+        data.targetPath = path.relative(userDataPath, originalPathAbsolute).replace(/\\/g, '/');
+      }
+      console.log('Audio file already in sounds directory, using path:', data.targetPath);
+    } else if (data.originalPath !== data.targetPath) {
+      // Save to userData/sounds (file from external location)
+      const ext = path.extname(originalPathAbsolute);
       const safeLabel = data.label.replace(/[^a-z0-9_\-]/gi, '_');
       const destFile = path.join(userSoundsDir, `${safeLabel}${ext}`);
       
-      console.log('Copying audio file from:', data.originalPath, 'to:', destFile);
+      console.log('Copying audio file from:', originalPathAbsolute, 'to:', destFile);
       
       // Check if source file exists before copying
-      if (!fs.existsSync(data.originalPath)) {
-        console.error('Source file does not exist:', data.originalPath);
-        throw new Error(`Source file does not exist: ${data.originalPath}`);
+      if (!fs.existsSync(originalPathAbsolute)) {
+        console.error('Source file does not exist:', originalPathAbsolute);
+        throw new Error(`Source file does not exist: ${originalPathAbsolute}`);
       }
       
       try {
-        fse.copySync(data.originalPath, destFile);
+        fse.copySync(originalPathAbsolute, destFile);
         data.targetPath = path.relative(userDataPath, destFile).replace(/\\/g, '/');
         console.log('Audio file copied successfully, target path:', data.targetPath);
       } catch (error) {
@@ -1030,7 +1301,10 @@ ipcMain.on('add-media', (event, data) => {
     // Audio element's `volume` property when a button is triggered.
     volume: (typeof data.volume === 'number') ? data.volume : (data.volume ? parseFloat(data.volume) : undefined),
     // Include chat command data if provided
-    chatCommand: data.chatCommand || undefined
+    chatCommand: data.chatCommand || undefined,
+    // Include AI use settings if provided (for audio buttons)
+    aiAllowed: data.aiAllowed !== undefined ? data.aiAllowed : undefined,
+    description: data.description || undefined
   };
 
   // Ensure each button has a stable unique id
@@ -1456,6 +1730,66 @@ ipcMain.handle('save-media-file-by-path', async (event, { sourcePath, buttonId, 
     return { success: true, filePath: relativePath };
   } catch (error) {
     console.error('Error copying media file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC handler to save audio file directly to sounds directory (for simple audio buttons)
+ipcMain.handle('save-audio-file-to-sounds', async (event, { base64Data, label, originalName }) => {
+  try {
+    // Ensure sounds directory exists
+    if (!fs.existsSync(userSoundsDir)) {
+      fs.mkdirSync(userSoundsDir, { recursive: true });
+    }
+
+    // Extract extension from original name or base64 mime type
+    let extension = '';
+    if (originalName) {
+      extension = path.extname(originalName);
+    } else {
+      // Extract from base64 data URI
+      const match = base64Data.match(/^data:([^;]+);/);
+      if (match) {
+        const mimeType = match[1];
+        const mimeToExt = {
+          'audio/mpeg': '.mp3',
+          'audio/mp3': '.mp3',
+          'audio/wav': '.wav',
+          'audio/wave': '.wav',
+          'audio/ogg': '.ogg',
+          'audio/oga': '.oga',
+          'audio/m4a': '.m4a',
+          'audio/aac': '.aac'
+        };
+        extension = mimeToExt[mimeType] || '.mp3';
+      }
+    }
+
+    // Use label as filename (sanitized), but handle case where file already exists
+    const safeLabel = label.replace(/[^a-z0-9_\-]/gi, '_');
+    let filename = `${safeLabel}${extension}`;
+    let filePath = path.join(userSoundsDir, filename);
+    
+    // If file already exists, append timestamp to make it unique
+    if (fs.existsSync(filePath)) {
+      const timestamp = Date.now();
+      filename = `${safeLabel}_${timestamp}${extension}`;
+      filePath = path.join(userSoundsDir, filename);
+    }
+
+    // Remove base64 prefix if present
+    const base64String = base64Data.replace(/^data:[^;]+;base64,/, '');
+    
+    // Write file
+    fs.writeFileSync(filePath, Buffer.from(base64String, 'base64'));
+    
+    console.log('Audio file saved to sounds directory:', filePath);
+    
+    // Return relative path from userDataPath for storage in config
+    const relativePath = path.relative(userDataPath, filePath).replace(/\\/g, '/');
+    return { success: true, filePath: relativePath };
+  } catch (error) {
+    console.error('Error saving audio file to sounds:', error);
     return { success: false, error: error.message };
   }
 });
@@ -2760,10 +3094,26 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
     channels: [username]
   };
   twitchClientId = clientId;
+  twitchToken = oauth;
+  twitchUserName = username;
   console.log('Using clientId:', twitchClientId);
   twitchClient = new tmi.Client(opts);
   twitchClient.connect().then(() => {
     console.log('Connected to Twitch chat as', username);
+    
+    // Save Twitch credentials to tc_config for AI controller to use
+    try {
+      const tc = loadTcConfig();
+      tc.username = username.toLowerCase().trim(); // Normalize for comparison
+      tc.clientId = clientId; // Save client ID for AI controller
+      tc.accessToken = oauth; // Save access token for AI controller
+      // Note: Token is stored but should be kept secure
+      saveTcConfig(tc);
+      console.log(`📺 Saved Twitch credentials to tc_config (username: ${tc.username}, clientId: ${tc.clientId?.substring(0, 7)}...)`);
+    } catch (err) {
+      console.warn('⚠️ Could not save Twitch credentials to tc_config:', err);
+    }
+    
     // Reset first-time chatters when connecting (new stream session)
     resetFirstTimeChatters();
     // Notify renderer to update button state
@@ -2824,6 +3174,31 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
     }
     // Log chat messages to terminal
     console.log(`[Twitch Chat] ${tags.username}: ${message}`);
+    
+    // Write chat event to ai-events.log for AI controller
+    // Include channel info so AI can filter by authenticated user
+    try {
+      const chatEvent = {
+        type: 'twitch_chat',
+        channel: channel.replace('#', '').toLowerCase(), // Remove # and normalize
+        user: {
+          name: tags.username,
+          displayName: tags['display-name'] || tags.username,
+          id: tags['user-id'],
+          isMod: !!tags.mod,
+          isSub: !!tags.subscriber,
+          isVip: !!tags.vip,
+        },
+        message: message,
+        badges: tags.badges || {},
+        timestamp: Date.now(),
+      };
+      fs.appendFileSync(aiEventsLogPath, JSON.stringify(chatEvent) + '\n', 'utf-8');
+      console.log(`📝 [AI Events] Wrote chat event to log (channel: ${chatEvent.channel})`);
+    } catch (err) {
+      console.error('❌ [AI Events] Error writing chat event:', err);
+    }
+    
     // Forward chat event to renderer via IPC
     if (win && win.webContents) {
       win.webContents.send('twitch-chat-event', {
@@ -3813,6 +4188,12 @@ function checkForUpdates() {
 
 app.whenReady().then(() => {
   ensureUserData();
+  // Ensure AI TTS sounds directory exists
+  if (!fs.existsSync(aiTtsSoundsDir)) {
+    fs.mkdirSync(aiTtsSoundsDir, { recursive: true });
+  }
+  // Start AI command watcher
+  startAICommandWatcher();
   createWindow();
   registerHotkeys();
   startOverlayServer();
