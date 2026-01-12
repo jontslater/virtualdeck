@@ -6609,14 +6609,106 @@ function setupOverlayWidget() {
   }
   
   // Setup AI Management Panel (Dashboard Widget)
+  // AI Status API base URL (Controller). Defaults to localhost:3004, but can be overridden:
+  // - URL param: ?aiStatusApi=http://localhost:3014  (will persist to localStorage)
+  // - localStorage: AI_STATUS_API_BASE_URL
+  // If neither is set, we will auto-discover (try 3004, then 3014).
+  function getStoredAIStatusApiBaseUrl() {
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      const fromParam = params.get('aiStatusApi');
+      if (fromParam) {
+        const normalized = fromParam.replace(/\/+$/, '');
+        localStorage.setItem('AI_STATUS_API_BASE_URL', normalized);
+        console.log('✅ AI Status API base URL set from URL param:', normalized);
+        return normalized;
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    const stored = (() => {
+      try { return localStorage.getItem('AI_STATUS_API_BASE_URL'); } catch (e) { return null; }
+    })();
+    return (stored || 'http://localhost:3004').replace(/\/+$/, '');
+  }
+
+  let AI_STATUS_API_BASE_URL = getStoredAIStatusApiBaseUrl();
+
+  function setAIStatusApiBaseUrl(url) {
+    const normalized = String(url || '').replace(/\/+$/, '');
+    if (!normalized) return;
+    AI_STATUS_API_BASE_URL = normalized;
+    try { localStorage.setItem('AI_STATUS_API_BASE_URL', normalized); } catch (e) {}
+    console.log('✅ Using AI Status API:', AI_STATUS_API_BASE_URL);
+  }
+
+  async function fetchWithTimeout(url, options, timeoutMs) {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), timeoutMs || 400);
+    try {
+      return await fetch(url, { ...(options || {}), signal: controller.signal });
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  async function discoverAIStatusApiBaseUrl() {
+    // If explicitly set by URL param or localStorage, keep it.
+    const stored = (() => { try { return localStorage.getItem('AI_STATUS_API_BASE_URL'); } catch (e) { return null; } })();
+    if (stored) {
+      setAIStatusApiBaseUrl(stored);
+      return;
+    }
+
+    const candidates = [
+      'http://localhost:3004',
+      'http://localhost:3014',
+    ];
+
+    for (const base of candidates) {
+      try {
+        const r = await fetchWithTimeout(`${base}/api/ai/status`, {}, 450);
+        if (r && r.ok) {
+          setAIStatusApiBaseUrl(base);
+          return;
+        }
+      } catch (e) {
+        // try next
+      }
+    }
+    console.debug('Could not auto-discover AI Status API port; defaulting to', AI_STATUS_API_BASE_URL);
+  }
+
   function setupAIManagementPanel() {
     console.log('🤖 Setting up AI Management Panel');
+    
+    // Auto-detect controller port if needed (helps when we move off 3004).
+    discoverAIStatusApiBaseUrl().catch(() => {});
+
+    async function setAIMode(mode) {
+      const selectedMode = String(mode || '').toUpperCase().trim();
+      if (!selectedMode) return;
+      console.log('🎯 Setting AI mode to:', selectedMode);
+      const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: selectedMode }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to set mode: ${response.statusText}`);
+      }
+      return await response.json().catch(() => ({}));
+    }
     
     // Setup AI On/Off Toggle (Dashboard)
     setupAIDashboardToggle();
     
     const segmentSelector = document.getElementById('ai-segment-selector');
     const modeSelector = document.getElementById('ai-mode-selector');
+    const sayText = document.getElementById('ai-say-text');
+    const sayBtn = document.getElementById('ai-say-btn');
     const triviaBtn = document.getElementById('ai-trivia-btn');
     const qaBtn = document.getElementById('ai-qa-btn');
     const dndBtn = document.getElementById('ai-dnd-btn');
@@ -6627,6 +6719,8 @@ function setupOverlayWidget() {
     console.log('🔍 AI Management Panel elements found:', {
       segmentSelector: !!segmentSelector,
       modeSelector: !!modeSelector,
+      sayText: !!sayText,
+      sayBtn: !!sayBtn,
       triviaBtn: !!triviaBtn,
       qaBtn: !!qaBtn,
       dndBtn: !!dndBtn,
@@ -6634,13 +6728,53 @@ function setupOverlayWidget() {
       settingsBtn: !!settingsBtn,
       statusText: !!statusText
     });
+
+    // Manual Speak (Controller Dev API)
+    if (sayBtn && sayText) {
+      const devApiBaseUrl = (localStorage.getItem('DEV_API_BASE_URL') || 'http://localhost:3002').replace(/\/+$/, '');
+      sayBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const text = String(sayText.value || '').trim();
+        if (!text) return;
+        sayBtn.disabled = true;
+        try {
+          const res = await fetch(`${devApiBaseUrl}/api/dev/speak`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, mood: 'neutral', urgency: 'med' }),
+          });
+          if (!res.ok) {
+            const raw = await res.text().catch(() => '');
+            throw new Error(raw || `HTTP ${res.status}`);
+          }
+          sayText.value = '';
+          if (window.notificationManager) {
+            window.notificationManager.show('Cashe will say it.', 'success');
+          }
+        } catch (err) {
+          console.error('❌ Manual speak failed:', err);
+          alert(`Manual speak failed: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+          sayBtn.disabled = false;
+        }
+      });
+
+      // Enter key submits
+      sayText.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sayBtn.click();
+        }
+      });
+    }
     
     // AI Mode selector - change AI mode (CHILL, HYPE, QA, DND, etc.)
     if (modeSelector) {
       // Load current mode on startup
       async function loadCurrentMode() {
         try {
-          const response = await fetch('http://localhost:3004/api/ai/mode');
+          const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
           if (response.ok) {
             const data = await response.json();
             if (data.mode) {
@@ -6659,18 +6793,7 @@ function setupOverlayWidget() {
         console.log('🎯 Changing AI mode to:', selectedMode);
         
         try {
-          const response = await fetch('http://localhost:3004/api/ai/mode', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: selectedMode }),
-          });
-          
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `Failed to set mode: ${response.statusText}`);
-          }
-          
-          const result = await response.json();
+          const result = await setAIMode(selectedMode);
           console.log('✅ AI mode changed:', result);
           
           // Update status display
@@ -6698,7 +6821,7 @@ function setupOverlayWidget() {
           await originalUpdateAIManagementStatus();
           // Update mode selector if mode changed externally
           try {
-            const response = await fetch('http://localhost:3004/api/ai/mode');
+            const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
             if (response.ok) {
               const data = await response.json();
               if (data.mode && modeSelector.value !== data.mode) {
@@ -6720,24 +6843,34 @@ function setupOverlayWidget() {
         const segment = e.target.value;
         console.log('📺 Segment changed to:', segment);
         
-        // Set appropriate behavior based on segment
-        const behaviorMap = {
-          'normal': 'normal',
-          'gaming': 'chatty',
-          'just-chatting': 'chatty',
-          'special-event': 'hype',
-          'hype': 'hype'
+        // Segment presets:
+        // - "normal/gaming/just-chatting" -> JUST_CHATTING (our main streamer mode)
+        // - "special-event/hype" -> HYPE
+        const segmentToMode = {
+          'normal': 'JUST_CHATTING',
+          'gaming': 'JUST_CHATTING',
+          'just-chatting': 'JUST_CHATTING',
+          'special-event': 'HYPE',
+          'hype': 'HYPE'
         };
+        const targetMode = segmentToMode[segment] || 'JUST_CHATTING';
         
-        const behavior = behaviorMap[segment] || 'normal';
-        
-        // TODO: Call API to update segment settings
-        console.log(`Segment: ${segment}, Behavior: ${behavior}`);
+        try {
+          await setAIMode(targetMode);
+          if (modeSelector) modeSelector.value = targetMode;
+          updateAIManagementStatus();
+          if (window.notificationManager) {
+            window.notificationManager.show(`Segment: ${segment} → ${targetMode}`, 'info');
+          }
+        } catch (err) {
+          console.error('❌ Error applying segment preset:', err);
+          alert(`Error applying segment preset: ${err instanceof Error ? err.message : String(err)}`);
+        }
         
         // Update AI Control Panel if open
         const segmentBehaviorEl = document.getElementById('segment-behavior');
         if (segmentBehaviorEl) {
-          segmentBehaviorEl.value = behavior;
+          segmentBehaviorEl.value = (targetMode === 'HYPE') ? 'hype' : 'chatty';
         }
         const segmentSelectorEl = document.getElementById('segment-selector');
         if (segmentSelectorEl) {
@@ -6926,10 +7059,10 @@ function setupOverlayWidget() {
       try {
         console.log(`🔌 ${isOn ? 'Turning AI ON' : 'Turning AI OFF'}...`);
         
-        // Set mode to MUTED if turning off, or CHILL if turning on
-        const mode = isOn ? 'CHILL' : 'MUTED';
+        // Set mode to MUTED if turning off, or JUST_CHATTING if turning on
+        const mode = isOn ? 'JUST_CHATTING' : 'MUTED';
         
-        const response = await fetch('http://localhost:3004/api/ai/mode', {
+        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mode }),
@@ -6985,7 +7118,7 @@ function setupOverlayWidget() {
     // Check current AI mode
     async function checkAIDashboardMode() {
       try {
-        const response = await fetch('http://localhost:3004/api/ai/mode');
+        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
         if (response.ok) {
           const data = await response.json();
           const isMuted = data.mode === 'MUTED';
@@ -7036,7 +7169,7 @@ function setupOverlayWidget() {
           // Step 1: Enable D&D mode first
           console.log('   Step 1: Setting AI mode to DND...');
           try {
-            const modeResponse = await fetch('http://localhost:3004/api/ai/mode', {
+            const modeResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ mode: 'DND' }),
@@ -7165,14 +7298,14 @@ function setupOverlayWidget() {
           const dndModeResponse = await fetch('http://localhost:3007/api/dnd/mode/disable', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fallbackMode: 'CHILL' }),
+            body: JSON.stringify({ fallbackMode: 'JUST_CHATTING' }),
           });
           
-          // Set mode back to CHILL
-          await fetch('http://localhost:3004/api/ai/mode', {
+          // Set mode back to JUST_CHATTING
+          await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: 'CHILL' }),
+            body: JSON.stringify({ mode: 'JUST_CHATTING' }),
           });
           
           // Update UI
@@ -7302,7 +7435,7 @@ function setupOverlayWidget() {
       let statusColor = 'var(--text-tertiary)';
       
       try {
-        const aiStatusResponse = await fetch('http://localhost:3004/api/ai/status');
+        const aiStatusResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/status`);
         if (aiStatusResponse.ok) {
           const aiStatus = await aiStatusResponse.json();
           aiState = aiStatus.state || 'idle';
@@ -7332,7 +7465,7 @@ function setupOverlayWidget() {
       
       // Also check mode separately to ensure mode selector stays in sync
       try {
-        const modeResponse = await fetch('http://localhost:3004/api/ai/mode');
+        const modeResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
         if (modeResponse.ok) {
           const modeData = await modeResponse.json();
           const modeSelector = document.getElementById('ai-mode-selector');
@@ -7392,7 +7525,7 @@ function setupOverlayWidget() {
         // Show additional details if available
         if (statusDetails) {
           try {
-            const aiStatusResponse = await fetch('http://localhost:3004/api/ai/status');
+            const aiStatusResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/status`);
             if (aiStatusResponse.ok) {
               const aiStatus = await aiStatusResponse.json();
               const details = [];
@@ -7412,6 +7545,7 @@ function setupOverlayWidget() {
                 const modeText = document.getElementById('ai-mode-text');
                 if (modeText) {
                   const modeLabels = {
+                    'JUST_CHATTING': 'Just Chatting',
                     'CHILL': 'Chill',
                     'HYPE': 'Hype',
                     'QA': 'Q&A',
@@ -7643,7 +7777,7 @@ function setupOverlayWidget() {
           console.log('🎯 Starting Q&A mode...');
           
           // Call API to set mode to QA
-          const response = await fetch('http://localhost:3004/api/ai/mode', {
+          const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mode: 'QA' }),
@@ -7672,11 +7806,11 @@ function setupOverlayWidget() {
         try {
           console.log('🎯 Stopping Q&A mode...');
           
-          // Call API to set mode back to CHILL (or get current default)
-          const response = await fetch('http://localhost:3004/api/ai/mode', {
+          // Call API to set mode back to JUST_CHATTING (default)
+          const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: 'CHILL' }),
+            body: JSON.stringify({ mode: 'JUST_CHATTING' }),
           });
           
           if (!response.ok) {
@@ -7704,7 +7838,7 @@ function setupOverlayWidget() {
   // Check current mode and update UI
   async function checkCurrentMode() {
     try {
-      const response = await fetch('http://localhost:3004/api/ai/mode');
+      const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
       if (response.ok) {
         const data = await response.json();
         const qaEnabledCheckbox = document.getElementById('qa-mode-enabled');
@@ -7782,7 +7916,7 @@ function setupOverlayWidget() {
     const modeSelector = document.getElementById('ai-mode-selector');
     if (modeSelector) {
       try {
-        const modeResponse = await fetch('http://localhost:3004/api/ai/mode');
+        const modeResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
         if (modeResponse.ok) {
           const modeData = await modeResponse.json();
           if (modeData.mode && modeSelector.value !== modeData.mode) {
@@ -7792,6 +7926,7 @@ function setupOverlayWidget() {
             const modeText = document.getElementById('ai-mode-text');
             if (modeText) {
               const modeLabels = {
+                'JUST_CHATTING': 'Just Chatting',
                 'CHILL': 'Chill',
                 'HYPE': 'Hype',
                 'QA': 'Q&A',

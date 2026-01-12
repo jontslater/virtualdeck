@@ -247,6 +247,19 @@
           <option value="MUTED">Muted</option>
         </select>
       </div>
+
+      <!-- Manual TTS: type something and have Cashe say it out loud -->
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Manual Speak</div>
+        <div style="display: flex; gap: 8px;">
+          <input id="ai-say-text" type="text" placeholder="Type something for Cashe to say..." style="flex: 1; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 12px;" />
+          <button id="ai-say-btn" class="ai-management-btn" style="min-width: 80px; justify-content: center;" title="Make Cashe speak">
+            <span class="btn-icon">🗣️</span>
+            <span class="btn-label">Say</span>
+          </button>
+        </div>
+        <div style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Uses controller Dev API (default `http://localhost:3002/api/dev/speak`).</div>
+      </div>
       <div class="ai-management-actions">
         <button id="ai-trivia-btn" class="ai-management-btn" title="Open Trivia">
           <span class="btn-icon">🎮</span>
