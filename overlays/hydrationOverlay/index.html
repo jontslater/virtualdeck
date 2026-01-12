@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hydration Tracker</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      font-family: 'Arial', sans-serif;
+    }
+
+    #hydration-container {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      border: none;
+      background: transparent;
+      padding: 0;
+    }
+
+    /* Circular Gauge */
+    .gauge-circular {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .gauge-circular canvas {
+      border-radius: 50%;
+    }
+
+    .gauge-circular .center-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      font-weight: bold;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+      pointer-events: none;
+    }
+
+    .gauge-circular .progress-number {
+      font-size: 2em;
+      display: block;
+    }
+
+    .gauge-circular .progress-label {
+      font-size: 0.9em;
+      opacity: 0.9;
+      display: block;
+      margin-top: 5px;
+    }
+
+    /* Vertical Bar Gauge */
+    .gauge-vertical {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .gauge-vertical canvas {
+      border-radius: 15px;
+    }
+
+    .gauge-vertical .progress-text {
+      margin-top: 15px;
+      text-align: center;
+      font-weight: bold;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    .gauge-vertical .progress-number {
+      font-size: 1.8em;
+      display: block;
+    }
+
+    .gauge-vertical .progress-label {
+      font-size: 0.9em;
+      opacity: 0.9;
+      display: block;
+      margin-top: 5px;
+    }
+
+    /* Horizontal Bar Gauge */
+    .gauge-horizontal {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .gauge-horizontal canvas {
+      border-radius: 15px;
+    }
+
+    .gauge-horizontal .progress-text {
+      margin-top: 15px;
+      text-align: center;
+      font-weight: bold;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    .gauge-horizontal .progress-number {
+      font-size: 1.8em;
+      display: block;
+    }
+
+    .gauge-horizontal .progress-label {
+      font-size: 0.9em;
+      opacity: 0.9;
+      display: block;
+      margin-top: 5px;
+    }
+
+    /* Hidden by default */
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="hydration-container">
+    <!-- Circular Gauge -->
+    <div id="gauge-circular" class="gauge-circular">
+      <canvas id="circular-canvas" width="200" height="200"></canvas>
+      <div class="center-text">
+        <span id="circular-number" class="progress-number">0 oz</span>
+        <span id="circular-label" class="progress-label">of 64 oz</span>
+      </div>
+    </div>
+
+    <!-- Vertical Bar Gauge -->
+    <div id="gauge-vertical" class="gauge-vertical hidden">
+      <canvas id="vertical-canvas" width="60" height="200"></canvas>
+      <div class="progress-text">
+        <span id="vertical-number" class="progress-number">0 oz</span>
+        <span id="vertical-label" class="progress-label">of 64 oz</span>
+      </div>
+    </div>
+
+    <!-- Horizontal Bar Gauge -->
+    <div id="gauge-horizontal" class="gauge-horizontal hidden">
+      <canvas id="horizontal-canvas" width="300" height="60"></canvas>
+      <div class="progress-text">
+        <span id="horizontal-number" class="progress-number">0 oz</span>
+        <span id="horizontal-label" class="progress-label">of 64 oz</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // WebSocket connection
+    let ws = null;
+    let reconnectTimeout = null;
+    let currentConfig = {
+      streamGoal: 64,
+      incrementAmount: 8,
+      currentProgress: 0,
+      gaugeStyle: 'circular',
+      waterColor: '#4fc3f7',
+      backgroundColor: 'transparent',
+      textColor: '#ffffff',
+      gaugeSize: 200,
+      positionX: 50,
+      positionY: 50,
+      borderWidth: 0,
+      borderColor: '#ffffff',
+      borderRadius: 10
+    };
+    
+    // Canvas animation variables
+    let circularCanvas = null;
+    let circularCtx = null;
+    let verticalCanvas = null;
+    let verticalCtx = null;
+    let horizontalCanvas = null;
+    let horizontalCtx = null;
+    let waveOffset = 0;
+    let targetProgress = 0;
+    let currentProgressAnimation = 0;
+    let animationFrameId = null;
+    let lastCanvasSize = 0; // Cache to prevent unnecessary resizing
+
+    function connectWebSocket() {
+      try {
+        ws = new WebSocket('ws://localhost:8080');
+        
+        ws.onopen = () => {
+          console.log('Hydration overlay connected to WebSocket');
+        };
+        
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            console.log('Hydration overlay received message:', data);
+            
+            if (data.type === 'hydrationUpdate') {
+              updateHydration(data.data);
+            }
+          } catch (error) {
+            console.error('Error parsing WebSocket message:', error);
+          }
+        };
+        
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+        };
+        
+        ws.onclose = () => {
+          console.log('WebSocket closed, reconnecting in 3 seconds...');
+          reconnectTimeout = setTimeout(connectWebSocket, 3000);
+        };
+      } catch (error) {
+        console.error('Error connecting WebSocket:', error);
+        reconnectTimeout = setTimeout(connectWebSocket, 3000);
+      }
+    }
+
+    function updateHydration(data) {
+      console.log('Updating hydration display:', data);
+      
+      // Check if config actually changed (not just progress update)
+      let configChanged = false;
+      if (data.config) {
+        const oldSize = currentConfig.gaugeSize;
+        const oldStyle = currentConfig.gaugeStyle;
+        currentConfig = { ...currentConfig, ...data.config };
+        configChanged = (oldSize !== currentConfig.gaugeSize) || (oldStyle !== currentConfig.gaugeStyle);
+        
+        // Only call applyStyles if config actually changed
+        if (configChanged) {
+          applyStyles();
+        }
+      }
+      
+      // Update progress
+      const current = data.current || 0;
+      const goal = data.goal || currentConfig.streamGoal;
+      const percentage = data.percentage || 0;
+      
+      // Update based on gauge style
+      const style = currentConfig.gaugeStyle || 'circular';
+      
+      // Hide all gauges first
+      document.getElementById('gauge-circular').classList.add('hidden');
+      document.getElementById('gauge-vertical').classList.add('hidden');
+      document.getElementById('gauge-horizontal').classList.add('hidden');
+      
+      // Show and update the active gauge
+      if (style === 'circular') {
+        updateCircularGauge(current, goal, percentage);
+      } else if (style === 'vertical') {
+        updateVerticalGauge(current, goal, percentage);
+      } else if (style === 'horizontal') {
+        updateHorizontalGauge(current, goal, percentage);
+      }
+    }
+
+    function updateCircularGauge(current, goal, percentage) {
+      const gauge = document.getElementById('gauge-circular');
+      gauge.classList.remove('hidden');
+      
+      // Cap visual progress at 100% (full), but allow number to exceed goal
+      const visualPercentage = Math.min(percentage, 100);
+      targetProgress = visualPercentage / 100; // Convert to 0-1 range
+      
+      document.getElementById('circular-number').textContent = `${current} oz`;
+      document.getElementById('circular-label').textContent = `of ${goal} oz`;
+      
+      // Initialize canvas if not already done
+      if (!circularCanvas) {
+        circularCanvas = document.getElementById('circular-canvas');
+        circularCtx = circularCanvas.getContext('2d');
+        startCircularAnimation();
+      }
+    }
+    
+    function drawCircularWave() {
+      if (!circularCanvas || !circularCtx) return;
+      
+      const canvas = circularCanvas;
+      const ctx = circularCtx;
+      const radius = canvas.width / 2;
+      
+      // Smooth animation towards target progress
+      const delta = targetProgress - currentProgressAnimation;
+      currentProgressAnimation += delta * 0.1; // Smooth easing
+      
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Save context
+      ctx.save();
+      
+      // Clip to circular container
+      ctx.beginPath();
+      ctx.arc(radius, radius, radius - 2, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      
+      // Draw background - very subtle light blue/transparent
+      ctx.fillStyle = 'rgba(240, 248, 255, 0.15)'; // Very subtle background
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Water level (in pixels)
+      const waterLevel = canvas.height * (1 - currentProgressAnimation);
+      
+      // Create gradient for water color
+      const gradient = ctx.createLinearGradient(0, waterLevel, 0, canvas.height);
+      const waterColor = currentConfig.waterColor || '#4fc3f7';
+      
+      // Lighten and darken the water color for gradient
+      gradient.addColorStop(0, waterColor);
+      gradient.addColorStop(1, shadeColor(waterColor, -20));
+      
+      // Draw the wave with multiple sine waves for realism
+      ctx.beginPath();
+      const amplitude1 = 8; // primary wave height
+      const wavelength1 = 100; // primary wave length
+      const amplitude2 = 5; // secondary wave
+      const wavelength2 = 70; // secondary wavelength
+      const speed = 0.05; // wave speed
+      
+      for (let x = 0; x <= canvas.width; x++) {
+        // Combine two sine waves for more realistic water motion
+        const y1 = amplitude1 * Math.sin((x / wavelength1) * 2 * Math.PI + waveOffset);
+        const y2 = amplitude2 * Math.sin((x / wavelength2) * 2 * Math.PI - waveOffset * 0.7);
+        const y = y1 + y2 + waterLevel;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(canvas.width, canvas.height);
+      ctx.lineTo(0, canvas.height);
+      ctx.closePath();
+      
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      // Add a subtle highlight on the surface
+      ctx.beginPath();
+      ctx.moveTo(0, waterLevel - 2);
+      for (let x = 0; x <= canvas.width; x++) {
+        const y1 = amplitude1 * Math.sin((x / wavelength1) * 2 * Math.PI + waveOffset);
+        const y2 = amplitude2 * Math.sin((x / wavelength2) * 2 * Math.PI - waveOffset * 0.7);
+        const y = y1 + y2 + waterLevel - 2;
+        ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Add subtle bubbles/light spots for depth
+      if (currentProgressAnimation > 0.1) {
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        const bubbles = [
+          { x: radius * 0.3, y: waterLevel + (radius * 0.3), r: 3 + Math.sin(waveOffset * 2) * 1 },
+          { x: radius * 1.5, y: waterLevel + (radius * 0.5), r: 2 + Math.sin(waveOffset * 1.5) * 0.5 },
+          { x: radius * 0.7, y: waterLevel + (radius * 0.7), r: 2.5 + Math.sin(waveOffset * 1.8) * 0.7 }
+        ];
+        bubbles.forEach(b => {
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+      
+      // Restore context
+      ctx.restore();
+      
+      // Draw circle outline AFTER restoring context (so it's not clipped)
+      ctx.beginPath();
+      ctx.arc(radius, radius, radius - 2, 0, Math.PI * 2);
+      ctx.strokeStyle = currentConfig.waterColor || '#4fc3f7';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      
+      // Animate
+      waveOffset += speed;
+      animationFrameId = requestAnimationFrame(drawCircularWave);
+    }
+    
+    function startCircularAnimation() {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      drawCircularWave();
+    }
+    
+    function shadeColor(color, percent) {
+      // Helper to darken/lighten a hex color
+      let R = parseInt(color.substring(1, 3), 16);
+      let G = parseInt(color.substring(3, 5), 16);
+      let B = parseInt(color.substring(5, 7), 16);
+      
+      R = Math.max(0, Math.min(255, R + percent));
+      G = Math.max(0, Math.min(255, G + percent));
+      B = Math.max(0, Math.min(255, B + percent));
+      
+      const RR = ((R.toString(16).length == 1) ? "0" + R.toString(16) : R.toString(16));
+      const GG = ((G.toString(16).length == 1) ? "0" + G.toString(16) : G.toString(16));
+      const BB = ((B.toString(16).length == 1) ? "0" + B.toString(16) : B.toString(16));
+      
+      return "#" + RR + GG + BB;
+    }
+
+    function updateVerticalGauge(current, goal, percentage) {
+      const gauge = document.getElementById('gauge-vertical');
+      gauge.classList.remove('hidden');
+      
+      // Cap visual progress at 100% (full), but allow number to exceed goal
+      const visualPercentage = Math.min(percentage, 100);
+      targetProgress = visualPercentage / 100; // Convert to 0-1 range
+      
+      document.getElementById('vertical-number').textContent = `${current} oz`;
+      document.getElementById('vertical-label').textContent = `of ${goal} oz`;
+      
+      // Initialize canvas if not already done
+      if (!verticalCanvas) {
+        verticalCanvas = document.getElementById('vertical-canvas');
+        verticalCtx = verticalCanvas.getContext('2d');
+        startVerticalAnimation();
+      }
+    }
+
+    function updateHorizontalGauge(current, goal, percentage) {
+      const gauge = document.getElementById('gauge-horizontal');
+      gauge.classList.remove('hidden');
+      
+      // Cap visual progress at 100% (full), but allow number to exceed goal
+      const visualPercentage = Math.min(percentage, 100);
+      targetProgress = visualPercentage / 100; // Convert to 0-1 range
+      
+      document.getElementById('horizontal-number').textContent = `${current} oz`;
+      document.getElementById('horizontal-label').textContent = `of ${goal} oz`;
+      
+      // Initialize canvas if not already done
+      if (!horizontalCanvas) {
+        horizontalCanvas = document.getElementById('horizontal-canvas');
+        horizontalCtx = horizontalCanvas.getContext('2d');
+        startHorizontalAnimation();
+      }
+    }
+    
+    function drawVerticalWave() {
+      if (!verticalCanvas || !verticalCtx) return;
+      
+      const canvas = verticalCanvas;
+      const ctx = verticalCtx;
+      const width = canvas.width;
+      const height = canvas.height;
+      
+      // Smooth animation towards target progress
+      const delta = targetProgress - currentProgressAnimation;
+      currentProgressAnimation += delta * 0.1;
+      
+      // Clear canvas
+      ctx.clearRect(0, 0, width, height);
+      
+      // Save context
+      ctx.save();
+      
+      // Clip to rounded rectangle
+      const radius = 15;
+      ctx.beginPath();
+      ctx.moveTo(radius, 0);
+      ctx.lineTo(width - radius, 0);
+      ctx.quadraticCurveTo(width, 0, width, radius);
+      ctx.lineTo(width, height - radius);
+      ctx.quadraticCurveTo(width, height, width - radius, height);
+      ctx.lineTo(radius, height);
+      ctx.quadraticCurveTo(0, height, 0, height - radius);
+      ctx.lineTo(0, radius);
+      ctx.quadraticCurveTo(0, 0, radius, 0);
+      ctx.closePath();
+      ctx.clip();
+      
+      // Draw background
+      ctx.fillStyle = 'rgba(240, 248, 255, 0.15)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Water level (from bottom)
+      const waterLevel = height * (1 - currentProgressAnimation);
+      
+      // Create gradient
+      const gradient = ctx.createLinearGradient(0, waterLevel, 0, height);
+      const waterColor = currentConfig.waterColor || '#4fc3f7';
+      gradient.addColorStop(0, waterColor);
+      gradient.addColorStop(1, shadeColor(waterColor, -20));
+      
+      // Draw the wave with multiple sine waves for realism
+      ctx.beginPath();
+      const amplitude1 = 5;
+      const wavelength1 = 40;
+      const amplitude2 = 3;
+      const wavelength2 = 28;
+      const speed = 0.05;
+      
+      for (let x = 0; x <= width; x++) {
+        const y1 = amplitude1 * Math.sin((x / wavelength1) * 2 * Math.PI + waveOffset);
+        const y2 = amplitude2 * Math.sin((x / wavelength2) * 2 * Math.PI - waveOffset * 0.7);
+        const y = y1 + y2 + waterLevel;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(width, height);
+      ctx.lineTo(0, height);
+      ctx.closePath();
+      
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      // Add highlight
+      ctx.beginPath();
+      ctx.moveTo(0, waterLevel - 1);
+      for (let x = 0; x <= width; x++) {
+        const y1 = amplitude1 * Math.sin((x / wavelength1) * 2 * Math.PI + waveOffset);
+        const y2 = amplitude2 * Math.sin((x / wavelength2) * 2 * Math.PI - waveOffset * 0.7);
+        const y = y1 + y2 + waterLevel - 1;
+        ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      
+      // Add subtle light spots for depth
+      if (currentProgressAnimation > 0.1) {
+        ctx.fillStyle = 'rgba(255,255,255,0.12)';
+        const spots = [
+          { x: width * 0.5, y: waterLevel + (height - waterLevel) * 0.3, r: 2 + Math.sin(waveOffset * 2) * 0.8 },
+          { x: width * 0.3, y: waterLevel + (height - waterLevel) * 0.6, r: 1.5 + Math.sin(waveOffset * 1.5) * 0.5 }
+        ];
+        spots.forEach(s => {
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+      
+      ctx.restore();
+      
+      waveOffset += speed;
+      animationFrameId = requestAnimationFrame(drawVerticalWave);
+    }
+    
+    function drawHorizontalWave() {
+      if (!horizontalCanvas || !horizontalCtx) return;
+      
+      const canvas = horizontalCanvas;
+      const ctx = horizontalCtx;
+      const width = canvas.width;
+      const height = canvas.height;
+      
+      // Smooth animation towards target progress
+      const delta = targetProgress - currentProgressAnimation;
+      currentProgressAnimation += delta * 0.1;
+      
+      // Clear canvas
+      ctx.clearRect(0, 0, width, height);
+      
+      // Save context
+      ctx.save();
+      
+      // Clip to rounded rectangle
+      const radius = 15;
+      ctx.beginPath();
+      ctx.moveTo(radius, 0);
+      ctx.lineTo(width - radius, 0);
+      ctx.quadraticCurveTo(width, 0, width, radius);
+      ctx.lineTo(width, height - radius);
+      ctx.quadraticCurveTo(width, height, width - radius, height);
+      ctx.lineTo(radius, height);
+      ctx.quadraticCurveTo(0, height, 0, height - radius);
+      ctx.lineTo(0, radius);
+      ctx.quadraticCurveTo(0, 0, radius, 0);
+      ctx.closePath();
+      ctx.clip();
+      
+      // Draw background
+      ctx.fillStyle = 'rgba(240, 248, 255, 0.15)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // Water level (from left)
+      const waterLevel = width * currentProgressAnimation;
+      
+      // Create gradient
+      const gradient = ctx.createLinearGradient(0, 0, waterLevel, 0);
+      const waterColor = currentConfig.waterColor || '#4fc3f7';
+      gradient.addColorStop(0, shadeColor(waterColor, -20));
+      gradient.addColorStop(1, waterColor);
+      
+      // Draw the wave with multiple sine waves for realism
+      ctx.beginPath();
+      const amplitude1 = 5;
+      const wavelength1 = 40;
+      const amplitude2 = 3;
+      const wavelength2 = 28;
+      const speed = 0.05;
+      
+      for (let y = 0; y <= height; y++) {
+        const x1 = amplitude1 * Math.sin((y / wavelength1) * 2 * Math.PI + waveOffset);
+        const x2 = amplitude2 * Math.sin((y / wavelength2) * 2 * Math.PI - waveOffset * 0.7);
+        const x = x1 + x2 + waterLevel;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(0, height);
+      ctx.lineTo(0, 0);
+      ctx.closePath();
+      
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      // Add highlight on the edge
+      ctx.beginPath();
+      ctx.moveTo(waterLevel - 1, 0);
+      for (let y = 0; y <= height; y++) {
+        const x1 = amplitude1 * Math.sin((y / wavelength1) * 2 * Math.PI + waveOffset);
+        const x2 = amplitude2 * Math.sin((y / wavelength2) * 2 * Math.PI - waveOffset * 0.7);
+        const x = x1 + x2 + waterLevel - 1;
+        ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      
+      // Add subtle light spots for depth
+      if (currentProgressAnimation > 0.1) {
+        ctx.fillStyle = 'rgba(255,255,255,0.12)';
+        const spots = [
+          { x: waterLevel * 0.3, y: height * 0.5, r: 2 + Math.sin(waveOffset * 2) * 0.8 },
+          { x: waterLevel * 0.7, y: height * 0.3, r: 1.5 + Math.sin(waveOffset * 1.5) * 0.5 }
+        ];
+        spots.forEach(s => {
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+      
+      ctx.restore();
+      
+      waveOffset += speed;
+      animationFrameId = requestAnimationFrame(drawHorizontalWave);
+    }
+    
+    function startVerticalAnimation() {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      drawVerticalWave();
+    }
+    
+    function startHorizontalAnimation() {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      drawHorizontalWave();
+    }
+
+    function applyStyles() {
+      const container = document.getElementById('hydration-container');
+      const size = currentConfig.gaugeSize || 200;
+      
+      // Position
+      container.style.left = `${currentConfig.positionX}%`;
+      container.style.top = `${currentConfig.positionY}%`;
+      container.style.transform = 'translate(-50%, -50%)';
+      
+      // Ensure no border or background on container
+      container.style.border = 'none';
+      container.style.background = 'transparent';
+      container.style.padding = '0';
+      
+      // Text color
+      document.querySelectorAll('.center-text, .progress-text').forEach(el => {
+        el.style.color = currentConfig.textColor;
+      });
+      
+      // Only resize canvases if size actually changed
+      if (lastCanvasSize !== size) {
+        lastCanvasSize = size;
+        
+        // Circular gauge canvas sizing
+        const circCanvas = document.getElementById('circular-canvas');
+        if (circCanvas) {
+          circCanvas.width = size;
+          circCanvas.height = size;
+        }
+        
+        // Vertical gauge canvas sizing
+        const vertCanvas = document.getElementById('vertical-canvas');
+        if (vertCanvas) {
+          vertCanvas.width = size * 0.3;
+          vertCanvas.height = size;
+        }
+        
+        // Horizontal gauge canvas sizing
+        const horizCanvas = document.getElementById('horizontal-canvas');
+        if (horizCanvas) {
+          horizCanvas.width = size * 1.5;
+          horizCanvas.height = size * 0.3;
+        }
+      }
+    }
+
+    // Initialize
+    connectWebSocket();
+    applyStyles();
+    
+    // Initial display with default values
+    updateHydration({
+      current: 0,
+      goal: currentConfig.streamGoal,
+      percentage: 0,
+      config: currentConfig
+    });
+  </script>
+</body>
+</html>

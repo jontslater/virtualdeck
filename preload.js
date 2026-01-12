@@ -14,7 +14,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateConfig: async (configUpdate) => ipcRenderer.invoke('update-config', configUpdate),
   // Media file storage for multi-media buttons
   saveMediaFile: async (mediaData) => ipcRenderer.invoke('save-media-file', mediaData),
+  saveMediaFileByPath: async (mediaData) => ipcRenderer.invoke('save-media-file-by-path', mediaData),
+  saveAudioFileToSounds: async (mediaData) => ipcRenderer.invoke('save-audio-file-to-sounds', mediaData),
   getMediaFile: async (relativePath) => ipcRenderer.invoke('get-media-file', relativePath),
+  getMediaFilePath: async (relativePath) => ipcRenderer.invoke('get-media-file-path', relativePath),
+  getConnectedOverlays: async () => ipcRenderer.invoke('get-connected-overlays'),
+  closeOverlayConnections: async (overlayName) => ipcRenderer.invoke('close-overlay-connections', overlayName),
   // Return persisted Twitch Client config (tc_config.json in userData)
   getTwitchConfig: async () => ipcRenderer.invoke('get-tc-config'),
   getSoundPath: async (relativePath) => ipcRenderer.invoke('get-sound-path', relativePath),
@@ -44,12 +49,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkUserMod: async (username) => ipcRenderer.invoke('check-user-mod', username),
   checkUserSubTier: async (username) => ipcRenderer.invoke('check-user-sub-tier', username),
   // Get channel statistics
+  isStreamLive: async () => ipcRenderer.invoke('is-stream-live'),
   getViewerCount: async () => ipcRenderer.invoke('get-viewer-count'),
   getFollowerCount: async () => ipcRenderer.invoke('get-follower-count'),
   getSubscriberStats: async () => ipcRenderer.invoke('get-subscriber-stats'),
   // Get recent activity
   getRecentFollowers: async () => ipcRenderer.invoke('get-recent-followers'),
   getRecentSubscribers: async () => ipcRenderer.invoke('get-recent-subscribers'),
+  getFollowersWithUsers: async () => ipcRenderer.invoke('get-followers-with-users'),
+  resetFirstTimeChatters: async () => ipcRenderer.invoke('reset-first-time-chatters'),
   hasTwitchCreds: async () => ipcRenderer.invoke('has-twitch-creds'),
   // Clear stored Twitch credentials and shutdown connections
   clearTwitchCreds: (opts) => ipcRenderer.send('twitch-clear-creds', opts || {}),
@@ -108,4 +116,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendOverlayText: (data) => ipcRenderer.send('overlay-text', data),
   sendOverlayImage: (data) => ipcRenderer.send('overlay-image', data),
   sendOverlayVideo: (data) => ipcRenderer.send('overlay-video', data),
+  getOverlayUrl: async () => ipcRenderer.invoke('get-overlay-url'),
+  // Preferences and updates
+  savePreferences: (preferences) => ipcRenderer.send('save-preferences', preferences),
+  checkForUpdates: () => ipcRenderer.send('check-for-updates'),
+  // Daily Check-In System
+  loadDailyCheckins: async () => ipcRenderer.invoke('loadDailyCheckins'),
+  saveDailyCheckins: async (data) => ipcRenderer.invoke('saveDailyCheckins', data),
+  sendTwitchChatMessage: async (message) => ipcRenderer.invoke('sendTwitchChatMessage', message),
+  // Bug Report
+  reportBug: async () => ipcRenderer.invoke('report-bug'),
+  // Profile Management
+  getProfiles: async () => ipcRenderer.invoke('get-profiles'),
+  getProfile: async (profileId) => ipcRenderer.invoke('get-profile', profileId),
+  saveProfile: async (profileId, profileData) => ipcRenderer.invoke('save-profile', { profileId, profileData }),
+  createProfile: async (profileName) => ipcRenderer.invoke('create-profile', profileName),
+  duplicateProfile: async (sourceProfileId, newProfileName) => ipcRenderer.invoke('duplicate-profile', { sourceProfileId, newProfileName }),
+  renameProfile: async (profileId, newName) => ipcRenderer.invoke('rename-profile', { profileId, newName }),
+  deleteProfile: async (profileId) => ipcRenderer.invoke('delete-profile', profileId),
+  switchProfile: async (profileId) => ipcRenderer.invoke('switch-profile', profileId),
 });

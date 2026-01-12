@@ -1,0 +1,103 @@
+{
+  "name": "Halloween Night",
+  "description": "A spooky Halloween theme with deep blacks, glowing greens, eerie purples, and pumpkin oranges.",
+  "version": "1.0.0",
+  "author": "VirtualDeck Team",
+  "variables": {
+    "--bg-primary": "#0D0D0D", 
+    "--bg-secondary": "#1A1A1A",
+    "--bg-tertiary": "#2A2A2A",
+    "--bg-quaternary": "#3A3A3A",
+    "--bg-quinary": "#444444",
+
+    "--text-primary": "#F5F5DC", 
+    "--text-secondary": "#E0E0E0",
+    "--text-tertiary": "#B19CD9", 
+    "--text-quaternary": "#7FFF00",
+
+    "--border-primary": "#4B0082",
+    "--border-secondary": "#7FFF00",
+    "--border-tertiary": "#FF7518",
+    "--border-quaternary": "#ADFF2F",
+
+    "--accent-primary": "#FF7518", 
+    "--accent-secondary": "#4B0082",
+    "--accent-tertiary": "#7FFF00",
+    "--accent-quaternary": "#C21807",
+
+    "--hover-bg": "#2A2A2A",
+    "--active-bg": "#3A3A3A",
+    "--focus-bg": "#4B0082",
+
+    "--shadow-color": "rgba(255, 117, 24, 0.2)",
+    "--shadow-hover": "rgba(255, 117, 24, 0.4)",
+
+    "--success-color": "#7FFF00",
+    "--warning-color": "#FF7518",
+    "--error-color": "#C21807",
+    "--info-color": "#B19CD9"
+  },
+  "css": ".sound-card { position: relative; border-radius: 8px; box-shadow: 0 2px 4px var(--shadow-color); border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); } .sound-card::after { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-image: url('images/—Pngtree—red scary blood border_6652610.png'); background-size: 100% 100%; background-repeat: no-repeat; pointer-events: none; z-index: 10; border-radius: 8px; } .sound-card:hover { box-shadow: 0 4px 8px var(--shadow-hover); transform: translateY(-1px); background: var(--hover-bg); } .stat-item { position: relative; } .stat-item::after { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-image: url('images/blood-png-7162.png'); background-size: 100% 100%; background-repeat: no-repeat; pointer-events: none; z-index: 10; border-radius: 8px; opacity: 0.6; } .twitch-btn { background: var(--accent-primary); border-radius: 6px; color: var(--text-primary); } .twitch-btn:hover { background: var(--accent-quaternary); } .modal-content { border-radius: 8px; box-shadow: 0 4px 12px var(--shadow-color); background: var(--bg-tertiary); color: var(--text-secondary); }",
+  "components": {
+    ".sound-card": {
+      "transition": "all 0.2s ease",
+      "background": "var(--bg-secondary)",
+      "position": "relative"
+    },
+    ".sound-card::after": {
+      "content": "''",
+      "position": "absolute",
+      "top": "0",
+      "left": "0",
+      "right": "0",
+      "bottom": "0",
+      "background-image": "url('images/—Pngtree—red scary blood border_6652610.png')",
+      "background-size": "100% 100%",
+      "background-repeat": "no-repeat",
+      "pointer-events": "none",
+      "z-index": "10",
+      "border-radius": "8px"
+    },
+    ".sound-card:hover": {
+      "background": "var(--hover-bg)"
+    },
+    ".sound-card .sound-label": {
+      "position": "relative",
+      "z-index": "5"
+    },
+    ".sound-card .edit-button, .sound-card .delete-x-button, .sound-card .delete-button": {
+      "z-index": "15"
+    },
+    ".stat-item": {
+      "position": "relative"
+    },
+    ".stat-item::after": {
+      "content": "''",
+      "position": "absolute",
+      "top": "0",
+      "left": "0",
+      "right": "0",
+      "bottom": "0",
+      "background-image": "url('images/blood-png-7162.png')",
+      "background-size": "100% 100%",
+      "background-repeat": "no-repeat",
+      "pointer-events": "none",
+      "z-index": "10",
+      "border-radius": "8px",
+      "opacity": "0.6"
+    },
+    ".stat-item .stat-content": {
+      "position": "relative",
+      "z-index": "5"
+    },
+    "body": {
+      "background-image": "url('backgrounds/Image2.jpg')",
+      "background-size": "cover",
+      "background-position": "center",
+      "background-repeat": "no-repeat",
+      "background-attachment": "fixed",
+      "background-color": "var(--bg-primary)",
+      "color": "var(--text-primary)"
+    }
+  }
+}
