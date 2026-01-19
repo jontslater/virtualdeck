@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VirtualDeck Confetti Overlay</title>
+    <style>
+        :root {
+            --overlay-width: 1920px;
+            --overlay-height: 1080px;
+            --background-mode: transparent;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: var(--overlay-width);
+            height: var(--overlay-height);
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: var(--background-mode);
+        }
+
+        .confetti-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .confetti-piece {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            animation: fall linear infinite;
+        }
+
+        .confetti-piece:nth-child(2n) {
+            background: #4ecdc4;
+        }
+
+        .confetti-piece:nth-child(3n) {
+            background: #45b7d1;
+        }
+
+        .confetti-piece:nth-child(4n) {
+            background: #f9ca24;
+        }
+
+        .confetti-piece:nth-child(5n) {
+            background: #f0932b;
+        }
+
+        .confetti-piece:nth-child(6n) {
+            background: #eb4d4b;
+        }
+
+        .confetti-piece:nth-child(7n) {
+            background: #6c5ce7;
+        }
+
+        .confetti-piece:nth-child(8n) {
+            background: #a29bfe;
+        }
+
+        .confetti-piece:nth-child(9n) {
+            background: #fd79a8;
+        }
+
+        .confetti-piece:nth-child(10n) {
+            background: #00b894;
+        }
+
+        @keyframes fall {
+            0% {
+                transform: translateY(-10px) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(100vh) rotate(720deg);
+                opacity: 0;
+            }
+        }
+
+        /* Different confetti shapes */
+        .confetti-piece.triangle {
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-bottom: 10px solid #ff6b6b;
+            background: none;
+        }
+
+        .confetti-piece.square {
+            border-radius: 0;
+        }
+
+        .confetti-piece.star {
+            background: #ff6b6b;
+            clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+        }
+
+        /* Connection Status */
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 9999;
+            display: none;
+        }
+
+        #connection-status.error {
+            color: #ff0000;
+        }
+    </style>
+</head>
+<body>
+    <div id="connection-status">Connecting...</div>
+    <div class="confetti-container" id="confetti-container"></div>
+
+    <script>
+        // Confetti Overlay Configuration
+        const CONFETTI_CONFIG = {
+            name: 'confetti',
+            pieceCount: 100,
+            duration: 3000,
+            colors: ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#f0932b', '#eb4d4b', '#6c5ce7', '#a29bfe', '#fd79a8', '#00b894']
+        };
+
+        // Global variables
+        let confettiWS = null;
+        let activeConfetti = new Set();
+
+        // Initialize overlay
+        function initConfettiOverlay() {
+            console.log('🎊 Initializing Confetti Overlay');
+            connectWebSocket();
+            showConnectionStatus('🔄 Connecting...', 'warning');
+        }
+
+        // WebSocket connection
+        function connectWebSocket() {
+            try {
+                const wsUrl = `ws://localhost:8080?overlay=${CONFETTI_CONFIG.name}`;
+                console.log('🔗 Connecting confetti overlay to:', wsUrl);
+
+                confettiWS = new WebSocket(wsUrl);
+
+                confettiWS.onopen = function() {
+                    console.log('✅ Confetti overlay WebSocket connected');
+                    showConnectionStatus('✅ Connected', 'success');
+                };
+
+                confettiWS.onmessage = function(event) {
+                    try {
+                        const payload = JSON.parse(event.data);
+                        console.log('🎊 Confetti trigger received:', payload);
+
+                        if (payload.type === 'confetti' || payload.type === 'celebration') {
+                            triggerConfetti(payload);
+                        } else if (payload.type === 'clear') {
+                            clearConfetti();
+                        }
+                    } catch (error) {
+                        console.error('❌ Error parsing confetti message:', error);
+                    }
+                };
+
+                confettiWS.onclose = function(event) {
+                    console.log('🔌 Confetti overlay WebSocket disconnected');
+                    showConnectionStatus('❌ Disconnected', 'error');
+                };
+
+                confettiWS.onerror = function(error) {
+                    console.error('❌ Confetti overlay WebSocket error:', error);
+                    showConnectionStatus('❌ Connection Error', 'error');
+                };
+
+            } catch (error) {
+                console.error('❌ Failed to create confetti WebSocket connection:', error);
+                showConnectionStatus('❌ Connection Failed', 'error');
+            }
+        }
+
+        // Show connection status
+        function showConnectionStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('connection-status');
+            if (!statusDiv) return;
+
+            statusDiv.textContent = message;
+            statusDiv.className = type === 'success' ? '' : type;
+            statusDiv.style.display = 'block';
+
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // Trigger confetti explosion
+        function triggerConfetti(payload) {
+            console.log('🎊 Triggering confetti explosion!');
+
+            const container = document.getElementById('confetti-container');
+            const count = payload.count || payload.pieces || CONFETTI_CONFIG.pieceCount;
+            const duration = payload.duration || CONFETTI_CONFIG.duration;
+
+            // Clear any existing confetti
+            clearConfetti();
+
+            // Create confetti pieces
+            for (let i = 0; i < count; i++) {
+                createConfettiPiece(container, duration);
+            }
+
+            // Auto-clear after duration
+            setTimeout(() => {
+                clearConfetti();
+            }, duration);
+        }
+
+        // Create individual confetti piece
+        function createConfettiPiece(container, duration) {
+            const piece = document.createElement('div');
+            const pieceId = 'confetti-' + Date.now() + '-' + Math.random();
+
+            piece.id = pieceId;
+            piece.className = 'confetti-piece';
+
+            // Random properties
+            const left = Math.random() * 100; // 0-100%
+            const delay = Math.random() * 1000; // 0-1000ms delay
+            const rotationSpeed = 2 + Math.random() * 4; // 2-6 seconds
+            const fallSpeed = duration + (Math.random() - 0.5) * 1000; // vary duration
+
+            // Random shape (25% chance for special shapes)
+            const shapeRand = Math.random();
+            if (shapeRand < 0.25) {
+                if (shapeRand < 0.1) {
+                    piece.classList.add('triangle');
+                } else if (shapeRand < 0.2) {
+                    piece.classList.add('star');
+                } else {
+                    piece.classList.add('square');
+                }
+            }
+
+            // Random color
+            const color = CONFETTI_CONFIG.colors[Math.floor(Math.random() * CONFETTI_CONFIG.colors.length)];
+            piece.style.background = color;
+
+            // Apply styles
+            piece.style.left = left + '%';
+            piece.style.animationDelay = delay + 'ms';
+            piece.style.animationDuration = fallSpeed + 'ms, ' + rotationSpeed + 's';
+
+            // Add to container and track
+            container.appendChild(piece);
+            activeConfetti.add(pieceId);
+
+            // Remove after animation completes
+            setTimeout(() => {
+                if (piece.parentNode) {
+                    piece.parentNode.removeChild(piece);
+                }
+                activeConfetti.delete(pieceId);
+            }, fallSpeed + delay + 1000);
+        }
+
+        // Clear all confetti
+        function clearConfetti() {
+            console.log('🧹 Clearing confetti');
+
+            const container = document.getElementById('confetti-container');
+
+            // Remove all confetti pieces
+            activeConfetti.forEach(pieceId => {
+                const piece = document.getElementById(pieceId);
+                if (piece && piece.parentNode) {
+                    piece.parentNode.removeChild(piece);
+                }
+            });
+
+            activeConfetti.clear();
+
+            // Also clear any remaining pieces in container
+            while (container.firstChild) {
+                container.removeChild(container.firstChild);
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initConfettiOverlay);
+
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (confettiWS) {
+                confettiWS.close();
+            }
+            clearConfetti();
+        });
+    </script>
+</body>
+</html>

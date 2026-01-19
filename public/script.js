@@ -6501,42 +6501,55 @@ function setupOverlayWidget() {
       const overlayName = newOverlayNameInput.value.trim();
       const templateSelect = document.getElementById('overlay-template');
       const template = templateSelect ? templateSelect.value : 'center-media';
-      
+
       if (!overlayName) {
         showCustomAlert('Please enter a name for the overlay', 'error');
         return;
       }
-      
-      
-      // Create overlay name that includes template info
-      const overlayId = overlayName.toLowerCase().replace(/\s+/g, '-');
-      const displayName = `${overlayName} (${getTemplateDisplayName(template)})`;
-      
-      // Check for duplicate names
-      const savedOverlays = getSavedOverlays();
-      const isDuplicate = savedOverlays.some(overlay => 
-        overlay.id === overlayId || overlay.name.toLowerCase() === overlayName.toLowerCase()
-      );
-      
-      if (isDuplicate) {
-        showCustomAlert(`An overlay with the name "${overlayName}" already exists. Please choose a different name.`, 'error');
-        return;
+
+      // Map special templates to their predefined overlay names
+      let actualOverlayId;
+      let actualDisplayName;
+
+      if (template === 'alert') {
+        actualOverlayId = 'alertOverlay';
+        actualDisplayName = `${overlayName} (Alert Overlay)`;
+      } else if (template === 'confetti') {
+        actualOverlayId = 'confettiOverlay';
+        actualDisplayName = `${overlayName} (Confetti Overlay)`;
+      } else {
+        // Create overlay name that includes template info for custom overlays
+        actualOverlayId = overlayName.toLowerCase().replace(/\s+/g, '-');
+        actualDisplayName = `${overlayName} (${getTemplateDisplayName(template)})`;
       }
       
-      // Save overlay to localStorage
-      savedOverlays.push({
-        id: overlayId,
-        name: overlayName,
-        displayName: displayName,
-        template: template,
-        createdAt: new Date().toISOString()
-      });
-      saveOverlays(savedOverlays);
-      
+      // Check for duplicate names (skip for predefined overlays like alert/confetti)
+      if (template !== 'alert' && template !== 'confetti') {
+        const savedOverlays = getSavedOverlays();
+        const isDuplicate = savedOverlays.some(overlay =>
+          overlay.id === actualOverlayId || overlay.name.toLowerCase() === overlayName.toLowerCase()
+        );
+
+        if (isDuplicate) {
+          showCustomAlert(`An overlay with the name "${overlayName}" already exists. Please choose a different name.`, 'error');
+          return;
+        }
+
+        // Save overlay to localStorage for custom overlays
+        savedOverlays.push({
+          id: actualOverlayId,
+          name: overlayName,
+          displayName: actualDisplayName,
+          template: template,
+          createdAt: new Date().toISOString()
+        });
+        saveOverlays(savedOverlays);
+      }
+
       // Create new overlay option
       const option = document.createElement('option');
-      option.value = overlayId;
-      option.textContent = displayName;
+      option.value = actualOverlayId;
+      option.textContent = actualDisplayName;
       option.dataset.template = template;
       overlaySelect.appendChild(option);
       
@@ -6544,19 +6557,29 @@ function setupOverlayWidget() {
       newOverlayNameInput.value = '';
       
       // Show success message
-      showCustomAlert(`Overlay "${overlayName}" created successfully!`, 'success');
-      
+      const successMessage = (template === 'alert' || template === 'confetti')
+        ? `Overlay "${overlayName}" ready! Use the URL to add it to OBS.`
+        : `Overlay "${overlayName}" created successfully!`;
+      showCustomAlert(successMessage, 'success');
+
       // Update all overlay selects in forms
       updateAllOverlaySelects();
-      
-      console.log(`✅ Created and saved new overlay: ${overlayName} with template: ${template}`);
+
+      console.log(`✅ Created overlay: ${overlayName} (${template}) -> ${actualOverlayId}`);
     });
   }
   
   if (deleteOverlayBtn && overlaySelect) {
     deleteOverlayBtn.addEventListener('click', async () => {
       const selectedValue = overlaySelect.value;
-      
+
+      // Prevent deletion of predefined overlays
+      const predefinedOverlays = ['alertOverlay', 'confettiOverlay'];
+      if (predefinedOverlays.includes(selectedValue)) {
+        showCustomAlert('Predefined overlays cannot be deleted.', 'warning');
+        return;
+      }
+
       // Use custom confirm dialog instead of native confirm
       const overlayName = overlaySelect.options[overlaySelect.selectedIndex].textContent;
       if (confirm(`Are you sure you want to delete the "${overlayName}" overlay?`)) {
@@ -6965,6 +6988,8 @@ function getTemplateDisplayName(template) {
   const templateNames = {
     'center-media': 'Center Media',
     'fullscreen-media': 'Full Screen',
+    'alert': 'Alert Overlay',
+    'confetti': 'Confetti Overlay',
     // Legacy templates (kept for backward compatibility)
     'text-only': 'Text Only',
     'custom': 'Custom'
@@ -8460,6 +8485,19 @@ function setupAlertWidget() {
         <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
           <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
         </div>
+
+        <!-- Test Overlay Buttons -->
+        <div class="overlay-test-controls" style="display: flex; gap: 8px; margin-bottom: 12px; padding: 8px; background: rgba(255, 193, 7, 0.1); border-radius: 4px;">
+          <button class="variation-btn test-alert" onclick="testAlert('${selectedType}')" style="padding: 6px 12px; font-size: 12px; background: #9147ff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+            🚨 Test Alert
+          </button>
+          <button class="variation-btn test-confetti" onclick="testConfetti()" style="padding: 6px 12px; font-size: 12px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer;">
+            🎊 Test Confetti
+          </button>
+          <span style="font-size: 11px; color: var(--text-secondary); align-self: center;">
+            Test overlays (open in OBS first)
+          </span>
+        </div>
         <div class="variations-items">
           ${filteredAlerts.map((alert, index) => `
             <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
@@ -8945,6 +8983,45 @@ window.toggleAlert = function(alertId, enabled) {
     alertSystem.updateAlerts();
     updateAlertList();
     console.log('Toggled alert:', alertId, 'enabled:', enabled);
+  }
+};
+
+// Test functions for new overlays
+window.testAlert = function(alertType) {
+  console.log('🚨 Testing alert for type:', alertType);
+
+  // Create test data based on alert type
+  const testData = {
+    type: alertType,
+    user: 'TestUser',
+    message: 'This is a test alert!',
+    amount: alertType === 'donation' ? 5.00 : null,
+    bits: alertType === 'bits' ? 100 : null
+  };
+
+  if (window.electronAPI && window.electronAPI.triggerAlert) {
+    window.electronAPI.triggerAlert(testData);
+    showCustomAlert('🚨 Alert sent to overlay! Make sure alert overlay is open in OBS.', 'success');
+  } else {
+    console.error('Electron API not available for alert testing');
+    showCustomAlert('❌ Cannot test alert - Electron API not available', 'error');
+  }
+};
+
+window.testConfetti = function() {
+  console.log('🎊 Testing confetti effect');
+
+  const testData = {
+    count: 50,
+    duration: 2000
+  };
+
+  if (window.electronAPI && window.electronAPI.triggerConfetti) {
+    window.electronAPI.triggerConfetti(testData);
+    showCustomAlert('🎊 Confetti sent to overlay! Make sure confetti overlay is open in OBS.', 'success');
+  } else {
+    console.error('Electron API not available for confetti testing');
+    showCustomAlert('❌ Cannot test confetti - Electron API not available', 'error');
   }
 };
 

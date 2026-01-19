@@ -47,60 +47,61 @@ function showTwitchConfigModal() {
     modal.style.maxWidth = '420px';
     modal.style.width = '95%';
     modal.innerHTML = `
-      <h2 style="text-align:center; margin-bottom:18px;">Twitch Setup</h2>
-      <div style="margin-bottom:20px; padding:15px; background:#f0f0f0; border-radius:8px; border-left:4px solid #9147ff;">
-        <strong style="display:block; margin-bottom:10px; color:#9147ff;">Step-by-Step Guide:</strong>
-        <ol style="margin:0; padding-left:20px; line-height:2; font-size:13px; color:#222;">
-          <li>Visit <a href="https://twitchtokengenerator.com" target="_blank" style="color:#9147ff; text-decoration:underline;">twitchtokengenerator.com</a> in your browser</li>
-          <li>Select <strong>Custom Token</strong> from the token options</li>
-          <li><strong>Important:</strong> Scroll to "Available Token Scopes" and select <strong>ALL permissions</strong> (check the box at the top)</li>
-          <li>Click <strong>Generate Token</strong> and log in with your Twitch account</li>
-          <li>Copy your three credentials:
-            <ul style="margin-top:5px; padding-left:20px;">
-              <li><strong>ACCESS TOKEN</strong></li>
-              <li><strong>CLIENT_ID</strong></li>
-              <li><strong>TWITCH_USER_NAME</strong></li>
-            </ul>
-          </li>
-          <li>Paste each value into the fields below</li>
-        </ol>
-        <p style="margin-top:10px; margin-bottom:0; font-size:12px; color:#666;">
-          💡 You can access these settings later via <strong>Edit → Preferences → Twitch Integration</strong>
+      <h2 style="text-align:center; margin-bottom:18px;">Twitch Login</h2>
+
+      <div id="oauth-status" style="margin-bottom:15px; padding:10px; background:#e8f5e8; border:1px solid #4caf50; border-radius:6px; display:none;">
+        <div style="color:#2e7d32; font-weight:bold;">✅ Connected as: <span id="connected-username"></span></div>
+        <button id="twitch-logout" style="margin-top:8px; background:#f44336; color:white; border:none; padding:6px 12px; border-radius:4px; font-size:12px; cursor:pointer;">Logout</button>
+      </div>
+
+      <!-- Always-visible logout/reset button -->
+      <div style="margin-bottom:15px; padding:8px; background:#fff3e0; border:1px solid #ff9800; border-radius:4px;">
+        <button id="twitch-logout-reset" style="background:#ff9800; color:white; border:none; padding:6px 12px; border-radius:4px; font-size:12px; cursor:pointer;">
+          🔄 Reset OAuth
+        </button>
+        <span style="margin-left:8px; font-size:11px; color:#666;">Clear stored tokens & reset authentication</span>
+      </div>
+
+      <div style="text-align:center; margin-bottom:20px;">
+        <button id="twitch-oauth-login" style="background:#9147ff;color:white;font-weight:bold;padding:15px 30px;border:none;border-radius:8px;font-size:1.2em;cursor:pointer;min-width:200px;">
+          🔵 Login with Twitch
+        </button>
+        <p style="margin-top:10px; font-size:12px; color:#666;">
+          Connect your Twitch account to enable chat commands and alerts
         </p>
       </div>
-      <label for="twitch-oauth" style="font-weight:bold;">ACCESS_TOKEN:</label><br>
-      <div style="position:relative;margin-bottom:14px;">
-  <input id="twitch-oauth" type="password" style="width:100%;box-sizing:border-box;padding:8px;padding-right:40px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" />
-        <button id="twitch-oauth-toggle" aria-label="Show token" title="Show/Hide" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#fff;cursor:pointer;font-size:16px;line-height:1;padding:4px">👁</button>
+
+      <div style="border-top:1px solid #ccc; padding-top:15px; margin-top:15px;">
+        <button id="toggle-advanced" style="background:none;border:none;color:#666;text-decoration:underline;cursor:pointer;font-size:12px;">
+          ⚙️ Advanced Settings
+        </button>
+
+        <div id="advanced-settings" style="display:none; margin-top:10px; padding:10px; background:#f5f5f5; border-radius:6px;">
+          <p style="font-size:11px; color:#666; margin-bottom:10px;">
+            Only change these if you want to use your own Twitch application instead of the default VirtualDeck app.
+          </p>
+
+          <label for="twitch-clientid" style="font-weight:bold; font-size:12px;">CLIENT ID:</label><br>
+          <div style="position:relative;margin-bottom:10px;">
+            <input id="twitch-clientid" type="password" style="width:100%;box-sizing:border-box;padding:6px;padding-right:30px;font-size:12px;background:#222;color:#fff;border-radius:4px;border:1px solid #ccc;" />
+            <button id="twitch-clientid-toggle" aria-label="Show client id" title="Show/Hide" style="position:absolute;right:5px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#fff;cursor:pointer;font-size:12px;line-height:1;padding:2px">👁</button>
+          </div>
+
+          <label for="twitch-clientsecret" style="font-weight:bold; font-size:12px;">CLIENT SECRET:</label><br>
+          <div style="position:relative;margin-bottom:10px;">
+            <input id="twitch-clientsecret" type="password" style="width:100%;box-sizing:border-box;padding:6px;padding-right:30px;font-size:12px;background:#222;color:#fff;border-radius:4px;border:1px solid #ccc;" />
+            <button id="twitch-clientsecret-toggle" aria-label="Show client secret" title="Show/Hide" style="position:absolute;right:5px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#fff;cursor:pointer;font-size:12px;line-height:1;padding:2px">👁</button>
+          </div>
+
+          <button id="twitch-save-config" style="width:100%;background:#2196f3;color:white;font-weight:bold;padding:8px 0;border:none;border-radius:4px;font-size:12px;cursor:pointer;">Save Custom Settings</button>
+        </div>
       </div>
-      <label for="twitch-clientid" style="font-weight:bold;">CLIENT_ID:</label><br>
-      <div style="position:relative;margin-bottom:14px;">
-  <input id="twitch-clientid" type="password" style="width:100%;box-sizing:border-box;padding:8px;padding-right:40px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" />
-        <button id="twitch-clientid-toggle" aria-label="Show client id" title="Show/Hide" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#fff;cursor:pointer;font-size:16px;line-height:1;padding:4px">👁</button>
-      </div>
-      <label for="twitch-channel" style="font-weight:bold;">TWITCH_USER_NAME:</label><br>
-  <input id="twitch-channel" type="text" style="width:100%;box-sizing:border-box;margin-bottom:18px;padding:8px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" /><br>
-      <button id="twitch-save" style="width:100%;background:#a6f34a;color:#222;font-weight:bold;padding:10px 0;border:none;border-radius:6px;font-size:1.1em;cursor:pointer;">Save</button>
-      <button id="twitch-cancel" style="width:100%;margin-top:8px;background:#eee;color:#222;padding:8px 0;border:none;border-radius:6px;font-size:1em;cursor:pointer;">Cancel</button>
+
+      <button id="twitch-cancel" style="width:100%;margin-top:15px;background:#eee;color:#222;padding:8px 0;border:none;border-radius:6px;font-size:1em;cursor:pointer;">Cancel</button>
     `;
     document.body.appendChild(modal);
     // Wire up show/hide toggles for sensitive fields
     try {
-      const oauthInput = document.getElementById('twitch-oauth');
-      const oauthToggle = document.getElementById('twitch-oauth-toggle');
-      if (oauthInput && oauthToggle) {
-        oauthToggle.addEventListener('click', () => {
-          if (oauthInput.type === 'password') {
-            oauthInput.type = 'text';
-            oauthToggle.textContent = '😑';
-            oauthToggle.setAttribute('aria-label', 'Hide token');
-          } else {
-            oauthInput.type = 'password';
-            oauthToggle.textContent = '👁';
-            oauthToggle.setAttribute('aria-label', 'Show token');
-          }
-        });
-      }
       const clientInput = document.getElementById('twitch-clientid');
       const clientToggle = document.getElementById('twitch-clientid-toggle');
       if (clientInput && clientToggle) {
@@ -116,42 +117,213 @@ function showTwitchConfigModal() {
           }
         });
       }
-  } catch (e) { console.warn('Could not wire toggles:', e); }
 
-  // Load values from localStorage if they exist
-    document.getElementById('twitch-oauth').value = localStorage.getItem('twitch_oauth') || '';
-    document.getElementById('twitch-clientid').value = localStorage.getItem('twitch_clientid') || '';
-    document.getElementById('twitch-channel').value = localStorage.getItem('twitch_channel') || '';
-    document.getElementById('twitch-save').onclick = () => {
-      window.twitchConfig.oauth = document.getElementById('twitch-oauth').value.trim();
-      window.twitchConfig.clientId = document.getElementById('twitch-clientid').value.trim();
-      window.twitchConfig.channel = document.getElementById('twitch-channel').value.trim();
-      // Save to localStorage
-      localStorage.setItem('twitch_oauth', window.twitchConfig.oauth);
-      localStorage.setItem('twitch_clientid', window.twitchConfig.clientId);
-      localStorage.setItem('twitch_channel', window.twitchConfig.channel);
-      modal.remove();
-      // Send credentials to main process to start Twitch chat connection
-      console.log('Sending Twitch connect IPC');
-      if (window.electronAPI && window.electronAPI.sendTwitchConnect) {
-        console.log('Sending via electronAPI');
-        window.electronAPI.sendTwitchConnect({
-          username: window.twitchConfig.channel,
-          oauth: window.twitchConfig.oauth,
-          clientId: window.twitchConfig.clientId
-        });
-      } else if (window.ipcRenderer) {
-        console.log('Sending via ipcRenderer');
-        window.ipcRenderer.send('twitch-connect', {
-          username: window.twitchConfig.channel,
-          oauth: window.twitchConfig.oauth,
-          clientId: window.twitchConfig.clientId
+      const secretInput = document.getElementById('twitch-clientsecret');
+      const secretToggle = document.getElementById('twitch-clientsecret-toggle');
+      if (secretInput && secretToggle) {
+        secretToggle.addEventListener('click', () => {
+          if (secretInput.type === 'password') {
+            secretInput.type = 'text';
+            secretToggle.textContent = '😑';
+            secretToggle.setAttribute('aria-label', 'Hide client secret');
+          } else {
+            secretInput.type = 'password';
+            secretToggle.textContent = '👁';
+            secretToggle.setAttribute('aria-label', 'Show client secret');
+          }
         });
       }
-      console.log('adding connecting to twitch chat...');
-      connectToTwitch();
-    };
-    document.getElementById('twitch-cancel').onclick = () => modal.remove();
+  } catch (e) { console.warn('Could not wire toggles:', e); }
+
+  // Load OAuth configuration
+  loadOAuthConfig();
+
+  // Toggle advanced settings
+  document.getElementById('toggle-advanced').onclick = () => {
+    const advanced = document.getElementById('advanced-settings');
+    const button = document.getElementById('toggle-advanced');
+    if (advanced.style.display === 'none') {
+      advanced.style.display = 'block';
+      button.textContent = '⚙️ Hide Advanced Settings';
+    } else {
+      advanced.style.display = 'none';
+      button.textContent = '⚙️ Advanced Settings';
+    }
+  };
+
+  // Save custom configuration button (only in advanced settings)
+  document.getElementById('twitch-save-config').onclick = async () => {
+    const clientId = document.getElementById('twitch-clientid').value.trim();
+    const clientSecret = document.getElementById('twitch-clientsecret').value.trim();
+
+    if (!clientId || !clientSecret) {
+      alert('Please enter both Client ID and Client Secret');
+      return;
+    }
+
+    // Save to main process with custom flag
+    if (window.electronAPI && window.electronAPI.setOAuthConfig) {
+      window.electronAPI.setOAuthConfig({
+        clientId: clientId,
+        clientSecret: clientSecret,
+        useCustomCredentials: true
+      });
+
+      alert('Custom configuration saved! You can now login with Twitch using your credentials.');
+    }
+  };
+
+  // OAuth login button - works immediately with default or custom credentials
+  document.getElementById('twitch-oauth-login').onclick = () => {
+    console.log('Login button clicked!');
+    console.log('electronAPI available:', !!window.electronAPI);
+
+    if (window.electronAPI && window.electronAPI.startOAuthLogin) {
+      console.log('Sending OAuth login request...');
+      document.getElementById('twitch-oauth-login').textContent = '🔄 Connecting...';
+      document.getElementById('twitch-oauth-login').disabled = true;
+
+      window.electronAPI.startOAuthLogin();
+    } else {
+      console.error('Electron OAuth API not available!');
+      alert('OAuth functionality not available. Make sure you\'re running the latest version of VirtualDeck.');
+    }
+  };
+
+  // Logout button (when connected)
+  document.getElementById('twitch-logout').onclick = () => {
+    if (window.electronAPI && window.electronAPI.logoutOAuth) {
+      if (confirm('Are you sure you want to logout from Twitch? This will disconnect chat and stop alerts.')) {
+        document.getElementById('twitch-logout').textContent = 'Logging out...';
+        document.getElementById('twitch-logout').disabled = true;
+
+        window.electronAPI.logoutOAuth();
+      }
+    }
+  };
+
+  // Reset OAuth button (always visible)
+  document.getElementById('twitch-logout-reset').onclick = () => {
+    if (window.electronAPI && window.electronAPI.logoutOAuth) {
+      if (confirm('This will clear all stored OAuth tokens and reset authentication. Continue?')) {
+        document.getElementById('twitch-logout-reset').textContent = '🔄 Resetting...';
+        document.getElementById('twitch-logout-reset').disabled = true;
+
+        window.electronAPI.logoutOAuth();
+      }
+    }
+  };
+
+  // Listen for OAuth success
+  if (window.electronAPI && window.electronAPI.onOAuthSuccess) {
+    window.electronAPI.onOAuthSuccess((data) => {
+      console.log('OAuth success:', data);
+      document.getElementById('connected-username').textContent = data.username;
+      document.getElementById('oauth-status').style.display = 'block';
+      document.getElementById('twitch-oauth-login').textContent = 'Connected!';
+      document.getElementById('twitch-oauth-login').disabled = true;
+
+      // Store username for connection
+      localStorage.setItem('twitch_channel', data.username);
+
+      // Close modal after a delay
+      setTimeout(async () => {
+        modal.remove();
+
+        // First, clear any existing Twitch connections to prevent duplicates
+        console.log('Clearing existing Twitch connections...');
+        if (window.electronAPI && window.electronAPI.clearTwitchCreds) {
+          await new Promise((resolve) => {
+            let resolved = false;
+            // Listen for clear completion
+            if (window.electronAPI.onTwitchCleared) {
+              window.electronAPI.onTwitchCleared(() => {
+                if (!resolved) {
+                  resolved = true;
+                  resolve();
+                }
+              });
+            }
+            // Clear credentials (don't purge topics)
+            window.electronAPI.clearTwitchCreds({ purgeTopics: false });
+            // Fallback timeout in case event doesn't fire
+            setTimeout(() => {
+              if (!resolved) {
+                resolved = true;
+                resolve();
+              }
+            }, 1500);
+          });
+        }
+
+        // Send credentials to main process to start Twitch chat connection
+        console.log('Sending Twitch connect IPC after OAuth');
+        if (window.electronAPI && window.electronAPI.sendTwitchConnect) {
+          console.log('Sending via electronAPI');
+          window.electronAPI.sendTwitchConnect({
+            username: data.username,
+            oauth: data.accessToken,
+            clientId: document.getElementById('twitch-clientid').value.trim()
+          });
+        }
+        console.log('adding connecting to twitch chat...');
+        connectToTwitch();
+      }, 2000);
+    });
+
+    window.electronAPI.onOAuthError((error) => {
+      console.error('OAuth error:', error);
+      alert('OAuth Error: ' + error);
+      document.getElementById('twitch-oauth-login').textContent = '🔵 Login with Twitch';
+      document.getElementById('twitch-oauth-login').disabled = false;
+      // Reset buttons on error
+      document.getElementById('twitch-logout-reset').textContent = '🔄 Reset OAuth';
+      document.getElementById('twitch-logout-reset').disabled = false;
+    });
+
+    window.electronAPI.onOAuthLogoutSuccess(() => {
+      console.log('Logout successful');
+      document.getElementById('oauth-status').style.display = 'none';
+      document.getElementById('connected-username').textContent = '';
+      document.getElementById('twitch-oauth-login').textContent = '🔵 Login with Twitch';
+      document.getElementById('twitch-oauth-login').disabled = false;
+      // Reset the reset button
+      document.getElementById('twitch-logout-reset').textContent = '🔄 Reset OAuth';
+      document.getElementById('twitch-logout-reset').disabled = false;
+    });
+  }
+
+  async function loadOAuthConfig() {
+    if (window.electronAPI && window.electronAPI.getOAuthConfig) {
+      try {
+        const config = await window.electronAPI.getOAuthConfig();
+
+        // Only populate advanced fields if using custom credentials
+        if (config.useCustomCredentials) {
+          document.getElementById('twitch-clientid').value = config.clientId || '';
+          document.getElementById('twitch-clientsecret').value = config.clientSecret || '';
+        }
+
+        // Login button is always enabled since we have default credentials
+        document.getElementById('twitch-oauth-login').disabled = false;
+
+        // Show connected status if we have tokens
+        if (config.accessToken) {
+          document.getElementById('oauth-status').style.display = 'block';
+          // We could fetch username here if needed
+        }
+      } catch (error) {
+        console.error('Failed to load OAuth config:', error);
+        // Fallback if config loading fails - still enable login
+        document.getElementById('twitch-oauth-login').disabled = false;
+      }
+    } else {
+      // Fallback if electron API not available - still enable login
+      document.getElementById('twitch-oauth-login').disabled = false;
+    }
+  }
+
+  document.getElementById('twitch-cancel').onclick = () => modal.remove();
   }
 }
 
