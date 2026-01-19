@@ -11,7 +11,11 @@ const tmi = require('tmi.js'); // Import tmi.js for Twitch chat
 const WebSocket = require('ws');
 const fetch = require('node-fetch');
 const http = require('http');
+const https = require('https');
+const url = require('url');
+const querystring = require('querystring');
 const { autoUpdater } = require('electron-updater');
+const twitchConfig = require('./twitch-oauth-config.js');
 
 // Configure auto-updater
 autoUpdater.autoDownload = false; // Don't auto-download, ask user first
@@ -327,9 +331,31 @@ function loadTcConfig() {
   if (!raw.topics) raw.topics = [];
   if (!raw.hasOwnProperty('lastFollowerPoll')) raw.lastFollowerPoll = null;
   if (!Array.isArray(raw.createdSubscriptions)) raw.createdSubscriptions = [];
+  // OAuth configuration - use defaults if not set
+  if (!raw.oauth) raw.oauth = {};
+  if (!raw.oauth.clientId) raw.oauth.clientId = twitchConfig.clientId;
+  if (!raw.oauth.clientSecret) raw.oauth.clientSecret = twitchConfig.clientSecret;
+  if (!raw.oauth.redirectUri) raw.oauth.redirectUri = twitchConfig.redirectUri;
+  if (!raw.oauth.accessToken) raw.oauth.accessToken = '';
+  if (!raw.oauth.refreshToken) raw.oauth.refreshToken = '';
+  if (!raw.oauth.tokenExpiry) raw.oauth.tokenExpiry = null;
+  if (!raw.oauth.useCustomCredentials) raw.oauth.useCustomCredentials = false;
   return raw;
   } catch (e) {
-  return { topics: [], lastFollowerPoll: null, createdSubscriptions: [] };
+  return {
+    topics: [],
+    lastFollowerPoll: null,
+    createdSubscriptions: [],
+    oauth: {
+      clientId: twitchConfig.clientId,
+      clientSecret: twitchConfig.clientSecret,
+      redirectUri: twitchConfig.redirectUri,
+      accessToken: '',
+      refreshToken: '',
+      tokenExpiry: null,
+      useCustomCredentials: false
+    }
+  };
   }
 }
 
@@ -712,7 +738,7 @@ function startOverlayServer() {
       console.log(`🎯 Serving overlay: ${overlayName}`);
       
       // Check if it's a predefined overlay
-      const predefinedOverlays = ['hudOverlay', 'cameraFrameOverlay', 'chatOverlay'];
+      const predefinedOverlays = ['hudOverlay', 'cameraFrameOverlay', 'chatOverlay', 'alertOverlay', 'confettiOverlay'];
       if (predefinedOverlays.includes(overlayName)) {
         // Serve predefined overlay
         const overlayPath = path.join(__dirname, 'overlays', overlayName, 'index.html');
@@ -3041,12 +3067,28 @@ ipcMain.handle('reset-first-time-chatters', async () => {
   }
 });
 
-function startTwitchChatConnection({ username, oauth, clientId }) {
+async function startTwitchChatConnection({ username, oauth, clientId }) {
   console.log('Starting Twitch chat connection for user:', username);
   if (!username || !oauth) {
     console.error('Missing Twitch credentials');
     return;
   }
+
+  // Disconnect any existing client to prevent duplicates
+  if (twitchClient && typeof twitchClient.disconnect === 'function') {
+    try {
+      console.log('Disconnecting existing Twitch client...');
+      await twitchClient.disconnect();
+      twitchClient = null;
+      console.log('Existing client disconnected');
+    } catch (e) {
+      console.warn('Error disconnecting existing client:', e);
+    }
+  }
+
+  // Small delay to ensure disconnect completes
+  await new Promise(resolve => setTimeout(resolve, 500));
+
   const opts = {
     identity: {
       username: username,
@@ -3334,22 +3376,51 @@ let twitchUserName = null;
 async function getUserId() {
   console.log('Fetching Twitch user ID for', twitchUserName);
   if (twitchUserId) return twitchUserId;
-  console.log('Using token:', twitchToken);
+
+  console.log('Using token:', twitchToken ? twitchToken.substring(0, 20) + '...' : 'NO TOKEN');
   console.log('Using clientId:', twitchClientId);
   console.log('Using username:', twitchUserName);
+
+  if (!twitchToken) {
+    throw new Error('No OAuth token available');
+  }
+
+  if (!twitchClientId) {
+    throw new Error('No Client ID available');
+  }
+
   console.log('Requesting user ID from Twitch API');
-  const response = await fetch(`https://api.twitch.tv/helix/users?login=${twitchUserName}`, {
-    headers: {
-      'Client-ID': twitchClientId,
-      'Authorization': `Bearer ${twitchToken}`
+
+  try {
+    const response = await fetch(`https://api.twitch.tv/helix/users?login=${twitchUserName}`, {
+      headers: {
+        'Client-ID': twitchClientId,
+        'Authorization': `Bearer ${twitchToken}`
+      }
+    });
+
+    console.log('API Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error response:', errorText);
+      throw new Error(`Twitch API error: ${response.status} ${response.statusText}`);
     }
-  });
-  const data = await response.json();
-  if (data.data && data.data.length > 0) {
-    twitchUserId = data.data[0].id;
-    return twitchUserId;
-  } else {
-    throw new Error('Could not fetch Twitch user ID.');
+
+    const data = await response.json();
+    console.log('API Response data:', data);
+
+    if (data.data && data.data.length > 0) {
+      twitchUserId = data.data[0].id;
+      console.log('Successfully got user ID:', twitchUserId);
+      return twitchUserId;
+    } else {
+      console.error('No user data in response:', data);
+      throw new Error('User not found or invalid response from Twitch API');
+    }
+  } catch (error) {
+    console.error('Error in getUserId:', error);
+    throw error;
   }
 }
 
@@ -3872,10 +3943,22 @@ async function applyEventSubSubscriptions(sessionId) {
   applyingEventSub = false;
 }
 
-function startTwitchEventSub({ username, oauth, clientId}) {
+async function startTwitchEventSub({ username, oauth, clientId}) {
   console.log('Starting Twitch EventSub for user:', username);
   twitchUserName = username;
-  twitchToken = oauth.replace('oauth:', '');
+
+  // Try to use OAuth token if available, otherwise fall back to provided oauth token
+  let tokenToUse = oauth;
+  try {
+    const oauthToken = await ensureValidToken();
+    tokenToUse = oauthToken;
+    console.log('Using OAuth access token for EventSub');
+  } catch (oauthError) {
+    console.log('OAuth token not available, using provided token:', oauthError.message);
+    tokenToUse = oauth.replace('oauth:', '');
+  }
+
+  twitchToken = tokenToUse;
   // Ensure global clientId is set for subsequent API calls
   if (clientId) twitchClientId = clientId;
 
@@ -4342,6 +4425,8 @@ function checkForUpdates() {
 
 app.whenReady().then(() => {
   ensureUserData();
+  // Start OAuth server for Twitch authentication
+  startOAuthServer();
   // Load progressions data
   progressionsData = loadProgressions();
   console.log('Loaded progressions:', progressionsData.progressions.length);
@@ -4828,6 +4913,184 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  // Stop OAuth server
+  stopOAuthServer();
+});
+
+// IPC: Start OAuth server
+ipcMain.on('twitch-start-oauth-server', (event) => {
+  startOAuthServer();
+  event.reply('twitch-oauth-server-started');
+});
+
+// IPC: Stop OAuth server
+ipcMain.on('twitch-stop-oauth-server', (event) => {
+  stopOAuthServer();
+  event.reply('twitch-oauth-server-stopped');
+});
+
+// IPC: Get OAuth configuration
+ipcMain.handle('twitch-get-oauth-config', () => {
+  const tc = loadTcConfig();
+  return tc.oauth;
+});
+
+// IPC: Set OAuth configuration
+ipcMain.on('twitch-set-oauth-config', (event, config) => {
+  try {
+    const tc = loadTcConfig();
+    tc.oauth = { ...tc.oauth, ...config };
+    saveTcConfig(tc);
+    event.reply('twitch-oauth-config-updated', tc.oauth);
+  } catch (error) {
+    console.error('Error saving OAuth config:', error);
+    event.reply('twitch-oauth-error', `Failed to save configuration: ${error.message}`);
+  }
+});
+
+// IPC: Start OAuth login flow
+ipcMain.on('twitch-start-oauth-login', async (event) => {
+  try {
+    console.log('Starting OAuth login process...');
+    const tc = loadTcConfig();
+
+    console.log('Loaded config:', {
+      hasClientId: !!tc.oauth.clientId,
+      hasClientSecret: !!tc.oauth.clientSecret,
+      clientId: tc.oauth.clientId ? tc.oauth.clientId.substring(0, 10) + '...' : 'none'
+    });
+
+    if (!tc.oauth.clientId || !tc.oauth.clientSecret) {
+      console.error('Missing OAuth credentials');
+      event.reply('twitch-oauth-error', 'Client ID and Client Secret must be configured first');
+      return;
+    }
+
+    console.log('Starting OAuth server...');
+    startOAuthServer();
+
+    // Check if server is actually running
+    setTimeout(() => {
+      console.log('Opening OAuth URL in browser...');
+      const { shell } = require('electron');
+      const authUrl = `http://localhost:${OAUTH_PORT}/oauth/authorize`;
+      console.log('Auth URL:', authUrl);
+
+      const success = shell.openExternal(authUrl);
+      console.log('Browser open result:', success);
+
+      if (!success) {
+        console.error('Failed to open browser');
+        event.reply('twitch-oauth-error', 'Failed to open browser for OAuth login');
+      }
+    }, 1000); // Give server time to start
+
+  } catch (error) {
+    console.error('Error starting OAuth login:', error);
+    event.reply('twitch-oauth-error', `Failed to start OAuth login: ${error.message}`);
+  }
+});
+
+// IPC: Trigger alert overlay
+ipcMain.on('trigger-alert', (event, alertData) => {
+  console.log('🚨 Triggering alert overlay:', alertData);
+
+  // Send to alert overlay specifically
+  broadcastToOverlay({
+    type: 'alert',
+    alertType: alertData.type || 'follower',
+    user: alertData.user || alertData.username,
+    message: alertData.message,
+    amount: alertData.amount,
+    bits: alertData.bits,
+    duration: alertData.duration || 5000,
+    media: alertData.media,
+    audio: alertData.audio
+  }, 'alert');
+});
+
+// IPC: Trigger confetti overlay
+ipcMain.on('trigger-confetti', (event, confettiData) => {
+  console.log('🎊 Triggering confetti overlay:', confettiData);
+
+  // Send to confetti overlay specifically
+  broadcastToOverlay({
+    type: 'confetti',
+    count: confettiData.count || 100,
+    duration: confettiData.duration || 3000
+  }, 'confetti');
+});
+
+// IPC: Logout from Twitch OAuth
+ipcMain.on('twitch-logout', async (event) => {
+  try {
+    console.log('Processing Twitch OAuth logout');
+
+    // Clear OAuth tokens from config
+    const tc = loadTcConfig();
+    tc.oauth.accessToken = '';
+    tc.oauth.refreshToken = '';
+    tc.oauth.tokenExpiry = null;
+    saveTcConfig(tc);
+
+    // Send IPC to clear credentials (this will disconnect chat, EventSub, etc.)
+    const mockEvent = {
+      reply: (channel, data) => {
+        console.log('Clear creds completed, sending logout success');
+        event.reply('twitch-logout-success');
+      }
+    };
+
+    // Execute the clear credentials logic inline
+    console.log('Shutting down Twitch connections for logout');
+
+    // Stop follower polling
+    if (pollIntervalId) {
+      clearInterval(pollIntervalId);
+      pollIntervalId = null;
+      console.log('Stopped follower polling');
+    }
+
+    // Stop stream monitor for hydration
+    stopStreamMonitor();
+
+    // Close EventSub websocket if present
+    try {
+      if (eventSubWs) {
+        try { eventSubWs.close(); } catch (e) { console.warn('Error closing EventSub websocket:', e); }
+        eventSubWs = null;
+      }
+    } catch (e) { console.warn('Error while closing EventSub websocket', e); }
+
+    // Clear created subscriptions
+    try {
+      const tcConfig = loadTcConfig();
+      tcConfig.createdSubscriptions = [];
+      saveTcConfig(tcConfig);
+    } catch (e) { console.warn('Error clearing subscriptions:', e); }
+
+    // Clear global variables
+    twitchUserName = null;
+    twitchUserId = null;
+    twitchToken = null;
+    twitchClientId = null;
+    eventSubSessionId = null;
+    eventSubRegistered = false;
+    lastPollTime = null;
+    lastFollowerIds = [];
+
+    // Clear chat-related state
+    recentChatUserState.clear();
+    firstTimeChatters.clear();
+
+    console.log('Twitch connections cleared successfully');
+
+    event.reply('twitch-logout-success');
+
+  } catch (error) {
+    console.error('Error during logout:', error);
+    event.reply('twitch-logout-error', error.message);
+  }
 });
 
 // IPC: Clear stored Twitch credentials, close EventSub and chat connections, and remove created subscriptions
@@ -4915,3 +5178,350 @@ ipcMain.on('twitch-clear-creds', async (event) => {
     console.error('Error handling twitch-clear-creds:', err);
   }
 });
+
+// ========================================================
+// Twitch OAuth 2.0 Server Setup
+// ========================================================
+
+let oauthServer = null;
+const OAUTH_PORT = 3000;
+
+// Start OAuth server for handling Twitch OAuth callbacks
+function startOAuthServer() {
+  if (oauthServer) {
+    console.log('OAuth server already running');
+    return;
+  }
+
+  console.log('Creating OAuth HTTP server...');
+  oauthServer = http.createServer(async (req, res) => {
+    const parsedUrl = url.parse(req.url, true);
+    const pathname = parsedUrl.pathname;
+
+    // Set CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+
+    console.log(`OAuth server: ${req.method} ${pathname}`);
+
+    try {
+      if (pathname === '/oauth/authorize' && req.method === 'GET') {
+        // Redirect to Twitch OAuth authorization
+        const tc = loadTcConfig();
+        const { clientId, redirectUri } = tc.oauth;
+
+        if (!clientId) {
+          res.writeHead(400, { 'Content-Type': 'text/html' });
+          res.end('<h1>Error: Twitch Client ID not configured</h1><p>Please set your Twitch Client ID in the app settings.</p>');
+          return;
+        }
+
+        const authUrl = `https://id.twitch.tv/oauth2/authorize?` +
+          `client_id=${encodeURIComponent(clientId)}&` +
+          `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+          `response_type=code&` +
+          `scope=${encodeURIComponent('chat:read user:read:follows moderator:read:followers')}&` +
+          `state=${encodeURIComponent(Math.random().toString(36).substring(7))}`;
+
+        console.log('Redirecting to Twitch OAuth:', authUrl);
+        res.writeHead(302, { 'Location': authUrl });
+        res.end();
+        return;
+
+      } else if (pathname === '/oauth/callback' && req.method === 'GET') {
+        // Handle OAuth callback
+        const { code, state, error, error_description } = parsedUrl.query;
+
+        if (error) {
+          console.error('OAuth error:', error, error_description);
+          res.writeHead(400, { 'Content-Type': 'text/html' });
+          res.end(`<h1>OAuth Error</h1><p>${error}: ${error_description}</p><p>You can close this window.</p>`);
+          return;
+        }
+
+        if (!code) {
+          res.writeHead(400, { 'Content-Type': 'text/html' });
+          res.end('<h1>Error: No authorization code received</h1><p>You can close this window.</p>');
+          return;
+        }
+
+        try {
+          // Exchange code for tokens
+          const tc = loadTcConfig();
+          const { clientId, clientSecret, redirectUri } = tc.oauth;
+
+          const tokenResponse = await exchangeCodeForTokens(code, clientId, clientSecret, redirectUri);
+
+          // Save tokens
+          tc.oauth.accessToken = tokenResponse.access_token;
+          tc.oauth.refreshToken = tokenResponse.refresh_token || '';
+          tc.oauth.tokenExpiry = tokenResponse.expires_in ?
+            Date.now() + (tokenResponse.expires_in * 1000) : null;
+
+          saveTcConfig(tc);
+
+          console.log('OAuth tokens saved successfully');
+
+          // Notify main window of successful authentication
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('twitch-oauth-success', {
+              accessToken: tokenResponse.access_token,
+              username: await getUsernameFromToken(tokenResponse.access_token)
+            });
+          }
+
+          // Show success page
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(`
+            <html>
+              <head>
+                <title>Twitch Authentication Successful</title>
+                <style>
+                  body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #1a1a1a; color: white; }
+                  .success { color: #00ff88; font-size: 24px; margin: 20px 0; }
+                  .message { font-size: 16px; margin: 20px 0; }
+                </style>
+              </head>
+              <body>
+                <h1 class="success">✅ Authentication Successful!</h1>
+                <p class="message">You can now close this window and return to VirtualDeck.</p>
+                <script>
+                  // Auto-close after 3 seconds
+                  setTimeout(() => {
+                    window.close();
+                  }, 3000);
+                </script>
+              </body>
+            </html>
+          `);
+
+        } catch (tokenError) {
+          console.error('Token exchange error:', tokenError);
+          res.writeHead(500, { 'Content-Type': 'text/html' });
+          res.end(`<h1>Error exchanging code for tokens</h1><p>${tokenError.message}</p><p>You can close this window.</p>`);
+        }
+
+      } else {
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        res.end('<h1>404 Not Found</h1>');
+      }
+
+    } catch (err) {
+      console.error('OAuth server error:', err);
+      res.writeHead(500, { 'Content-Type': 'text/html' });
+      res.end('<h1>Internal Server Error</h1>');
+    }
+  });
+
+  oauthServer.listen(OAUTH_PORT, 'localhost', (err) => {
+    if (err) {
+      console.error('Failed to start OAuth server:', err);
+      oauthServer = null;
+      return;
+    }
+    console.log(`✅ OAuth server successfully listening on http://localhost:${OAUTH_PORT}`);
+  });
+
+  oauthServer.on('error', (err) => {
+    console.error('OAuth server error:', err);
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${OAUTH_PORT} is already in use. OAuth authentication may not work.`);
+    }
+  });
+}
+
+// Stop OAuth server
+function stopOAuthServer() {
+  if (oauthServer) {
+    oauthServer.close();
+    oauthServer = null;
+    console.log('OAuth server stopped');
+  }
+}
+
+// Exchange authorization code for access tokens
+async function exchangeCodeForTokens(code, clientId, clientSecret, redirectUri) {
+  return new Promise((resolve, reject) => {
+    const postData = querystring.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code: code,
+      grant_type: 'authorization_code',
+      redirect_uri: redirectUri
+    });
+
+    const options = {
+      hostname: 'id.twitch.tv',
+      port: 443,
+      path: '/oauth2/token',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          if (res.statusCode === 200) {
+            const tokenData = JSON.parse(data);
+            resolve(tokenData);
+          } else {
+            reject(new Error(`Token exchange failed: ${res.statusCode} ${data}`));
+          }
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    req.write(postData);
+    req.end();
+  });
+}
+
+// Get username from access token
+async function getUsernameFromToken(accessToken) {
+  return new Promise((resolve, reject) => {
+    const tc = loadTcConfig();
+    const options = {
+      hostname: 'api.twitch.tv',
+      port: 443,
+      path: '/helix/users',
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Client-Id': tc.oauth.clientId
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          if (res.statusCode === 200) {
+            const userData = JSON.parse(data);
+            if (userData.data && userData.data.length > 0) {
+              resolve(userData.data[0].login);
+            } else {
+              reject(new Error('No user data received'));
+            }
+          } else {
+            reject(new Error(`User lookup failed: ${res.statusCode}`));
+          }
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    req.end();
+  });
+}
+
+// Check if access token is expired and refresh if needed
+async function ensureValidToken() {
+  const tc = loadTcConfig();
+  const now = Date.now();
+
+  // Check if token exists and is not expired (with 5 minute buffer)
+  if (!tc.oauth.accessToken || (tc.oauth.tokenExpiry && now >= (tc.oauth.tokenExpiry - 300000))) {
+    if (tc.oauth.refreshToken) {
+      console.log('Access token expired, refreshing...');
+      try {
+        const newTokens = await refreshAccessToken(tc.oauth.refreshToken, tc.oauth.clientId, tc.oauth.clientSecret);
+        tc.oauth.accessToken = newTokens.access_token;
+        tc.oauth.refreshToken = newTokens.refresh_token || tc.oauth.refreshToken;
+        tc.oauth.tokenExpiry = newTokens.expires_in ?
+          Date.now() + (newTokens.expires_in * 1000) : null;
+        saveTcConfig(tc);
+        console.log('Access token refreshed successfully');
+      } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError);
+        throw refreshError;
+      }
+    } else {
+      throw new Error('No refresh token available');
+    }
+  }
+
+  return tc.oauth.accessToken;
+}
+
+// Refresh access token
+async function refreshAccessToken(refreshToken, clientId, clientSecret) {
+  return new Promise((resolve, reject) => {
+    const postData = querystring.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token'
+    });
+
+    const options = {
+      hostname: 'id.twitch.tv',
+      port: 443,
+      path: '/oauth2/token',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          if (res.statusCode === 200) {
+            const tokenData = JSON.parse(data);
+            resolve(tokenData);
+          } else {
+            reject(new Error(`Token refresh failed: ${res.statusCode} ${data}`));
+          }
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    req.write(postData);
+    req.end();
+  });
+}

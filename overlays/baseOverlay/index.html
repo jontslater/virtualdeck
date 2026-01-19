@@ -74,8 +74,8 @@
             height: 100vh;
             object-fit: contain;
             /* Enhanced visibility for streaming alerts */
-            filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
-            border-radius: 8px;
+            filter: drop-shadow(0 0 1.04vw rgba(0, 0, 0, 0.8));
+            border-radius: 0.42vw;
         }
 
         .media-element.hidden {
@@ -86,13 +86,13 @@
         .text-element {
             position: absolute;
             color: white;
-            text-shadow: 4px 4px 8px rgba(0, 0, 0, 1.0), -2px -2px 4px rgba(0, 0, 0, 0.8);
-            font-size: 64px;
+            text-shadow: 0.21vw 0.21vw 0.42vw rgba(0, 0, 0, 1.0), -0.1vw -0.1vw 0.21vw rgba(0, 0, 0, 0.8);
+            font-size: 3.33vw; /* 64px at 1920px width, scaled up for visibility */
             font-weight: bold;
             text-align: center;
             white-space: nowrap;
             /* Enhanced visibility for streaming alerts over images */
-            filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.9));
+            filter: drop-shadow(0 0 0.63vw rgba(0, 0, 0, 0.9));
             z-index: 100;
         }
 
@@ -132,6 +132,156 @@
             50% { transform: scale(1.05); opacity: 1; }
             70% { transform: scale(0.9); }
             100% { transform: scale(1); }
+        }
+
+        @keyframes elasticIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            55% { transform: scale(1.15); opacity: 1; }
+            65% { transform: scale(0.95); }
+            75% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes backInDown {
+            0% { transform: translateY(-1200px) scale(0.7); opacity: 0.7; }
+            80% { transform: translateY(0px) scale(0.7); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes backInUp {
+            0% { transform: translateY(1200px) scale(0.7); opacity: 0.7; }
+            80% { transform: translateY(0px) scale(0.7); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes backInLeft {
+            0% { transform: translateX(-2000px) scale(0.7); opacity: 0.7; }
+            80% { transform: translateX(0px) scale(0.7); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes backInRight {
+            0% { transform: translateX(2000px) scale(0.7); opacity: 0.7; }
+            80% { transform: translateX(0px) scale(0.7); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes lightSpeedInRight {
+            0% { transform: translateX(100%) skewX(-30deg); opacity: 0; }
+            60% { transform: skewX(20deg); opacity: 1; }
+            80% { transform: skewX(-5deg); }
+            100% { transform: translateX(0%); skewX(0deg); }
+        }
+
+        @keyframes lightSpeedInLeft {
+            0% { transform: translateX(-100%) skewX(30deg); opacity: 0; }
+            60% { transform: skewX(-20deg); opacity: 1; }
+            80% { transform: skewX(5deg); }
+            100% { transform: translateX(0%); skewX(0deg); }
+        }
+
+        @keyframes jackInTheBox {
+            0% { opacity: 0; transform: scale(0.1) rotate(30deg); transform-origin: center bottom; }
+            50% { transform: rotate(-10deg); }
+            70% { transform: rotate(3deg); }
+            100% { opacity: 1; transform: scale(1) rotate(0deg); }
+        }
+
+        /* Exit Animations */
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+
+        @keyframes slideOutLeft {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(-100%); opacity: 0; }
+        }
+
+        @keyframes slideOutRight {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+
+        @keyframes slideOutUp {
+            from { transform: translateY(0); opacity: 1; }
+            to { transform: translateY(-100%); opacity: 0; }
+        }
+
+        @keyframes slideOutDown {
+            from { transform: translateY(0); opacity: 1; }
+            to { transform: translateY(100%); opacity: 0; }
+        }
+
+        @keyframes zoomOut {
+            from { transform: scale(1); opacity: 1; }
+            to { transform: scale(0.3); opacity: 0; }
+        }
+
+        @keyframes bounceOut {
+            0% { transform: scale(1); opacity: 1; }
+            25% { transform: scale(0.95); }
+            50% { opacity: 1; transform: scale(1.11); }
+            100% { opacity: 0; transform: scale(0.3); }
+        }
+
+        /* Advanced Animations */
+        @keyframes heartBeat {
+            0% { transform: scale(1); }
+            14% { transform: scale(1.3); }
+            28% { transform: scale(1); }
+            42% { transform: scale(1.3); }
+            70% { transform: scale(1); }
+        }
+
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 5px rgba(255,255,255,0.5); }
+            50% { box-shadow: 0 0 20px rgba(255,255,255,0.8), 0 0 30px rgba(255,255,255,0.6); }
+            100% { box-shadow: 0 0 5px rgba(255,255,255,0.5); }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+            20%, 40%, 60%, 80% { transform: translateX(10px); }
+        }
+
+        @keyframes tada {
+            0% { transform: scale(1) rotate(0deg); }
+            10%, 20% { transform: scale(0.9) rotate(-3deg); }
+            30%, 50%, 70%, 90% { transform: scale(1.1) rotate(3deg); }
+            40%, 60%, 80% { transform: scale(1.1) rotate(-3deg); }
+            100% { transform: scale(1) rotate(0deg); }
+        }
+
+        @keyframes swing {
+            20% { transform: rotate(15deg); }
+            40% { transform: rotate(-10deg); }
+            60% { transform: rotate(5deg); }
+            80% { transform: rotate(-5deg); }
+            100% { transform: rotate(0deg); }
+        }
+
+        /* Streamlabs-style Alert Animations */
+        @keyframes streamlabsBounce {
+            0% { transform: translateY(0px) scale(0.8); opacity: 0; }
+            10% { transform: translateY(-10px) scale(0.9); opacity: 0.5; }
+            20% { transform: translateY(-20px) scale(1.0); opacity: 0.7; }
+            30% { transform: translateY(-25px) scale(1.05); opacity: 0.9; }
+            40% { transform: translateY(-20px) scale(1.02); opacity: 1; }
+            100% { transform: translateY(0px) scale(1); opacity: 1; }
+        }
+
+        @keyframes streamlabsSlide {
+            0% { transform: translateX(-50px) scale(0.9); opacity: 0; }
+            50% { transform: translateX(10px) scale(1.02); opacity: 0.9; }
+            100% { transform: translateX(0px) scale(1); opacity: 1; }
+        }
+
+        @keyframes streamlabsFade {
+            0% { opacity: 0; transform: scale(0.95); }
+            50% { opacity: 0.8; transform: scale(1.02); }
+            100% { opacity: 1; transform: scale(1); }
         }
         
         @keyframes pulse {
@@ -713,46 +863,60 @@
             
             // Apply webkit-text-stroke if specified
             const webkitTextStroke = style.webkitTextStroke || '';
-            
+
+            // Convert pixel font sizes to viewport units for better scaling
+            let fontSize = style.fontSize || '64px';
+            console.log('🎯 Original fontSize:', fontSize);
+            if (typeof fontSize === 'string' && fontSize.endsWith('px')) {
+                const pxValue = parseInt(fontSize);
+                // Convert to viewport width units with more aggressive scaling
+                // Use a larger multiplier to make text more prominent in overlays
+                const vwValue = (pxValue / 1920) * 150; // Increased scaling for better visibility
+                fontSize = `${vwValue.toFixed(2)}vw`;
+                console.log('🎯 Converted', pxValue, 'px to', fontSize);
+            } else {
+                console.log('🎯 Using fontSize as-is:', fontSize);
+            }
+
             // Build positioning styles based on position
             let positioningStyles = '';
             let flexDirection = 'row'; // Default for horizontal centering
-            
+
             switch (position) {
                 case 'topCenter':
-                    positioningStyles = 'top: 10vh; left: 0; right: 0; width: 100vw;';
+                    positioningStyles = 'top: 8vh; left: 0; right: 0; width: 100vw;';
                     flexDirection = 'row';
                     break;
                 case 'topLeft':
-                    positioningStyles = 'top: 10vh; left: 10vw; width: auto;';
+                    positioningStyles = 'top: 8vh; left: 5vw; width: auto;';
                     flexDirection = 'row';
                     break;
                 case 'topRight':
-                    positioningStyles = 'top: 10vh; right: 10vw; width: auto;';
+                    positioningStyles = 'top: 8vh; right: 5vw; width: auto;';
                     flexDirection = 'row';
                     break;
                 case 'midLeft':
-                    positioningStyles = 'top: 50vh; left: 10vw; width: auto; transform: translateY(-50%);';
+                    positioningStyles = 'top: 50vh; left: 5vw; width: auto; transform: translateY(-50%);';
                     flexDirection = 'row';
                     break;
                 case 'center':
-                    positioningStyles = 'top: 50vh; left: 0; right: 0; width: 100vw; transform: translateY(-50%);';
+                    positioningStyles = 'top: 50vh; left: 0; right: 0; width: 100vw; height: auto; transform: translateY(-50%);';
                     flexDirection = 'row';
                     break;
                 case 'midRight':
-                    positioningStyles = 'top: 50vh; right: 10vw; width: auto; transform: translateY(-50%);';
+                    positioningStyles = 'top: 50vh; right: 5vw; width: auto; transform: translateY(-50%);';
                     flexDirection = 'row';
                     break;
                 case 'bottomCenter':
-                    positioningStyles = 'bottom: 10vh; left: 0; right: 0; width: 100vw;';
+                    positioningStyles = 'bottom: 8vh; left: 0; right: 0; width: 100vw;';
                     flexDirection = 'row';
                     break;
                 case 'bottomLeft':
-                    positioningStyles = 'bottom: 10vh; left: 10vw; width: auto;';
+                    positioningStyles = 'bottom: 8vh; left: 5vw; width: auto;';
                     flexDirection = 'row';
                     break;
                 case 'bottomRight':
-                    positioningStyles = 'bottom: 10vh; right: 10vw; width: auto;';
+                    positioningStyles = 'bottom: 8vh; right: 5vw; width: auto;';
                     flexDirection = 'row';
                     break;
                 default:
@@ -764,9 +928,9 @@
                 position: absolute;
                 color: ${style.color || 'white'};
                 font-family: ${style.fontFamily || 'Arial, sans-serif'};
-                font-size: ${style.fontSize || '64px'};
+                font-size: ${fontSize};
                 font-weight: ${style.fontWeight || 'bold'};
-                text-shadow: ${style.textShadow || '3px 3px 6px rgba(0, 0, 0, 0.9)'};
+                text-shadow: ${style.textShadow || '0.16vw 0.16vw 0.31vw rgba(0, 0, 0, 0.9)'};
                 -webkit-text-stroke: ${webkitTextStroke};
                 text-align: center;
                 white-space: nowrap;
@@ -775,11 +939,12 @@
                 align-items: center;
                 justify-content: center;
                 flex-direction: ${flexDirection};
+                min-height: 1em; /* Ensure text has height for centering */
                 pointer-events: none;
                 margin: 0;
                 padding: 0;
                 /* Enhanced visibility for streaming */
-                filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.8));
+                filter: drop-shadow(0 0 0.42vw rgba(0, 0, 0, 0.8));
                 ${positioningStyles}
             `;
             

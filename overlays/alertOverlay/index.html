@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VirtualDeck Alert Overlay</title>
+    <style>
+        :root {
+            --overlay-width: 1920px;
+            --overlay-height: 1080px;
+            --background-mode: transparent;
+            --chroma-color: #000000;
+            --primary-color: #9147ff;
+            --secondary-color: #772ce8;
+            --accent-color: #ffffff;
+            --success-color: #00ff88;
+            --warning-color: #ffaa00;
+            --error-color: #ff4444;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            width: var(--overlay-width);
+            height: var(--overlay-height);
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: var(--background-mode);
+        }
+
+        /* Alert Container */
+        .alert-container {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+            display: none;
+        }
+
+        .alert-content {
+            display: flex;
+            align-items: center;
+            background: linear-gradient(135deg, rgba(145, 71, 255, 0.95), rgba(119, 44, 232, 0.95));
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            min-width: 600px;
+            max-width: 800px;
+        }
+
+        /* User Avatar */
+        .alert-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 3px solid rgba(255, 255, 255, 0.8);
+            margin-right: 25px;
+            background: #666;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        /* Alert Text Content */
+        .alert-text-content {
+            flex: 1;
+            color: white;
+        }
+
+        .alert-title {
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+        }
+
+        .alert-message {
+            font-size: 20px;
+            opacity: 0.9;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+        }
+
+        /* Amount display for donations/bits */
+        .alert-amount {
+            font-size: 36px;
+            font-weight: bold;
+            color: var(--success-color);
+            margin-left: 15px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+        }
+
+        /* Media container for images/videos */
+        .alert-media {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .alert-media img,
+        .alert-media video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 20px;
+        }
+
+        /* Sound indicator */
+        .sound-indicator {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-size: 24px;
+            opacity: 0.7;
+        }
+
+        /* Progress bar for timed alerts */
+        .alert-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 0 0 20px 20px;
+            width: 100%;
+            transform-origin: left;
+            transform: scaleX(0);
+        }
+
+        /* Streamlabs-style Animations */
+        @keyframes streamlabsEntry {
+            0% {
+                transform: translate(-50%, -50%) scale(0.3) rotate(-10deg);
+                opacity: 0;
+            }
+            30% {
+                transform: translate(-50%, -50%) scale(1.1) rotate(2deg);
+                opacity: 0.8;
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(0.95) rotate(-1deg);
+                opacity: 0.9;
+            }
+            70% {
+                transform: translate(-50%, -50%) scale(1.02) rotate(0.5deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(-50%, -50%) scale(1) rotate(0deg);
+                opacity: 1;
+            }
+        }
+
+        @keyframes streamlabsExit {
+            0% {
+                transform: translate(-50%, -50%) scale(1) rotate(0deg);
+                opacity: 1;
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(1.05) rotate(2deg);
+                opacity: 0.8;
+            }
+            100% {
+                transform: translate(-50%, -50%) scale(0.8) rotate(10deg);
+                opacity: 0;
+            }
+        }
+
+        @keyframes progressFill {
+            from { transform: scaleX(0); }
+            to { transform: scaleX(1); }
+        }
+
+        @keyframes glowPulse {
+            0%, 100% {
+                box-shadow: 0 0 20px rgba(145, 71, 255, 0.6),
+                            0 0 40px rgba(145, 71, 255, 0.4),
+                            0 0 60px rgba(145, 71, 255, 0.2);
+            }
+            50% {
+                box-shadow: 0 0 30px rgba(145, 71, 255, 0.8),
+                            0 0 60px rgba(145, 71, 255, 0.6),
+                            0 0 90px rgba(145, 71, 255, 0.4);
+            }
+        }
+
+        /* Alert types */
+        .alert-follower {
+            background: linear-gradient(135deg, rgba(145, 71, 255, 0.95), rgba(119, 44, 232, 0.95));
+        }
+
+        .alert-subscriber {
+            background: linear-gradient(135deg, rgba(255, 165, 0, 0.95), rgba(255, 140, 0, 0.95));
+        }
+
+        .alert-bits {
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.95), rgba(0, 200, 100, 0.95));
+        }
+
+        .alert-donation {
+            background: linear-gradient(135deg, rgba(255, 69, 69, 0.95), rgba(220, 20, 60, 0.95));
+        }
+
+        .alert-raid {
+            background: linear-gradient(135deg, rgba(255, 105, 180, 0.95), rgba(255, 20, 147, 0.95));
+        }
+
+        /* Connection Status */
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 9999;
+            display: none;
+        }
+
+        #connection-status.error {
+            color: #ff0000;
+        }
+    </style>
+</head>
+<body>
+    <div id="connection-status">Connecting...</div>
+
+    <!-- Alert Container -->
+    <div class="alert-container" id="alert-container">
+        <div class="alert-content" id="alert-content">
+            <!-- Avatar -->
+            <div class="alert-avatar" id="alert-avatar">
+                <span id="avatar-letter">?</span>
+            </div>
+
+            <!-- Text Content -->
+            <div class="alert-text-content">
+                <div class="alert-title" id="alert-title">Alert Title</div>
+                <div class="alert-message" id="alert-message">Alert message here</div>
+                <div class="alert-amount" id="alert-amount" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="alert-progress" id="alert-progress"></div>
+    </div>
+
+    <!-- Sound indicator -->
+    <div class="sound-indicator" id="sound-indicator" style="display: none;">
+        🔊
+    </div>
+
+    <script>
+        // Alert Overlay Configuration
+        const ALERT_CONFIG = {
+            name: 'alert',
+            defaultDuration: 5000,
+            soundEnabled: true
+        };
+
+        // Global variables
+        let alertWS = null;
+        let currentAlert = null;
+        let alertQueue = [];
+        let isPlaying = false;
+
+        // Initialize overlay
+        function initAlertOverlay() {
+            console.log('🚨 Initializing Alert Overlay');
+            connectWebSocket();
+            showConnectionStatus('🔄 Connecting...', 'warning');
+        }
+
+        // WebSocket connection
+        function connectWebSocket() {
+            try {
+                const wsUrl = `ws://localhost:8080?overlay=${ALERT_CONFIG.name}`;
+                console.log('🔗 Connecting alert overlay to:', wsUrl);
+
+                alertWS = new WebSocket(wsUrl);
+
+                alertWS.onopen = function() {
+                    console.log('✅ Alert overlay WebSocket connected');
+                    showConnectionStatus('✅ Connected', 'success');
+                };
+
+                alertWS.onmessage = function(event) {
+                    try {
+                        const payload = JSON.parse(event.data);
+                        console.log('🚨 Alert received:', payload.type, payload);
+
+                        if (payload.type === 'alert') {
+                            showAlert(payload);
+                        } else if (payload.type === 'clear') {
+                            hideAlert();
+                        }
+                    } catch (error) {
+                        console.error('❌ Error parsing alert message:', error);
+                    }
+                };
+
+                alertWS.onclose = function(event) {
+                    console.log('🔌 Alert overlay WebSocket disconnected');
+                    showConnectionStatus('❌ Disconnected', 'error');
+                };
+
+                alertWS.onerror = function(error) {
+                    console.error('❌ Alert overlay WebSocket error:', error);
+                    showConnectionStatus('❌ Connection Error', 'error');
+                };
+
+            } catch (error) {
+                console.error('❌ Failed to create alert WebSocket connection:', error);
+                showConnectionStatus('❌ Connection Failed', 'error');
+            }
+        }
+
+        // Show connection status
+        function showConnectionStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('connection-status');
+            if (!statusDiv) return;
+
+            statusDiv.textContent = message;
+            statusDiv.className = type === 'success' ? '' : type;
+            statusDiv.style.display = 'block';
+
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // Show alert with Streamlabs-style animation
+        function showAlert(payload) {
+            console.log('🎉 Showing alert:', payload);
+
+            const container = document.getElementById('alert-container');
+            const content = document.getElementById('alert-content');
+            const title = document.getElementById('alert-title');
+            const message = document.getElementById('alert-message');
+            const amount = document.getElementById('alert-amount');
+            const avatar = document.getElementById('alert-avatar');
+            const avatarLetter = document.getElementById('avatar-letter');
+            const progress = document.getElementById('alert-progress');
+            const soundIndicator = document.getElementById('sound-indicator');
+
+            // Set alert type styling
+            const alertType = payload.alertType || payload.type || 'follower';
+            content.className = `alert-content alert-${alertType}`;
+
+            // Set title and message
+            title.textContent = getAlertTitle(payload);
+            message.textContent = getAlertMessage(payload);
+
+            // Handle amount for donations/bits
+            if (payload.amount || payload.bits) {
+                amount.textContent = payload.amount || payload.bits;
+                amount.style.display = 'inline';
+            } else {
+                amount.style.display = 'none';
+            }
+
+            // Set avatar (use first letter of username or default)
+            const username = payload.user || payload.username || payload.displayName || 'User';
+            avatarLetter.textContent = username.charAt(0).toUpperCase();
+
+            // Show sound indicator if audio is present
+            if (payload.audio || payload.sound) {
+                soundIndicator.style.display = 'block';
+                setTimeout(() => {
+                    soundIndicator.style.display = 'none';
+                }, 2000);
+            }
+
+            // Add entry animation
+            container.style.display = 'block';
+            container.style.animation = 'streamlabsEntry 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards';
+
+            // Add glow effect
+            content.style.animation = 'glowPulse 2s infinite';
+
+            // Handle duration and progress bar
+            const duration = payload.duration || payload.durationMs || ALERT_CONFIG.defaultDuration;
+
+            if (duration > 0) {
+                progress.style.animation = `progressFill ${duration}ms linear forwards`;
+
+                setTimeout(() => {
+                    hideAlert();
+                }, duration);
+            }
+
+            currentAlert = payload;
+        }
+
+        // Hide alert with exit animation
+        function hideAlert() {
+            const container = document.getElementById('alert-container');
+            const content = document.getElementById('alert-content');
+            const progress = document.getElementById('alert-progress');
+
+            if (container.style.display !== 'none') {
+                // Add exit animation
+                container.style.animation = 'streamlabsExit 0.6s ease-in-out forwards';
+
+                // Clear animations
+                content.style.animation = '';
+                progress.style.animation = '';
+
+                setTimeout(() => {
+                    container.style.display = 'none';
+                    container.style.animation = '';
+                }, 600);
+            }
+
+            currentAlert = null;
+        }
+
+        // Get alert title based on type
+        function getAlertTitle(payload) {
+            const alertType = payload.alertType || payload.type;
+
+            switch (alertType) {
+                case 'follower':
+                case 'follow':
+                    return 'New Follower!';
+                case 'subscriber':
+                case 'sub':
+                    return payload.isGift ? 'Gift Subscription!' : 'New Subscriber!';
+                case 'resubscriber':
+                case 'resub':
+                    return 'Resubscribed!';
+                case 'gift-sub':
+                    return 'Gift Sub Received!';
+                case 'raid':
+                    return 'Incoming Raid!';
+                case 'bits':
+                case 'cheer':
+                    return 'Bits Cheer!';
+                case 'donation':
+                    return 'Donation Received!';
+                case 'channel-points':
+                    return 'Channel Points Redeemed!';
+                default:
+                    return payload.title || 'Alert!';
+            }
+        }
+
+        // Get alert message
+        function getAlertMessage(payload) {
+            const username = payload.user || payload.username || payload.displayName || 'Someone';
+
+            if (payload.message) {
+                return `${username}: ${payload.message}`;
+            }
+
+            switch (payload.alertType || payload.type) {
+                case 'follower':
+                case 'follow':
+                    return `${username} just followed!`;
+                case 'subscriber':
+                case 'sub':
+                    return payload.isGift ? `${username} gifted a subscription!` : `${username} just subscribed!`;
+                case 'resubscriber':
+                case 'resub':
+                    return `${username} resubscribed for ${payload.months || 1} months!`;
+                case 'gift-sub':
+                    return `${username} received a gift subscription!`;
+                case 'raid':
+                    return `${username} raided with ${payload.viewers || 0} viewers!`;
+                case 'bits':
+                case 'cheer':
+                    return `${username} cheered ${payload.bits || payload.amount || 0} bits!`;
+                case 'donation':
+                    return `${username} donated $${payload.amount || 0}!`;
+                case 'channel-points':
+                    return `${username} redeemed: ${payload.reward || 'Unknown'}`;
+                default:
+                    return payload.text || `${username} triggered an alert!`;
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initAlertOverlay);
+
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (alertWS) {
+                alertWS.close();
+            }
+        });
+    </script>
+</body>
+</html>

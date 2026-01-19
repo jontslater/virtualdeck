@@ -159,4 +159,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getProgressionLeaderboard: async (progressionId) => ipcRenderer.invoke('get-progression-leaderboard', progressionId),
   saveProgressionMedia: async (mediaData) => ipcRenderer.invoke('save-progression-media', mediaData),
   incrementProgression: (data) => ipcRenderer.send('progression-increment', data),
+  // OAuth functionality
+  startOAuthLogin: () => ipcRenderer.send('twitch-start-oauth-login'),
+  logoutOAuth: () => ipcRenderer.send('twitch-logout'),
+  getOAuthConfig: async () => ipcRenderer.invoke('twitch-get-oauth-config'),
+  setOAuthConfig: (config) => ipcRenderer.send('twitch-set-oauth-config', config),
+  startOAuthServer: () => ipcRenderer.send('twitch-start-oauth-server'),
+  stopOAuthServer: () => ipcRenderer.send('twitch-stop-oauth-server'),
+  onOAuthSuccess: (callback) => ipcRenderer.on('twitch-oauth-success', (event, data) => callback(data)),
+  onOAuthError: (callback) => ipcRenderer.on('twitch-oauth-error', (event, error) => callback(error)),
+  onOAuthLogoutSuccess: (callback) => ipcRenderer.on('twitch-logout-success', callback),
+  // Alert and effects system
+  triggerAlert: (alertData) => ipcRenderer.send('trigger-alert', alertData),
+  triggerConfetti: (confettiData) => ipcRenderer.send('trigger-confetti', confettiData),
 });

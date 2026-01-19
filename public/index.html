@@ -1110,6 +1110,8 @@
         <h4>Custom Overlay Management</h4>
         <div class="overlay-info">
           <p><strong>Note:</strong> All overlays are configured for 1920x1080 resolution.</p>
+          <p><strong>Predefined Overlays:</strong> Alert Overlay and Confetti Overlay are built-in and ready to use immediately.</p>
+          <p><strong>Custom Overlays:</strong> Create your own overlays using the templates above.</p>
         </div>
         <div class="overlay-management">
           <div class="overlay-create">
@@ -1117,6 +1119,8 @@
             <select id="overlay-template" class="custom-select">
               <option value="center-media">Center Media (Current)</option>
               <option value="fullscreen-media">Full Screen Media</option>
+              <option value="alert">Alert Overlay (Streamlabs-style)</option>
+              <option value="confetti">Confetti Overlay (Celebration)</option>
             </select>
             <button id="create-overlay" class="overlay-action-btn">Create Overlay</button>
           </div>
@@ -1124,8 +1128,10 @@
             <label for="overlay-select">Select Overlay:</label>
             <select id="overlay-select" class="custom-select">
               <option value="main">Main Overlay</option>
+              <option value="alertOverlay">Alert Overlay (Predefined)</option>
+              <option value="confettiOverlay">Confetti Overlay (Predefined)</option>
             </select>
-            <button id="delete-overlay" class="overlay-action-btn danger">Delete Selected</button>
+            <button id="delete-overlay" class="overlay-action-btn danger" title="Only custom overlays can be deleted">Delete Selected</button>
           </div>
           <div class="overlay-url-display">
             <label>Overlay URL:</label>
