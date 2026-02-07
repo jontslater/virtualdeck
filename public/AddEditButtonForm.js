@@ -100,17 +100,14 @@ class AddEditButtonForm {
     // URL inputs
     this.setupUrlInputs();
 
-    // Preview button
-    const previewBtn = document.getElementById('preview-in-overlay');
-    if (previewBtn) {
-      previewBtn.addEventListener('click', () => this.previewInOverlay());
-    }
-
     // Live preview updates
     this.setupLivePreview();
 
     // Hotkey recording
     this.setupHotkeyRecording();
+
+    // Chat command toggle
+    this.setupChatCommandToggle();
   }
 
   setupTabSwitching() {
@@ -424,7 +421,7 @@ class AddEditButtonForm {
       name: name || `Media ${Date.now()}`,
       loop: type === 'video' ? false : undefined,
       volume: type === 'audio' ? 100 : undefined,
-      widthPct: type === 'image' || type === 'video' ? 100 : undefined
+      widthPct: type === 'image' || type === 'video' ? 100 : undefined,
     };
 
     if (type === 'image') {
@@ -446,6 +443,15 @@ class AddEditButtonForm {
     if (!container) return;
 
     container.innerHTML = '';
+
+    // Add audio note for audio lists
+    if (type === 'audio' && items.length > 0) {
+      const audioNote = document.createElement('div');
+      audioNote.className = 'audio-note';
+      audioNote.style.cssText = 'margin-bottom: 10px; padding: 8px; background: rgba(0, 150, 255, 0.1); border: 1px solid rgba(0, 150, 255, 0.3); border-radius: 4px; font-size: 12px; color: #4fc3f7; text-align: center;';
+      audioNote.textContent = '🔊 Audio plays through the overlay in OBS';
+      container.appendChild(audioNote);
+    }
 
     items.forEach((item, index) => {
       const mediaItem = document.createElement('div');
@@ -484,6 +490,10 @@ class AddEditButtonForm {
             <label><input type="checkbox" class="loop-toggle" ${item.loop ? 'checked' : ''} /> Loop</label>
             <input type="range" class="width-slider" min="10" max="100" value="${item.widthPct}" />
             <span class="width-value">${item.widthPct}%</span>
+          ` : type === 'video' ? `
+            <label><input type="checkbox" class="loop-toggle" ${item.loop ? 'checked' : ''} /> Loop</label>
+          ` : type === 'image' ? `
+            <!-- No audio controls for images -->
           ` : `
             <input type="range" class="volume-slider" min="0" max="100" value="${item.volume || 100}" />
             <span class="volume-value">${item.volume || 100}%</span>
@@ -528,14 +538,30 @@ class AddEditButtonForm {
           widthValue.textContent = `${item.widthPct}%`;
           this.updatePreview();
         });
+      } else if (type === 'video') {
+        // Video-specific controls
+        const loopToggle = mediaItem.querySelector('.loop-toggle');
+
+        if (loopToggle) {
+          loopToggle.addEventListener('change', (e) => {
+            item.loop = e.target.checked;
+          });
+        }
+
+      } else if (type === 'image') {
+        // Images don't have any additional controls
+
       } else {
+        // Audio controls
         const volumeSlider = mediaItem.querySelector('.volume-slider');
         const volumeValue = mediaItem.querySelector('.volume-value');
 
-        volumeSlider.addEventListener('input', (e) => {
-          item.volume = parseInt(e.target.value);
-          volumeValue.textContent = `${item.volume}%`;
-        });
+        if (volumeSlider && volumeValue) {
+          volumeSlider.addEventListener('input', (e) => {
+            item.volume = parseInt(e.target.value);
+            volumeValue.textContent = `${item.volume}%`;
+          });
+        }
       }
 
       removeBtn.addEventListener('click', () => {
@@ -555,12 +581,19 @@ class AddEditButtonForm {
     const preview = document.getElementById('button-preview');
     if (!preview) return;
 
-    try {
-      const payload = await this.getFormData();
-      preview.innerHTML = this.renderPreview(payload);
-    } catch (error) {
-      preview.innerHTML = `<div class="error">${error.message}</div>`;
+    // Debounce preview updates to avoid lag on every keystroke
+    if (this.previewTimeout) {
+      clearTimeout(this.previewTimeout);
     }
+    
+    this.previewTimeout = setTimeout(async () => {
+      try {
+        const payload = await this.getFormData(true); // Pass true to skip file processing for preview
+        preview.innerHTML = this.renderPreview(payload);
+      } catch (error) {
+        preview.innerHTML = `<div class="error">${error.message}</div>`;
+      }
+    }, 300); // Wait 300ms after user stops typing
   }
 
   renderPreview(payload) {
@@ -646,16 +679,13 @@ class AddEditButtonForm {
         mediaElement.style.zIndex = index + 1;
         
         if (mediaItem.type === 'image') {
-          const img = document.createElement('img');
-          // Handle File objects and URL strings
-          img.src = mediaItem.src instanceof File ? URL.createObjectURL(mediaItem.src) : mediaItem.src;
-          img.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain; display: block;';
-          img.alt = mediaItem.alt || 'Preview Image';
-          mediaElement.appendChild(img);
+          // Just show "IMAGE" text instead of trying to display it
+          mediaElement.textContent = '🖼️ IMAGE';
+          mediaElement.style.cssText = 'display: flex; align-items: center; justify-content: center; background: #333; color: white; font-weight: bold; font-size: 12px;';
         } else if (mediaItem.type === 'video') {
           // Just show "VIDEO" text instead of trying to play it
           mediaElement.textContent = '🎬 VIDEO';
-          mediaElement.style.cssText = 'display: flex; align-items: center; justify-content: center; background: #333; color: white; font-weight: bold; font-size: 14px;';
+          mediaElement.style.cssText = 'display: flex; align-items: center; justify-content: center; background: #333; color: white; font-weight: bold; font-size: 12px;';
         } else {
           mediaElement.textContent = 'Media';
         }
@@ -669,7 +699,7 @@ class AddEditButtonForm {
     return overlay.outerHTML;
   }
 
-  async getFormData() {
+  async getFormData(isPreview = false) {
     const name = document.getElementById('multi-media-button-name')?.value || '';
     const hotkey = document.getElementById('multi-media-hotkey-input')?.value || '';
     const durationInput = document.getElementById('multi-media-duration-input');
@@ -685,15 +715,20 @@ class AddEditButtonForm {
     }
 
     // Get global styling options first
+    const fontFamilyElement = document.getElementById('multi-media-font-family');
     const textStyling = {
       position: document.getElementById('multi-media-text-position')?.value || 'topCenter',
-      fontFamily: document.getElementById('multi-media-font-family')?.value || 'Arial, sans-serif',
+      fontFamily: fontFamilyElement?.value || 'Arial, sans-serif',
       fontSize: document.getElementById('multi-media-font-size')?.value + 'px' || '24px',
       fontWeight: document.getElementById('multi-media-font-weight')?.value || '700',
       color: document.getElementById('multi-media-text-color')?.value || '#ffffff',
       textShadow: document.getElementById('multi-media-text-shadow')?.value || '1px 1px 2px rgba(0,0,0,0.8)',
       textStroke: document.getElementById('multi-media-text-stroke')?.value || '1px #000'
     };
+    
+    console.log('🎨 Font Family Element:', fontFamilyElement);
+    console.log('🎨 Font Family Value:', fontFamilyElement?.value);
+    console.log('🎨 Text Styling:', textStyling);
 
     const animation = {
       type: document.getElementById('multi-media-animation')?.value || 'none',
@@ -725,6 +760,9 @@ class AddEditButtonForm {
         zIndex: '1'
       };
       
+      console.log('📝 Building slot style:', style);
+      console.log('📝 Font family in style:', style.fontFamily);
+      
       slots[position] = {
         text: overlayText,
         style: style,
@@ -736,6 +774,8 @@ class AddEditButtonForm {
           timingFunction: animation.easing
         } : null
       };
+      
+      console.log('📝 Slot created:', slots[position]);
     }
 
     // Helper function to convert File to base64
@@ -750,12 +790,45 @@ class AddEditButtonForm {
 
     // Helper function to save media file and get path
     const saveMediaFile = async (file, mediaType, buttonId) => {
-      if (!window.electronAPI || !window.electronAPI.saveMediaFile) {
-        console.warn('saveMediaFile API not available, falling back to base64');
+      console.log(`🔧 saveMediaFile called:`, { file: file.name, mediaType, buttonId, fileSize: file.size });
+      
+      if (!window.electronAPI) {
+        console.warn('electronAPI not available, falling back to base64');
         return await fileToBase64(file);
       }
 
       try {
+        // For video files (which can be large), use path-based copying if available
+        // This avoids converting large files to base64 in the renderer process
+        const isLargeFile = file.size > 10 * 1024 * 1024; // Files larger than 10MB
+        const isVideo = mediaType === 'video';
+        
+        if ((isVideo || isLargeFile) && file.path && window.electronAPI.saveMediaFileByPath) {
+          console.log(`Using efficient path-based copy for ${mediaType} file (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+          
+          const result = await window.electronAPI.saveMediaFileByPath({
+            sourcePath: file.path,
+            buttonId: buttonId,
+            mediaType: mediaType,
+            originalName: file.name
+          });
+
+          if (result.success) {
+            console.log(`Media file copied to: ${result.filePath}`);
+            return result.filePath; // Return relative path
+          } else {
+            console.error('Failed to copy media file:', result.error);
+            // Fall through to base64 method
+          }
+        }
+        
+        // For smaller files or if path-based method fails, use base64 method
+        if (!window.electronAPI.saveMediaFile) {
+          console.warn('saveMediaFile API not available, falling back to base64');
+          return await fileToBase64(file);
+        }
+        
+        console.log(`Using base64 method for ${mediaType} file (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
         const base64Data = await fileToBase64(file);
         const result = await window.electronAPI.saveMediaFile({
           base64Data: base64Data,
@@ -769,12 +842,11 @@ class AddEditButtonForm {
           return result.filePath; // Return relative path
         } else {
           console.error('Failed to save media file:', result.error);
-          return base64Data; // Fallback to base64
+          throw new Error(`Failed to save media file: ${result.error}`);
         }
       } catch (error) {
         console.error('Error saving media file:', error);
-        const base64Data = await fileToBase64(file);
-        return base64Data; // Fallback to base64
+        throw new Error(`Failed to save media file: ${error.message}`);
       }
     };
 
@@ -789,8 +861,19 @@ class AddEditButtonForm {
       if (item.src) {
         let src = item.src;
         if (item.src instanceof File) {
-          // Save file to media folder
-          src = await saveMediaFile(item.src, 'image', buttonId);
+          if (isPreview) {
+            // For preview, just use a placeholder instead of processing the file
+            src = 'preview-placeholder';
+          } else {
+            // Save file to media folder
+            try {
+              src = await saveMediaFile(item.src, 'image', buttonId);
+            } catch (error) {
+              console.error(`❌ Failed to save image file:`, error);
+              alert(`Failed to save image file: ${error.message}`);
+              throw error;
+            }
+          }
         }
         centerMedia.push({
           id: `m${index + 1}`,
@@ -809,8 +892,19 @@ class AddEditButtonForm {
       if (item.src) {
         let src = item.src;
         if (item.src instanceof File) {
-          // Save file to media folder
-          src = await saveMediaFile(item.src, 'video', buttonId);
+          if (isPreview) {
+            // For preview, just use a placeholder instead of processing the file
+            src = 'preview-placeholder';
+          } else {
+            // Save file to media folder
+            try {
+              src = await saveMediaFile(item.src, 'video', buttonId);
+            } catch (error) {
+              console.error(`❌ Failed to save video file:`, error);
+              alert(`Failed to save video file: ${error.message}`);
+              throw error;
+            }
+          }
         }
         centerMedia.push({
           id: `v${index + 1}`,
@@ -824,20 +918,51 @@ class AddEditButtonForm {
       }
     }
 
-    return {
+    // Get chat command settings
+    const chatCommandEnabled = document.getElementById('multi-media-chat-command-enabled')?.checked || false;
+    const chatCommandKeyword = document.getElementById('multi-media-chat-command-keyword')?.value?.trim() || '';
+    const redeemName = document.getElementById('multi-media-redeem-name')?.value?.trim() || '';
+    
+    // Get trigger method selection
+    const triggerMethodRadio = document.querySelector('input[name="multi-media-trigger-method"]:checked');
+    const triggerMethod = triggerMethodRadio?.value || 'command';
+    console.log(`🔍 AddEditButtonForm selected trigger method radio:`, triggerMethodRadio);
+    console.log(`🔍 AddEditButtonForm selected trigger method value:`, triggerMethod);
+    
+    // Get overlay selection
+    const overlaySelect = document.getElementById('multi-media-overlay-select')?.value || 'main';
+    console.log('🔍 Overlay select element:', document.getElementById('multi-media-overlay-select'));
+    console.log('🔍 Overlay select value:', overlaySelect);
+
+    const buttonData = {
       id: this.editingId || `multi-media-${Date.now()}`,
       name: name,
       type: 'multi-media',
       hotkey: hotkey,
+      overlay: overlaySelect,
       slots,
       centerMedia,
+      fullscreenMedia: [], // New: fullscreen media support
       textStyling: textStyling,
       animation: animation,
       audio: await Promise.all(this.audio.filter(item => item.src).map(async (item, index) => {
         let src = item.src;
         if (item.src instanceof File) {
-          // Save file to media folder
+          if (isPreview) {
+            // For preview, just use a placeholder instead of processing the file
+            src = 'preview-placeholder';
+          } else {
+        // Save file to media folder
+        console.log(`🎵 Saving audio file:`, { file: item.src, buttonId, mediaType: 'audio' });
+        try {
           src = await saveMediaFile(item.src, 'audio', buttonId);
+          console.log(`🎵 Audio file saved with src:`, src);
+        } catch (error) {
+          console.error(`❌ Failed to save audio file:`, error);
+          alert(`Failed to save audio file: ${error.message}`);
+          throw error; // Re-throw to prevent button creation with invalid data
+        }
+          }
         }
         return {
           id: `a${index + 1}`,
@@ -853,21 +978,21 @@ class AddEditButtonForm {
       isEditing: this.isEditing,
       editingId: this.editingId
     };
-  }
 
-  async previewInOverlay() {
-    try {
-      const payload = await this.getFormData();
-      
-      if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-        window.electronAPI.sendOverlayMessage(payload);
-        console.log('Preview sent to overlay:', payload);
-      } else {
-        console.error('Overlay API not available');
-      }
-    } catch (error) {
-      alert(error.message);
+    // Add chat command data if enabled
+    if (chatCommandEnabled && (chatCommandKeyword || redeemName)) {
+      buttonData.chatCommand = {
+        enabled: true,
+        keyword: chatCommandKeyword.toLowerCase(),
+        redeemName: redeemName,
+        triggerMethod: triggerMethod
+      };
+      console.log(`🔍 AddEditButtonForm saving button with chatCommand:`, buttonData.chatCommand);
     }
+
+    console.log('🔍 Final button data before saving:', buttonData);
+    console.log('🔍 Button overlay property:', buttonData.overlay);
+    return buttonData;
   }
 
   async handleMultiMediaSubmit(e) {
@@ -922,6 +1047,17 @@ class AddEditButtonForm {
       }
     });
 
+    // Reset chat command fields
+    const chatCommandEnabled = document.getElementById('multi-media-chat-command-enabled');
+    const chatCommandKeyword = document.getElementById('multi-media-chat-command-keyword');
+    const redeemName = document.getElementById('multi-media-redeem-name');
+    const chatCommandSettings = document.getElementById('multi-media-chat-command-settings');
+    
+    if (chatCommandEnabled) chatCommandEnabled.checked = false;
+    if (chatCommandKeyword) chatCommandKeyword.value = '';
+    if (redeemName) redeemName.value = '';
+    if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+
     // Update UI
     document.getElementById('multi-media-modal-title').textContent = 'Create Multi-Media Button';
     this.renderMediaList('images-list', this.images, 'image');
@@ -969,6 +1105,13 @@ class AddEditButtonForm {
     // Set hotkey
     const hotkeyInput = document.getElementById('multi-media-hotkey-input');
     if (hotkeyInput) hotkeyInput.value = buttonData.hotkey || '';
+    
+    // Set overlay selection
+    const overlaySelect = document.getElementById('multi-media-overlay-select');
+    if (overlaySelect && buttonData.overlay) {
+      overlaySelect.value = buttonData.overlay;
+      console.log(`📝 [Edit] Setting overlay to: ${buttonData.overlay}`);
+    }
 
     // Set duration (convert from milliseconds to seconds)
     const durationInput = document.getElementById('multi-media-duration-input');
@@ -1062,6 +1205,129 @@ class AddEditButtonForm {
       const slotWithText = Object.values(buttonData.slots).find(slot => slot && slot.text);
       if (slotWithText) {
         overlayTextInput.value = slotWithText.text || '';
+        
+        // Populate styling fields if available
+        if (slotWithText.style) {
+          const style = slotWithText.style;
+          
+          // Font settings
+          if (style.fontFamily) {
+            const fontFamilySelect = document.getElementById('multi-media-font-family');
+            if (fontFamilySelect) fontFamilySelect.value = style.fontFamily;
+          }
+          if (style.fontSize) {
+            const fontSizeInput = document.getElementById('multi-media-font-size');
+            const fontSizeValue = document.getElementById('multi-media-font-size-value');
+            if (fontSizeInput) {
+              const size = parseInt(style.fontSize);
+              fontSizeInput.value = size;
+              if (fontSizeValue) fontSizeValue.textContent = size + 'px';
+            }
+          }
+          if (style.fontWeight) {
+            const fontWeightSelect = document.getElementById('multi-media-font-weight');
+            if (fontWeightSelect) fontWeightSelect.value = style.fontWeight;
+          }
+          if (style.color) {
+            const textColorInput = document.getElementById('multi-media-text-color');
+            if (textColorInput) textColorInput.value = style.color;
+          }
+          if (style.textShadow) {
+            const textShadowSelect = document.getElementById('multi-media-text-shadow');
+            if (textShadowSelect) textShadowSelect.value = style.textShadow;
+          }
+          if (style.webkitTextStroke) {
+            const textStrokeSelect = document.getElementById('multi-media-text-stroke');
+            if (textStrokeSelect) textStrokeSelect.value = style.webkitTextStroke;
+          }
+        }
+        
+        // Find which position the text is in
+        const slotPosition = Object.keys(buttonData.slots).find(
+          key => buttonData.slots[key] === slotWithText
+        );
+        if (slotPosition) {
+          const textPositionSelect = document.getElementById('multi-media-text-position');
+          if (textPositionSelect) textPositionSelect.value = slotPosition;
+        }
+        
+        // Populate animation fields if available
+        if (slotWithText.animation) {
+          const anim = slotWithText.animation;
+          if (anim.name) {
+            const animTypeSelect = document.getElementById('multi-media-animation');
+            if (animTypeSelect) animTypeSelect.value = anim.name;
+          }
+          if (anim.duration) {
+            const animDurationInput = document.getElementById('multi-media-animation-duration');
+            const animDurationValue = document.getElementById('multi-media-animation-duration-value');
+            if (animDurationInput) {
+              const duration = parseFloat(anim.duration);
+              animDurationInput.value = duration;
+              if (animDurationValue) animDurationValue.textContent = duration.toFixed(1) + 's';
+            }
+          }
+          if (anim.delay) {
+            const animDelayInput = document.getElementById('multi-media-animation-delay');
+            const animDelayValue = document.getElementById('multi-media-animation-delay-value');
+            if (animDelayInput) {
+              const delay = parseFloat(anim.delay);
+              animDelayInput.value = delay;
+              if (animDelayValue) animDelayValue.textContent = delay.toFixed(1) + 's';
+            }
+          }
+          if (anim.iterationCount) {
+            const animIterationSelect = document.getElementById('multi-media-animation-iteration');
+            if (animIterationSelect) animIterationSelect.value = anim.iterationCount;
+          }
+          if (anim.timingFunction) {
+            const animEasingSelect = document.getElementById('multi-media-animation-easing');
+            if (animEasingSelect) animEasingSelect.value = anim.timingFunction;
+          }
+        }
+      }
+    }
+
+    // Set chat command settings
+    const chatCommandEnabled = document.getElementById('multi-media-chat-command-enabled');
+    const chatCommandKeyword = document.getElementById('multi-media-chat-command-keyword');
+    const redeemName = document.getElementById('multi-media-redeem-name');
+    const chatCommandSettings = document.getElementById('multi-media-chat-command-settings');
+    
+    if (chatCommandEnabled && chatCommandKeyword && chatCommandSettings) {
+      if (buttonData.chatCommand && buttonData.chatCommand.enabled) {
+        chatCommandEnabled.checked = true;
+        if (chatCommandKeyword) chatCommandKeyword.value = buttonData.chatCommand.keyword || '';
+        if (redeemName) redeemName.value = buttonData.chatCommand.redeemName || '';
+        
+        // Sync dropdown if value exists
+        const redeemSelect = document.getElementById('multi-media-redeem-name-select');
+        if (redeemSelect && buttonData.chatCommand.redeemName) {
+          const matchingOption = Array.from(redeemSelect.options).find(
+            opt => opt.value === buttonData.chatCommand.redeemName
+          );
+          redeemSelect.value = matchingOption ? matchingOption.value : '';
+        }
+        
+        chatCommandSettings.style.display = 'block';
+        
+        // Set trigger method selection
+        const triggerMethod = buttonData.chatCommand.triggerMethod || 'command';
+        const triggerMethodRadio = document.querySelector(`input[name="multi-media-trigger-method"][value="${triggerMethod}"]`);
+        if (triggerMethodRadio) {
+          triggerMethodRadio.checked = true;
+        }
+      } else {
+        chatCommandEnabled.checked = false;
+        if (chatCommandKeyword) chatCommandKeyword.value = '';
+        if (redeemName) redeemName.value = '';
+        chatCommandSettings.style.display = 'none';
+        
+        // Reset to default trigger method
+        const defaultRadio = document.querySelector('input[name="multi-media-trigger-method"][value="command"]');
+        if (defaultRadio) {
+          defaultRadio.checked = true;
+        }
       }
     }
 
@@ -1331,6 +1597,21 @@ class AddEditButtonForm {
       }
     } catch (e) {
       console.error('Error stopping multi-media hotkey recorder:', e);
+    }
+  }
+
+  setupChatCommandToggle() {
+    const checkbox = document.getElementById('multi-media-chat-command-enabled');
+    const settings = document.getElementById('multi-media-chat-command-settings');
+    
+    if (checkbox && settings) {
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          settings.style.display = 'block';
+        } else {
+          settings.style.display = 'none';
+        }
+      });
     }
   }
 }

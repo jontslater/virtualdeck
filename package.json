@@ -1,12 +1,13 @@
 {
   "name": "virtualdeck",
-  "version": "1.1.00",
+  "version": "1.1.1",
   "description": "A virtual deck application built with Electron",
   "main": "main.js",
   "scripts": {
-  "start": "electron .",
-  "dist": "electron-builder",
-  "build:win": "electron-builder --win"
+    "start": "electron .",
+    "prepare-build": "node prepare-build.js",
+    "dist": "npm run prepare-build && electron-builder",
+    "build:win": "npm run prepare-build && electron-builder --win"
   },
   "keywords": [
     "electron",
@@ -17,12 +18,13 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^28.3.3",
+    "electron": "^39.0.0",
     "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "com.virtualdeck.app",
     "productName": "VirtualDeck",
+    "publish": null,
     "directories": {
       "output": "dist"
     },
@@ -30,8 +32,10 @@
       "main.js",
       "preload.js",
       "config.json",
-  "public/**/*",
-  "TwitchConnected/**/*",
+      "public/**/*",
+      "overlays/**/*",
+      "skins/**/*",
+      "TwitchConnected/**/*",
       "node_modules/**/*"
     ],
     "mac": {
@@ -58,7 +62,7 @@
     }
   },
   "dependencies": {
-    "extract-file-icon": "^0.3.2",
+    "electron-updater": "^6.6.2",
     "fs-extra": "^11.3.0",
     "tmi.js": "^1.8.5",
     "windows-shortcuts": "^0.1.6"

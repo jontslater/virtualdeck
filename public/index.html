@@ -44,6 +44,9 @@
         <button data-toggle="toggle-recent-activity" class="menu-dropdown-item" role="menuitem">Recent Activity</button>
         <button data-toggle="toggle-twitch-chat" class="menu-dropdown-item" role="menuitem">Twitch Chat</button>
         <button data-toggle="toggle-sound-controls" class="menu-dropdown-item" role="menuitem">Sound Controls</button>
+        <button data-toggle="toggle-queue-control" class="menu-dropdown-item" role="menuitem">Alert Queue</button>
+        <button data-toggle="toggle-profile-panel" class="menu-dropdown-item" role="menuitem">Profile Panel</button>
+        <button data-toggle="toggle-ai-management-panel" class="menu-dropdown-item" role="menuitem">AI Management Panel</button>
       </div>
     </div>
     <div class="menu-item" id="menu-tools" aria-haspopup="true">
@@ -51,6 +54,9 @@
       <div id="menu-tools-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Tools menu">
         <button id="menu-tools-overlay" class="menu-dropdown-item" role="menuitem">Overlay Controls</button>
         <button id="menu-tools-alerts" class="menu-dropdown-item" role="menuitem">Alert Widget</button>
+        <!-- Test Twitch Events button - commented out but function available via console: testTwitchEvents()
+        <button id="menu-tools-test-twitch" class="menu-dropdown-item" role="menuitem">🧪 Test Twitch Events</button>
+        -->
         <div class="menu-divider"></div>
         <button id="menu-tools-devtools" class="menu-dropdown-item" role="menuitem">Developer Tools</button>
         <button id="menu-tools-reload" class="menu-dropdown-item" role="menuitem">Reload Application</button>
@@ -76,6 +82,11 @@
     <div class="menu-item" id="menu-help" aria-haspopup="true">
       <button id="menu-help-btn" class="menu-button" aria-expanded="false" aria-controls="menu-help-dropdown">Help</button>
       <div id="menu-help-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Help menu">
+        <button id="menu-help-bug-report" class="menu-dropdown-item" role="menuitem">Report Bug</button>
+        <div class="menu-divider"></div>
+        <button id="menu-help-commands" class="menu-dropdown-item" role="menuitem">Chat Commands</button>
+        <button id="menu-help-placeholders" class="menu-dropdown-item" role="menuitem">Twitch Placeholders Guide</button>
+        <div class="menu-divider"></div>
         <button id="menu-help-about" class="menu-dropdown-item" role="menuitem">About</button>
       </div>
     </div>
@@ -83,6 +94,7 @@
 
   <!-- App toolbar (custom window controls) -->
   <div id="app-toolbar" class="app-toolbar" role="toolbar" aria-label="Window Controls">
+    <div class="beta-badge">BETA</div>
     <button id="btn-move" class="window-btn window-btn-move" title="Hold to Move Window" aria-label="Move">
       <span class="material-icons">open_with</span>
     </button>
@@ -98,37 +110,23 @@
   </div>
   
 
-  <!-- Component Visibility Dropdown -->
-  <div id="visibility-dropdown" class="visibility-dropdown visibility-menu hidden">
-    <button id="visibility-toggle" class="visibility-toggle-btn">⚙️ Components</button>
-    <div id="visibility-menu" class="visibility-menu hidden">
-      <div class="visibility-header">Show/Hide Components</div>
-      <label class="visibility-item">
-        <input type="checkbox" id="toggle-sound-grid" checked> Sound Grid
-      </label>
-      <label class="visibility-item">
-        <input type="checkbox" id="toggle-twitch-stats" checked> Twitch Statistics
-      </label>
-      <label class="visibility-item">
-        <input type="checkbox" id="toggle-recent-activity" checked> Recent Activity
-      </label>
-      <label class="visibility-item">
-        <input type="checkbox" id="toggle-twitch-chat" checked> Twitch Chat
-      </label>
-      <label class="visibility-item">
-        <input type="checkbox" id="toggle-sound-controls" checked> Sound Controls
-      </label>
-      <label class="visibility-item">
-        <!-- Move Bar removed -->
-      </label>
-      <div class="visibility-actions">
-        <button id="hide-all-components" class="visibility-action-btn">Hide All</button>
-        <button id="show-all-components" class="visibility-action-btn">Show All</button>
-      </div>
-      <div class="version-info">
-        <div class="version-label">App Version:</div>
-        <div class="version-value" id="app-version">Loading...</div>
-      </div>
+  <!-- Component Visibility System (checkboxes used by View menu) -->
+  <!-- Note: Visibility dropdown UI hidden - using View menu instead -->
+  <div id="visibility-dropdown" class="visibility-dropdown visibility-menu" style="display: none;">
+    <div id="visibility-menu" class="visibility-menu">
+      <!-- Hidden checkboxes that View menu items reference via data-toggle -->
+      <input type="checkbox" id="toggle-sound-grid" checked style="display: none;">
+      <input type="checkbox" id="toggle-twitch-stats" checked style="display: none;">
+      <input type="checkbox" id="toggle-recent-activity" checked style="display: none;">
+      <input type="checkbox" id="toggle-twitch-chat" checked style="display: none;">
+      <input type="checkbox" id="toggle-sound-controls" checked style="display: none;">
+      <input type="checkbox" id="toggle-queue-control" checked style="display: none;">
+      <input type="checkbox" id="toggle-profile-panel" checked style="display: none;">
+      <input type="checkbox" id="toggle-ai-management-panel" checked style="display: none;">
+      
+      <!-- Hidden buttons that View menu delegates to -->
+      <button id="hide-all-components" style="display: none;">Hide All</button>
+      <button id="show-all-components" style="display: none;">Show All</button>
     </div>
   </div>
   
@@ -187,6 +185,182 @@
       </div>
     </div>
 
+    <!-- Alert Queue Control Widget -->
+    <div id="queue-control-widget" class="queue-control-widget">
+      <div class="queue-widget-header">
+        <span class="queue-widget-title">Alert Queue</span>
+        <div class="queue-widget-status" id="queue-widget-status">0</div>
+      </div>
+      <div class="queue-widget-actions">
+        <button id="queue-widget-clear" class="queue-widget-btn" title="Clear Queue">
+          <span class="btn-icon">🗑️</span>
+          <span class="btn-label">Clear</span>
+        </button>
+        <button id="queue-widget-skip" class="queue-widget-btn" title="Skip Current">
+          <span class="btn-icon">⏭️</span>
+          <span class="btn-label">Skip</span>
+        </button>
+        <button id="queue-widget-stop" class="queue-widget-btn" title="Stop Current">
+          <span class="btn-icon">⏹️</span>
+          <span class="btn-label">Stop</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- AI Management Panel -->
+    <div id="ai-management-panel" class="ai-management-panel">
+      <div class="ai-management-header">
+        <span class="ai-management-icon">🤖</span>
+        <span class="ai-management-title">AI Control</span>
+      </div>
+      
+      <!-- AI On/Off Toggle -->
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 2px solid var(--accent-primary);">
+        <div style="flex: 1;">
+          <div style="font-size: 11px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">AI System</div>
+          <div id="ai-dashboard-toggle-status" style="font-size: 9px; color: var(--text-secondary);">Active</div>
+        </div>
+        <label id="ai-dashboard-toggle-container" style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+          <span id="ai-dashboard-toggle-label" style="font-size: 11px; font-weight: 700; color: var(--accent-primary); min-width: 30px; text-align: right;">ON</span>
+          <div id="ai-dashboard-toggle-switch" style="position: relative; width: 40px; height: 22px; background: var(--accent-primary); border-radius: 11px; transition: all 0.3s ease; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+            <div style="position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; background: white; border-radius: 50%; transition: all 0.3s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>
+          </div>
+        </label>
+      </div>
+      
+      <div class="ai-management-current">
+        <select id="ai-segment-selector" class="ai-management-selector" style="margin-bottom: 8px;">
+          <option value="normal">Normal Chat</option>
+          <option value="gaming">Gaming</option>
+          <option value="just-chatting">Just Chatting</option>
+          <option value="special-event">Special Event</option>
+          <option value="hype">Hype Mode</option>
+        </select>
+        <select id="ai-mode-selector" class="ai-management-selector">
+          <option value="CHILL">Chill</option>
+          <option value="HYPE">Hype</option>
+          <option value="QA">Q&A</option>
+          <option value="STORYTIME">Storytime</option>
+          <option value="DND">D&D</option>
+          <option value="AFK">AFK</option>
+          <option value="SAFE">Safe</option>
+          <option value="MUTED">Muted</option>
+        </select>
+      </div>
+
+      <!-- Manual TTS: type something and have Cashe say it out loud -->
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Manual Speak</div>
+        <div style="display: flex; gap: 8px;">
+          <input id="ai-say-text" type="text" placeholder="Type something for Cashe to say..." style="flex: 1; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 12px;" />
+          <button id="ai-say-btn" class="ai-management-btn" style="min-width: 80px; justify-content: center;" title="Make Cashe speak">
+            <span class="btn-icon">🗣️</span>
+            <span class="btn-label">Say</span>
+          </button>
+        </div>
+        <div style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Uses controller Dev API (default `http://localhost:3002/api/dev/speak`).</div>
+      </div>
+      <div class="ai-management-actions">
+        <button id="ai-trivia-btn" class="ai-management-btn" title="Open Trivia">
+          <span class="btn-icon">🎮</span>
+          <span class="btn-label">Trivia</span>
+        </button>
+        <button id="ai-qa-btn" class="ai-management-btn" title="Toggle Q&A Mode">
+          <span class="btn-icon">💬</span>
+          <span class="btn-label">Q&A</span>
+        </button>
+        <button id="ai-dnd-btn" class="ai-management-btn" title="D&D Campaign">
+          <span class="btn-icon">🎲</span>
+          <span class="btn-label">D&D</span>
+        </button>
+        <button id="ai-status-btn" class="ai-management-btn" title="AI Status">
+          <span class="btn-icon">📊</span>
+          <span class="btn-label">Status</span>
+        </button>
+        <button id="ai-settings-btn" class="ai-management-btn" title="AI Settings">
+          <span class="btn-icon">⚙️</span>
+          <span class="btn-label">Settings</span>
+        </button>
+      </div>
+      <!-- D&D Campaign Panel (hidden by default) -->
+      <div id="dnd-campaign-panel" class="dnd-campaign-panel" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h4 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--text-primary);">🎲 D&D Campaign</h4>
+          <div id="dnd-session-info" style="font-size: 10px; color: var(--text-tertiary);">Session 1</div>
+        </div>
+        
+        <!-- Party Display -->
+        <div id="dnd-party-display" style="margin-bottom: 12px;">
+          <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Party</div>
+          <div id="dnd-party-list" style="font-size: 11px; color: var(--text-secondary);">
+            No party loaded
+          </div>
+        </div>
+        
+        <!-- Campaign Info -->
+        <div id="dnd-campaign-info" style="margin-bottom: 12px; padding: 8px; background: var(--bg-primary); border-radius: 6px; font-size: 10px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div>
+              <span style="color: var(--text-tertiary);">Location:</span>
+              <span id="dnd-location" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">-</span>
+            </div>
+            <div>
+              <span style="color: var(--text-tertiary);">Gold:</span>
+              <span id="dnd-gold" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">-</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- D&D Controls -->
+        <div style="display: flex; gap: 6px;">
+          <button id="dnd-start-btn" class="ai-management-btn" style="flex: 1; padding: 8px; font-size: 11px;">
+            <span class="btn-icon">▶️</span>
+            <span class="btn-label">Start</span>
+          </button>
+          <button id="dnd-stop-btn" class="ai-management-btn" style="flex: 1; padding: 8px; font-size: 11px;" disabled>
+            <span class="btn-icon">⏹️</span>
+            <span class="btn-label">Stop</span>
+          </button>
+        </div>
+      </div>
+      <div id="ai-status-indicator" class="ai-status-indicator" style="margin-top: 12px; padding: 10px; background: var(--bg-secondary); border-radius: 6px; border: 1px solid var(--border-color); text-align: center;">
+        <div style="font-size: 9px; color: var(--text-tertiary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">AI Status</div>
+        <div id="ai-status-text" style="font-size: 13px; font-weight: 600; color: var(--text-primary); transition: color 0.3s;">💤 Idle</div>
+        <div id="ai-status-details" style="font-size: 9px; color: var(--text-tertiary); margin-top: 4px; min-height: 12px;"></div>
+      </div>
+    </div>
+
+    <!-- Profile Management Panel -->
+    <div id="profile-panel" class="profile-panel">
+      <div class="profile-header">
+        <span class="profile-icon">👤</span>
+        <span class="profile-title">Profile</span>
+      </div>
+      <div class="profile-current">
+        <select id="profile-selector" class="profile-selector">
+          <option value="default">Default Profile</option>
+        </select>
+      </div>
+      <div class="profile-actions">
+        <button id="profile-create" class="profile-btn" title="Create New Profile">
+          <span class="btn-icon">➕</span>
+          <span class="btn-label">New</span>
+        </button>
+        <button id="profile-duplicate" class="profile-btn" title="Duplicate Current Profile">
+          <span class="btn-icon">📋</span>
+          <span class="btn-label">Duplicate</span>
+        </button>
+        <button id="profile-rename" class="profile-btn" title="Rename Current Profile">
+          <span class="btn-icon">✏️</span>
+          <span class="btn-label">Rename</span>
+        </button>
+        <button id="profile-delete" class="profile-btn" title="Delete Current Profile">
+          <span class="btn-icon">🗑️</span>
+          <span class="btn-label">Delete</span>
+        </button>
+      </div>
+    </div>
+
     <div id="sound-controls" class="sound-controls">
       <button id="toggle-drag-mode" class="drag-toggle-btn" title="Toggle Drag Mode">
         🔒 Lock
@@ -237,6 +411,7 @@
           <div class="option-content">
             <div class="option-title">Audio Button</div>
             <div class="option-description">Play sound effects or music</div>
+            <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">🔊 Audio plays through overlay</div>
           </div>
         </button>
         <button class="selection-option" data-type="multi-media">
@@ -244,6 +419,7 @@
           <div class="option-content">
             <div class="option-title">Multi-Media Button</div>
             <div class="option-description">Text, images, videos, and audio combined</div>
+            <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">🔊 Audio plays through overlay</div>
           </div>
         </button>
       </div>
@@ -264,6 +440,43 @@
           <div id="hotkey-status"></div>
           <!-- modifier checkboxes removed — recorder captures modifiers live -->
         </label><br>
+        <label>
+          <input type="checkbox" id="chat-command-enabled" />
+          Enable Twitch Triggers
+        </label>
+        <div id="chat-command-settings" style="margin-top: 10px; padding-left: 20px; display: none;">
+          <label for="chat-command-keyword">Chat Command Keyword:
+            <input type="text" id="chat-command-keyword" placeholder="e.g., turnup" style="margin-left: 10px; width: 120px;" />
+            <small style="display: block; margin-top: 5px; color: #888;">Single word or phrase with no spaces (e.g., "turnup" for !turnup command)</small>
+          </label>
+          
+          <label for="redeem-name" style="display: block; margin-top: 15px;">Channel Point Redemption Name:
+            <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
+              <select id="redeem-name-select" style="flex: 1; padding: 6px;">
+                <option value="">-- Select or type manually --</option>
+              </select>
+              <button type="button" id="load-audio-redemptions" class="form-button" style="padding: 6px 12px; white-space: nowrap;">🔄 Load from Twitch</button>
+            </div>
+            <input type="text" id="redeem-name" placeholder="Or type custom redemption name" style="margin-top: 8px; width: 100%;" />
+            <small style="display: block; margin-top: 5px; color: #888;">Select from dropdown or type manually (exact name required)</small>
+          </label>
+          
+          <div style="margin-top: 15px;">
+            <label style="font-weight: 600; margin-bottom: 8px; display: block;">Trigger Methods:</label>
+            <label style="display: block; margin-bottom: 8px;">
+              <input type="radio" name="trigger-method" value="command" id="trigger-command-only" checked />
+              Chat Command Only (!keyword)
+            </label>
+            <label style="display: block; margin-bottom: 8px;">
+              <input type="radio" name="trigger-method" value="redeem" id="trigger-redeem-only" />
+              Channel Point Redemption Only
+            </label>
+            <label style="display: block; margin-bottom: 8px;">
+              <input type="radio" name="trigger-method" value="both" id="trigger-both" />
+              Both (Chat Command + Channel Point Redemption)
+            </label>
+          </div>
+        </div><br>
         <div id="audio-file-section">
           <label>File:
             <input type="file" name="file" id="file-input" accept="audio/*" required />
@@ -271,6 +484,26 @@
           </label>
           <label for="volume-input" class="volume-label">Volume: <span id="volume-value">100%</span></label>
           <input type="range" id="volume-input" name="volume" min="0" max="100" value="100" />
+          <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color, #333);">
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; cursor: pointer;">
+              <input type="checkbox" id="ai-allowed-checkbox" name="aiAllowed" />
+              <span>For AI use</span>
+            </label>
+            <div id="ai-description-container" style="display: none;">
+              <label for="ai-description-input" style="display: block; margin-bottom: 5px; font-size: 14px;">
+                Description for AI (when to use this sound):
+              </label>
+              <textarea 
+                id="ai-description-input" 
+                name="aiDescription" 
+                placeholder="e.g., Drum roll - use after jokes or punchlines"
+                style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid var(--border-color, #333); border-radius: 4px; background: var(--bg-primary, #000); color: var(--text-primary, #fff); font-size: 14px; font-family: inherit; resize: vertical;"
+              ></textarea>
+              <div style="margin-top: 5px; font-size: 12px; color: var(--text-secondary, #999);">
+                💡 Describe when Cashe should use this sound (e.g., "Celebration sound - use for subs, raids, big wins")
+              </div>
+            </div>
+          </div>
         </div>
         <div id="app-file-section">
           <label>App File:
@@ -294,6 +527,235 @@
         <img src="logo.png" alt="VirtualDeck" class="about-logo">
         <div id="about-version" class="about-version">Version: ...</div>
         <p id="about-desc" class="about-desc">Loading description...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Twitch Placeholders Guide Modal -->
+  <div id="placeholders-guide-modal" class="hidden">
+    <div class="modal-content placeholders-guide-content">
+      <div class="modal-header">
+        <h2>Twitch Placeholders Guide</h2>
+        <button id="placeholders-guide-close" class="modal-close">✕</button>
+      </div>
+      <div class="placeholders-guide-body">
+        <p style="margin-bottom: 15px; color: var(--text-secondary);">
+          Use these placeholders in your alert text and chat messages. They will be automatically replaced with real data when triggered.
+        </p>
+        
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">📺 All Twitch Events</h3>
+        <table class="placeholders-table">
+          <thead>
+            <tr>
+              <th>Placeholder</th>
+              <th>Description</th>
+              <th>Example</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Twitch username (lowercase)</td>
+              <td>tehchno</td>
+            </tr>
+            <tr>
+              <td><code>{display_name}</code> or <code>{displayName}</code></td>
+              <td>Display name (proper casing)</td>
+              <td>TehChno</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">👥 New Follower</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Username of new follower</td>
+              <td>coolviewer99</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">⭐ Subscriber / Resubscriber</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Subscriber username</td>
+              <td>loyalfan</td>
+            </tr>
+            <tr>
+              <td><code>{tier}</code></td>
+              <td>Subscription tier</td>
+              <td>1000 (Tier 1), 2000 (Tier 2), 3000 (Tier 3)</td>
+            </tr>
+            <tr>
+              <td><code>{months}</code></td>
+              <td>Cumulative months subscribed</td>
+              <td>12</td>
+            </tr>
+            <tr>
+              <td><code>{message}</code></td>
+              <td>Resub message (if provided)</td>
+              <td>Love this stream!</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">🎁 Gifted Subscription</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Username of gift giver</td>
+              <td>generousfan</td>
+            </tr>
+            <tr>
+              <td><code>{tier}</code></td>
+              <td>Subscription tier gifted</td>
+              <td>1000, 2000, 3000</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">🎯 Raid</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Username of raider</td>
+              <td>friendlystreamer</td>
+            </tr>
+            <tr>
+              <td><code>{viewers}</code></td>
+              <td>Number of raiders</td>
+              <td>250</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">💎 Bits / Cheer</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Username who cheered</td>
+              <td>bitsmaster</td>
+            </tr>
+            <tr>
+              <td><code>{bits}</code></td>
+              <td>Number of bits cheered</td>
+              <td>500</td>
+            </tr>
+            <tr>
+              <td><code>{message}</code></td>
+              <td>Cheer message (if provided)</td>
+              <td>Keep up the great work!</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">🚫 User Ban</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Username who was banned</td>
+              <td>baduser123</td>
+            </tr>
+            <tr>
+              <td><code>{moderator}</code></td>
+              <td>Moderator who issued the ban</td>
+              <td>modname</td>
+            </tr>
+            <tr>
+              <td><code>{reason}</code></td>
+              <td>Ban reason (if provided)</td>
+              <td>Spam</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">✅ Daily Check-In</h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td><code>{username}</code></td>
+              <td>Username who checked in</td>
+              <td>dailyviewer</td>
+            </tr>
+            <tr>
+              <td><code>{display_name}</code></td>
+              <td>Display name</td>
+              <td>DailyViewer</td>
+            </tr>
+            <tr>
+              <td><code>{total_checkins}</code></td>
+              <td><strong>Total times checked in (all time)</strong></td>
+              <td>42</td>
+            </tr>
+            <tr>
+              <td><code>{streak}</code></td>
+              <td>Consecutive days checked in</td>
+              <td>7</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">💡 Usage Examples</h3>
+        <div class="usage-examples">
+          <div class="example-item">
+            <strong>Follower Alert:</strong>
+            <code>Welcome {username}! Thanks for following!</code>
+            <div class="example-result">→ Welcome coolviewer99! Thanks for following!</div>
+          </div>
+          
+          <div class="example-item">
+            <strong>Subscriber Alert:</strong>
+            <code>{username} subscribed for {months} months!</code>
+            <div class="example-result">→ loyalfan subscribed for 12 months!</div>
+          </div>
+          
+          <div class="example-item">
+            <strong>Raid Alert:</strong>
+            <code>{username} raided with {viewers} viewers!</code>
+            <div class="example-result">→ friendlystreamer raided with 250 viewers!</div>
+          </div>
+          
+          <div class="example-item">
+            <strong>Daily Check-In:</strong>
+            <code>Welcome back {username}! You've checked in {total_checkins} times!</code>
+            <div class="example-result">→ Welcome back dailyviewer! You've checked in 42 times!</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 8px; border-left: 4px solid var(--accent);">
+          <strong>💡 Pro Tip:</strong> Placeholders are case-sensitive! Use exactly as shown above for them to work properly.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat Commands Guide Modal -->
+  <div id="commands-guide-modal" class="hidden">
+    <div class="modal-content placeholders-guide-content">
+      <div class="modal-header">
+        <h2>Chat Commands</h2>
+        <button id="commands-guide-close" class="modal-close">✕</button>
+      </div>
+      <div class="placeholders-guide-body">
+        <p style="margin-bottom: 15px; color: var(--text-secondary);">
+          Available chat commands viewers can use in your Twitch chat.
+        </p>
+        
+        <div id="commands-list">
+          <!-- Commands will be populated dynamically -->
+        </div>
+
+        <div style="margin-top: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 8px; border-left: 4px solid var(--accent);">
+          <strong>💡 Note:</strong> Commands are case-insensitive and must be typed exactly as shown (with the exclamation mark).
+        </div>
       </div>
     </div>
   </div>
@@ -322,6 +784,56 @@
             </label>
           </div>
 
+          <!-- Overlay Selection -->
+          <div class="form-section">
+            <label for="multi-media-overlay-select">Target Overlay:</label>
+            <select id="multi-media-overlay-select" name="overlay">
+              <option value="main">Main Overlay</option>
+            </select>
+            <small style="display: block; margin-top: 5px; color: #888;">Choose which overlay this button will send content to</small>
+          </div>
+
+          <!-- Chat Command -->
+          <div class="form-section">
+            <label>
+              <input type="checkbox" id="multi-media-chat-command-enabled" />
+              Enable Twitch Triggers
+            </label>
+            <div id="multi-media-chat-command-settings" style="margin-top: 10px; padding-left: 20px;">
+              <label for="multi-media-chat-command-keyword">Chat Command Keyword:
+                <input type="text" id="multi-media-chat-command-keyword" placeholder="e.g., turnup" style="margin-left: 10px; width: 120px;" />
+                <small style="display: block; margin-top: 5px; color: #888;">Single word or phrase with no spaces (e.g., "turnup" for !turnup command)</small>
+              </label>
+              
+              <label for="multi-media-redeem-name" style="display: block; margin-top: 15px;">Channel Point Redemption Name:
+                <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
+                  <select id="multi-media-redeem-name-select" style="flex: 1; padding: 6px;">
+                    <option value="">-- Select or type manually --</option>
+                  </select>
+                  <button type="button" id="load-multimedia-redemptions" class="form-button" style="padding: 6px 12px; white-space: nowrap;">🔄 Load from Twitch</button>
+                </div>
+                <input type="text" id="multi-media-redeem-name" placeholder="Or type custom redemption name" style="margin-top: 8px; width: 100%;" />
+                <small style="display: block; margin-top: 5px; color: #888;">Select from dropdown or type manually (exact name required)</small>
+              </label>
+              
+              <div style="margin-top: 15px;">
+                <label style="font-weight: 600; margin-bottom: 8px; display: block;">Trigger Methods:</label>
+                <label style="display: block; margin-bottom: 8px;">
+                  <input type="radio" name="multi-media-trigger-method" value="command" id="multi-media-trigger-command-only" checked />
+                  Chat Command Only (!keyword)
+                </label>
+                <label style="display: block; margin-bottom: 8px;">
+                  <input type="radio" name="multi-media-trigger-method" value="redeem" id="multi-media-trigger-redeem-only" />
+                  Channel Point Redemption Only
+                </label>
+                <label style="display: block; margin-bottom: 8px;">
+                  <input type="radio" name="multi-media-trigger-method" value="both" id="multi-media-trigger-both" />
+                  Both (Chat Command + Channel Point Redemption)
+                </label>
+              </div>
+            </div>
+          </div>
+
           <!-- Duration -->
           <div class="form-section">
             <label for="multi-media-duration-input">Display Duration (seconds): 
@@ -332,11 +844,12 @@
 
           <!-- Media Sources Tabs -->
           <div class="form-section">
-            <h3>Media Sources</h3>
+            <h3>Media Sources & Overlay Content</h3>
             <div class="media-tabs">
               <button type="button" class="tab-btn active" data-tab="images">Images</button>
               <button type="button" class="tab-btn" data-tab="videos">Videos</button>
               <button type="button" class="tab-btn" data-tab="audio">Audio</button>
+              <button type="button" class="tab-btn" data-tab="overlay-text">Overlay Text</button>
             </div>
             
             <!-- Images Tab -->
@@ -385,6 +898,9 @@
                   <div class="upload-icon">🎵</div>
                   <div class="upload-text">Click to select audio files or drag & drop</div>
                   <div class="upload-subtext">Supports MP3, WAV, OGG, M4A</div>
+                  <div class="upload-note" style="margin-top: 8px; padding: 6px; background: rgba(0, 150, 255, 0.1); border: 1px solid rgba(0, 150, 255, 0.3); border-radius: 4px; font-size: 12px; color: #4fc3f7;">
+                    🔊 Audio plays through the overlay in OBS
+                  </div>
                 </div>
                 <div class="url-input-group">
                   <input type="url" id="audio-url-input" placeholder="Or enter audio URL...">
@@ -395,23 +911,24 @@
                 <!-- Audio items will be added here dynamically -->
               </div>
             </div>
-          </div>
-
-          <!-- Overlay Text -->
-          <div class="form-section">
-            <label for="multi-media-overlay-text">Overlay Text (Optional):
-              <input type="text" id="multi-media-overlay-text" placeholder="Enter text to display on overlay..." />
-              <small>Text will be styled using the options below</small>
-            </label>
-          </div>
-
-          <!-- Text Styling & Animation Section -->
-          <div class="form-section text-styling-animation-section">
-            <h3>Text Styling & Animation</h3>
             
-            <!-- Row 1: Text Position | Font Family | Font Size -->
-            <div class="styling-row">
-              <div class="setting-group">
+            <!-- Overlay Text Tab -->
+            <div id="tab-overlay-text" class="tab-content">
+              <div class="overlay-text-section">
+                <div class="form-section">
+                  <label for="multi-media-overlay-text">Overlay Text:
+                    <input type="text" id="multi-media-overlay-text" placeholder="Enter text to display on overlay..." />
+                    <small>Text will be styled using the options below</small>
+                  </label>
+                </div>
+
+                <!-- Text Styling & Animation Section -->
+                <div class="form-section text-styling-animation-section">
+                  <h3>Text Styling & Animation</h3>
+                  
+                  <!-- Row 1: Text Position | Font Family | Font Size -->
+                  <div class="styling-row">
+                    <div class="setting-group">
                 <label for="multi-media-text-position">Text Position:</label>
                 <select id="multi-media-text-position">
                   <option value="topLeft">Top Left</option>
@@ -429,22 +946,25 @@
                 <label for="multi-media-font-family">Font Family:</label>
                 <select id="multi-media-font-family">
                   <option value="Arial, sans-serif">Arial</option>
-                  <option value="Helvetica, sans-serif">Helvetica</option>
-                  <option value="Georgia, serif">Georgia</option>
-                  <option value="Times New Roman, serif">Times New Roman</option>
-                  <option value="Courier New, monospace">Courier New</option>
-                  <option value="Verdana, sans-serif">Verdana</option>
-                  <option value="Roboto, sans-serif">Roboto</option>
-                  <option value="Open Sans, sans-serif">Open Sans</option>
-                  <option value="Lato, sans-serif">Lato</option>
-                  <option value="Montserrat, sans-serif">Montserrat</option>
-                  <option value="Oswald, sans-serif">Oswald</option>
-                  <option value="Raleway, sans-serif">Raleway</option>
-                  <option value="Poppins, sans-serif">Poppins</option>
-                  <option value="Nunito, sans-serif">Nunito</option>
-                  <option value="Ubuntu, sans-serif">Ubuntu</option>
-                  <option value="Playfair Display, serif">Playfair Display</option>
-                  <option value="Merriweather, serif">Merriweather</option>
+                  <option value="'Helvetica Neue', sans-serif">Helvetica</option>
+                  <option value="'Times New Roman', serif">Times New Roman</option>
+                  <option value="'Courier New', monospace">Courier New</option>
+                  <option value="'Georgia', serif">Georgia</option>
+                  <option value="'Verdana', sans-serif">Verdana</option>
+                  <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+                  <option value="'Impact', sans-serif">Impact</option>
+                  <option value="'Comic Sans MS', cursive">Comic Sans MS</option>
+                  <option value="'Roboto', sans-serif">Roboto</option>
+                  <option value="'Open Sans', sans-serif">Open Sans</option>
+                  <option value="'Lato', sans-serif">Lato</option>
+                  <option value="'Montserrat', sans-serif">Montserrat</option>
+                  <option value="'Oswald', sans-serif">Oswald</option>
+                  <option value="'Raleway', sans-serif">Raleway</option>
+                  <option value="'Poppins', sans-serif">Poppins</option>
+                  <option value="'Nunito', sans-serif">Nunito</option>
+                  <option value="'Ubuntu', sans-serif">Ubuntu</option>
+                  <option value="'Playfair Display', serif">Playfair Display</option>
+                  <option value="'Merriweather', serif">Merriweather</option>
                 </select>
               </div>
               
@@ -559,6 +1079,9 @@
                 </select>
               </div>
             </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Preview Section -->
@@ -567,7 +1090,6 @@
             <div id="button-preview" class="button-preview">
               <!-- Preview will be rendered here -->
             </div>
-            <button type="button" id="preview-in-overlay" class="preview-btn">Preview in Overlay</button>
           </div>
 
           <!-- Action Buttons -->
@@ -580,13 +1102,199 @@
     </div>
   </div>
 
+  <!-- Trivia Modal -->
+  <div id="trivia-modal" class="hidden">
+    <div class="modal-content trivia-modal-content">
+      <div class="modal-header">
+        <h2>🎮 Trivia System</h2>
+        <button id="trivia-modal-close" class="modal-close">✕</button>
+      </div>
+      <div class="trivia-modal-body" style="padding: 20px; max-height: 80vh; overflow-y: auto;">
+        <div class="overlay-info" style="margin-bottom: 16px;">
+          <p style="margin: 0; color: var(--text-secondary); font-size: 12px;"><strong>Automated trivia system</strong> with GPT-generated questions and bulk award system. Answers are auto-detected from chat messages.</p>
+        </div>
+        
+        <!-- Start Trivia Panel -->
+        <div id="trivia-start-panel" style="margin-top: 20px; padding: 16px; background: var(--bg-secondary); border-radius: 8px;">
+          <h5 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 14px; font-weight: 600;">Start Trivia Session</h5>
+          
+          <div class="setting-group" style="margin-bottom: 12px;">
+            <label for="trivia-category" style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 4px;">Category:</label>
+            <select id="trivia-category" class="custom-select" style="width: 100%;">
+              <option value="general">General Knowledge</option>
+              <option value="movies-tv">Movies & TV</option>
+              <option value="music">Music</option>
+              <option value="sports">Sports</option>
+              <option value="history">History</option>
+              <option value="pop-culture">Pop Culture</option>
+              <option value="fun">Fun & Random</option>
+              <option value="all">All Categories</option>
+              <option value="custom">Custom Category</option>
+            </select>
+            <input type="text" id="trivia-custom-category" class="custom-input" placeholder="Enter custom category..." style="width: 100%; margin-top: 8px; display: none;">
+          </div>
+          
+          <div class="setting-group" style="margin-bottom: 12px;">
+            <label for="trivia-difficulty" style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 4px;">Difficulty:</label>
+            <select id="trivia-difficulty" class="custom-select" style="width: 100%;">
+              <option value="easy">Easy</option>
+              <option value="medium" selected>Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
+          
+          <div class="setting-group" style="margin-bottom: 16px;">
+            <label for="trivia-question-count" style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 4px;">Number of Questions:</label>
+            <input type="number" id="trivia-question-count" value="10" min="5" max="50" class="custom-input" style="width: 100%;">
+            <small style="color: var(--text-tertiary); font-size: 11px; display: block; margin-top: 4px;">5-50 questions (GPT-generated)</small>
+          </div>
+          
+          <button id="start-trivia-btn" class="overlay-action-btn" style="width: 100%; background: var(--accent-primary); color: white; font-weight: 600;">
+            🎮 Generate Questions & Start Trivia
+          </button>
+          <small id="trivia-generating-status" style="color: var(--text-tertiary); font-size: 11px; display: none; margin-top: 8px; text-align: center;">Generating questions...</small>
+        </div>
+        
+        <!-- Active Trivia Panel -->
+        <div id="trivia-active-panel" style="margin-top: 20px; padding: 16px; background: var(--bg-secondary); border-radius: 8px; display: none;">
+          <h5 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 14px; font-weight: 600;">Active Trivia Session</h5>
+          
+          <div id="trivia-current-question" style="margin-bottom: 12px; padding: 12px; background: var(--bg-primary); border-radius: 6px; border-left: 3px solid var(--accent-primary);">
+            <div style="font-size: 12px; color: var(--text-tertiary); margin-bottom: 4px;">Question <span id="trivia-question-number">-</span> of <span id="trivia-total-questions">-</span></div>
+            <div id="trivia-question-text" style="font-size: 14px; color: var(--text-primary); font-weight: 500; margin-bottom: 8px;">-</div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="font-size: 12px; color: var(--text-secondary);">Time remaining:</div>
+              <div id="trivia-timer" style="font-size: 16px; font-weight: 600; color: var(--accent-primary); font-family: 'Roboto Mono', monospace;">--:--</div>
+            </div>
+          </div>
+          
+          <div id="trivia-leaderboard" style="margin-bottom: 16px; max-height: 200px; overflow-y: auto;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Leaderboard (Top 10):</div>
+            <div id="trivia-leaderboard-list" style="font-size: 11px; color: var(--text-secondary);">
+              No scores yet...
+            </div>
+          </div>
+          
+          <button id="stop-trivia-btn" class="overlay-action-btn danger" style="width: 100%;">⏹️ Stop Trivia Session</button>
+        </div>
+        
+        <!-- Winners Panel -->
+        <div id="trivia-winners-panel" style="margin-top: 20px; padding: 16px; background: var(--bg-secondary); border-radius: 8px; display: none;">
+          <h5 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 14px; font-weight: 600;">Trivia Winners</h5>
+          
+          <div id="trivia-winners-summary" style="margin-bottom: 16px; padding: 12px; background: var(--bg-primary); border-radius: 6px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px;">
+              <div><strong>Total Winners:</strong> <span id="trivia-total-winners">0</span></div>
+              <div><strong>Total Channel Points:</strong> <span id="trivia-total-channel-points">0</span></div>
+            </div>
+            <div id="trivia-award-status" style="margin-top: 8px; font-size: 11px; color: var(--text-tertiary);">
+              Status: <span id="trivia-award-status-text">Pending</span>
+            </div>
+          </div>
+          
+          <div id="trivia-winners-list" style="margin-bottom: 16px; max-height: 300px; overflow-y: auto;">
+            <table style="width: 100%; font-size: 11px; border-collapse: collapse;">
+              <thead>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                  <th style="text-align: left; padding: 6px; color: var(--text-secondary); font-weight: 600;">Rank</th>
+                  <th style="text-align: left; padding: 6px; color: var(--text-secondary); font-weight: 600;">Username</th>
+                  <th style="text-align: right; padding: 6px; color: var(--text-secondary); font-weight: 600;">Trivia Pts</th>
+                  <th style="text-align: right; padding: 6px; color: var(--text-secondary); font-weight: 600;">Channel Pts</th>
+                  <th style="text-align: right; padding: 6px; color: var(--text-secondary); font-weight: 600;">Correct</th>
+                </tr>
+              </thead>
+              <tbody id="trivia-winners-table-body">
+                <tr>
+                  <td colspan="5" style="text-align: center; padding: 20px; color: var(--text-tertiary);">No winners yet...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+          <div id="trivia-award-actions" style="display: flex; gap: 8px;">
+            <button id="award-all-winners-btn" class="overlay-action-btn" style="flex: 1; background: var(--accent-primary); color: white; font-weight: 600;">
+              🎁 Award All Winners
+            </button>
+            <button id="export-winners-btn" class="overlay-action-btn" style="flex: 0 0 auto;">
+              📋 Export
+            </button>
+          </div>
+          
+          <div id="trivia-award-progress" style="margin-top: 12px; padding: 12px; background: var(--bg-primary); border-radius: 6px; display: none;">
+            <div style="font-size: 12px; color: var(--text-primary); margin-bottom: 8px;">
+              Awarding points... <span id="trivia-award-progress-text">0/0</span>
+            </div>
+            <div style="width: 100%; height: 8px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden;">
+              <div id="trivia-award-progress-bar" style="height: 100%; background: var(--accent-primary); width: 0%; transition: width 0.3s;"></div>
+            </div>
+          </div>
+          
+          <div id="trivia-award-results" style="margin-top: 12px; padding: 12px; background: var(--bg-primary); border-radius: 6px; display: none;">
+            <div style="font-size: 12px; color: var(--text-primary);">
+              <div>✅ Successful: <span id="trivia-award-successful">0</span></div>
+              <div>❌ Failed: <span id="trivia-award-failed">0</span></div>
+              <div>⏭️ Skipped: <span id="trivia-award-skipped">0</span></div>
+            </div>
+            <div id="trivia-award-failed-users" style="margin-top: 8px; font-size: 11px; color: var(--text-error); display: none;">
+              <strong>Failed Users:</strong>
+              <ul id="trivia-award-failed-list" style="margin: 4px 0 0 20px; padding: 0;"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preferences Modal -->
+  <div id="preferences-modal" class="hidden">
+    <div class="modal-content preferences-modal-content">
+      <div class="modal-header">
+        <h2>Preferences</h2>
+        <button id="preferences-modal-close" class="modal-close">✕</button>
+      </div>
+      <div class="preferences-content">
+        
+        <!-- Twitch Setup Section -->
+        <div class="preferences-section">
+          <h3>Twitch Integration</h3>
+          <div class="preference-item">
+            <button id="preferences-twitch-setup" class="preference-button">Open Twitch Setup</button>
+            <small>Configure your Twitch OAuth token, Client ID, and Username to enable chat, alerts, and events</small>
+          </div>
+        </div>
+
+        <!-- Updates Section -->
+        <div class="preferences-section">
+          <h3>Updates</h3>
+          <div class="preference-item">
+            <label for="auto-update-checkbox">
+              <input type="checkbox" id="auto-update-checkbox" />
+              Automatically check for updates on startup
+            </label>
+            <small>When enabled, VirtualDeck will check for updates when the app starts</small>
+          </div>
+          <div class="preference-item">
+            <button id="check-updates-button" class="preference-button">Check for Updates Now</button>
+            <small>Manually check if a new version is available</small>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="preferences-actions">
+          <button type="button" id="save-preferences" class="preference-button primary">Save Preferences</button>
+          <button type="button" id="cancel-preferences" class="preference-button">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Overlay Preview Iframe -->
   <div id="overlay-preview" class="overlay-preview hidden">
     <div class="overlay-preview-header">
       <h3>Overlay Preview</h3>
       <button id="close-overlay-preview" class="close-preview-btn" title="Close Overlay Preview">×</button>
     </div>
-    <iframe id="overlay-iframe" src="overlay.html" width="800" height="450" frameborder="0"></iframe>
+    <iframe id="overlay-iframe" src="" width="800" height="450" frameborder="0"></iframe>
   </div>
 
   <!-- Overlay Widget -->
@@ -624,52 +1332,365 @@
       <div class="overlay-section">
         <h4>Multi-Source Tests</h4>
         <div class="media-controls">
-          <button class="overlay-media-btn" id="test-multi-source" style="background: linear-gradient(45deg, #ff6b6b, #4ecdc4); color: white; font-weight: bold;">🎮 Test Multi-Source</button>
           <button class="overlay-media-btn" id="test-all-positions" style="background: linear-gradient(45deg, #667eea, #764ba2); color: white; font-weight: bold;">✨ Test All Positions</button>
         </div>
       </div>
       
+      <!-- AI Control Panel -->
+      <div class="overlay-section" style="background: var(--bg-primary); border: 2px solid var(--accent-primary); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+        <h3 style="margin: 0 0 16px 0; color: var(--accent-primary); font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 24px;">🤖</span>
+          AI Control Panel
+        </h3>
+        <p style="margin: 0 0 20px 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5;">
+          Central hub for managing AI features: Trivia, Q&A, Segments, and more.
+        </p>
+        
+        <!-- AI Status Overview -->
+        <div id="ai-status-overview" style="margin-bottom: 20px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--accent-primary);">
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 11px; margin-bottom: 12px;">
+            <div>
+              <div style="color: var(--text-tertiary); margin-bottom: 4px;">AI Status:</div>
+              <div id="ai-status-text" style="color: var(--text-primary); font-weight: 600;">Active</div>
+            </div>
+            <div>
+              <div style="color: var(--text-tertiary); margin-bottom: 4px;">Current Mode:</div>
+              <div id="ai-mode-text" style="color: var(--text-primary); font-weight: 600;">Normal</div>
+            </div>
+            <div>
+              <div style="color: var(--text-tertiary); margin-bottom: 4px;">Active Features:</div>
+              <div id="ai-features-text" style="color: var(--text-primary); font-weight: 600;">-</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Feature Tabs (Q&A, Segments, and Analytics) -->
+        <div style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid var(--border-color);">
+          <button class="ai-tab-btn active" data-tab="analytics" style="padding: 8px 16px; background: transparent; border: none; border-bottom: 2px solid var(--accent-primary); color: var(--accent-primary); font-weight: 600; cursor: pointer; font-size: 13px;">
+            📊 Analytics
+          </button>
+          <button class="ai-tab-btn" data-tab="qa" style="padding: 8px 16px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 13px;">
+            💬 Q&A Mode
+          </button>
+          <button class="ai-tab-btn" data-tab="segments" style="padding: 8px 16px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 13px;">
+            📺 Segments
+          </button>
+        </div>
+        
+        <!-- Analytics Tab Content -->
+        <div id="ai-tab-analytics" class="ai-tab-content" style="display: block;">
+          <h5 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 14px; font-weight: 600;">Stream Analytics Dashboard</h5>
+          
+          <!-- Real-time Metrics -->
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
+            <div style="padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--accent-primary);">
+              <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 4px;">Response Rate</div>
+              <div id="analytics-response-rate" style="font-size: 20px; font-weight: 700; color: var(--accent-primary);">0/min</div>
+            </div>
+            <div style="padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--success-color);">
+              <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 4px;">Queue Depth</div>
+              <div id="analytics-queue-depth" style="font-size: 20px; font-weight: 700; color: var(--success-color);">0</div>
+            </div>
+            <div style="padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--warning-color);">
+              <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 4px;">Total Cost</div>
+              <div id="analytics-total-cost" style="font-size: 20px; font-weight: 700; color: var(--warning-color);">$0.00</div>
+            </div>
+            <div style="padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--text-secondary);">
+              <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 4px;">Total Tokens</div>
+              <div id="analytics-total-tokens" style="font-size: 20px; font-weight: 700; color: var(--text-primary);">0</div>
+            </div>
+          </div>
+          
+          <!-- Session Stats -->
+          <div style="margin-bottom: 20px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Session Statistics</div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 11px;">
+              <div>
+                <span style="color: var(--text-tertiary);">Total Responses:</span>
+                <span id="analytics-total-responses" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">0</span>
+              </div>
+              <div>
+                <span style="color: var(--text-tertiary);">Avg Response Time:</span>
+                <span id="analytics-avg-response-time" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">0ms</span>
+              </div>
+              <div>
+                <span style="color: var(--text-tertiary);">Uptime:</span>
+                <span id="analytics-uptime" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">0s</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Recent Activity -->
+          <div style="margin-bottom: 20px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Recent Activity</div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 11px;">
+              <div>
+                <span style="color: var(--text-tertiary);">Last Minute:</span>
+                <span id="analytics-last-minute" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">0</span>
+              </div>
+              <div>
+                <span style="color: var(--text-tertiary);">Last Hour:</span>
+                <span id="analytics-last-hour" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">0</span>
+              </div>
+              <div>
+                <span style="color: var(--text-tertiary);">Cost/Hour:</span>
+                <span id="analytics-cost-hour" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">$0.00</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Top Chatters -->
+          <div style="margin-bottom: 20px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Top Chatters</div>
+            <div id="analytics-top-chatters" style="font-size: 11px; color: var(--text-secondary);">
+              Loading...
+            </div>
+          </div>
+          
+          <!-- Export Buttons -->
+          <div style="display: flex; gap: 8px;">
+            <button id="analytics-export-json" class="overlay-action-btn" style="flex: 1; font-size: 11px; padding: 8px;">
+              📥 Export JSON
+            </button>
+            <button id="analytics-export-csv" class="overlay-action-btn" style="flex: 1; font-size: 11px; padding: 8px;">
+              📥 Export CSV
+            </button>
+          </div>
+        </div>
+        
+        <!-- Q&A Mode Tab Content -->
+        <div id="ai-tab-qa" class="ai-tab-content" style="display: none;">
+          <h5 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 14px; font-weight: 600;">Q&A Mode Controls</h5>
+          <div class="setting-group" style="margin-bottom: 12px;">
+            <label for="qa-mode-enabled" style="color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="qa-mode-enabled" class="custom-checkbox">
+              Enable Q&A Mode
+            </label>
+            <small style="color: var(--text-tertiary); font-size: 11px; display: block; margin-top: 4px;">AI will actively answer questions from chat.</small>
+          </div>
+          
+          <div class="setting-group" style="margin-bottom: 12px;">
+            <label for="qa-response-style" style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 4px;">Response Style:</label>
+            <select id="qa-response-style" class="custom-select" style="width: 100%;">
+              <option value="concise">Concise</option>
+              <option value="detailed" selected>Detailed</option>
+              <option value="humorous">Humorous</option>
+            </select>
+          </div>
+          
+          <div class="setting-group" style="margin-bottom: 16px;">
+            <label for="qa-question-detection" style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 4px;">Question Detection:</label>
+            <select id="qa-question-detection" class="custom-select" style="width: 100%;">
+              <option value="auto" selected>Auto-detect questions</option>
+              <option value="keywords">Keyword-based</option>
+              <option value="all">Respond to all messages</option>
+            </select>
+          </div>
+          
+          <div style="display: flex; gap: 8px;">
+            <button id="qa-start-btn" class="overlay-action-btn" style="flex: 1; background: var(--accent-primary); color: white; font-weight: 600;">
+              ▶️ Start Q&A Mode
+            </button>
+            <button id="qa-stop-btn" class="overlay-action-btn danger" style="flex: 1;" disabled>
+              ⏹️ Stop Q&A Mode
+            </button>
+          </div>
+        </div>
+        
+        <!-- Segments Tab Content -->
+        <div id="ai-tab-segments" class="ai-tab-content" style="display: none;">
+          <h5 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 14px; font-weight: 600;">Stream Segment Controls</h5>
+          <div class="setting-group" style="margin-bottom: 12px;">
+            <label for="segment-selector" style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 4px;">Active Segment:</label>
+            <select id="segment-selector" class="custom-select" style="width: 100%;">
+              <option value="normal">Normal Chat</option>
+              <option value="gaming">Gaming Session</option>
+              <option value="just-chatting">Just Chatting</option>
+              <option value="afk">AFK / Break</option>
+              <option value="qa">Q&A Session</option>
+            </select>
+            <small style="color: var(--text-tertiary); font-size: 11px; display: block; margin-top: 4px;">Sets AI behavior based on stream activity.</small>
+          </div>
+          
+          <div class="setting-group" style="margin-bottom: 12px;">
+            <label for="segment-behavior" style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 4px;">AI Behavior:</label>
+            <select id="segment-behavior" class="custom-select" style="width: 100%;">
+              <option value="normal">Normal</option>
+              <option value="chatty">Chatty</option>
+              <option value="hype">Hype</option>
+              <option value="calm">Calm</option>
+            </select>
+          </div>
+          
+          <button id="segment-save-btn" class="overlay-action-btn" style="width: 100%; margin-bottom: 16px;">
+            💾 Save Segment Settings
+          </button>
+          
+          <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;">Quick Switch:</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <button class="segment-quick-btn overlay-action-btn" data-segment="normal" style="font-size: 11px; padding: 8px;">Normal</button>
+              <button class="segment-quick-btn overlay-action-btn" data-segment="gaming" style="font-size: 11px; padding: 8px;">Gaming</button>
+              <button class="segment-quick-btn overlay-action-btn" data-segment="just-chatting" style="font-size: 11px; padding: 8px;">Just Chatting</button>
+              <button class="segment-quick-btn overlay-action-btn" data-segment="afk" style="font-size: 11px; padding: 8px;">AFK</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- VTuber/PNGtuber Controls (separate section, not in tabs) -->
       <div class="overlay-section">
-        <h4>Custom Content</h4>
-        <div class="custom-controls">
-          <input type="text" id="custom-text" placeholder="Enter custom text..." class="custom-input">
-          <select id="custom-position" class="custom-select">
-            <option value="1">Top Left</option>
-            <option value="2">Top Middle</option>
-            <option value="3">Top Right</option>
-            <option value="4">Left Middle</option>
-            <option value="5" selected>Center</option>
-            <option value="6">Right Middle</option>
-            <option value="7">Bottom Left</option>
-            <option value="8">Bottom Middle</option>
-            <option value="9">Bottom Right</option>
-          </select>
-          <button id="send-custom-text" class="overlay-action-btn">Send Text</button>
+        <h4>VTuber/PNGtuber Controls</h4>
+        <div class="overlay-info">
+          <p><strong>Note:</strong> Upload PNG images for each avatar state. Images are stored in your VirtualDeck user data folder.</p>
+        </div>
+        
+        <div class="overlay-url-display" style="margin-top: 16px;">
+          <label>VTuber Overlay URL:</label>
+          <div class="url-display">
+            <code id="vtuber-overlay-url">http://localhost:8080/overlay?name=vtuberOverlay</code>
+            <button id="copy-vtuber-url" class="copy-btn" title="Copy URL">📋</button>
+          </div>
+        </div>
+        
+        <div style="margin-top: 20px;">
+          <h5 style="margin: 0 0 12px 0; color: var(--text-primary); font-size: 13px; font-weight: 600;">Avatar State</h5>
+          <div class="text-box-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <button class="overlay-test-btn vtuber-state-btn" data-state="idle">Idle</button>
+            <button class="overlay-test-btn vtuber-state-btn" data-state="talking">Talking</button>
+            <button class="overlay-test-btn vtuber-state-btn" data-state="excited">Excited</button>
+            <button class="overlay-test-btn vtuber-state-btn" data-state="happy">Happy</button>
+            <button class="overlay-test-btn vtuber-state-btn" data-state="sad">Sad</button>
+            <button class="overlay-test-btn vtuber-state-btn" data-state="thinking">Thinking</button>
+            <button class="overlay-test-btn vtuber-state-btn" data-state="confused">Confused</button>
+          </div>
+        </div>
+        
+        <div style="margin-top: 24px;">
+          <h5 style="margin: 0 0 12px 0; color: var(--text-primary); font-size: 13px; font-weight: 600;">Upload Images</h5>
+          <div class="media-controls" style="gap: 12px;">
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;">
+              <label style="color: var(--text-secondary); font-size: 12px;">Idle:</label>
+              <input type="file" class="vtuber-image-input custom-input" data-state="idle" accept="image/png,image/jpeg,image/webp" style="flex: 0 0 auto; min-width: 200px;">
+              <span class="image-status" data-state="idle" style="color: var(--text-tertiary); font-size: 11px; white-space: nowrap;">No image</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;">
+              <label style="color: var(--text-secondary); font-size: 12px;">Talking:</label>
+              <input type="file" class="vtuber-image-input custom-input" data-state="talking" accept="image/png,image/jpeg,image/webp" style="flex: 0 0 auto; min-width: 200px;">
+              <span class="image-status" data-state="talking" style="color: var(--text-tertiary); font-size: 11px; white-space: nowrap;">No image</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;">
+              <label style="color: var(--text-secondary); font-size: 12px;">Excited:</label>
+              <input type="file" class="vtuber-image-input custom-input" data-state="excited" accept="image/png,image/jpeg,image/webp" style="flex: 0 0 auto; min-width: 200px;">
+              <span class="image-status" data-state="excited" style="color: var(--text-tertiary); font-size: 11px; white-space: nowrap;">No image</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;">
+              <label style="color: var(--text-secondary); font-size: 12px;">Happy:</label>
+              <input type="file" class="vtuber-image-input custom-input" data-state="happy" accept="image/png,image/jpeg,image/webp" style="flex: 0 0 auto; min-width: 200px;">
+              <span class="image-status" data-state="happy" style="color: var(--text-tertiary); font-size: 11px; white-space: nowrap;">No image</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;">
+              <label style="color: var(--text-secondary); font-size: 12px;">Sad:</label>
+              <input type="file" class="vtuber-image-input custom-input" data-state="sad" accept="image/png,image/jpeg,image/webp" style="flex: 0 0 auto; min-width: 200px;">
+              <span class="image-status" data-state="sad" style="color: var(--text-tertiary); font-size: 11px; white-space: nowrap;">No image</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;">
+              <label style="color: var(--text-secondary); font-size: 12px;">Thinking:</label>
+              <input type="file" class="vtuber-image-input custom-input" data-state="thinking" accept="image/png,image/jpeg,image/webp" style="flex: 0 0 auto; min-width: 200px;">
+              <span class="image-status" data-state="thinking" style="color: var(--text-tertiary); font-size: 11px; white-space: nowrap;">No image</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;">
+              <label style="color: var(--text-secondary); font-size: 12px;">Confused:</label>
+              <input type="file" class="vtuber-image-input custom-input" data-state="confused" accept="image/png,image/jpeg,image/webp" style="flex: 0 0 auto; min-width: 200px;">
+              <span class="image-status" data-state="confused" style="color: var(--text-tertiary); font-size: 11px; white-space: nowrap;">No image</span>
+            </div>
+          </div>
+        </div>
+        
+        <div style="margin-top: 24px;">
+          <h5 style="margin: 0 0 12px 0; color: var(--text-primary); font-size: 13px; font-weight: 600;">VTuber Type</h5>
+          <div class="media-controls" style="margin-bottom: 16px;">
+            <select id="vtuber-type-select" class="custom-select" style="min-width: 200px;">
+              <option value="pngtuber">PNGtuber (Static Images)</option>
+              <option value="iframe">Web-Based VTuber (Iframe)</option>
+              <option value="vseeface">VSeeFace (Window Capture)</option>
+              <option value="vtubestudio">VTube Studio (Window Capture)</option>
+              <option value="live2d">Live2D (SDK - Coming Soon)</option>
+            </select>
+          </div>
+          <div id="vtuber-iframe-config" style="display: none; margin-bottom: 16px;">
+            <label style="color: var(--text-secondary); font-size: 11px; display: block; margin-bottom: 4px;">Iframe URL:</label>
+            <input type="text" id="vtuber-iframe-url" class="custom-input" placeholder="https://example.com/vtuber" style="width: 100%;">
+            <button id="save-vtuber-type" class="overlay-action-btn" style="margin-top: 8px;">Save VTuber Type</button>
+          </div>
+        </div>
+        
+        <div style="margin-top: 24px;">
+          <h5 style="margin: 0 0 12px 0; color: var(--text-primary); font-size: 13px; font-weight: 600;">Position & Size</h5>
+          <div class="resolution-controls" style="margin-bottom: 12px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="color: var(--text-secondary); font-size: 11px;">X Position:</label>
+              <input type="number" id="vtuber-pos-x" value="0" class="custom-input" style="min-width: 100px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="color: var(--text-secondary); font-size: 11px;">Y Position:</label>
+              <input type="number" id="vtuber-pos-y" value="0" class="custom-input" style="min-width: 100px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="color: var(--text-secondary); font-size: 11px;">Width:</label>
+              <input type="number" id="vtuber-width" value="500" class="custom-input" style="min-width: 100px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="color: var(--text-secondary); font-size: 11px;">Height:</label>
+              <input type="number" id="vtuber-height" value="500" class="custom-input" style="min-width: 100px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="color: var(--text-secondary); font-size: 11px;">Scale:</label>
+              <input type="number" id="vtuber-scale" value="1.0" step="0.1" min="0.1" max="5.0" class="custom-input" style="min-width: 100px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="color: var(--text-secondary); font-size: 11px;">Opacity:</label>
+              <input type="number" id="vtuber-opacity" value="1.0" step="0.1" min="0" max="1" class="custom-input" style="min-width: 100px;">
+            </div>
+          </div>
+          <button id="apply-vtuber-position" class="overlay-action-btn">Apply Position</button>
         </div>
       </div>
       
       <div class="overlay-section">
-        <h4>Overlay Resolution</h4>
-        <div class="resolution-controls">
-          <select id="overlay-resolution" class="custom-select">
-            <option value="1920x1080" selected>1920x1080 (Full HD)</option>
-            <option value="1280x720">1280x720 (HD)</option>
-            <option value="1366x768">1366x768 (HD)</option>
-            <option value="1600x900">1600x900 (HD+)</option>
-            <option value="2560x1440">2560x1440 (2K)</option>
-            <option value="3840x2160">3840x2160 (4K)</option>
-            <option value="1024x768">1024x768 (XGA)</option>
-            <option value="1280x1024">1280x1024 (SXGA)</option>
-          </select>
-          <button id="apply-resolution" class="overlay-action-btn">Apply Resolution</button>
+        <h4>Custom Overlay Management</h4>
+        <div class="overlay-info">
+          <p><strong>Note:</strong> All overlays are configured for 1920x1080 resolution.</p>
         </div>
-      </div>
-      
-      <div class="overlay-section">
-        <h4>Overlay URL</h4>
-        <div class="url-display">
-          <code>http://localhost:8080/overlay</code>
-          <button id="copy-overlay-url" class="copy-btn" title="Copy URL">📋</button>
+        <div class="overlay-management">
+          <div class="overlay-create">
+            <input type="text" id="new-overlay-name" placeholder="New overlay name..." class="custom-input">
+            <select id="overlay-template" class="custom-select">
+              <option value="center-media">Center Media (Current)</option>
+              <option value="fullscreen-media">Full Screen Media</option>
+            </select>
+            <button id="create-overlay" class="overlay-action-btn">Create Overlay</button>
+          </div>
+          <div class="overlay-list">
+            <label for="overlay-select">Select Overlay:</label>
+            <select id="overlay-select" class="custom-select">
+              <option value="main">Main Overlay</option>
+            </select>
+            <button id="delete-overlay" class="overlay-action-btn danger">Delete Selected</button>
+          </div>
+          <div class="overlay-url-display">
+            <label>Overlay URL:</label>
+            <div class="url-display">
+              <code id="overlay-url-display">http://localhost:8080/overlay</code>
+              <button id="copy-overlay-url" class="copy-btn" title="Copy URL">📋</button>
+            </div>
+          </div>
+          <div class="overlay-connection-status">
+            <label>Connection Status:</label>
+            <div id="overlay-connections-list" style="margin-top: 8px; padding: 8px; background: var(--bg-secondary); border-radius: 4px; font-size: 12px;">
+              <div style="color: var(--text-tertiary);">Waiting for overlay connections...</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -681,7 +1702,10 @@
     <div class="alert-widget-content">
       <div class="widget-header">
         <h3>Twitch Alert Widget</h3>
-        <button id="close-alert-widget" class="close-btn" title="Close Alert Widget">✕</button>
+        <div style="display: flex; gap: 8px;">
+          <button id="alert-placeholders-help" class="help-btn" title="View Placeholders Guide" style="background: var(--accent); color: white; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;">?</button>
+          <button id="close-alert-widget" class="close-btn" title="Close Alert Widget">✕</button>
+        </div>
       </div>
     
     <div class="widget-content">
@@ -700,15 +1724,72 @@
             <option value="gift-sub-received">Gift Sub Received</option>
             <option value="raid">Raid</option>
             <option value="bits">Bits Donation</option>
+            <option value="ban">User Ban</option>
+            <option value="daily-checkin">Daily Checkin</option>
+            <option value="first-chat-walkon">Walk On (First Chat)</option>
           </select>
+        </div>
+
+        <div id="alert-walkon-users-group" style="display: none; margin-bottom: 15px;">
+          <label for="alert-walkon-users">Select Followers:</label>
+          <div style="position: relative;">
+            <!-- Search Input -->
+            <input 
+              type="text" 
+              id="alert-walkon-search" 
+              placeholder="Search followers or type username..."
+              style="width: 100%; padding: 8px; margin-top: 5px; margin-bottom: 8px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); border-radius: 4px;"
+            />
+            <!-- Selected Users Display -->
+            <div id="alert-walkon-selected" style="min-height: 40px; padding: 8px; border: 1px solid var(--border-color); background: var(--bg-secondary); border-radius: 4px; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+              <div style="color: var(--text-tertiary); font-size: 12px; align-self: center; width: 100%; text-align: center;">No users selected</div>
+            </div>
+            <!-- Follower List Dropdown -->
+            <div id="alert-walkon-follower-list" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); background: var(--bg-primary); border-radius: 4px; display: none; position: absolute; width: 100%; z-index: 1000;">
+              <!-- Will be populated dynamically -->
+            </div>
+          </div>
+          <!-- Manual Username Entry -->
+          <div style="display: flex; gap: 6px; margin-top: 8px;">
+            <input 
+              type="text" 
+              id="alert-walkon-manual-username" 
+              placeholder="Or manually enter username..."
+              style="flex: 1; padding: 6px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); border-radius: 4px; font-size: 12px;"
+            />
+            <button 
+              id="alert-walkon-add-manual" 
+              style="padding: 6px 12px; background: var(--accent); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;"
+            >
+              Add
+            </button>
+          </div>
+          <small style="display: block; margin-top: 5px; color: var(--text-secondary); font-size: 12px;">
+            Click followers to add/remove them, or manually enter a username. Alert will only trigger for selected users on their first chat message.
+          </small>
+          <button 
+            id="alert-walkon-reset-test" 
+            style="margin-top: 8px; padding: 6px 12px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; width: 100%;"
+            title="Reset first-time chatters for testing (allows testing same user multiple times)"
+          >
+            🔄 Reset First-Time Chatters (for Testing)
+          </button>
+        </div>
+
+        <div class="alert-overlay-selector">
+          <label for="alert-overlay-select">Target Overlay:</label>
+          <select id="alert-overlay-select">
+            <option value="main">Main Overlay</option>
+          </select>
+          <small style="display: block; margin-top: 5px; color: #888;">Choose which overlay this alert will display on</small>
         </div>
 
         <div class="alert-settings">
           <div class="setting-group">
-            <label for="alert-text">Alert Text:</label>
+            <label for="alert-text">Alert Text (Optional):</label>
             <input type="text" id="alert-text" placeholder="Welcome {username}!" />
             <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
-              Use placeholders: {username}, {display_name}, {tier}, {viewers}, {bits}, {months}
+              Use placeholders: {username}, {display_name}, {tier}, {viewers}, {bits}, {months}, {moderator}, {reason}. Leave empty for media-only alerts.
             </small>
           </div>
           
@@ -725,6 +1806,7 @@
                   <option value="topCenter" selected>Top Center</option>
                   <option value="topRight">Top Right</option>
                   <option value="midLeft">Mid Left</option>
+                  <option value="center">Center</option>
                   <option value="midRight">Mid Right</option>
                   <option value="bottomLeft">Bottom Left</option>
                   <option value="bottomCenter">Bottom Center</option>
@@ -759,15 +1841,6 @@
               </div>
               
               <div class="setting-group">
-                <label for="alert-font-size">Font Size:</label>
-                <input type="range" id="alert-font-size" min="12" max="72" value="24" />
-                <div class="range-value" id="font-size-value">24px</div>
-              </div>
-            </div>
-            
-            <!-- Row 2: Font Weight | Text Color | Text Shadow | Text Stroke -->
-            <div class="styling-row">
-              <div class="setting-group">
                 <label for="alert-font-weight">Font Weight:</label>
                 <select id="alert-font-weight">
                   <option value="300">Light (300)</option>
@@ -779,7 +1852,19 @@
                   <option value="900">Black (900)</option>
                 </select>
               </div>
-              
+            </div>
+            
+            <!-- Row 1b: Font Size under Text Position and Font Family -->
+            <div class="styling-row">
+              <div class="setting-group">
+                <label for="alert-font-size">Font Size:</label>
+                <input type="range" id="alert-font-size" min="12" max="72" value="24" />
+                <div class="range-value" id="font-size-value">24px</div>
+              </div>
+            </div>
+            
+            <!-- Row 2: Text Color | Text Shadow | Text Stroke -->
+            <div class="styling-row">
               <div class="setting-group">
                 <label for="alert-text-color">Text Color:</label>
                 <input type="color" id="alert-text-color" value="#ffffff" />
@@ -810,7 +1895,7 @@
               </div>
             </div>
             
-            <!-- Row 3: Animation Type | Animation Duration | Animation Delay -->
+            <!-- Row 3: Animation Type -->
             <div class="styling-row">
               <div class="setting-group">
                 <label for="alert-animation">Animation Type:</label>
@@ -833,13 +1918,19 @@
                   <option value="tada">Tada</option>
                 </select>
               </div>
-              
+            </div>
+            
+            <!-- Row 3b: Animation Duration -->
+            <div class="styling-row">
               <div class="setting-group">
                 <label for="alert-animation-duration">Animation Duration:</label>
                 <input type="range" id="alert-animation-duration" min="0.5" max="3" step="0.1" value="1" />
                 <div class="range-value" id="animation-duration-value">1.0s</div>
               </div>
-              
+            </div>
+            
+            <!-- Row 3c: Animation Delay under Animation Duration -->
+            <div class="styling-row">
               <div class="setting-group">
                 <label for="alert-animation-delay">Animation Delay:</label>
                 <input type="range" id="alert-animation-delay" min="0" max="2" step="0.1" value="0" />
@@ -887,35 +1978,153 @@
             </small>
           </div>
           
-          <div class="setting-group">
-            <label for="alert-sound">Sound File:</label>
-            <input type="file" id="alert-sound" accept="audio/*" />
-            <label for="alert-sound-volume" class="volume-label">Volume: <span id="alert-sound-volume-value">100%</span></label>
-            <input type="range" id="alert-sound-volume" name="alert-sound-volume" min="0" max="100" value="100" />
+          <!-- Daily Check-In Settings -->
+          <div id="daily-checkin-settings" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
+            <h4 style="margin: 0 0 10px 0; font-size: 14px; color: var(--text-primary);">Daily Check-In Configuration</h4>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label style="display: flex; align-items: center;">
+                <input type="checkbox" id="daily-checkin-enabled" checked />
+                <span style="margin-left: 6px;">Enable Daily Check-In Tracking</span>
+              </label>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                When enabled, tracks viewer check-ins and prevents duplicate check-ins on the same day
+              </small>
+            </div>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label for="daily-checkin-reward-name">Channel Point Reward Name:</label>
+              <input type="text" id="daily-checkin-reward-name" placeholder="Daily Check-In" value="Daily Check-In" style="width: 100%; margin-top: 4px;" />
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                The name of your Twitch Channel Point reward for daily check-ins
+              </small>
+            </div>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label for="daily-checkin-chat-response">Chat Response Message:</label>
+              <textarea id="daily-checkin-chat-response" rows="3" style="width: 100%; margin-top: 4px; resize: vertical;" placeholder="Welcome back {username}! You've checked in {total_checkins} times!">Welcome back {username}! You've checked in {total_checkins} times!</textarea>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                Available placeholders: {username}, {display_name}, {total_checkins}, {streak}
+              </small>
+            </div>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label for="daily-checkin-already-checked-message">Already Checked In Message:</label>
+              <textarea id="daily-checkin-already-checked-message" rows="2" style="width: 100%; margin-top: 4px; resize: vertical;" placeholder="You've already checked in today, {username}!">You've already checked in today, {username}! Come back tomorrow!</textarea>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                Message sent when someone tries to check in twice in one day
+              </small>
+            </div>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                <input type="checkbox" id="daily-checkin-show-streak" />
+                <span style="margin-left: 6px;">Track & Display Streaks</span>
+              </label>
+              <small style="color: var(--text-tertiary); font-size: 11px; display: block;">
+                Keep track of consecutive days checked in (coming soon)
+              </small>
+            </div>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                <input type="checkbox" id="daily-checkin-send-to-chat" checked />
+                <span style="margin-left: 6px;">Send Response to Chat</span>
+              </label>
+              <small style="color: var(--text-tertiary); font-size: 11px; display: block;">
+                Automatically respond in Twitch chat when someone checks in
+              </small>
+            </div>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                <input type="checkbox" id="daily-checkin-test-mode" />
+                <span style="margin-left: 6px;">Enable Test Mode</span>
+              </label>
+              <small style="color: var(--text-tertiary); font-size: 11px; display: block;">
+                Allows multiple check-ins per day for testing (bypasses duplicate prevention)
+              </small>
+            </div>
+            
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <button id="view-checkin-stats" class="action-btn secondary" style="width: 100%; margin-bottom: 8px;">📊 View Check-In Statistics</button>
+              <button id="test-checkin" class="action-btn secondary" style="width: 100%; margin-bottom: 8px;">🧪 Test Check-In (Simulate)</button>
+              <button id="clear-today-checkins" class="action-btn" style="width: 100%; margin-bottom: 8px; background: var(--warning, #ff9800); color: white;">🔄 Clear Today's Check-Ins</button>
+              <button id="clear-all-checkins" class="action-btn danger" style="width: 100%;">🗑️ Clear All Check-In Data</button>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 8px; display: block;">
+                Use these tools to test and manage check-in data
+              </small>
+            </div>
           </div>
           
-          <div class="setting-group">
-            <label for="alert-image">Image File:</label>
-            <input type="file" id="alert-image" accept="image/*" />
+          <!-- Media Files - Grouped together -->
+          <div class="media-files-group">
+            <h4>Media Files</h4>
+            
+            <div class="setting-group">
+              <label for="alert-sound">Sound File:</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="file" id="alert-sound" accept="audio/*" style="flex: 1;" />
+                <button type="button" id="remove-alert-sound" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
+              </div>
+              <label for="alert-sound-volume" class="volume-label">Volume: <span id="alert-sound-volume-value">100%</span></label>
+              <input type="range" id="alert-sound-volume" name="alert-sound-volume" min="0" max="100" value="100" />
+              <div class="audio-note" style="margin-top: 6px; padding: 6px; background: rgba(0, 150, 255, 0.1); border: 1px solid rgba(0, 150, 255, 0.3); border-radius: 4px; font-size: 12px; color: #4fc3f7;">
+                🔊 Audio plays through the overlay in OBS
+              </div>
+            </div>
+            
+            <div class="setting-group">
+              <label for="alert-image">Image File:</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="file" id="alert-image" accept="image/*" style="flex: 1;" />
+                <button type="button" id="remove-alert-image" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
+              </div>
+            </div>
+            
+            <div class="setting-group">
+              <label for="alert-video">Video File:</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="file" id="alert-video" accept="video/*" style="flex: 1;" />
+                <button type="button" id="remove-alert-video" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
+              </div>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                Supports MP4, WebM, MOV, AVI
+              </small>
+              
+              <!-- Video Settings (shown when video is selected) -->
+              <div id="alert-video-settings" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
+                <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--text-secondary);">Video Settings</h4>
+                
+                <div style="margin-bottom: 10px;">
+                  <label for="alert-video-display-mode">Display Mode:</label>
+                  <select id="alert-video-display-mode" style="width: 100%; margin-top: 4px;">
+                    <option value="center">Center Media (Text can overlay)</option>
+                    <option value="fullscreen">Full Screen (Text overlays video)</option>
+                  </select>
+                  <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                    Full screen mode allows text to appear over the video
+                  </small>
+                </div>
+                
+                <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                  <input type="checkbox" id="alert-video-loop" />
+                  <span style="margin-left: 6px;">Loop Video</span>
+                </label>
+                
+                <label for="alert-video-volume" class="volume-label" style="display: block; margin-bottom: 8px;">
+                  Volume: <span id="alert-video-volume-value">100%</span>
+                </label>
+                <input type="range" id="alert-video-volume" name="alert-video-volume" min="0" max="100" value="100" style="width: 100%;" />
+                
+              </div>
+            </div>
           </div>
         </div>
 
         <div class="alert-actions">
           <button id="save-alert" class="action-btn primary">Save Alert</button>
           <button id="clear-alerts" class="action-btn danger">Clear All Alerts</button>
-        </div>
-        
-        <div class="alert-queue-controls">
-          <h4>Queue Controls</h4>
-          <div class="queue-actions">
-            <button id="clear-queue" class="action-btn danger">Clear Queue</button>
-            <button id="skip-current" class="action-btn secondary">Skip Current</button>
-            <button id="hard-stop" class="action-btn danger">Hard Stop</button>
-            <button id="queue-status" class="action-btn secondary">Queue Status</button>
-          </div>
-          <div id="queue-info" class="queue-info">
-            <div class="queue-status-text">Queue: 0 alerts | Processing: No</div>
-          </div>
         </div>
         
         <!-- Alert Preview Section -->
@@ -938,8 +2147,112 @@
     </div>
   </div>
 
+  <!-- Daily Check-In Statistics Modal -->
+  <div id="checkin-stats-modal" class="hidden">
+    <div class="modal-content checkin-stats-content">
+      <div class="modal-header">
+        <h2>Daily Check-In Statistics</h2>
+        <button id="checkin-stats-close" class="modal-close">✕</button>
+      </div>
+      <div class="checkin-stats-body">
+        <div class="stats-summary">
+          <div class="stat-card">
+            <div class="stat-label">Total Viewers</div>
+            <div class="stat-value" id="total-checkin-viewers">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Total Check-Ins (All Time)</div>
+            <div class="stat-value" id="total-checkins-all">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Today's Check-Ins</div>
+            <div class="stat-value" id="total-checkins-today">0</div>
+          </div>
+        </div>
+        
+        <div class="stats-filters" style="margin: 20px 0; display: flex; gap: 10px; align-items: center;">
+          <label>Sort by:
+            <select id="stats-sort" style="margin-left: 8px; padding: 6px;">
+              <option value="total">Total Check-Ins</option>
+              <option value="recent">Most Recent</option>
+              <option value="username">Username (A-Z)</option>
+            </select>
+          </label>
+          <label>Show:
+            <select id="stats-filter" style="margin-left: 8px; padding: 6px;">
+              <option value="all">All Viewers</option>
+              <option value="today">Checked In Today</option>
+            </select>
+          </label>
+        </div>
+        
+        <div class="checkin-stats-table-container" style="max-height: 500px; overflow-y: auto;">
+          <table class="checkin-stats-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Username</th>
+                <th>Total Check-Ins</th>
+                <th>Last Check-In</th>
+                <th>Streak</th>
+              </tr>
+            </thead>
+            <tbody id="checkin-stats-tbody">
+              <tr>
+                <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-tertiary);">
+                  No check-in data available yet
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Custom Notification System -->
   <div id="notification-container" class="notification-container"></div>
+  <!-- First Run Twitch Setup Popup -->
+  <div id="first-run-twitch-popup" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+    <div class="modal-content" style="max-width: 500px; background: var(--bg-tertiary); color: var(--text-primary);">
+      <div class="modal-header">
+        <h2>Welcome to VirtualDeck! 🎉</h2>
+      </div>
+      <div style="padding: 20px;">
+        <p style="margin-bottom: 15px; line-height: 1.6;">
+          To enable Twitch chat, alerts, and events, you'll need to set up your Twitch credentials.
+        </p>
+        
+        <div style="margin-bottom: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 8px; border-left: 4px solid var(--accent-primary);">
+          <strong style="display: block; margin-bottom: 10px;">Quick Setup Guide:</strong>
+          <ol style="margin: 0; padding-left: 20px; line-height: 1.8; font-size: 14px;">
+            <li>Go to <a href="https://twitchtokengenerator.com" target="_blank" style="color: var(--accent-primary);">twitchtokengenerator.com</a></li>
+            <li>Choose <strong>Custom Token</strong> and select <strong>ALL token permissions</strong></li>
+            <li>Click <strong>Generate Token</strong> and log in with Twitch</li>
+            <li>Copy your <strong>ACCESS TOKEN</strong>, <strong>CLIENT_ID</strong>, and <strong>TWITCH_USER_NAME</strong></li>
+            <li>Paste them into the setup form</li>
+          </ol>
+        </div>
+
+        <p style="margin-bottom: 20px; line-height: 1.6; font-size: 13px;">
+          You can access Twitch Setup anytime from <strong>Edit → Preferences → Twitch Integration</strong>
+        </p>
+        
+        <div style="margin-bottom: 20px;">
+          <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" id="dont-show-welcome-again" style="margin-right: 8px; cursor: pointer;" />
+            <span>Don't show this message again</span>
+          </label>
+        </div>
+        
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button id="welcome-popup-setup" class="preference-button primary" style="flex: 1;">Open Twitch Setup</button>
+          <button id="welcome-popup-dismiss" class="preference-button" style="flex: 1;">Maybe Later</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="AddEditButtonForm.js"></script>
   <script src="script.js"></script>
   <script src="../TwitchConnected/tc.js"></script>

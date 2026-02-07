@@ -1,14 +1,1265 @@
 // public/script.js
 
+/* ========================================================
+ * Custom Alert System (Non-blocking, preserves focus)
+ * ======================================================== */
+
+// Custom prompt dialog for Electron
+function showCustomPrompt(message, defaultValue = '') {
+  return new Promise((resolve) => {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+      background: var(--bg-primary, #1e1e1e);
+      color: var(--text-primary, #ffffff);
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      min-width: 400px;
+      max-width: 500px;
+    `;
+    
+    // Create message
+    const messageEl = document.createElement('div');
+    messageEl.textContent = message;
+    messageEl.style.cssText = `
+      margin-bottom: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+    `;
+    
+    // Create input
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = defaultValue;
+    input.style.cssText = `
+      width: 100%;
+      padding: 10px;
+      background: var(--bg-secondary, #2a2a2a);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      color: var(--text-primary, #ffffff);
+      font-size: 14px;
+      margin-bottom: 16px;
+      box-sizing: border-box;
+    `;
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.cssText = `
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    `;
+    
+    // Create OK button
+    const okButton = document.createElement('button');
+    okButton.textContent = 'OK';
+    okButton.style.cssText = `
+      padding: 10px 20px;
+      background: var(--accent, #6366f1);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    okButton.addEventListener('mouseenter', () => {
+      okButton.style.background = '#4f46e5';
+    });
+    okButton.addEventListener('mouseleave', () => {
+      okButton.style.background = 'var(--accent, #6366f1)';
+    });
+    
+    // Create Cancel button
+    const cancelButton = document.createElement('button');
+    cancelButton.textContent = 'Cancel';
+    cancelButton.style.cssText = `
+      padding: 10px 20px;
+      background: var(--bg-secondary, #2a2a2a);
+      color: var(--text-primary, #ffffff);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    cancelButton.addEventListener('mouseenter', () => {
+      cancelButton.style.background = '#3a3a3a';
+    });
+    cancelButton.addEventListener('mouseleave', () => {
+      cancelButton.style.background = 'var(--bg-secondary, #2a2a2a)';
+    });
+    
+    // Assemble dialog
+    buttonsContainer.appendChild(cancelButton);
+    buttonsContainer.appendChild(okButton);
+    dialog.appendChild(messageEl);
+    dialog.appendChild(input);
+    dialog.appendChild(buttonsContainer);
+    overlay.appendChild(dialog);
+    
+    // Event handlers
+    const cleanup = () => {
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    };
+    
+    okButton.addEventListener('click', () => {
+      resolve(input.value);
+      cleanup();
+    });
+    
+    cancelButton.addEventListener('click', () => {
+      resolve(null);
+      cleanup();
+    });
+    
+    // Close on Escape
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        resolve(null);
+        cleanup();
+        document.removeEventListener('keydown', handleKeydown);
+      } else if (e.key === 'Enter') {
+        resolve(input.value);
+        cleanup();
+        document.removeEventListener('keydown', handleKeydown);
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+    
+    // Show dialog
+    document.body.appendChild(overlay);
+    input.focus();
+    input.select();
+  });
+}
+
+// Custom profile delete dialog with dropdown
+function showProfileDeleteDialog(profiles) {
+  return new Promise((resolve) => {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+      background: var(--bg-primary, #1e1e1e);
+      color: var(--text-primary, #ffffff);
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      min-width: 400px;
+      max-width: 500px;
+    `;
+    
+    // Create message
+    const messageEl = document.createElement('div');
+    messageEl.textContent = 'Select profile to delete:';
+    messageEl.style.cssText = `
+      margin-bottom: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+    `;
+    
+    // Create select dropdown
+    const select = document.createElement('select');
+    select.style.cssText = `
+      width: 100%;
+      padding: 10px;
+      background: var(--bg-secondary, #2a2a2a);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      color: var(--text-primary, #ffffff);
+      font-size: 14px;
+      margin-bottom: 16px;
+      cursor: pointer;
+    `;
+    
+    profiles.forEach(profile => {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.name;
+      select.appendChild(option);
+    });
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.cssText = `
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    `;
+    
+    // Create Delete button
+    const deleteButton = document.createElement('button');
+    deleteButton.textContent = 'Delete';
+    deleteButton.style.cssText = `
+      padding: 10px 20px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    deleteButton.addEventListener('mouseenter', () => {
+      deleteButton.style.background = '#c82333';
+    });
+    deleteButton.addEventListener('mouseleave', () => {
+      deleteButton.style.background = '#dc3545';
+    });
+    
+    // Create Cancel button
+    const cancelButton = document.createElement('button');
+    cancelButton.textContent = 'Cancel';
+    cancelButton.style.cssText = `
+      padding: 10px 20px;
+      background: var(--bg-secondary, #2a2a2a);
+      color: var(--text-primary, #ffffff);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    cancelButton.addEventListener('mouseenter', () => {
+      cancelButton.style.background = '#3a3a3a';
+    });
+    cancelButton.addEventListener('mouseleave', () => {
+      cancelButton.style.background = 'var(--bg-secondary, #2a2a2a)';
+    });
+    
+    // Assemble dialog
+    buttonsContainer.appendChild(cancelButton);
+    buttonsContainer.appendChild(deleteButton);
+    dialog.appendChild(messageEl);
+    dialog.appendChild(select);
+    dialog.appendChild(buttonsContainer);
+    overlay.appendChild(dialog);
+    
+    // Event handlers
+    const cleanup = () => {
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    };
+    
+    deleteButton.addEventListener('click', () => {
+      const selectedProfile = profiles.find(p => p.id === select.value);
+      resolve(selectedProfile);
+      cleanup();
+    });
+    
+    cancelButton.addEventListener('click', () => {
+      resolve(null);
+      cleanup();
+    });
+    
+    // Close on Escape
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        resolve(null);
+        cleanup();
+        document.removeEventListener('keydown', handleKeydown);
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+    
+    // Show dialog
+    document.body.appendChild(overlay);
+    select.focus();
+  });
+}
+
+// Custom confirm dialog for Electron
+function showCustomConfirm(message) {
+  return new Promise((resolve) => {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+      background: var(--bg-primary, #1e1e1e);
+      color: var(--text-primary, #ffffff);
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      min-width: 400px;
+      max-width: 500px;
+    `;
+    
+    // Create message
+    const messageEl = document.createElement('div');
+    messageEl.textContent = message;
+    messageEl.style.cssText = `
+      margin-bottom: 20px;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-line;
+    `;
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.cssText = `
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    `;
+    
+    // Create Yes button
+    const yesButton = document.createElement('button');
+    yesButton.textContent = 'Yes';
+    yesButton.style.cssText = `
+      padding: 10px 20px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    yesButton.addEventListener('mouseenter', () => {
+      yesButton.style.background = '#c82333';
+    });
+    yesButton.addEventListener('mouseleave', () => {
+      yesButton.style.background = '#dc3545';
+    });
+    
+    // Create No button
+    const noButton = document.createElement('button');
+    noButton.textContent = 'No';
+    noButton.style.cssText = `
+      padding: 10px 20px;
+      background: var(--bg-secondary, #2a2a2a);
+      color: var(--text-primary, #ffffff);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    noButton.addEventListener('mouseenter', () => {
+      noButton.style.background = '#3a3a3a';
+    });
+    noButton.addEventListener('mouseleave', () => {
+      noButton.style.background = 'var(--bg-secondary, #2a2a2a)';
+    });
+    
+    // Assemble dialog
+    buttonsContainer.appendChild(noButton);
+    buttonsContainer.appendChild(yesButton);
+    dialog.appendChild(messageEl);
+    dialog.appendChild(buttonsContainer);
+    overlay.appendChild(dialog);
+    
+    // Event handlers
+    const cleanup = () => {
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    };
+    
+    yesButton.addEventListener('click', () => {
+      resolve(true);
+      cleanup();
+    });
+    
+    noButton.addEventListener('click', () => {
+      resolve(false);
+      cleanup();
+    });
+    
+    // Close on Escape
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        resolve(false);
+        cleanup();
+        document.removeEventListener('keydown', handleKeydown);
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+    
+    // Show dialog
+    document.body.appendChild(overlay);
+    yesButton.focus();
+  });
+}
+
+function showCustomAlert(message, type = 'info') {
+  // Create alert container if it doesn't exist
+  let alertContainer = document.getElementById('custom-alert-container');
+  if (!alertContainer) {
+    alertContainer = document.createElement('div');
+    alertContainer.id = 'custom-alert-container';
+    alertContainer.style.cssText = `
+      position: fixed;
+      top: 60px;
+      right: 20px;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    `;
+    document.body.appendChild(alertContainer);
+  }
+
+  // Create alert element
+  const alert = document.createElement('div');
+  alert.style.cssText = `
+    background: var(--bg-primary, #1e1e1e);
+    color: var(--text-primary, #ffffff);
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border-left: 4px solid ${type === 'error' ? '#f44336' : type === 'success' ? '#4CAF50' : '#2196F3'};
+    font-size: 14px;
+    max-width: 400px;
+    pointer-events: auto;
+    animation: slideIn 0.3s ease-out;
+  `;
+  alert.textContent = message;
+
+  // Add animation
+  const style = document.createElement('style');
+  if (!document.getElementById('custom-alert-styles')) {
+    style.id = 'custom-alert-styles';
+    style.textContent = `
+      @keyframes slideIn {
+        from {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      @keyframes slideOut {
+        from {
+          transform: translateX(0);
+          opacity: 1;
+        }
+        to {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  alertContainer.appendChild(alert);
+
+  // Auto-remove after 4 seconds
+  setTimeout(() => {
+    alert.style.animation = 'slideOut 0.3s ease-out';
+    setTimeout(() => {
+      if (alert.parentNode) {
+        alert.parentNode.removeChild(alert);
+      }
+    }, 300);
+  }, 4000);
+}
+
+/* ========================================================
+ * Profile Management System
+ * ======================================================== */
+class ProfileManager {
+  constructor() {
+    this.currentProfile = null;
+    this.profiles = [];
+  }
+
+  async initialize() {
+    try {
+      // Load profiles metadata
+      const meta = await window.electronAPI.getProfiles();
+      this.profiles = meta.profiles || [];
+      this.currentProfile = meta.activeProfile || 'default';
+      
+      // Populate profile selector
+      this.populateProfileSelector();
+      
+      // Load and apply current profile settings
+      await this.loadProfileSettings();
+      
+      // Start periodic autosave (every 30 seconds)
+      this.startPeriodicAutosave();
+      
+      console.log('ProfileManager initialized:', this.currentProfile);
+    } catch (error) {
+      console.error('Error initializing ProfileManager:', error);
+    }
+  }
+  
+  startPeriodicAutosave() {
+    // Clear any existing interval
+    if (this.autosaveInterval) {
+      clearInterval(this.autosaveInterval);
+    }
+    
+    // Save every 30 seconds
+    this.autosaveInterval = setInterval(() => {
+      this.saveCurrentSettings().catch(err => {
+        console.error('Periodic autosave failed:', err);
+      });
+    }, 30000);
+    
+    console.log('Periodic autosave started (every 30 seconds)');
+  }
+
+  populateProfileSelector() {
+    const selector = document.getElementById('profile-selector');
+    if (!selector) return;
+    
+    // Clear existing options
+    selector.innerHTML = '';
+    
+    // Add all profiles
+    this.profiles.forEach(profile => {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.name;
+      selector.appendChild(option);
+    });
+    
+    // Set current profile
+    selector.value = this.currentProfile;
+  }
+
+  async loadProfileSettings() {
+    try {
+      const profile = await window.electronAPI.getProfile(this.currentProfile);
+      
+      console.log('📋 Loading profile settings:', this.currentProfile);
+      console.log('📋 Profile data:', profile);
+      console.log('📋 UI Settings:', profile.uiSettings);
+      
+      // Apply UI settings from profile
+      if (profile.uiSettings) {
+        // Apply theme - this is the authoritative source
+        const themeToApply = profile.uiSettings.theme || 'dark'; // Default to dark if not set
+        console.log('🎨 Theme from profile uiSettings.theme:', themeToApply);
+        
+        if (window.themeSystem) {
+          // Ensure skins are loaded before applying
+          await window.themeSystem.loadAvailableSkins();
+          console.log('🎨 Available skins loaded:', window.themeSystem.availableSkins.map(s => s.id));
+          console.log('🎨 Built-in themes:', window.themeSystem.builtInThemes);
+          
+          // Check if theme exists
+          const isBuiltIn = window.themeSystem.builtInThemes.includes(themeToApply);
+          const isSkin = window.themeSystem.availableSkins.some(skin => skin.id === themeToApply);
+          console.log(`🎨 Theme "${themeToApply}" - Built-in: ${isBuiltIn}, Custom skin: ${isSkin}`);
+          
+          // Set the current theme (bypass validation)
+          window.themeSystem.currentTheme = themeToApply;
+          
+          // Force apply the theme (even if it's not in the validation list yet)
+          console.log('🎨 Calling applyTheme with:', themeToApply);
+          await window.themeSystem.applyTheme(themeToApply);
+          
+          // Sync with menu
+          if (window.electronAPI?.syncTheme) {
+            window.electronAPI.syncTheme(themeToApply);
+          }
+          console.log('✅ Theme applied from profile:', themeToApply);
+        } else {
+          console.warn('⚠️ ThemeSystem not available yet');
+        }
+        
+        // Apply component visibility
+        if (profile.uiSettings.componentVisibility) {
+          this.applyComponentVisibility(profile.uiSettings.componentVisibility);
+        }
+        
+        // Apply chat width
+        if (profile.uiSettings.chatWidth) {
+          const chatContainer = document.getElementById('twitch-chat-container');
+          if (chatContainer) {
+            chatContainer.style.width = profile.uiSettings.chatWidth + 'px';
+          }
+        }
+        
+        // Apply sound button order after buttons are loaded
+        if (profile.uiSettings.soundButtonOrder && profile.uiSettings.soundButtonOrder.length > 0) {
+          // Wait a bit for buttons to be in DOM, then apply order
+          setTimeout(() => {
+            this.applyButtonOrder(profile.uiSettings.soundButtonOrder);
+          }, 500);
+        }
+      } else {
+        // No UI settings, apply default theme
+        console.log('ℹ️ No uiSettings in profile, applying default theme');
+        if (window.themeSystem) {
+          window.themeSystem.currentTheme = 'dark';
+          await window.themeSystem.applyTheme('dark');
+          console.log('✅ Default theme applied: dark');
+        }
+      }
+      
+      console.log('✅ Profile settings loaded for:', this.currentProfile);
+    } catch (error) {
+      console.error('❌ Error loading profile settings:', error);
+    }
+  }
+  
+  applyButtonOrder(buttonOrder) {
+    const soundGrid = document.getElementById('sound-grid');
+    if (!soundGrid || !buttonOrder || buttonOrder.length === 0) return;
+    
+    const soundCards = Array.from(soundGrid.querySelectorAll('.sound-card'));
+    
+    // Create a map of button ID to card element
+    const cardMap = new Map();
+    soundCards.forEach(card => {
+      if (card.dataset.soundData && card.id !== 'add-sound-card') {
+        try {
+          const soundData = JSON.parse(card.dataset.soundData);
+          if (soundData.id) {
+            cardMap.set(soundData.id, card);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    });
+    
+    // Keep the add-sound-card first
+    const addCard = soundCards.find(card => card.id === 'add-sound-card');
+    soundGrid.innerHTML = '';
+    if (addCard) {
+      soundGrid.appendChild(addCard);
+    }
+    
+    // Reorder cards based on saved order
+    buttonOrder.forEach(buttonId => {
+      const card = cardMap.get(buttonId);
+      if (card) {
+        soundGrid.appendChild(card);
+        cardMap.delete(buttonId); // Remove from map so we don't add it twice
+      }
+    });
+    
+    // Append any remaining cards that weren't in the saved order
+    cardMap.forEach(card => {
+      soundGrid.appendChild(card);
+    });
+    
+    console.log('Applied button order from profile');
+  }
+
+  async saveCurrentSettings() {
+    try {
+      // Show saving indicator
+      this.showSaveIndicator('Saving...');
+      
+      // Get current config
+      const config = await window.electronAPI.getConfig();
+      
+      // Gather current UI settings
+      const uiSettings = {
+        theme: window.themeSystem ? window.themeSystem.currentTheme : null,
+        componentVisibility: this.getCurrentComponentVisibility(),
+        chatWidth: this.getCurrentChatWidth(),
+        soundButtonOrder: this.getCurrentButtonOrder()
+      };
+      
+      console.log('💾 Saving profile settings...');
+      console.log('💾 Current theme:', uiSettings.theme);
+      console.log('💾 UI Settings:', uiSettings);
+      
+      // Update config with UI settings
+      config.uiSettings = uiSettings;
+      
+      // Save to current profile
+      await window.electronAPI.saveProfile(this.currentProfile, config);
+      
+      console.log('✅ Profile settings saved for:', this.currentProfile);
+      
+      // Show saved indicator
+      this.showSaveIndicator('Saved ✓', 'success');
+    } catch (error) {
+      console.error('❌ Error saving profile settings:', error);
+      this.showSaveIndicator('Save failed', 'error');
+    }
+  }
+  
+  showSaveIndicator(message, type = 'info') {
+    // Find or create save indicator in profile modal
+    const profileModal = document.getElementById('profile-modal');
+    if (!profileModal || profileModal.classList.contains('hidden')) {
+      // Modal is not open, just log it
+      console.log(`Profile: ${message}`);
+      return;
+    }
+    
+    let indicator = document.getElementById('profile-save-indicator');
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.id = 'profile-save-indicator';
+      indicator.style.cssText = `
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        margin-top: 8px;
+        text-align: center;
+        transition: opacity 0.3s ease;
+      `;
+      profileModal.querySelector('.modal-content').appendChild(indicator);
+    }
+    
+    // Set color based on type
+    if (type === 'success') {
+      indicator.style.background = 'rgba(76, 175, 80, 0.2)';
+      indicator.style.color = '#4CAF50';
+    } else if (type === 'error') {
+      indicator.style.background = 'rgba(244, 67, 54, 0.2)';
+      indicator.style.color = '#f44336';
+    } else {
+      indicator.style.background = 'rgba(33, 150, 243, 0.2)';
+      indicator.style.color = '#2196F3';
+    }
+    
+    indicator.textContent = message;
+    indicator.style.opacity = '1';
+    
+    // Hide after 2 seconds for success messages
+    if (type === 'success') {
+      setTimeout(() => {
+        indicator.style.opacity = '0';
+      }, 2000);
+    }
+  }
+  
+  // Save buttons while preserving UI settings
+  async saveButtonsToProfile(buttons) {
+    try {
+      // Get current profile data
+      const profile = await window.electronAPI.getProfile(this.currentProfile);
+      
+      // Update buttons
+      profile.buttons = buttons;
+      
+      // Save back to profile
+      await window.electronAPI.saveProfile(this.currentProfile, profile);
+      
+      console.log('Buttons saved to profile:', this.currentProfile);
+      return { success: true };
+    } catch (error) {
+      console.error('Error saving buttons to profile:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  // Debounced autosave - waits 1 second after last change before saving
+  scheduleAutoSave() {
+    if (this.autoSaveTimeout) {
+      clearTimeout(this.autoSaveTimeout);
+    }
+    this.autoSaveTimeout = setTimeout(() => {
+      this.saveCurrentSettings().catch(err => {
+        console.error('Auto-save failed:', err);
+      });
+    }, 1000);
+  }
+
+  getCurrentComponentVisibility() {
+    const prefs = {};
+    const components = {
+      'sound-grid': document.getElementById('sound-grid'),
+      'twitch-stats-container': document.getElementById('twitch-stats-container'),
+      'recent-activity-container': document.getElementById('recent-activity-container'),
+      'twitch-chat-container': document.getElementById('twitch-chat-container'),
+      'sound-controls': document.getElementById('sound-controls'),
+      'queue-control-widget': document.getElementById('queue-control-widget')
+    };
+    
+    for (const [key, element] of Object.entries(components)) {
+      if (element) {
+        prefs[key] = !element.classList.contains('hidden');
+      }
+    }
+    
+    return prefs;
+  }
+
+  applyComponentVisibility(prefs) {
+    for (const [key, visible] of Object.entries(prefs)) {
+      const element = document.getElementById(key);
+      if (element) {
+        if (visible) {
+          element.classList.remove('hidden');
+        } else {
+          element.classList.add('hidden');
+        }
+      }
+    }
+  }
+
+  getCurrentChatWidth() {
+    const chatContainer = document.getElementById('twitch-chat-container');
+    return chatContainer ? chatContainer.offsetWidth : null;
+  }
+
+  getCurrentButtonOrder() {
+    // Get button order from the DOM (sound cards)
+    const soundGrid = document.getElementById('sound-grid');
+    if (!soundGrid) return [];
+    
+    const soundCards = Array.from(soundGrid.querySelectorAll('.sound-card'));
+    return soundCards
+      .filter(card => card.dataset.soundData)
+      .map(card => {
+        try {
+          const soundData = JSON.parse(card.dataset.soundData);
+          return soundData.id;
+        } catch (e) {
+          return null;
+        }
+      })
+      .filter(id => id);
+  }
+
+  async createProfile(profileName) {
+    try {
+      if (!profileName || profileName.trim() === '') {
+        showCustomAlert('Profile name cannot be empty', 'error');
+        return false;
+      }
+      
+      // Save current settings before creating new profile
+      await this.saveCurrentSettings();
+      
+      // Create new profile
+      const result = await window.electronAPI.createProfile(profileName);
+      
+      if (result.success) {
+        showCustomAlert(`Profile "${profileName}" created`, 'success');
+        
+        // Refresh profiles list
+        await this.initialize();
+        
+        // Switch to new profile
+        await this.switchProfile(result.profileId);
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to create profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error creating profile:', error);
+      showCustomAlert('Error creating profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+
+  async duplicateProfile(newProfileName) {
+    try {
+      if (!newProfileName || newProfileName.trim() === '') {
+        showCustomAlert('Profile name cannot be empty', 'error');
+        return false;
+      }
+      
+      // Save current settings first
+      await this.saveCurrentSettings();
+      
+      // Duplicate current profile
+      const result = await window.electronAPI.duplicateProfile(this.currentProfile, newProfileName);
+      
+      if (result.success) {
+        showCustomAlert(`Profile "${newProfileName}" created from current profile`, 'success');
+        
+        // Refresh profiles list
+        await this.initialize();
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to duplicate profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error duplicating profile:', error);
+      showCustomAlert('Error duplicating profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+
+  async renameProfile(newName) {
+    try {
+      if (!newName || newName.trim() === '') {
+        showCustomAlert('Profile name cannot be empty', 'error');
+        return false;
+      }
+      
+      const result = await window.electronAPI.renameProfile(this.currentProfile, newName);
+      
+      if (result.success) {
+        showCustomAlert(`Profile renamed to "${newName}"`, 'success');
+        
+        // Refresh profiles list
+        await this.initialize();
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to rename profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error renaming profile:', error);
+      showCustomAlert('Error renaming profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+
+  async deleteProfile() {
+    try {
+      const currentProfileName = this.profiles.find(p => p.id === this.currentProfile)?.name || 'current profile';
+      
+      const result = await window.electronAPI.deleteProfile(this.currentProfile);
+      
+      if (result.success) {
+        showCustomAlert(`Profile "${currentProfileName}" deleted`, 'success');
+        
+        // Refresh and switch to first available profile
+        await this.initialize();
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to delete profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error deleting profile:', error);
+      showCustomAlert('Error deleting profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+
+  async switchProfile(profileId) {
+    try {
+      // Save current profile settings before switching
+      await this.saveCurrentSettings();
+      
+      // Switch to new profile
+      const result = await window.electronAPI.switchProfile(profileId);
+      
+      if (result.success) {
+        this.currentProfile = profileId;
+        
+        const profileName = this.profiles.find(p => p.id === profileId)?.name || 'profile';
+        showCustomAlert(`Switched to "${profileName}"`, 'success');
+        
+        // Load new profile settings
+        await this.loadProfileSettings();
+        
+        // Reload buttons from new profile
+        if (typeof loadButtons === 'function') {
+          await loadButtons();
+        }
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to switch profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error switching profile:', error);
+      showCustomAlert('Error switching profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+}
+
+// Create global profile manager instance
+const profileManager = new ProfileManager();
+window.profileManager = profileManager;
+
 const soundGrid = document.getElementById("sound-grid");
 const visualContainer = document.getElementById("visual-container");
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
 
+// Helper function to load Twitch channel point redemptions
+async function loadChannelRedemptions(selectElement, inputElement) {
+  if (!window.electronAPI || !window.electronAPI.getChannelRewards) {
+    showCustomAlert('Twitch API not available', 'error');
+    return;
+  }
+  
+  try {
+    const rewards = await window.electronAPI.getChannelRewards();
+    
+    if (!rewards || rewards.length === 0) {
+      showCustomAlert('No channel point redemptions found. Make sure you\'re connected to Twitch.', 'error');
+      return;
+    }
+    
+    // Clear existing options except the first one
+    selectElement.innerHTML = '<option value="">-- Select or type manually --</option>';
+    
+    // Add redemptions to dropdown
+    rewards.forEach(reward => {
+      const option = document.createElement('option');
+      option.value = reward.title;
+      option.textContent = `${reward.title} (${reward.cost} pts)`;
+      selectElement.appendChild(option);
+    });
+    
+    showCustomAlert(`Loaded ${rewards.length} redemption(s) from Twitch`, 'success');
+    console.log('✅ Loaded Twitch redemptions:', rewards);
+  } catch (error) {
+    console.error('Error loading redemptions:', error);
+    showCustomAlert('Failed to load redemptions from Twitch', 'error');
+  }
+}
+
+// Setup redemption dropdown sync with text input
+function setupRedemptionSync(selectElement, inputElement) {
+  if (!selectElement || !inputElement) return;
+  
+  // When dropdown changes, update text input
+  selectElement.addEventListener('change', () => {
+    if (selectElement.value) {
+      inputElement.value = selectElement.value;
+    }
+  });
+  
+  // When text input changes, try to match dropdown
+  inputElement.addEventListener('input', () => {
+    const matchingOption = Array.from(selectElement.options).find(
+      opt => opt.value.toLowerCase() === inputElement.value.toLowerCase()
+    );
+    if (matchingOption) {
+      selectElement.value = matchingOption.value;
+    } else {
+      selectElement.value = '';
+    }
+  });
+}
+
 // Add refresh UI listener
 window.electronAPI.onRefreshUI(() => {
   loadButtons();
 });
+
+// Mute overlay iframe in dashboard to prevent double audio
+// Audio should only play in OBS browser source
+function muteOverlayIframeAudio() {
+  const overlayIframe = document.getElementById('overlay-iframe');
+  if (!overlayIframe) {
+    console.warn('🔇 Overlay iframe not found, retrying in 1 second...');
+    setTimeout(muteOverlayIframeAudio, 1000);
+    return;
+  }
+  
+  try {
+    // Mute all existing audio and video elements in the iframe
+      const muteElements = () => {
+      try {
+        const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow?.document;
+        if (!iframeDoc) return;
+        
+        const audios = iframeDoc.querySelectorAll('audio');
+        const videos = iframeDoc.querySelectorAll('video');
+        
+        let mutedCount = 0;
+        audios.forEach(audio => {
+          // Immediately pause and mute
+          if (!audio.paused) {
+            audio.pause();
+          }
+          audio.muted = true;
+          audio.volume = 0;
+          // Prevent future playback
+          audio.removeAttribute('autoplay');
+          audio.src = ''; // Clear source to prevent any playback
+          mutedCount++;
+        });
+        
+        videos.forEach(video => {
+          // Immediately pause and mute
+          if (!video.paused) {
+            video.pause();
+          }
+          video.muted = true;
+          video.volume = 0;
+          // Prevent future playback
+          video.removeAttribute('autoplay');
+          // Don't clear video source as it might be needed for visual preview
+          mutedCount++;
+        });
+        
+        if (mutedCount > 0) {
+          console.log(`🔇 Muted and paused ${mutedCount} media element(s) in dashboard overlay`);
+        }
+      } catch (error) {
+        // Silently ignore CORS errors when iframe is from different origin
+        if (!error.message?.includes('cross-origin')) {
+          console.warn('Error in muteElements:', error);
+        }
+      }
+    };
+    
+    // Set up muting when iframe loads
+    overlayIframe.addEventListener('load', () => {
+      const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow?.document;
+      if (!iframeDoc) return;
+      
+      // Mute immediately
+      muteElements();
+      
+      // Set up mutation observer to mute any new audio/video elements IMMEDIATELY when added
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach(mutation => {
+          mutation.addedNodes.forEach(node => {
+            if (node.tagName === 'AUDIO') {
+              console.log('🔇 New audio detected in dashboard iframe - muting immediately');
+              node.pause();
+              node.muted = true;
+              node.volume = 0;
+              node.removeAttribute('autoplay');
+              node.src = '';
+            } else if (node.tagName === 'VIDEO') {
+              console.log('🔇 New video detected in dashboard iframe - muting immediately');
+              node.pause();
+              node.muted = true;
+              node.volume = 0;
+              node.removeAttribute('autoplay');
+            }
+            // Check children as well
+            if (node.querySelectorAll) {
+              const audios = node.querySelectorAll('audio');
+              const videos = node.querySelectorAll('video');
+              audios.forEach(audio => {
+                audio.pause();
+                audio.muted = true;
+                audio.volume = 0;
+                audio.removeAttribute('autoplay');
+                audio.src = '';
+              });
+              videos.forEach(video => {
+                video.pause();
+                video.muted = true;
+                video.volume = 0;
+                video.removeAttribute('autoplay');
+              });
+            }
+          });
+        });
+        // Also run full mute as backup
+        muteElements();
+      });
+      
+      observer.observe(iframeDoc.body, {
+        childList: true,
+        subtree: true
+      });
+      
+      console.log('✅ Dashboard overlay preview muted (audio plays in OBS only)');
+    });
+    
+    // Also try to mute immediately if iframe is already loaded
+    if (overlayIframe.contentDocument) {
+      muteElements();
+    }
+    
+    // Aggressively check and mute every 100ms to catch any race conditions
+    setInterval(() => {
+      muteElements();
+    }, 100); // Check every 100ms (more frequent) to ensure dashboard overlay stays muted
+    
+  } catch (error) {
+    console.warn('Could not mute overlay iframe:', error);
+  }
+}
+
+// Initialize muting when page loads
+muteOverlayIframeAudio();
+
+// Additional safety: Ensure dashboard iframe never plays audio
+// This is a failsafe in case the dashboard iframe somehow receives WebSocket messages
+function preventDashboardAudio() {
+  const overlayIframe = document.getElementById('overlay-iframe');
+  if (overlayIframe && overlayIframe.contentWindow) {
+    try {
+      // Send a message to the iframe to disable all audio
+      overlayIframe.contentWindow.postMessage({
+        type: 'disableAudio',
+        source: 'dashboard'
+      }, '*');
+      console.log('🔇 Sent disableAudio message to dashboard iframe');
+    } catch (error) {
+      // Ignore cross-origin errors
+    }
+  }
+}
+
+// Send disable audio message periodically to ensure dashboard iframe stays silent
+// Only send if iframe is visible/active to reduce console spam
+let lastDisableAudioTime = 0;
+setInterval(() => {
+  const overlayIframe = document.getElementById('overlay-iframe');
+  const overlayPreview = document.getElementById('overlay-preview');
+  
+  // Only send disable message if overlay preview is visible and not hidden
+  if (overlayIframe && overlayPreview && !overlayPreview.classList.contains('hidden')) {
+    const now = Date.now();
+    // Only send every 5 seconds to reduce spam
+    if (now - lastDisableAudioTime > 5000) {
+      preventDashboardAudio();
+      lastDisableAudioTime = now;
+    }
+  }
+}, 2000); // Check every 2 seconds instead of sending every second
 
 // Chat display variables
 let chatMessages = [];
@@ -464,42 +1715,17 @@ function reorderButtons(fromIndex, toIndex) {
 }
 
 function saveButtonOrder() {
-  const soundGrid = document.getElementById('sound-grid');
-  const soundCards = Array.from(soundGrid.querySelectorAll('.sound-card'));
-  
-  const newOrder = soundCards
-    .filter(card => card.dataset.soundData) // Only include cards with sound data
-    .map(card => {
-      const soundData = JSON.parse(card.dataset.soundData);
-      return soundData;
-    });
-  
-  // Save to localStorage
-  localStorage.setItem('soundButtonOrder', JSON.stringify(newOrder));
-
-  // Also persist order to main config.json by sending ordered ids
-  try {
-    const orderedIds = newOrder.map(b => b.id).filter(Boolean);
-    if (window.electronAPI && typeof window.electronAPI.saveButtonOrder === 'function') {
-      window.electronAPI.saveButtonOrder(orderedIds);
-    } else if (window.electronAPI && window.electronAPI.send) {
-      // fallback if older API exposure
-      window.electronAPI.send('save-button-order', orderedIds);
-    }
-  } catch (e) {
-    console.warn('Failed to persist button order to main process:', e);
+  // Button order is now stored per-profile in uiSettings
+  // Just trigger profile autosave which will capture the current button order
+  if (profileManager && profileManager.scheduleAutoSave) {
+    profileManager.scheduleAutoSave();
   }
 }
 
 function loadButtonOrder() {
-  const savedOrder = localStorage.getItem('soundButtonOrder');
-  if (savedOrder) {
-    try {
-      return JSON.parse(savedOrder);
-    } catch (e) {
-      console.error('Error loading button order:', e);
-    }
-  }
+  // Button order is now stored in the profile's uiSettings
+  // This function is kept for backward compatibility but returns null
+  // The actual button order is applied when loading profile settings
   return null;
 }
 
@@ -667,6 +1893,11 @@ function initializeChatResize(resizeHandle, chatContainer) {
     const currentWidth = chatContainer.offsetWidth;
     localStorage.setItem('twitchChatWidth', currentWidth.toString());
     
+    // Trigger profile autosave
+    if (profileManager && profileManager.scheduleAutoSave) {
+      profileManager.scheduleAutoSave();
+    }
+    
     // Trigger final layout update
     triggerLayoutUpdate();
     
@@ -772,6 +2003,30 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Initialize visibility dropdown
   initializeVisibilityDropdown();
+  
+  // Setup Twitch redemption loaders for Audio Button form
+  const audioRedeemSelect = document.getElementById('redeem-name-select');
+  const audioRedeemInput = document.getElementById('redeem-name');
+  const audioLoadBtn = document.getElementById('load-audio-redemptions');
+  
+  if (audioLoadBtn && audioRedeemSelect && audioRedeemInput) {
+    setupRedemptionSync(audioRedeemSelect, audioRedeemInput);
+    audioLoadBtn.addEventListener('click', () => {
+      loadChannelRedemptions(audioRedeemSelect, audioRedeemInput);
+    });
+  }
+  
+  // Setup Twitch redemption loaders for Multi-Media Button form
+  const mmRedeemSelect = document.getElementById('multi-media-redeem-name-select');
+  const mmRedeemInput = document.getElementById('multi-media-redeem-name');
+  const mmLoadBtn = document.getElementById('load-multimedia-redemptions');
+  
+  if (mmLoadBtn && mmRedeemSelect && mmRedeemInput) {
+    setupRedemptionSync(mmRedeemSelect, mmRedeemInput);
+    mmLoadBtn.addEventListener('click', () => {
+      loadChannelRedemptions(mmRedeemSelect, mmRedeemInput);
+    });
+  }
 });
 
 // Adjust container bottom padding so fixed pagination doesn't overlap the grid
@@ -880,7 +2135,7 @@ async function loadButtons() {
   addCard.id = 'add-sound-card';
   addCard.innerHTML = `
     <div class="add-icon">+</div>
-    <div class="add-text">Add Sound</div>
+    <div class="add-text">Add New</div>
   `;
   addCard.onclick = () => {
     // Show selection modal
@@ -891,6 +2146,21 @@ async function loadButtons() {
 
   // Load buttons from config
   const data = await window.electronAPI.getConfig();
+  console.log('🔍 Loaded config data:', data);
+  console.log('🔍 Number of buttons:', data.buttons?.length || 0);
+  
+  // Debug: Check for Donut button specifically
+  const donutButton = data.buttons?.find(btn => btn.name === 'Donut' || btn.label === 'Donut');
+  if (donutButton) {
+    console.log('🔍 Found Donut button:', donutButton);
+    console.log('🔍 Donut button audio:', donutButton.audio);
+    if (donutButton.audio && donutButton.audio.length > 0) {
+      console.log('🔍 Donut button audio[0]:', donutButton.audio[0]);
+      console.log('🔍 Donut button audio[0].src:', donutButton.audio[0].src);
+    }
+  } else {
+    console.log('🔍 Donut button not found in config');
+  }
   
   // Check for saved order
   const savedOrder = loadButtonOrder();
@@ -949,7 +2219,11 @@ async function loadButtons() {
         // Read fresh soundData from the DOM so edits/reorders take effect
         try {
           const sd = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
-          if (sd) handleTrigger(sd);
+          if (sd) {
+            console.log('🔍 Raw button data from storage:', sd);
+            console.log('🔍 Button overlay property from storage:', sd.overlay);
+            handleTrigger(sd);
+          }
         } catch (err) {
           console.error('Failed to parse soundData on click:', err);
         }
@@ -1220,7 +2494,14 @@ document.addEventListener('drop', (e) => {
   console.log('  - target classes:', e.target.classList);
   console.log('  - files:', e.dataTransfer.files.length);
   
-  if (!isDragMode || !e.target.classList.contains('sound-card')) {
+  // Don't process drops if we're in drag mode and dropping on a sound card
+  if (isDragMode && e.target.classList.contains('sound-card')) {
+    console.log('  ❌ Skipping file drop (in drag mode on sound card)');
+    return;
+  }
+  
+  // Process file drops
+  if (e.dataTransfer.files.length > 0) {
     console.log('  ✅ Processing file drop');
     e.preventDefault();
     e.stopPropagation();
@@ -1233,8 +2514,6 @@ document.addEventListener('drop', (e) => {
       handleFileDrop(file);
       break; // Only handle the first file
     }
-  } else {
-    console.log('  ❌ Skipping file drop (in drag mode on sound card)');
   }
 });
 
@@ -1370,6 +2649,9 @@ function getVisibilityMap() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
+    'toggle-queue-control': 'queue-control-widget',
+    'toggle-profile-panel': 'profile-panel',
+    'toggle-ai-management-panel': 'ai-management-panel'
     // move-bar removed
   };
 }
@@ -1470,7 +2752,7 @@ function initializeVisibilityDropdown() {
 
   // Close dropdown when clicking outside
   document.addEventListener('click', (e) => {
-    if (menu && !menu.contains(e.target) && !toggleBtn.contains(e.target)) {
+    if (menu && !menu.contains(e.target) && toggleBtn && !toggleBtn.contains(e.target)) {
       menu.classList.add('hidden');
     }
   });
@@ -1487,6 +2769,8 @@ function initializeVisibilityDropdown() {
   Object.keys(checkboxes).forEach(checkboxId => {
     const checkbox = document.getElementById(checkboxId);
     const componentId = checkboxes[checkboxId];
+    
+    console.log(`Setting up visibility for: ${checkboxId} → ${componentId}`, checkbox ? '✓' : '✗');
     
     if (checkbox && componentId) {
       // Handle direct checkbox clicks
@@ -1519,6 +2803,10 @@ function initializeVisibilityDropdown() {
             const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
             prefs[componentId] = checkbox.checked;
             localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+            // Trigger profile autosave
+            if (profileManager && profileManager.scheduleAutoSave) {
+              profileManager.scheduleAutoSave();
+            }
             // Notify main process so menu checkbox states can be synced
             if (window.electronAPI && typeof window.electronAPI.syncViewPrefs === 'function') {
               try { window.electronAPI.syncViewPrefs(prefs); } catch (err) { console.warn('Failed to send view prefs to main', err); }
@@ -1581,6 +2869,10 @@ function initializeVisibilityDropdown() {
             prefs[checkboxes[id]] = false;
           });
           localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+          // Trigger profile autosave
+          if (profileManager && profileManager.scheduleAutoSave) {
+            profileManager.scheduleAutoSave();
+          }
           if (window.electronAPI && typeof window.electronAPI.syncViewPrefs === 'function') {
             try { window.electronAPI.syncViewPrefs(prefs); } catch (err) { console.warn('Failed to send view prefs to main', err); }
           }
@@ -1619,6 +2911,10 @@ function initializeVisibilityDropdown() {
             prefs[checkboxes[id]] = true;
           });
           localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+          // Trigger profile autosave
+          if (profileManager && profileManager.scheduleAutoSave) {
+            profileManager.scheduleAutoSave();
+          }
           if (window.electronAPI && typeof window.electronAPI.syncViewPrefs === 'function') {
             try { window.electronAPI.syncViewPrefs(prefs); } catch (err) { console.warn('Failed to send view prefs to main', err); }
           }
@@ -1651,6 +2947,9 @@ function applyVisibilityPrefs() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
+    'toggle-queue-control': 'queue-control-widget',
+    'toggle-profile-panel': 'profile-panel',
+    'toggle-ai-management-panel': 'ai-management-panel'
     // move-bar removed
   };
 
@@ -1744,6 +3043,189 @@ if (window.electronAPI && window.electronAPI.onShowAbout) {
   window.electronAPI.onShowAbout(() => {
     openAboutModal();
   });
+}
+
+// Placeholders Guide Modal
+// Chat commands data structure (extensible for future commands)
+const chatCommands = [
+  {
+    command: '!checkin',
+    description: 'View the top 5 check-in leaderboard',
+    details: 'Shows the top 5 users with the most check-ins. If streaks are enabled, displays streak information. Each user has a 10-minute cooldown between uses.',
+    example: 'Type !checkin in chat to see the leaderboard.'
+  }
+  // Add more commands here in the future
+];
+
+function renderCommandsGuide() {
+  const commandsList = document.getElementById('commands-list');
+  if (!commandsList) return;
+  
+  if (chatCommands.length === 0) {
+    commandsList.innerHTML = '<p style="color: var(--text-secondary); padding: 20px; text-align: center;">No commands available yet.</p>';
+    return;
+  }
+  
+  let html = '';
+  chatCommands.forEach((cmd, index) => {
+    html += `
+      <div style="margin-bottom: ${index < chatCommands.length - 1 ? '30px' : '0'};">
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+          <code style="background: var(--bg-secondary); padding: 4px 8px; border-radius: 4px; color: var(--accent); font-size: 16px;">${cmd.command}</code>
+        </h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td style="width: 120px;"><strong>Description</strong></td>
+              <td>${cmd.description}</td>
+            </tr>
+            ${cmd.details ? `<tr>
+              <td><strong>Details</strong></td>
+              <td>${cmd.details}</td>
+            </tr>` : ''}
+            ${cmd.example ? `<tr>
+              <td><strong>Example</strong></td>
+              <td><code style="background: var(--bg-secondary); padding: 2px 6px; border-radius: 3px;">${cmd.example}</code></td>
+            </tr>` : ''}
+          </tbody>
+        </table>
+      </div>
+    `;
+  });
+  
+  commandsList.innerHTML = html;
+}
+
+function openCommandsGuide() {
+  const modal = document.getElementById('commands-guide-modal');
+  if (modal) {
+    renderCommandsGuide();
+    modal.classList.remove('hidden');
+    
+    // Disable hotkeys when modal is open
+    if (window.electronAPI && window.electronAPI.disableHotkeys) {
+      window.electronAPI.disableHotkeys();
+    }
+  }
+}
+
+function closeCommandsGuide() {
+  const modal = document.getElementById('commands-guide-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    
+    // Re-enable hotkeys when modal is closed
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+}
+
+function openPlaceholdersGuide() {
+  const modal = document.getElementById('placeholders-guide-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    
+    // Disable hotkeys when modal is open
+    if (window.electronAPI && window.electronAPI.disableHotkeys) {
+      window.electronAPI.disableHotkeys();
+    }
+  }
+}
+
+function closePlaceholdersGuide() {
+  const modal = document.getElementById('placeholders-guide-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    
+    // Re-enable hotkeys when modal is closed
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+}
+
+// Close button for placeholders guide
+const placeholdersGuideCloseBtn = document.getElementById('placeholders-guide-close');
+if (placeholdersGuideCloseBtn) {
+  placeholdersGuideCloseBtn.onclick = () => {
+    closePlaceholdersGuide();
+  };
+}
+
+// Close on backdrop click
+const placeholdersGuideModal = document.getElementById('placeholders-guide-modal');
+if (placeholdersGuideModal) {
+  placeholdersGuideModal.addEventListener('click', (e) => {
+    if (e.target === placeholdersGuideModal) {
+      closePlaceholdersGuide();
+    }
+  });
+}
+
+// Close button for commands guide
+const commandsGuideCloseBtn = document.getElementById('commands-guide-close');
+if (commandsGuideCloseBtn) {
+  commandsGuideCloseBtn.onclick = () => {
+    closeCommandsGuide();
+  };
+}
+
+// Close on backdrop click
+const commandsGuideModal = document.getElementById('commands-guide-modal');
+if (commandsGuideModal) {
+  commandsGuideModal.addEventListener('click', (e) => {
+    if (e.target === commandsGuideModal) {
+      closeCommandsGuide();
+    }
+  });
+}
+
+// Help button in Alert Widget
+const alertPlaceholdersHelp = document.getElementById('alert-placeholders-help');
+if (alertPlaceholdersHelp) {
+  alertPlaceholdersHelp.addEventListener('click', () => {
+    openPlaceholdersGuide();
+  });
+}
+
+// Check-In Stats Modal Handlers
+const checkinStatsCloseBtn = document.getElementById('checkin-stats-close');
+if (checkinStatsCloseBtn) {
+  checkinStatsCloseBtn.onclick = () => {
+    const modal = document.getElementById('checkin-stats-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      // Re-enable hotkeys
+      if (window.electronAPI && window.electronAPI.enableHotkeys) {
+        window.electronAPI.enableHotkeys();
+      }
+    }
+  };
+}
+
+// Close on backdrop click
+const checkinStatsModal = document.getElementById('checkin-stats-modal');
+if (checkinStatsModal) {
+  checkinStatsModal.addEventListener('click', (e) => {
+    if (e.target === checkinStatsModal) {
+      checkinStatsModal.classList.add('hidden');
+      // Re-enable hotkeys
+      if (window.electronAPI && window.electronAPI.enableHotkeys) {
+        window.electronAPI.enableHotkeys();
+      }
+    }
+  });
+}
+
+// Stats filter and sort listeners
+const statsSort = document.getElementById('stats-sort');
+const statsFilter = document.getElementById('stats-filter');
+if (statsSort) {
+  statsSort.addEventListener('change', renderCheckinStats);
+}
+if (statsFilter) {
+  statsFilter.addEventListener('change', renderCheckinStats);
 }
 
 // Open settings modal when Preferences menu item is clicked
@@ -2092,9 +3574,40 @@ function addRecentSubscriber(subscriber) {
   updateRecentSubscribersDisplay();
 }
 
+// Deduplication for chat messages (similar to overlay)
+const processedChatMessages = new Set();
+const CHAT_DEDUP_WINDOW = 5000; // 5 seconds
+
+// Generate hash for chat message deduplication
+function getChatMessageHash(user, message, timestamp) {
+  // Group messages within 100ms for deduplication
+  const timeGroup = Math.floor(timestamp / 100);
+  return `${user}:${message}:${timeGroup}`;
+}
+
 // Listen for Twitch chat events
 window.electronAPI.onTwitchChatEvent((eventData) => {
+  console.log('📨 Twitch chat event received:', eventData);
+  console.log('📨 Event source:', eventData.source || 'unknown');
+  
   if (eventData.type === 'chat') {
+    // Generate hash for deduplication
+    const messageHash = getChatMessageHash(eventData.user, eventData.message, Date.now());
+    
+    // Check for duplicates
+    if (processedChatMessages.has(messageHash)) {
+      console.log('🚫 Duplicate chat message detected, skipping');
+      return;
+    }
+    
+    // Add to processed set
+    processedChatMessages.add(messageHash);
+    
+    // Remove after deduplication window
+    setTimeout(() => {
+      processedChatMessages.delete(messageHash);
+    }, CHAT_DEDUP_WINDOW);
+    
     // Check if it's a command (starts with !)
     if (eventData.message && eventData.message.startsWith('!')) {
       addTwitchEvent('command', {
@@ -2111,22 +3624,135 @@ window.electronAPI.onTwitchChatEvent((eventData) => {
 });
 
 // Listen for Twitch EventSub events (follows, subs, raids, etc.)
-window.electronAPI.onTwitchEventSub((eventData) => {
+window.electronAPI.onTwitchEventSub(async (eventData) => {
   console.log('📡 Twitch EventSub received:', eventData);
+  
+  // Handle daily check-in redemptions first
+  if (eventData.type === 'channel.channel_points_custom_reward_redemption.add') {
+    const rewardTitle = eventData.event.reward?.title || eventData.event.reward?.name || eventData.event.reward_title || '';
+    const configuredRewardName = dailyCheckinData.config.rewardName || 'Daily Check-In';
+    
+    // Check if this matches our daily check-in reward
+    if (rewardTitle.toLowerCase() === configuredRewardName.toLowerCase()) {
+      console.log('✅ Daily Check-In redemption detected!');
+      
+      // Process the daily check-in
+      const checkinResult = await processDailyCheckin({
+        user_id: eventData.event.user_id,
+        user_name: eventData.event.user_name || eventData.event.user_login,
+        display_name: eventData.event.user_login || eventData.event.user_name
+      });
+      
+      // If check-in was successful, trigger any configured daily-checkin alerts
+      if (checkinResult) {
+        // Get the updated viewer data
+        const viewer = dailyCheckinData.viewers[eventData.event.user_id];
+        
+        // Create user data with actual check-in counts
+        const userData = {
+          username: viewer.username,
+          display_name: viewer.display_name,
+          user_id: viewer.user_id,
+          total_checkins: viewer.total_checkins,
+          streak: viewer.streak || 0,
+          reward: rewardTitle,
+          ...eventData.event
+        };
+        
+        console.log('👤 Daily check-in user data:', userData);
+        
+        // Trigger daily-checkin alert with actual data
+        alertSystem.triggerAlertForEvent('daily-checkin', userData);
+      }
+      
+      // Don't process this as a regular channel-points alert
+      return;
+    }
+  }
+  
+  // Handle first-chat walk-on events
+  if (eventData.type === 'first-chat-walkon') {
+    const username = eventData.event?.user_name || eventData.event?.display_name || 'Someone';
+    const userData = {
+      username: eventData.event.user_name || username,
+      display_name: eventData.event.display_name || username,
+      user_id: eventData.event.user_id,
+      user_name: eventData.event.user_name || username,
+      ...eventData.event
+    };
+    
+    console.log('👤 First chat walk-on user data:', userData);
+    alertSystem.triggerAlertForEvent('first-chat-walkon', userData);
+    
+    // Don't process further
+    return;
+  }
+  
+  // For channel point redemptions (non-daily-checkin), let the TwitchConnected system handle button matching
+  if (eventData.type === 'channel.channel_points_custom_reward_redemption.add') {
+    // For non-daily-checkin redemptions, let the TwitchConnected system handle button matching
+    // The TwitchConnected system will check for buttons with matching keywords
+    console.log('🎁 Non-daily-checkin redemption, letting TwitchConnected system handle button matching');
+    
+    // Send the event to TwitchConnected system for button matching
+    // We need to send it as a 'redeem' type event for the TwitchConnected system to process it
+    if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
+      // The TwitchConnected system expects events with type 'redeem'
+      const redeemEvent = {
+        type: 'redeem',
+        event: eventData.event
+      };
+      console.log('📤 Sending redemption event to TwitchConnected system:', redeemEvent);
+      
+      // Trigger the TwitchConnected system directly
+      if (window.checkRedemptionAgainstButtonKeywords) {
+        window.checkRedemptionAgainstButtonKeywords(redeemEvent).then(matchingButtonLabel => {
+          if (matchingButtonLabel && window.electronAPI && window.electronAPI.sendTrigger) {
+            console.log(`🚀 Triggering button "${matchingButtonLabel}" from channel point redemption`);
+            window.electronAPI.sendTrigger(matchingButtonLabel);
+          }
+        });
+      }
+    }
+  }
   
   // Update alerts from storage in case they changed
   alertSystem.updateAlerts();
   
-  // Map Twitch event types to alert types
-  const eventTypeMap = {
-    'channel.follow': 'follower',
-    'channel.subscribe': 'subscriber', 
-    'channel.subscription.gift': 'gift-sub',
-    'channel.raid': 'raid',
-    'channel.cheer': 'bits'
-  };
+  // Determine alert type with special handling for subscriptions
+  let alertType = null;
   
-  const alertType = eventTypeMap[eventData.type];
+  if (eventData.type === 'channel.subscribe') {
+    // Handle different subscription types based on event data
+    if (eventData.event.is_gift === true) {
+      // Check if it's a gift received (someone received a gift) or gift given (someone gave a gift)
+      if (eventData.event.user_id === eventData.event.broadcaster_user_id) {
+        alertType = 'gift-sub-received';
+      } else {
+        alertType = 'gift-sub';
+      }
+    } else if (eventData.event.cumulative_months && eventData.event.cumulative_months > 1) {
+      alertType = 'resubscriber';
+    } else {
+      alertType = 'subscriber';
+    }
+  } else if (eventData.type === 'channel.subscription.message') {
+    // Subscription message (resub announcement)
+    alertType = 'resubscriber';
+  } else {
+    // Map other Twitch event types to alert types
+    const eventTypeMap = {
+      'channel.follow': 'follower',
+      'poll.follow': 'follower', // Polling-based follower detection (fallback)
+      'channel.subscription.gift': 'gift-sub',
+      'channel.raid': 'raid',
+      'channel.cheer': 'bits',
+      'channel.ban': 'ban'
+    };
+    
+    alertType = eventTypeMap[eventData.type];
+  }
+  
   if (alertType) {
     // Extract user data from the event
     const userData = {
@@ -2137,11 +3763,12 @@ window.electronAPI.onTwitchEventSub((eventData) => {
       bits: eventData.event.bits || eventData.event.bits_used || eventData.event.bits_amount || eventData.event.amount || '',
       months: eventData.event.cumulative_months || eventData.event.months || '',
       message: eventData.event.message || eventData.event.user_input || '',
-      reward: eventData.event.reward || eventData.event.reward_title || '',
+      reward: eventData.event.reward?.title || eventData.event.reward?.name || eventData.event.reward_title || eventData.event.reward || '',
       ...eventData.event // Include all event data
     };
     
     console.log('👤 Extracted user data:', userData);
+    console.log('🎯 Alert type determined:', alertType, 'from event type:', eventData.type);
     
     // Trigger the alert
     alertSystem.triggerAlertForEvent(alertType, userData);
@@ -2155,7 +3782,7 @@ window.electronAPI.onTwitchEventSub((eventData) => {
   // Update recent activity for follows and subscribers
   if (eventData.type === 'channel.follow' || eventData.type === 'poll.follow') {
     addRecentFollower(eventData.event);
-  } else if (eventData.type === 'channel.subscribe') {
+  } else if (eventData.type === 'channel.subscribe' || eventData.type === 'channel.subscription.message') {
     addRecentSubscriber(eventData.event);
   }
 });
@@ -2310,23 +3937,36 @@ window.electronAPI.onTwitchCleared(() => {
 });
 
 async function handleTrigger(button) {
+  console.log(`🔍 handleTrigger called for button: "${button.name || button.label}" Type: ${button.type} Volume: ${button.volume}`);
   // Prevent accidental plays while editing/reordering
   if (isDragMode) return;
   // If caller passed a DOM element instead of button object, normalize
   if (button && button._vdJustDragged) return;
+  
+  // Clear audio cache before triggering to ensure fresh audio files
+  audioCache.clear();
+  console.log('🧹 Audio cache cleared before button trigger');
 
   if (button.type === "audio") {
     const audioPath = await window.electronAPI.getSoundPath(button.src);
-    const audio = new Audio(audioPath);
+    // Add cache-busting parameter to ensure fresh audio files are loaded
+    const cacheBuster = `?t=${Date.now()}`;
+    const audioUrl = audioPath + (audioPath.includes('?') ? '&' : '?') + cacheBuster;
+    const audio = new Audio(audioUrl);
+    console.log(`🔊 Loading audio with cache-busting URL: ${audioUrl}`);
     // Apply saved volume if present (expect 0.0 - 1.0). Fallback to 1.0
     // Note: volume is stored per-button in `config.json` and only applied for
     // audio-type buttons. The renderer sends `volume` as a float (0.0-1.0)
     // when saving; the main process persists it into the button config.
     try {
       const vol = (typeof button.volume === 'number') ? button.volume : (button.volume ? parseFloat(button.volume) : 1.0);
-      if (!isNaN(vol)) audio.volume = Math.max(0, Math.min(1, vol));
+      // Set volume immediately to prevent loud burst
+      audio.volume = 0; // Start muted
+      audio.volume = Math.max(0, Math.min(1, !isNaN(vol) ? vol : 1.0)); // Then set to desired volume
     } catch (err) {
       // ignore and use default
+      audio.volume = 0;
+      audio.volume = 1.0;
     }
     
     // Set up overlay clearing when audio finishes
@@ -2384,6 +4024,12 @@ const audioCache = new Map();
 
 async function handleMultiMediaTrigger(button) {
   console.log('Triggering multi-media button:', button);
+  console.log('🔍 Button overlay property:', button.overlay);
+  console.log('🔍 Button object keys:', Object.keys(button));
+  console.log('🔍 Button audio data:', button.audio);
+  console.log('🔍 Button ID:', button.id);
+  console.log('🔍 Button name:', button.name);
+  console.log('🔍 Full button config:', JSON.stringify(button, null, 2));
   
   // Use the new schema directly (no nested data object)
   const audioData = button.audio || [];
@@ -2391,66 +4037,59 @@ async function handleMultiMediaTrigger(button) {
   const centerMediaData = button.centerMedia || [];
   const optionsData = button.options || { clearPrevious: true };
   
-  // 1. Play audio(s) in dashboard - start immediately
-  const audioPromises = [];
-  if (Array.isArray(audioData)) {
-    for (const audioEntry of audioData) {
-      if (audioEntry.src) {
-        // Create async function to load and play audio
-        const playAudio = (async () => {
-          try {
-            let audioSrc = audioEntry.src;
-            
-            // Load audio from disk if it's a file path
-            if (typeof audioSrc === 'string' && 
-                !audioSrc.startsWith('data:') && 
-                !audioSrc.startsWith('blob:') && 
-                !audioSrc.startsWith('http')) {
-              console.log('🎵 Loading audio file from disk:', audioSrc);
-              try {
-                if (window.electronAPI && window.electronAPI.getMediaFile) {
-                  const result = await window.electronAPI.getMediaFile(audioSrc);
-                  if (result.success) {
-                    const sizeKB = (result.data.length / 1024).toFixed(2);
-                    console.log(`✅ Audio file loaded: ${audioSrc} (${sizeKB} KB)`);
-                    audioSrc = result.data; // Use base64 data URI
-                  } else {
-                    console.error('Failed to load audio file:', result.error);
-                  }
-                }
-              } catch (error) {
-                console.error('Error loading audio file:', error);
-              }
-            }
-            
-            // Use cached audio or create new one
-            let audio = audioCache.get(audioSrc);
-            if (!audio) {
-              audio = new Audio(audioSrc);
-              audioCache.set(audioSrc, audio);
-            }
-            
-            // Reset and configure audio
-            audio.currentTime = 0;
-            audio.volume = audioEntry.volume || 1.0; // Volume is already 0-1 in new schema
-            audio.loop = audioEntry.loop || false;
-            
-            // Start playing
-            return audio.play();
-          } catch (error) {
-            console.warn('Failed to play audio:', error);
-          }
-        })();
-        
-        audioPromises.push(playAudio);
-      }
-    }
+  console.log('🎬 === INITIAL BUTTON DATA DEBUG ===');
+  console.log('🎬 centerMediaData exists?', !!centerMediaData);
+  console.log('🎬 centerMediaData is array?', Array.isArray(centerMediaData));
+  console.log('🎬 centerMediaData length:', centerMediaData.length);
+  console.log('🎬 centerMediaData content:', centerMediaData);
+  if (centerMediaData.length > 0) {
+    centerMediaData.forEach((item, idx) => {
+      console.log(`🎬 centerMedia[${idx}]:`, {
+        type: item.type,
+        id: item.id,
+        hasSrc: !!item.src,
+        srcPreview: item.src ? item.src.substring(0, 100) : 'NO SRC',
+        loop: item.loop,
+        widthPct: item.widthPct
+      });
+    });
+  } else {
+    console.log('🎬 ⚠️ NO centerMediaData in button!');
   }
+  
+  // Debug: Log the button data to see what we're working with
+  console.log('🔍 Button.slots:', button.slots);
+  console.log('🔍 SlotsData:', slotsData);
+  if (slotsData && Object.keys(slotsData).length > 0) {
+    Object.keys(slotsData).forEach(key => {
+      console.log(`🔍 Slot ${key}:`, slotsData[key]);
+      console.log(`🔍 Slot ${key} text:`, slotsData[key]?.text);
+      console.log(`🔍 Slot ${key} style:`, slotsData[key]?.style);
+    });
+  } else {
+    console.log('⚠️ No slots data found in button!');
+  }
+  console.log('🔍 Button options:', button.options);
+  console.log('🔍 OptionsData:', optionsData);
+  console.log('🔍 DurationMs in options:', optionsData.durationMs);
+  
+  // 1. Audio handling for multi-media buttons
+  // NOTE: Audio plays ONLY in the overlay, not in the dashboard, to prevent double audio
+  console.log('🎵 Audio will play in overlay only (preventing double audio)');
+  const audioPromises = []; // Keep empty for overlay-only playback
 
   // 2. Send overlay payload - immediately after starting audio
+  // Check if we have separate audio files - if so, mute videos to avoid double audio
+  const hasSeparateAudio = audioData && audioData.length > 0;
+  
   // Process center media similar to alert system
   const processedCenterMedia = await Promise.all(centerMediaData.map(async (item) => {
     if (item.src) {
+      // Mute videos if there are separate audio files to prevent double audio
+      if (item.type === 'video' && hasSeparateAudio) {
+        console.log('🔇 Muting video because separate audio files are present');
+        item.muted = true;
+      }
       // Handle different image source types like alert system
       if (item.src instanceof File) {
         // Fresh file upload - create blob URL
@@ -2464,28 +4103,21 @@ async function handleMultiMediaTrigger(button) {
         console.log('🖼️ Using base64/blob data for multi-media');
         return item;
       } else if (typeof item.src === 'string' && !item.src.startsWith('http')) {
-        // File path (relative to userDataPath) - load from disk
-        console.log('🖼️ Loading media file from disk:', item.src);
+        // File path (relative to userDataPath) - serve via HTTP to avoid base64 conversion
+        console.log('🖼️ Converting file path to HTTP URL:', item.src);
         try {
-          if (window.electronAPI && window.electronAPI.getMediaFile) {
-            const result = await window.electronAPI.getMediaFile(item.src);
-            if (result.success) {
-              const sizeKB = (result.data.length / 1024).toFixed(2);
-              console.log(`✅ Media file loaded: ${item.src} (${sizeKB} KB)`);
-              return {
-                ...item,
-                src: result.data // Base64 data URI
-              };
-            } else {
-              console.error('Failed to load media file:', result.error);
-              return item; // Return as-is, might be URL
-            }
-          } else {
-            console.warn('getMediaFile API not available, using path directly');
-            return item;
-          }
+          // Use the original relative path in the URL
+          // The media server expects relative paths (from userDataPath) and will join them
+          const relativePath = item.src.replace(/\\/g, '/'); // Normalize path separators
+          const httpUrl = `http://localhost:8080/media/${encodeURIComponent(relativePath)}`;
+          console.log(`✅ Serving media via HTTP: ${httpUrl}`);
+          console.log(`🔍 Media relative path: ${relativePath}`);
+          return {
+            ...item,
+            src: httpUrl
+          };
         } catch (error) {
-          console.error('Error loading media file:', error);
+          console.error('Error constructing HTTP URL for media:', error);
           return item;
         }
       } else {
@@ -2496,73 +4128,120 @@ async function handleMultiMediaTrigger(button) {
     return item;
   }));
 
+  // Process audio files for overlay (convert paths to HTTP URLs)
+  const processedAudio = await Promise.all(audioData.map(async (audioItem) => {
+    if (audioItem.src) {
+      let audioSrc = audioItem.src;
+      console.log('🎵 Processing audio item:', audioItem);
+      
+      // Convert file paths to HTTP URLs
+      if (typeof audioSrc === 'string' && 
+          !audioSrc.startsWith('data:') && 
+          !audioSrc.startsWith('blob:') && 
+          !audioSrc.startsWith('http')) {
+        console.log('🎵 Converting audio file path to HTTP URL:', audioSrc);
+        try {
+          // Use the original relative path (audioSrc) in the URL
+          // The media server expects relative paths (from userDataPath) and will join them
+          const relativePath = audioSrc.replace(/\\/g, '/'); // Normalize path separators
+          audioSrc = `http://localhost:8080/media/${encodeURIComponent(relativePath)}?t=${Date.now()}`;
+          console.log(`✅ Serving audio via HTTP with cache-busting: ${audioSrc}`);
+          console.log(`🔍 Audio relative path: ${relativePath}`);
+        } catch (error) {
+          console.error('Error constructing HTTP URL for audio:', error);
+        }
+      }
+      
+      return {
+        ...audioItem,
+        src: audioSrc,
+        type: 'audio',
+        volume: audioItem.volume !== undefined ? audioItem.volume : 1.0,
+        loop: audioItem.loop || false
+      };
+    }
+    return audioItem;
+  }));
+
+  // Debug: Log chroma key data
+  console.log('🔍 Processed center media with chroma key data:', processedCenterMedia.map(item => ({
+    type: item.type,
+    src: item.src,
+    chromaKey: item.chromaKey
+  })));
+
   const overlayPayload = {
     type: 'buttonTrigger',
+    targetOverlay: button.overlay || getDefaultOverlay(), // Route to specific overlay
     options: optionsData,
     slots: slotsData,
-    centerMedia: processedCenterMedia
+    centerMedia: [...processedCenterMedia, ...processedAudio] // Include audio in centerMedia
   };
+
+  // Log slots with full style data for debugging
+  console.log('📤 Full slots data being sent:', slotsData);
+  if (slotsData && Object.keys(slotsData).length > 0) {
+    Object.keys(slotsData).forEach(slotKey => {
+      console.log(`📤 Slot ${slotKey}:`, slotsData[slotKey]);
+      if (slotsData[slotKey].style) {
+        console.log(`📤 Slot ${slotKey} style:`, slotsData[slotKey].style);
+        console.log(`📤 Slot ${slotKey} fontFamily:`, slotsData[slotKey].style.fontFamily);
+      }
+    });
+  }
 
   // Log payload summary without full base64 data
   console.log('📤 Sending overlay payload:', {
     type: overlayPayload.type,
+    targetOverlay: overlayPayload.targetOverlay,
     slots: Object.keys(overlayPayload.slots || {}),
-    centerMedia: centerMediaData.map(item => ({
+    centerMedia: overlayPayload.centerMedia.map(item => ({
       type: item.type,
-      src: item.src // Shows file path from config
+      src: item.src ? (item.src.substring(0, 100) + '...') : 'NO SRC',
+      volume: item.volume
     })),
+    audioCount: processedAudio.length,
+    videoCount: processedCenterMedia.filter(i => i.type === 'video').length,
+    imageCount: processedCenterMedia.filter(i => i.type === 'image').length,
     options: overlayPayload.options
   });
+  console.log('🎬 DETAILED VIDEO DEBUG:');
+  console.log('  - Total centerMedia items:', overlayPayload.centerMedia.length);
+  console.log('  - Videos in centerMedia:', overlayPayload.centerMedia.filter(i => i.type === 'video').length);
+  overlayPayload.centerMedia.filter(i => i.type === 'video').forEach((vid, idx) => {
+    console.log(`  - Video ${idx + 1}:`, {
+      type: vid.type,
+      src: vid.src,
+      loop: vid.loop,
+      muted: vid.muted,
+      volume: vid.volume
+    });
+  });
+  console.log(`🎯 Sending to overlay: ${overlayPayload.targetOverlay}`);
 
-  // Send to overlay iframe (if exists) - immediately
-  const overlayIframe = document.getElementById('overlay-iframe');
-  if (overlayIframe && overlayIframe.contentWindow) {
-    try {
-      overlayIframe.contentWindow.postMessage(overlayPayload, '*');
-      console.log('Message sent to overlay iframe');
-    } catch (error) {
-      console.warn('Failed to send message to overlay iframe:', error);
-    }
-  }
-
-  // Send to overlay widget (if exists) - immediately
-  const overlayWidget = document.getElementById('overlay-widget');
-  if (overlayWidget && !overlayWidget.classList.contains('hidden')) {
-    try {
-      // Trigger the overlay widget's test function
-      if (window.testMultiSource) {
-        window.testMultiSource(overlayPayload);
-      }
-      console.log('Message sent to overlay widget');
-    } catch (error) {
-      console.warn('Failed to send message to overlay widget:', error);
-    }
-  }
-
-  // Send via WebSocket (if available) - immediately
+  // Send via WebSocket (primary method for OBS overlay) - immediately
   if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
     try {
+    console.log(`🎯 SENDING TO OVERLAY: "${overlayPayload.targetOverlay}"`);
+    console.log(`📊 Button overlay setting: ${button.overlay || 'NOT SET (defaulting to default)'}`);
+    console.log(`🔍 Full button object:`, button);
       window.electronAPI.sendOverlayMessage(overlayPayload);
-      console.log('Message sent via WebSocket');
+    console.log(`✅ Message sent via WebSocket to overlay: "${overlayPayload.targetOverlay}"`);
     } catch (error) {
       console.warn('Failed to send message via WebSocket:', error);
     }
-  }
-
-  // Wait for audio to start (non-blocking - overlay message already sent)
-  if (audioPromises.length > 0) {
-    try {
-      await Promise.all(audioPromises);
-      console.log('All audio started successfully');
-    } catch (error) {
-      console.warn('Some audio failed to start:', error);
-    }
+  } else {
+    console.warn('⚠️ WebSocket not available, overlay message not sent');
   }
   
-  // Set up overlay clearing based on media duration
-  // Check if button has custom duration in options
-  const customDuration = button.options && button.options.durationMs ? button.options.durationMs / 1000 : null;
-  setupOverlayClearing(audioData, centerMediaData, customDuration);
+  // Note: Removed duplicate iframe and widget sending to prevent double-triggering
+  // The overlay receives messages via WebSocket only
+  
+  // Note: Audio plays in overlay only (not in dashboard) to prevent double audio
+  
+  // Note: Overlay handles its own reset timer based on payload.options.durationMs
+  // No need to call setupOverlayClearing from dashboard - it would conflict with overlay's timer
+  console.log('✅ Overlay will handle auto-clear based on duration:', optionsData.durationMs, 'ms');
 }
 
 // Function to clear overlay content
@@ -2600,11 +4279,11 @@ function clearOverlay() {
   const overlayWidget = document.getElementById('overlay-widget');
   if (overlayWidget && !overlayWidget.classList.contains('hidden')) {
     try {
-      if (window.testMultiSource) {
-        window.testMultiSource(clearPayload);
+      if (window.sendOverlayPayload) {
+        window.sendOverlayPayload(clearPayload);
         console.log(`✅ [${timestamp}] Clear message sent to overlay widget`);
       } else {
-        console.log(`ℹ️ [${timestamp}] Overlay widget found but testMultiSource function not available`);
+        console.log(`ℹ️ [${timestamp}] Overlay widget found but sendOverlayPayload function not available`);
       }
     } catch (error) {
       console.warn(`❌ [${timestamp}] Failed to send clear message to overlay widget:`, error);
@@ -2751,7 +4430,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   e.preventDefault();
   const form = e.target;
   const label = form.label.value.trim();
-  const type = form.type.value;
+  
+  // Determine type based on which section is visible
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  const type = audioFileSection && audioFileSection.style.display !== 'none' ? 'audio' : 'app';
+  
   // Ensure we reference the hotkey input element safely
   const hotkeyInput = document.getElementById('hotkey-input');
   const hotkey = hotkeyInput && hotkeyInput.value ? hotkeyInput.value.trim() : '';
@@ -2763,6 +4447,48 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   // Use the recorded hotkey directly (accumulative recorder populates hotkeyInput.value)
   const completeHotkey = (hotkeyInput && hotkeyInput.value && hotkeyInput.value.trim()) ? hotkeyInput.value.trim() : hotkey;
 
+  // Get chat command settings
+  const chatCommandCheckbox = document.getElementById('chat-command-enabled');
+  const chatCommandKeywordInput = document.getElementById('chat-command-keyword');
+  const redeemNameInput = document.getElementById('redeem-name');
+  
+  console.log('Chat command elements found:');
+  console.log('- Checkbox element:', chatCommandCheckbox);
+  console.log('- Keyword input element:', chatCommandKeywordInput);
+  console.log('- Redeem name input element:', redeemNameInput);
+  
+  const chatCommandEnabled = chatCommandCheckbox?.checked || false;
+  const chatCommandKeyword = chatCommandKeywordInput?.value?.trim() || '';
+  const redeemName = redeemNameInput?.value?.trim() || '';
+  
+  // Get trigger method selection
+  const triggerMethodRadio = document.querySelector('input[name="trigger-method"]:checked');
+  const triggerMethod = triggerMethodRadio?.value || 'command';
+  console.log(`🔍 Selected trigger method radio:`, triggerMethodRadio);
+  console.log(`🔍 Selected trigger method value:`, triggerMethod);
+  
+  const chatCommand = (chatCommandEnabled && (chatCommandKeyword || redeemName)) ? {
+    enabled: true,
+    keyword: chatCommandKeyword.toLowerCase(),
+    redeemName: redeemName,
+    triggerMethod: triggerMethod
+  } : undefined;
+  
+  console.log(`🔍 Saving button with chatCommand:`, chatCommand);
+  console.log(`🔍 Form values - enabled: ${chatCommandEnabled}, keyword: "${chatCommandKeyword}", redeemName: "${redeemName}", triggerMethod: "${triggerMethod}"`);
+  
+  // Get AI use settings (only for audio buttons)
+  const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+  const aiDescriptionInput = document.getElementById('ai-description-input');
+  const aiAllowed = type === 'audio' && aiAllowedCheckbox?.checked || false;
+  const aiDescription = type === 'audio' && aiDescriptionInput?.value?.trim() || '';
+  
+  console.log('AI use elements found:');
+  console.log('- Checkbox element:', aiAllowedCheckbox);
+  console.log('- Description input element:', aiDescriptionInput);
+  console.log('- AI allowed:', aiAllowed);
+  console.log('- AI description:', aiDescription);
+
   // Get the appropriate file input based on type
   const fileInput = type === 'app' ? document.getElementById('app-file-input') : document.getElementById('file-input');
 
@@ -2772,6 +4498,19 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   
   // Debug logging
   console.log('Form submission debug:');
+  console.log('- Type:', type);
+  console.log('- FileInput element:', fileInput);
+  console.log('- FileInput exists:', !!fileInput);
+  if (fileInput) {
+    console.log('- FileInput.files:', fileInput.files);
+    console.log('- FileInput.files.length:', fileInput.files.length);
+    if (fileInput.files.length > 0) {
+      console.log('- FileInput.files[0]:', fileInput.files[0]);
+      console.log('- FileInput.files[0].path:', fileInput.files[0].path);
+      console.log('- FileInput.files[0].name:', fileInput.files[0].name);
+    }
+  }
+  console.log('- ResolvedPath:', resolvedPath);
   console.log('- Label:', label);
   console.log('- Type:', type);
   console.log('- Base hotkey:', hotkey);
@@ -2782,6 +4521,9 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   console.log('- File input files length:', fileInput.files.length);
   console.log('- Resolved path:', resolvedPath);
   console.log('- Resolved args:', resolvedArgs);
+  console.log('- Chat command enabled:', chatCommandEnabled);
+  console.log('- Chat command keyword:', chatCommandKeyword);
+  console.log('- Chat command object:', chatCommand);
 
   // Prevent dangerous system shortcuts like Alt+F4 from being saved
   if (completeHotkey && (completeHotkey.includes('Alt') && completeHotkey.includes('F4'))) {
@@ -2793,6 +4535,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     const existingFile = form.dataset.existingFile;
     if (!existingFile) return alert("No existing file found.");
 
+    // Get AI use settings (only for audio buttons)
+    const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+    const aiDescriptionInput = document.getElementById('ai-description-input');
+    const aiAllowed = type === 'audio' && aiAllowedCheckbox?.checked || false;
+    const aiDescription = type === 'audio' && aiDescriptionInput?.value?.trim() || '';
+    
     // Send update without file change
     window.electronAPI.addMedia({
       label,
@@ -2801,42 +4549,122 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
       targetPath: existingFile,
       originalPath: existingFile,
-      editingIndex: parseInt(form.dataset.editingIndex)
+      editingIndex: parseInt(form.dataset.editingIndex),
+      chatCommand: chatCommand,
+      aiAllowed: type === 'audio' ? aiAllowed : undefined,
+      description: type === 'audio' ? aiDescription : undefined
     });
     window.electronAPI.refreshHotkeys();
-    // Update the displayed card in-place to avoid full re-render flash
-    try {
-      const editingId = form.dataset.editingId;
-      const updated = {
-        id: editingId,
-        label,
-        type,
-        src: existingFile,
-        hotkey: completeHotkey || undefined,
-        volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
-        args: form.dataset.resolvedArgs || undefined
-      };
-      if (editingId) {
-        const card = document.querySelector(`.sound-card[data-button-id="${editingId}"]`);
-        if (card) {
-          card.dataset.soundData = JSON.stringify(updated);
-          const nameEl = card.querySelector('.sound-name'); if (nameEl) nameEl.textContent = updated.label;
-          const hotkeyEl = card.querySelector('.sound-hotkey'); if (hotkeyEl) hotkeyEl.textContent = updated.hotkey || 'No hotkey';
-          const typeEl = card.querySelector('.sound-type'); if (typeEl) typeEl.textContent = updated.type;
-        }
-      }
-    } catch (err) { console.error('In-place update failed:', err); }
-    skipReload = true;
-  } else if (fileInput.files.length || resolvedPath) {
-    // New file selected or resolved path from drag-and-drop
-    console.log('Form submission - resolvedPath:', resolvedPath);
-    console.log('Form submission - fileInput.files.length:', fileInput.files.length);
-    if (fileInput.files.length > 0) {
-      console.log('Form submission - fileInput.files[0]:', fileInput.files[0]);
+    
+    // Clear audio cache to ensure new audio files are loaded
+    audioCache.clear();
+    console.log('🧹 Audio cache cleared after button edit');
+    
+    // Force immediate profile save after button edit
+    if (profileManager && profileManager.saveCurrentSettings) {
+      setTimeout(async () => {
+        await profileManager.saveCurrentSettings();
+        console.log('✅ Profile saved after button edit');
+        
+        // Then reload buttons
+        loadButtons();
+        console.log('🔄 Buttons reloaded after edit');
+      }, 150);
+    } else {
+      // Refresh the entire button list to show updated data
+      setTimeout(() => {
+        loadButtons();
+        console.log('🔄 Buttons reloaded after edit');
+      }, 100);
     }
     
-    const filePath = resolvedPath || fileInput.files[0].path;
-    const fileName = resolvedPath ? (resolvedPath.split('\\').pop() || resolvedPath.split('/').pop()) : fileInput.files[0].name;
+    skipReload = true;
+  } else if ((fileInput && fileInput.files.length) || resolvedPath) {
+    // New file selected or resolved path from drag-and-drop
+    console.log('Form submission - resolvedPath:', resolvedPath);
+    console.log('Form submission - fileInput:', fileInput);
+    console.log('Form submission - fileInput.files.length:', fileInput ? fileInput.files.length : 0);
+    
+    let filePath = resolvedPath;
+    let fileName = null;
+    
+    if (!filePath && fileInput && fileInput.files.length > 0) {
+      const file = fileInput.files[0];
+      console.log('Form submission - fileInput.files[0]:', file);
+      console.log('Form submission - fileInput.files[0].name:', file.name);
+      console.log('Form submission - fileInput.files[0].type:', file.type);
+      console.log('Form submission - fileInput.files[0].size:', file.size);
+      console.log('Form submission - fileInput.files[0].path:', file.path);
+      
+      // Check if file has a path (selected via Electron dialog)
+      if (file.path) {
+        filePath = file.path;
+        console.log('Form submission - using file.path:', filePath);
+      } else {
+        // File doesn't have a path - need to save it first
+        // This happens when file is selected via browser file input
+        console.log('Form submission - file has no path, saving file directly to sounds directory...');
+        
+        try {
+          // Convert File to base64
+          const fileToBase64 = (file) => {
+            return new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.readAsDataURL(file);
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = error => reject(error);
+            });
+          };
+          
+          const base64Data = await fileToBase64(file);
+          
+          // Save file directly to sounds directory using the button label as filename
+          if (window.electronAPI && window.electronAPI.saveAudioFileToSounds) {
+            const result = await window.electronAPI.saveAudioFileToSounds({
+              base64Data: base64Data,
+              label: label, // Use the button label as the filename
+              originalName: file.name
+            });
+            
+            if (result.success) {
+              // File was already saved to sounds directory via saveAudioFileToSounds
+              // Pass the relative path directly - add-media handler will detect it's already in sounds directory
+              filePath = result.filePath;
+              console.log('Form submission - file saved to sounds directory, using relative path:', filePath);
+            } else {
+              throw new Error(result.error || 'Failed to save file');
+            }
+          } else {
+            throw new Error('saveAudioFileToSounds API not available');
+          }
+        } catch (error) {
+          console.error('Error saving file:', error);
+          return alert(`Error: Could not save file: ${error.message}\n\nPlease try selecting the file again.`);
+        }
+      }
+      
+      fileName = file.name;
+    } else if (resolvedPath) {
+      fileName = resolvedPath.split('\\').pop() || resolvedPath.split('/').pop();
+    }
+    
+    // Validate that we have a valid file path
+    if (!filePath) {
+      console.error('Error: No valid file path found');
+      console.error('- resolvedPath:', resolvedPath);
+      console.error('- fileInput:', fileInput);
+      console.error('- fileInput exists:', !!fileInput);
+      if (fileInput) {
+        console.error('- fileInput.files:', fileInput.files);
+        console.error('- fileInput.files.length:', fileInput.files.length);
+        console.error('- fileInput.files[0]:', fileInput.files[0]);
+        if (fileInput.files[0]) {
+          console.error('- fileInput.files[0].path:', fileInput.files[0].path);
+          console.error('- fileInput.files[0].name:', fileInput.files[0].name);
+        }
+      }
+      return alert('Error: Could not get file path. Please try selecting the file again.\n\nTip: Try clicking "Browse" and selecting your file from the file picker.');
+    }
     
     // For app files, use the resolved path directly; for audio files, create a target path
     let targetPath;
@@ -2856,11 +4684,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       hotkey: completeHotkey,
       targetPath,
       originalPath: filePath,
-      args
+      args,
+      chatCommand: chatCommand
     });
 
     // Send file path and data to main
-    window.electronAPI.addMedia({
+    const addMediaData = {
       label,
       type,
       hotkey: completeHotkey,
@@ -2868,34 +4697,27 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       targetPath,
       originalPath: filePath,
       args,
-      editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined
-    });
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined,
+      chatCommand: chatCommand,
+      aiAllowed: type === 'audio' ? aiAllowed : undefined,
+      description: type === 'audio' ? aiDescription : undefined
+    };
+    
+    console.log('Final addMediaData object:', addMediaData);
+    window.electronAPI.addMedia(addMediaData);
     window.electronAPI.refreshHotkeys();
-    // If editing (with new file), update in-place using the computed targetPath
-    if (isEditing) {
-      try {
-        const editingId = form.dataset.editingId;
-        const updated = {
-          id: editingId,
-          label,
-          type,
-          src: targetPath,
-          hotkey: completeHotkey || undefined,
-          volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
-          args: args || undefined
-        };
-        if (editingId) {
-          const card = document.querySelector(`.sound-card[data-button-id="${editingId}"]`);
-          if (card) {
-            card.dataset.soundData = JSON.stringify(updated);
-            const nameEl = card.querySelector('.sound-name'); if (nameEl) nameEl.textContent = updated.label;
-            const hotkeyEl = card.querySelector('.sound-hotkey'); if (hotkeyEl) hotkeyEl.textContent = updated.hotkey || 'No hotkey';
-            const typeEl = card.querySelector('.sound-type'); if (typeEl) typeEl.textContent = updated.type;
-          }
-        }
-      } catch (err) { console.error('In-place update failed:', err); }
-      skipReload = true;
-    }
+    
+    // Clear audio cache to ensure new audio files are loaded
+    audioCache.clear();
+    console.log('🧹 Audio cache cleared after button add/edit with new file');
+    
+    // Refresh the entire button list to show updated data
+    setTimeout(() => {
+      loadButtons();
+      console.log('🔄 Buttons reloaded after add/edit with new file');
+    }, 100);
+    
+    skipReload = true;
   } else if (!isEditing) {
     // Only require file selection for new buttons, not when editing
     console.log('No file found and not editing - showing alert');
@@ -2925,6 +4747,8 @@ document.getElementById('settings-form').onsubmit = async (e) => {
 window.editButton = async (index) => {
   const config = await window.electronAPI.getConfig();
   const btn = config.buttons[index];
+  console.log(`🔍 editButton: Editing button at index ${index}:`, btn);
+  console.log(`🔍 editButton: Button chatCommand data:`, btn.chatCommand);
   const settingsForm = document.getElementById('settings-form');
   // Always set editingIndex for edit, and clear resolvedPath/existingFile for safety
   settingsForm.dataset.editingIndex = index;
@@ -2955,9 +4779,6 @@ window.editButton = async (index) => {
   labelInput.value = btn.name || btn.label || ''; // Support both new and old schema
   labelInput.readOnly = false;
   labelInput.disabled = false;
-  // Set the type selection
-  const typeSelect = document.querySelector(`input[name="button-type"][value="${btn.type}"]`);
-  if (typeSelect) typeSelect.checked = true;
   // Toggle file input sections and required states based on type
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
@@ -2982,6 +4803,77 @@ window.editButton = async (index) => {
   } else {
     hotkeyInput.value = '';
   }
+  
+  // Set AI use fields (only for audio buttons)
+  if (btn.type === 'audio') {
+    const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+    const aiDescriptionInput = document.getElementById('ai-description-input');
+    const aiDescriptionContainer = document.getElementById('ai-description-container');
+    
+    if (aiAllowedCheckbox && aiDescriptionInput && aiDescriptionContainer) {
+      // Set checkbox state
+      const aiAllowed = btn.aiAllowed !== false; // Default to true if not explicitly false
+      aiAllowedCheckbox.checked = aiAllowed;
+      
+      // Set description if it exists
+      if (btn.description) {
+        aiDescriptionInput.value = btn.description;
+      } else {
+        aiDescriptionInput.value = '';
+      }
+      
+      // Show/hide description container based on checkbox state
+      if (aiAllowed) {
+        aiDescriptionContainer.style.display = 'block';
+      } else {
+        aiDescriptionContainer.style.display = 'none';
+      }
+    }
+  }
+  
+  // Set chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const redeemName = document.getElementById('redeem-name');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  
+  if (chatCommandEnabled && chatCommandKeyword && chatCommandSettings) {
+    if (btn.chatCommand && btn.chatCommand.enabled) {
+      chatCommandEnabled.checked = true;
+      chatCommandKeyword.value = btn.chatCommand.keyword || '';
+      redeemName.value = btn.chatCommand.redeemName || '';
+      
+      // Sync dropdown if value exists
+      const redeemSelect = document.getElementById('redeem-name-select');
+      if (redeemSelect && btn.chatCommand.redeemName) {
+        const matchingOption = Array.from(redeemSelect.options).find(
+          opt => opt.value === btn.chatCommand.redeemName
+        );
+        redeemSelect.value = matchingOption ? matchingOption.value : '';
+      }
+      
+      chatCommandSettings.style.display = 'block';
+      
+      // Set trigger method selection
+      const triggerMethod = btn.chatCommand.triggerMethod || 'command';
+      const triggerMethodRadio = document.querySelector(`input[name="trigger-method"][value="${triggerMethod}"]`);
+      if (triggerMethodRadio) {
+        triggerMethodRadio.checked = true;
+      }
+    } else {
+      chatCommandEnabled.checked = false;
+      chatCommandKeyword.value = '';
+      redeemName.value = '';
+      chatCommandSettings.style.display = 'none';
+      
+      // Reset to default trigger method
+      const defaultRadio = document.querySelector('input[name="trigger-method"][value="command"]');
+      if (defaultRadio) {
+        defaultRadio.checked = true;
+      }
+    }
+  }
+  
   // Store the existing file path and args for editing
   settingsForm.dataset.existingFile = btn.src;
   if (btn.args) {
@@ -3120,9 +5012,19 @@ window.deleteButtonByEl = async (btnEl) => {
     if (origIndex === -1) origIndex = parseInt(card.dataset.index || '-1');
     if (origIndex === -1) return;
     // Confirm and call existing delete flow
-    if (confirm("Delete this button?")) {
+    const confirmed = await showCustomConfirm("Delete this button?");
+    if (confirmed) {
       window.electronAPI.deleteButton(origIndex);
       window.electronAPI.refreshHotkeys();
+      
+      // Force immediate profile save after deletion
+      if (profileManager && profileManager.saveCurrentSettings) {
+        setTimeout(async () => {
+          await profileManager.saveCurrentSettings();
+          console.log('✅ Profile saved after button deletion');
+        }, 200);
+      }
+      
       // Refresh UI after deletion
       setTimeout(() => loadButtons(), 150);
     }
@@ -3179,6 +5081,20 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Make the hotkey input read-only to force use of the recorder button
   if (hotkeyInput) hotkeyInput.readOnly = true;
+
+  // Setup chat command checkbox toggle for regular form
+  const chatCommandCheckbox = document.getElementById('chat-command-enabled');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  
+  if (chatCommandCheckbox && chatCommandSettings) {
+    chatCommandCheckbox.addEventListener('change', () => {
+      if (chatCommandCheckbox.checked) {
+        chatCommandSettings.style.display = 'block';
+      } else {
+        chatCommandSettings.style.display = 'none';
+      }
+    });
+  }
 
   if (recordHotkeyBtn) {
     recordHotkeyBtn.addEventListener('click', () => {
@@ -3262,8 +5178,126 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // move-bar removed — menu bar is used instead for window controls
 
+// Close functions for modals
+function closeSettingsModal() {
+  const settingsModal = document.getElementById('settings-modal');
+  if (settingsModal) {
+    settingsModal.classList.add('hidden');
+    // Clear any form data if needed
+    clearSettingsForm();
+  }
+}
+
+function closeMultiMediaModal() {
+  const multiMediaModal = document.getElementById('multi-media-modal');
+  if (multiMediaModal) {
+    multiMediaModal.classList.add('hidden');
+    // Clear any form data if needed
+    if (window.addEditButtonForm) {
+      window.addEditButtonForm.resetForm();
+    }
+  }
+}
+
+function closeTwitchAlertWidget() {
+  const twitchAlertWidget = document.getElementById('twitch-alert-widget');
+  if (twitchAlertWidget) {
+    twitchAlertWidget.classList.add('hidden');
+  }
+}
+
+// Add event listeners for close buttons
+document.addEventListener('DOMContentLoaded', () => {
+  // Settings modal close button
+  const settingsCloseBtn = document.getElementById('settings-modal-close');
+  if (settingsCloseBtn) {
+    settingsCloseBtn.addEventListener('click', closeSettingsModal);
+  }
+  
+  // AI use checkbox toggle - show/hide description field
+  const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+  const aiDescriptionContainer = document.getElementById('ai-description-container');
+  
+  if (aiAllowedCheckbox && aiDescriptionContainer) {
+    aiAllowedCheckbox.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        aiDescriptionContainer.style.display = 'block';
+      } else {
+        aiDescriptionContainer.style.display = 'none';
+      }
+    });
+  }
+  
+  // Multi-media modal close button
+  const multiMediaCloseBtn = document.getElementById('multi-media-modal-close');
+  if (multiMediaCloseBtn) {
+    multiMediaCloseBtn.addEventListener('click', closeMultiMediaModal);
+  }
+  
+  // Twitch alert widget close button
+  const twitchAlertCloseBtn = document.getElementById('twitch-alert-widget-close');
+  if (twitchAlertCloseBtn) {
+    twitchAlertCloseBtn.addEventListener('click', closeTwitchAlertWidget);
+  }
+  
+  // Add click-outside-to-close functionality
+  const settingsModal = document.getElementById('settings-modal');
+  if (settingsModal) {
+    settingsModal.addEventListener('click', (e) => {
+      if (e.target === settingsModal) {
+        closeSettingsModal();
+      }
+    });
+  }
+  
+  const multiMediaModal = document.getElementById('multi-media-modal');
+  if (multiMediaModal) {
+    multiMediaModal.addEventListener('click', (e) => {
+      if (e.target === multiMediaModal) {
+        closeMultiMediaModal();
+      }
+    });
+  }
+});
+
+// ESC key handling for closing modals and forms
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    // Close settings modal
+    const settingsModal = document.getElementById('settings-modal');
+    if (settingsModal && !settingsModal.classList.contains('hidden')) {
+      closeSettingsModal();
+      return;
+    }
+    
+    // Close multi-media modal
+    const multiMediaModal = document.getElementById('multi-media-modal');
+    if (multiMediaModal && !multiMediaModal.classList.contains('hidden')) {
+      closeMultiMediaModal();
+      return;
+    }
+    
+    // Close Twitch Alert Widget
+    const twitchAlertWidget = document.getElementById('twitch-alert-widget');
+    if (twitchAlertWidget && !twitchAlertWidget.classList.contains('hidden')) {
+      closeTwitchAlertWidget();
+      return;
+    }
+    
+    // Close any other visible modals
+    const visibleModals = document.querySelectorAll('.modal:not(.hidden), [class*="modal"]:not(.hidden)');
+    visibleModals.forEach(modal => {
+      if (modal.style.display !== 'none' && modal.offsetParent !== null) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
+    });
+  }
+});
+
 // Listen for trigger-media events from the main process
 window.electronAPI.onTriggerMedia(async (mediaId) => {
+  console.log(`🔍 onTriggerMedia called for: "${mediaId}"`);
   const config = await window.electronAPI.getConfig();
   if (!config || !Array.isArray(config.buttons)) return;
   const button = config.buttons.find(btn => {
@@ -3272,7 +5306,7 @@ window.electronAPI.onTriggerMedia(async (mediaId) => {
     return name.toLowerCase() === mediaId.toLowerCase();
   });
   if (button) {
-    console.log('🎯 Triggering mapped button:', button.name || button.label, 'Type:', button.type);
+    console.log(`🎯 Triggering mapped button: "${button.name || button.label}" Type: ${button.type} Volume: ${button.volume}`);
     handleTrigger(button);
   } else {
     console.warn('⚠️ No button found for mapping trigger:', mediaId);
@@ -3343,12 +5377,69 @@ function handleFileDrop(file) {
     return;
   }
 
-  // Open add menu
+  // IMPORTANT: Ensure modal is closed and form is fully reset before processing new drop
+  // This fixes the issue where drag and drop stops working after the first app
+  if (!settingsModal.classList.contains('hidden')) {
+    console.log('  ⚠️ Modal is open, closing it first');
+    settingsModal.classList.add('hidden');
+    // Stop any active hotkey recording
+    if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
+    // Re-enable hotkeys if they were disabled
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+
+  // Fully reset the form state
   settingsForm.reset();
   hotkeyInput.value = '';
   hotkeyStatus.textContent = '';
   delete settingsForm.dataset.editingIndex;
   delete settingsForm.dataset.editingId;
+  delete settingsForm.dataset.resolvedPath;
+  delete settingsForm.dataset.resolvedArgs;
+  delete settingsForm.dataset.existingFile;
+
+  // Clear file inputs by replacing them (ensures no stale file references)
+  const oldFileInput = document.getElementById('file-input');
+  if (oldFileInput && oldFileInput.parentNode) {
+    const newFileInput = oldFileInput.cloneNode(false);
+    newFileInput.required = false;
+    newFileInput.id = 'file-input';
+    newFileInput.name = 'file';
+    oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
+  }
+  const oldAppFileInput = document.getElementById('app-file-input');
+  if (oldAppFileInput && oldAppFileInput.parentNode) {
+    const newAppFileInput = oldAppFileInput.cloneNode(false);
+    newAppFileInput.required = false;
+    newAppFileInput.id = 'app-file-input';
+    newAppFileInput.name = 'app-file';
+    oldAppFileInput.parentNode.replaceChild(newAppFileInput, oldAppFileInput);
+  }
+
+  // Re-get file inputs after replacement
+  const refreshedFileInput = document.getElementById('file-input');
+  const refreshedAppFileInput = document.getElementById('app-file-input');
+  
+  // Clear chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const redeemName = document.getElementById('redeem-name');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  if (chatCommandEnabled) chatCommandEnabled.checked = false;
+  if (chatCommandKeyword) chatCommandKeyword.value = '';
+  if (redeemName) redeemName.value = '';
+  if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+  
+  // Clear AI use fields
+  const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+  const aiDescriptionContainer = document.getElementById('ai-description-container');
+  const aiDescriptionInput = document.getElementById('ai-description-input');
+  if (aiAllowedCheckbox) aiAllowedCheckbox.checked = false;
+  if (aiDescriptionInput) aiDescriptionInput.value = '';
+  if (aiDescriptionContainer) aiDescriptionContainer.style.display = 'none';
+  
   document.querySelector('#settings-modal h2').textContent = 'Add New ' + (type === 'audio' ? 'Sound' : 'App');
   
   // Since we're using the modal-based approach, we need to directly open the audio form
@@ -3365,24 +5456,24 @@ function handleFileDrop(file) {
         // Store the resolved path and args in the form
         settingsForm.dataset.resolvedPath = shortcut.target;
         settingsForm.dataset.resolvedArgs = shortcut.args || '';
-        setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
+        setFileInForm(file, type, audioFileSection, appFileSection, refreshedFileInput, refreshedAppFileInput);
       } else {
         console.warn('  ❌ Failed to resolve shortcut, using original file');
         settingsForm.dataset.resolvedPath = file.path;
         settingsForm.dataset.resolvedArgs = '';
-        setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
+        setFileInForm(file, type, audioFileSection, appFileSection, refreshedFileInput, refreshedAppFileInput);
       }
     }).catch(error => {
       console.error('  ❌ Error resolving shortcut:', error);
       settingsForm.dataset.resolvedPath = file.path;
       settingsForm.dataset.resolvedArgs = '';
-      setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
+      setFileInForm(file, type, audioFileSection, appFileSection, refreshedFileInput, refreshedAppFileInput);
     });
   } else {
     console.log('  🎵 Processing as audio file');
     settingsForm.dataset.resolvedPath = file.path;
     settingsForm.dataset.resolvedArgs = '';
-    setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
+    setFileInForm(file, type, audioFileSection, appFileSection, refreshedFileInput, refreshedAppFileInput);
   }
 
   // Set label to file name (no extension)
@@ -3459,6 +5550,66 @@ typeRadios.forEach(radio => {
   });
 });
 
+// Overlay Helper Functions
+function getDefaultOverlay() {
+  const savedOverlays = getSavedOverlays();
+  // Return the second overlay (index 1) if it exists, otherwise first overlay, otherwise 'default'
+  return savedOverlays.length >= 2 ? savedOverlays[1].name : (savedOverlays.length >= 1 ? savedOverlays[0].name : 'default');
+}
+
+// Overlay Migration System
+function migrateOverlayReferences() {
+  try {
+    console.log('🔄 Checking for overlay migration...');
+    let needsMigration = false;
+    
+    // Load current config
+    const config = window.electronAPI.getConfig();
+    if (!config) return;
+    
+    // Get the second overlay from saved overlays (index 1)
+    const targetOverlay = getDefaultOverlay();
+    const savedOverlays = getSavedOverlays();
+    
+    console.log(`🎯 Target overlay for migration: "${targetOverlay}"`);
+    console.log(`📋 Available overlays:`, savedOverlays.map(o => o.name));
+    
+    // Check buttons for 'main' or 'default' overlay references
+    if (config.buttons && Array.isArray(config.buttons)) {
+      config.buttons.forEach(button => {
+        if (button.overlay === 'main' || button.overlay === 'default') {
+          const oldOverlay = button.overlay;
+          button.overlay = targetOverlay;
+          needsMigration = true;
+          console.log(`🔄 Migrated button "${button.label || button.name}" overlay from '${oldOverlay}' to '${targetOverlay}'`);
+        }
+      });
+    }
+    
+    // Check alerts for 'main' or 'default' overlay references
+    if (config.alerts && Array.isArray(config.alerts)) {
+      config.alerts.forEach(alert => {
+        if (alert.overlay === 'main' || alert.overlay === 'default') {
+          const oldOverlay = alert.overlay;
+          alert.overlay = targetOverlay;
+          needsMigration = true;
+          console.log(`🔄 Migrated alert "${alert.name || 'unnamed'}" overlay from '${oldOverlay}' to '${targetOverlay}'`);
+        }
+      });
+    }
+    
+    // Save migrated config if changes were made
+    if (needsMigration) {
+      window.electronAPI.saveConfig(config);
+      console.log(`✅ Overlay migration completed successfully - migrated to '${targetOverlay}'`);
+    } else {
+      console.log('✅ No overlay migration needed');
+    }
+  } catch (error) {
+    console.error('❌ Error during overlay migration:', error);
+  }
+}
+
 // Theme System
 class ThemeManager {
   constructor() {
@@ -3474,24 +5625,12 @@ class ThemeManager {
     await this.loadAvailableSkins();
     await this.loadSavedTheme();
     this.setupEventListeners();
-    this.applyTheme(this.currentTheme);
     
-    // Ensure theme is applied after delays to handle any timing issues
-    setTimeout(() => {
-      this.applyTheme(this.currentTheme);
-    }, 100);
+    // DON'T apply theme here - let ProfileManager handle it
+    // This prevents the theme from being set before the profile loads
+    console.log('🎨 ThemeManager initialized, current theme:', this.currentTheme);
     
-    // Apply again after a longer delay to ensure it sticks
-    setTimeout(() => {
-      this.applyTheme(this.currentTheme);
-    }, 500);
-    
-    // Sync the menu state with the loaded theme
-    setTimeout(() => {
-      if (window.electronAPI?.syncTheme) {
-        window.electronAPI.syncTheme(this.currentTheme);
-      }
-    }, 600);
+    // Profile manager will apply the theme after loading profile settings
   }
 
   async loadAvailableSkins() {
@@ -3516,7 +5655,8 @@ class ThemeManager {
       if (window.electronAPI?.getConfig) {
         try {
           const config = await window.electronAPI.getConfig();
-          savedTheme = config?.theme;
+          // Theme is now stored in uiSettings.theme with the profile system
+          savedTheme = config?.uiSettings?.theme || config?.theme;
         } catch (error) {
           savedTheme = localStorage.getItem(this.storageKey);
         }
@@ -3591,22 +5731,31 @@ class ThemeManager {
 
 
   saveTheme(themeName) {
-    try {
-      // Try Electron API first (production)
-      if (window.electronAPI?.updateConfig) {
-        window.electronAPI.updateConfig({ theme: themeName });
-      } else {
-        // Fallback to localStorage (development)
-        localStorage.setItem(this.storageKey, themeName);
-      }
-    } catch (error) {
-      // Try localStorage as fallback
-      try {
-        localStorage.setItem(this.storageKey, themeName);
-      } catch (localError) {
-        // Silent fail if both methods fail
-      }
+    // Update current theme
+    this.currentTheme = themeName;
+    
+    // Save via updateConfig (which saves to profile's uiSettings.theme)
+    if (window.electronAPI?.updateConfig) {
+      window.electronAPI.updateConfig({ theme: themeName }).catch(err => {
+        console.error('Failed to save theme via updateConfig:', err);
+      });
     }
+    
+    // Also save to localStorage as fallback
+    try {
+      localStorage.setItem(this.storageKey, themeName);
+    } catch (e) {
+      console.warn('Failed to save theme to localStorage:', e);
+    }
+    
+    // Trigger immediate profile save to ensure theme is captured
+    if (window.profileManager && window.profileManager.saveCurrentSettings) {
+      window.profileManager.saveCurrentSettings().catch(err => {
+        console.error('Failed to save profile after theme change:', err);
+      });
+    }
+    
+    console.log('Theme saved:', themeName);
   }
 
   getCurrentTheme() {
@@ -4087,6 +6236,27 @@ function setupAppToolbar() {
 document.addEventListener('DOMContentLoaded', () => {
   console.log('🔧 DOMContentLoaded fired - initializing toolbar');
   
+  // CRITICAL: Initialize ThemeManager FIRST before ProfileManager needs it
+  if (typeof ThemeManager !== 'undefined') {
+    window.themeManager = new ThemeManager();
+    window.themeSystem = window.themeManager;
+    window.notificationManager = new NotificationManager();
+    console.log('🎨 ThemeManager and NotificationManager created early');
+    
+    // Add hotkey to cycle through themes (Ctrl+Shift+T)
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'T') {
+        e.preventDefault();
+        if (window.themeManager) {
+          window.themeManager.cycleTheme();
+        }
+      }
+    });
+  }
+  
+  // Run overlay migration on app load
+  migrateOverlayReferences();
+  
   // Clear overlay immediately on app startup
   console.log('🧹 Clearing overlay on DOM ready...');
   clearOverlay();
@@ -4094,7 +6264,9 @@ document.addEventListener('DOMContentLoaded', () => {
   setupAppToolbar();
   setupOverlayControls();
   setupOverlayWidget();
+  setupHydrationSettings();
   setupAlertWidget();
+  initDailyCheckinSystem();
   // initialize left app menu
   if (typeof setupLeftAppMenu === 'function') {
     console.log('🔧 Setting up left app menu');
@@ -4102,7 +6274,153 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     console.log('🔧 setupLeftAppMenu function not found');
   }
+  
+  // initialize preferences modal
+  if (typeof initializePreferencesModal === 'function') {
+    console.log('🔧 Setting up preferences modal');
+    initializePreferencesModal();
+  } else {
+    console.log('🔧 initializePreferencesModal function not found');
+  }
+  
+  // Initialize profile management system (after ThemeManager is ready)
+  console.log('🔧 Initializing profile management system');
+  profileManager.initialize().catch(err => {
+    console.error('Failed to initialize profile manager:', err);
+  });
+  
+  // Setup profile panel event handlers
+  setupProfilePanelEventHandlers();
 });
+
+// Profile panel event handlers
+function setupProfilePanelEventHandlers() {
+  // Profile selector change
+  const profileSelector = document.getElementById('profile-selector');
+  if (profileSelector) {
+    profileSelector.addEventListener('change', async (e) => {
+      const newProfileId = e.target.value;
+      if (newProfileId !== profileManager.currentProfile) {
+        await profileManager.switchProfile(newProfileId);
+      }
+    });
+  }
+  
+  // Create new profile button
+  const createBtn = document.getElementById('profile-create');
+  if (createBtn) {
+    createBtn.addEventListener('click', async () => {
+      const profileName = await showCustomPrompt('Enter a name for the new profile:');
+      if (profileName) {
+        await profileManager.createProfile(profileName);
+      }
+    });
+  }
+  
+  // Duplicate profile button
+  const duplicateBtn = document.getElementById('profile-duplicate');
+  if (duplicateBtn) {
+    duplicateBtn.addEventListener('click', async () => {
+      const currentProfileName = profileManager.profiles.find(p => p.id === profileManager.currentProfile)?.name || '';
+      const defaultName = currentProfileName ? `${currentProfileName} (Copy)` : 'New Profile';
+      const profileName = await showCustomPrompt('Enter a name for the duplicated profile:', defaultName);
+      if (profileName) {
+        await profileManager.duplicateProfile(profileName);
+      }
+    });
+  }
+  
+  // Rename profile button
+  const renameBtn = document.getElementById('profile-rename');
+  if (renameBtn) {
+    renameBtn.addEventListener('click', async () => {
+      const currentProfileName = profileManager.profiles.find(p => p.id === profileManager.currentProfile)?.name || '';
+      const newName = await showCustomPrompt('Enter a new name for this profile:', currentProfileName);
+      if (newName && newName !== currentProfileName) {
+        await profileManager.renameProfile(newName);
+      }
+    });
+  }
+  
+  // Delete profile button
+  const deleteBtn = document.getElementById('profile-delete');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', async () => {
+      // Get list of profiles that can be deleted (not the current one)
+      const deletableProfiles = profileManager.profiles.filter(p => p.id !== profileManager.currentProfile);
+      
+      if (deletableProfiles.length === 0) {
+        showCustomAlert('Cannot delete the only profile. Create another profile first.', 'error');
+        return;
+      }
+      
+      // Create a custom prompt with dropdown
+      const profileToDelete = await showProfileDeleteDialog(deletableProfiles);
+      
+      if (profileToDelete) {
+        const result = await window.electronAPI.deleteProfile(profileToDelete.id);
+        if (result.success) {
+          showCustomAlert(`Profile "${profileToDelete.name}" deleted`, 'success');
+          // Refresh profile list
+          await profileManager.initialize();
+        } else {
+          showCustomAlert('Failed to delete profile: ' + (result.error || 'Unknown error'), 'error');
+        }
+      }
+    });
+  }
+  
+  console.log('✅ Profile panel event handlers setup complete');
+  
+  // Profile modal close button
+  const modalCloseBtn = document.getElementById('profile-modal-close');
+  if (modalCloseBtn) {
+    modalCloseBtn.addEventListener('click', () => {
+      closeProfileModal();
+    });
+  }
+  
+  // Close modal on backdrop click
+  const profileModal = document.getElementById('profile-modal');
+  if (profileModal) {
+    profileModal.addEventListener('click', (e) => {
+      if (e.target === profileModal) {
+        closeProfileModal();
+      }
+    });
+  }
+}
+
+// Open profile manager modal
+function openProfileModal() {
+  const modal = document.getElementById('profile-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    // Disable hotkeys when modal is open
+    if (window.electronAPI && window.electronAPI.disableHotkeys) {
+      window.electronAPI.disableHotkeys();
+    }
+  }
+}
+
+// Close profile manager modal
+function closeProfileModal() {
+  const modal = document.getElementById('profile-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    // Re-enable hotkeys when modal closes
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+}
+
+// Listen for open-profile-manager from main process
+if (window.electronAPI && window.electronAPI.onOpenProfileManager) {
+  window.electronAPI.onOpenProfileManager(() => {
+    openProfileModal();
+  });
+}
 
 // Overlay controls setup
 function setupOverlayControls() {
@@ -4125,22 +6443,26 @@ function setupOverlayWidget() {
   const closeBtn = document.getElementById('close-overlay-widget');
   const testBtns = document.querySelectorAll('.overlay-test-btn');
   const mediaBtns = document.querySelectorAll('.overlay-media-btn');
-  const customTextInput = document.getElementById('custom-text');
-  const customPositionSelect = document.getElementById('custom-position');
-  const sendCustomTextBtn = document.getElementById('send-custom-text');
   const copyUrlBtn = document.getElementById('copy-overlay-url');
   
-  // Position mapping for overlay IDs (old format for backward compatibility)
+  // Overlay management elements
+  const newOverlayNameInput = document.getElementById('new-overlay-name');
+  const createOverlayBtn = document.getElementById('create-overlay');
+  const overlaySelect = document.getElementById('overlay-select');
+  const deleteOverlayBtn = document.getElementById('delete-overlay');
+  const overlayUrlDisplay = document.getElementById('overlay-url-display');
+  
+  // Position mapping for overlay text slots (new schema format)
   const positionMap = {
-    1: 'text-top-left',
-    2: 'text-top-center', 
-    3: 'text-top-right',
-    4: 'text-mid-left',
-    5: 'center-media',
-    6: 'text-mid-right',
-    7: 'text-bottom-left',
-    8: 'text-bottom-center',
-    9: 'text-bottom-right'
+    1: 'topLeft',
+    2: 'topCenter', 
+    3: 'topRight',
+    4: 'midLeft',
+    5: 'center',
+    6: 'midRight',
+    7: 'bottomLeft',
+    8: 'bottomCenter',
+    9: 'bottomRight'
   };
   
   // Close widget
@@ -4170,11 +6492,13 @@ function setupOverlayWidget() {
                                 text: testText,
                                 style: {
                                     fontFamily: 'Arial, sans-serif',
-                                    fontSize: '18px',
-                                    color: '#00ff00',
+                                    fontSize: '48px',
+                                    color: '#ffffff',
                                     fontWeight: 'bold',
                                     textAlign: 'center',
-                                    zIndex: '1'
+                                    textShadow: '3px 3px 6px rgba(0, 0, 0, 0.9)',
+                                    webkitTextStroke: '2px #000',
+                                    zIndex: '15'
                                 }
                             }
                         }
@@ -4205,8 +6529,8 @@ function setupOverlayWidget() {
             },
             centerMedia: [{
               type: 'image',
-              src: 'https://via.placeholder.com/300x200/00ff00/000000?text=Test+Image+Connected',
-              alt: 'Test Image Connected'
+              src: 'http://localhost:8080/media/images/VirtualDeck2.png',
+              alt: 'VirtualDeck Logo'
             }]
           };
           window.electronAPI.sendOverlayMessage(payload);
@@ -4220,7 +6544,7 @@ function setupOverlayWidget() {
             },
             centerMedia: [{
               type: 'video',
-              src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+              src: 'http://localhost:8080/media/videos/generated-video.mp4',
               loop: true
             }]
           };
@@ -4240,173 +6564,36 @@ function setupOverlayWidget() {
     });
   });
   
-  // Custom text input
-  if (sendCustomTextBtn) {
-    sendCustomTextBtn.addEventListener('click', () => {
-      const text = customTextInput.value.trim();
-      const position = parseInt(customPositionSelect.value);
-      const targetId = positionMap[position];
-      
-      if (text) {
-        console.log(`Sending custom text to position ${position} (${targetId}): ${text}`);
-        
-        if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-          const payload = {
-            type: 'buttonTrigger',
-            options: {
-              clearPrevious: false
-            },
-            slots: {
-              [targetId]: {
-                text: text,
-                style: {
-                  fontFamily: 'Arial, sans-serif',
-                  fontSize: '16px',
-                  color: '#ffffff',
-                  fontWeight: 'normal',
-                  textAlign: 'center',
-                  zIndex: '1'
-                }
-              }
-            }
-          };
-          window.electronAPI.sendOverlayMessage(payload);
-          
-          // Clear the input
-          customTextInput.value = '';
-        }
-      }
-    });
-  }
-  
-  // Enter key support for custom text
-  if (customTextInput) {
-    customTextInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        sendCustomTextBtn.click();
-      }
-    });
-  }
-  
   // Copy URL button
   if (copyUrlBtn) {
     copyUrlBtn.addEventListener('click', () => {
-      const overlayUrl = 'http://localhost:8080/overlay';
+      // Get the URL from the display element instead of hardcoding
+      const overlayUrlDisplay = document.getElementById('overlay-url-display');
+      const overlayUrl = overlayUrlDisplay ? overlayUrlDisplay.textContent : 'http://localhost:8080/overlay';
       
       if (navigator.clipboard) {
         navigator.clipboard.writeText(overlayUrl).then(() => {
-          console.log('Overlay URL copied to clipboard');
+          console.log('Overlay URL copied to clipboard:', overlayUrl);
           // Show brief feedback
           const originalText = copyUrlBtn.textContent;
-          copyUrlBtn.textContent = '✓';
+          copyUrlBtn.textContent = '✓ Copied';
           setTimeout(() => {
             copyUrlBtn.textContent = originalText;
-          }, 1000);
+          }, 1500);
         }).catch(err => {
           console.log('Failed to copy to clipboard:', err);
+          // Fallback for older browsers
+          showCustomAlert(`Copy this URL: ${overlayUrl}`, 'info');
         });
+      } else {
+        // Fallback for browsers without clipboard API
+        showCustomAlert(`Copy this URL: ${overlayUrl}`, 'info');
       }
     });
   }
   
   // Multi-source test buttons
-  const testMultiSourceBtn = document.getElementById('test-multi-source');
   const testAllPositionsBtn = document.getElementById('test-all-positions');
-  
-  if (testMultiSourceBtn) {
-    testMultiSourceBtn.addEventListener('click', () => {
-      console.log('Testing multi-source capability...');
-      
-      const payload = {
-        type: 'buttonTrigger',
-        options: {
-          clearPrevious: true
-        },
-        slots: {
-          'topLeft': {
-            text: '🎮 GAME START',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 28,
-              color: '#00ff00',
-              bold: true,
-              italic: false,
-              align: 'center',
-              animation: 'pulse'
-            }
-          },
-          'topRight': {
-            text: 'SCORE: 9999',
-            style: {
-              fontFamily: 'Courier, monospace',
-              fontSize: 24,
-              color: '#ffff00',
-              bold: true,
-              italic: false,
-              align: 'right',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-              zIndex: '10'
-            }
-          },
-          'bottomCenter': {
-            text: 'PRESS SPACE TO CONTINUE',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 20,
-              color: '#ffffff',
-              bold: true,
-              italic: false,
-              align: 'center',
-              animation: 'pulse'
-            }
-          },
-          'midLeft': {
-            text: 'LIVES: 3',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 18,
-              color: '#ff6b6b',
-              bold: true,
-              textAlign: 'left',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-              zIndex: '10'
-            }
-          },
-          'midRight': {
-            text: 'LEVEL: 5',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 18,
-              color: '#4ecdc4',
-              bold: true,
-              italic: false,
-              align: 'right',
-              animation: null
-            }
-          }
-        },
-        centerMedia: [
-          {
-            type: 'image',
-            src: 'https://via.placeholder.com/600x400/000000/ffffff?text=GAME+SCREEN',
-            alt: 'Game Screen'
-          },
-          {
-            type: 'video',
-            src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
-            loop: true
-          }
-        ]
-      };
-      
-      if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-        window.electronAPI.sendOverlayMessage(payload);
-        console.log('Sent multi-source test payload');
-      } else {
-        console.log('sendOverlayMessage not available');
-      }
-    });
-  }
   
   if (testAllPositionsBtn) {
     testAllPositionsBtn.addEventListener('click', () => {
@@ -4437,12 +6624,13 @@ function setupOverlayWidget() {
           text: pos.text,
           style: {
             fontFamily: 'Arial, sans-serif',
-            fontSize: 18,
-            color: '#00ff00',
-            bold: true,
-            italic: false,
-            align: 'center',
-            animation: null
+            fontSize: '48px',
+            color: '#ffffff',
+            fontWeight: 'bold',
+            textAlign: 'center',
+            textShadow: '3px 3px 6px rgba(0, 0, 0, 0.9)',
+            webkitTextStroke: '2px #000',
+            zIndex: '15'
           }
         };
       });
@@ -4450,8 +6638,8 @@ function setupOverlayWidget() {
       // Add center media test
       payload.centerMedia = [{
         type: 'image',
-        src: 'https://via.placeholder.com/400x300/ff00ff/ffffff?text=Test+Center+Media',
-        alt: 'Test Center Media'
+        src: 'http://localhost:8080/media/images/VirtualDeck2.png',
+        alt: 'VirtualDeck Logo'
       }];
       
       if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
@@ -4463,45 +6651,2662 @@ function setupOverlayWidget() {
     });
   }
   
-  // Resolution controls
-  const resolutionSelect = document.getElementById('overlay-resolution');
-  const applyResolutionBtn = document.getElementById('apply-resolution');
-  
-  if (resolutionSelect && applyResolutionBtn) {
-    applyResolutionBtn.addEventListener('click', () => {
-      const selectedResolution = resolutionSelect.value;
-      const [width, height] = selectedResolution.split('x').map(Number);
-      
-      console.log(`Applying overlay resolution: ${width}x${height}`);
-      
-      // Send resolution change to overlay iframe
-      const overlayIframe = document.getElementById('overlay-iframe');
-      if (overlayIframe && overlayIframe.contentWindow) {
-        try {
-          overlayIframe.contentWindow.setOverlayResolution(width, height);
-          console.log(`✅ Resolution changed to ${width}x${height}`);
-          
-          // Show feedback
-          const originalText = applyResolutionBtn.textContent;
-          applyResolutionBtn.textContent = '✓ Applied';
-          applyResolutionBtn.style.background = '#4CAF50';
-          setTimeout(() => {
-            applyResolutionBtn.textContent = originalText;
-            applyResolutionBtn.style.background = '';
-          }, 2000);
-        } catch (error) {
-          console.error('Failed to change overlay resolution:', error);
-          applyResolutionBtn.textContent = '❌ Failed';
-          applyResolutionBtn.style.background = '#f44336';
-          setTimeout(() => {
-            applyResolutionBtn.textContent = 'Apply Resolution';
-            applyResolutionBtn.style.background = '';
-          }, 2000);
+  // Setup AI Management Panel (Dashboard Widget)
+  // AI Status API base URL (Controller). Defaults to localhost:3004, but can be overridden:
+  // - URL param: ?aiStatusApi=http://localhost:3014  (will persist to localStorage)
+  // - localStorage: AI_STATUS_API_BASE_URL
+  // If neither is set, we will auto-discover (try 3004, then 3014).
+  function getStoredAIStatusApiBaseUrl() {
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      const fromParam = params.get('aiStatusApi');
+      if (fromParam) {
+        const normalized = fromParam.replace(/\/+$/, '');
+        localStorage.setItem('AI_STATUS_API_BASE_URL', normalized);
+        console.log('✅ AI Status API base URL set from URL param:', normalized);
+        return normalized;
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    const stored = (() => {
+      try { return localStorage.getItem('AI_STATUS_API_BASE_URL'); } catch (e) { return null; }
+    })();
+    return (stored || 'http://localhost:3004').replace(/\/+$/, '');
+  }
+
+  let AI_STATUS_API_BASE_URL = getStoredAIStatusApiBaseUrl();
+
+  function setAIStatusApiBaseUrl(url) {
+    const normalized = String(url || '').replace(/\/+$/, '');
+    if (!normalized) return;
+    AI_STATUS_API_BASE_URL = normalized;
+    try { localStorage.setItem('AI_STATUS_API_BASE_URL', normalized); } catch (e) {}
+    console.log('✅ Using AI Status API:', AI_STATUS_API_BASE_URL);
+  }
+
+  async function fetchWithTimeout(url, options, timeoutMs) {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), timeoutMs || 400);
+    try {
+      return await fetch(url, { ...(options || {}), signal: controller.signal });
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  async function discoverAIStatusApiBaseUrl() {
+    // If explicitly set by URL param or localStorage, keep it.
+    const stored = (() => { try { return localStorage.getItem('AI_STATUS_API_BASE_URL'); } catch (e) { return null; } })();
+    if (stored) {
+      setAIStatusApiBaseUrl(stored);
+      return;
+    }
+
+    const candidates = [
+      'http://localhost:3004',
+      'http://localhost:3014',
+    ];
+
+    for (const base of candidates) {
+      try {
+        const r = await fetchWithTimeout(`${base}/api/ai/status`, {}, 450);
+        if (r && r.ok) {
+          setAIStatusApiBaseUrl(base);
+          return;
         }
-      } else {
-        console.error('Overlay iframe not found');
+      } catch (e) {
+        // try next
+      }
+    }
+    console.debug('Could not auto-discover AI Status API port; defaulting to', AI_STATUS_API_BASE_URL);
+  }
+
+  function setupAIManagementPanel() {
+    console.log('🤖 Setting up AI Management Panel');
+    
+    // Auto-detect controller port if needed (helps when we move off 3004).
+    discoverAIStatusApiBaseUrl().catch(() => {});
+
+    async function setAIMode(mode) {
+      const selectedMode = String(mode || '').toUpperCase().trim();
+      if (!selectedMode) return;
+      console.log('🎯 Setting AI mode to:', selectedMode);
+      const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: selectedMode }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to set mode: ${response.statusText}`);
+      }
+      return await response.json().catch(() => ({}));
+    }
+    
+    // Setup AI On/Off Toggle (Dashboard)
+    setupAIDashboardToggle();
+    
+    const segmentSelector = document.getElementById('ai-segment-selector');
+    const modeSelector = document.getElementById('ai-mode-selector');
+    const sayText = document.getElementById('ai-say-text');
+    const sayBtn = document.getElementById('ai-say-btn');
+    const triviaBtn = document.getElementById('ai-trivia-btn');
+    const qaBtn = document.getElementById('ai-qa-btn');
+    const dndBtn = document.getElementById('ai-dnd-btn');
+    const statusBtn = document.getElementById('ai-status-btn');
+    const settingsBtn = document.getElementById('ai-settings-btn');
+    const statusText = document.getElementById('ai-status-text');
+    
+    console.log('🔍 AI Management Panel elements found:', {
+      segmentSelector: !!segmentSelector,
+      modeSelector: !!modeSelector,
+      sayText: !!sayText,
+      sayBtn: !!sayBtn,
+      triviaBtn: !!triviaBtn,
+      qaBtn: !!qaBtn,
+      dndBtn: !!dndBtn,
+      statusBtn: !!statusBtn,
+      settingsBtn: !!settingsBtn,
+      statusText: !!statusText
+    });
+
+    // Manual Speak (Controller Dev API)
+    if (sayBtn && sayText) {
+      const devApiBaseUrl = (localStorage.getItem('DEV_API_BASE_URL') || 'http://localhost:3002').replace(/\/+$/, '');
+      sayBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const text = String(sayText.value || '').trim();
+        if (!text) return;
+        sayBtn.disabled = true;
+        try {
+          const res = await fetch(`${devApiBaseUrl}/api/dev/speak`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, mood: 'neutral', urgency: 'med' }),
+          });
+          if (!res.ok) {
+            const raw = await res.text().catch(() => '');
+            throw new Error(raw || `HTTP ${res.status}`);
+          }
+          sayText.value = '';
+          if (window.notificationManager) {
+            window.notificationManager.show('Cashe will say it.', 'success');
+          }
+        } catch (err) {
+          console.error('❌ Manual speak failed:', err);
+          alert(`Manual speak failed: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+          sayBtn.disabled = false;
+        }
+      });
+
+      // Enter key submits
+      sayText.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sayBtn.click();
+        }
+      });
+    }
+    
+    // AI Mode selector - change AI mode (CHILL, HYPE, QA, DND, etc.)
+    if (modeSelector) {
+      // Load current mode on startup
+      async function loadCurrentMode() {
+        try {
+          const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.mode) {
+              modeSelector.value = data.mode;
+              console.log('✅ Loaded current AI mode:', data.mode);
+            }
+          }
+        } catch (err) {
+          console.debug('Could not load current AI mode:', err);
+        }
+      }
+      
+      // Handle mode change
+      modeSelector.addEventListener('change', async (e) => {
+        const selectedMode = e.target.value;
+        console.log('🎯 Changing AI mode to:', selectedMode);
+        
+        try {
+          const result = await setAIMode(selectedMode);
+          console.log('✅ AI mode changed:', result);
+          
+          // Update status display
+          updateAIManagementStatus();
+          
+          // Show success notification if available
+          if (window.notificationManager) {
+            window.notificationManager.show(`AI mode set to ${selectedMode}`, 'success');
+          }
+        } catch (err) {
+          console.error('❌ Error changing AI mode:', err);
+          alert(`Error changing AI mode: ${err instanceof Error ? err.message : String(err)}`);
+          // Revert selector to previous value
+          loadCurrentMode();
+        }
+      });
+      
+      // Load current mode on startup
+      loadCurrentMode();
+      
+      // Update mode selector when status updates
+      const originalUpdateAIManagementStatus = window.updateAIManagementStatus;
+      if (originalUpdateAIManagementStatus) {
+        window.updateAIManagementStatus = async function() {
+          await originalUpdateAIManagementStatus();
+          // Update mode selector if mode changed externally
+          try {
+            const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
+            if (response.ok) {
+              const data = await response.json();
+              if (data.mode && modeSelector.value !== data.mode) {
+                modeSelector.value = data.mode;
+              }
+            }
+          } catch (err) {
+            // Silently fail
+          }
+        };
+      }
+    } else {
+      console.warn('⚠️ Mode selector not found');
+    }
+    
+    // Segment selector - update AI behavior
+    if (segmentSelector) {
+      segmentSelector.addEventListener('change', async (e) => {
+        const segment = e.target.value;
+        console.log('📺 Segment changed to:', segment);
+        
+        // Segment presets:
+        // - "normal/gaming/just-chatting" -> JUST_CHATTING (our main streamer mode)
+        // - "special-event/hype" -> HYPE
+        const segmentToMode = {
+          'normal': 'JUST_CHATTING',
+          'gaming': 'JUST_CHATTING',
+          'just-chatting': 'JUST_CHATTING',
+          'special-event': 'HYPE',
+          'hype': 'HYPE'
+        };
+        const targetMode = segmentToMode[segment] || 'JUST_CHATTING';
+        
+        try {
+          await setAIMode(targetMode);
+          if (modeSelector) modeSelector.value = targetMode;
+          updateAIManagementStatus();
+          if (window.notificationManager) {
+            window.notificationManager.show(`Segment: ${segment} → ${targetMode}`, 'info');
+          }
+        } catch (err) {
+          console.error('❌ Error applying segment preset:', err);
+          alert(`Error applying segment preset: ${err instanceof Error ? err.message : String(err)}`);
+        }
+        
+        // Update AI Control Panel if open
+        const segmentBehaviorEl = document.getElementById('segment-behavior');
+        if (segmentBehaviorEl) {
+          segmentBehaviorEl.value = (targetMode === 'HYPE') ? 'hype' : 'chatty';
+        }
+        const segmentSelectorEl = document.getElementById('segment-selector');
+        if (segmentSelectorEl) {
+          segmentSelectorEl.value = segment;
+        }
+      });
+    } else {
+      console.warn('⚠️ Segment selector not found');
+    }
+    
+    // Trivia button - open trivia modal
+    if (triviaBtn) {
+      console.log('✅ Trivia button found, adding click handler');
+      // Remove any existing listeners first
+      const newTriviaBtn = triviaBtn.cloneNode(true);
+      triviaBtn.parentNode.replaceChild(newTriviaBtn, triviaBtn);
+      
+      newTriviaBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('🎮 Trivia button clicked!');
+        try {
+          openTriviaModal();
+        } catch (err) {
+          console.error('❌ Error opening trivia modal:', err);
+          alert(`Error opening trivia modal: ${err.message}`);
+        }
+      });
+    } else {
+      console.error('❌ Trivia button NOT found! Looking for #ai-trivia-btn');
+      // Try to find it again after a delay
+      setTimeout(() => {
+        const retryBtn = document.getElementById('ai-trivia-btn');
+        if (retryBtn) {
+          console.log('✅ Found trivia button on retry');
+          retryBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🎮 Trivia button clicked (retry)!');
+            openTriviaModal();
+          });
+        } else {
+          console.error('❌ Trivia button still not found after retry');
+        }
+      }, 1000);
+    }
+    
+    // Q&A button - toggle Q&A mode
+    if (qaBtn) {
+      qaBtn.addEventListener('click', () => {
+        const qaEnabled = document.getElementById('qa-mode-enabled');
+        if (qaEnabled) {
+          const isEnabled = qaEnabled.checked;
+          qaEnabled.checked = !isEnabled;
+          
+          if (!isEnabled) {
+            // Starting Q&A
+            const qaStartBtn = document.getElementById('qa-start-btn');
+            if (qaStartBtn) {
+              qaStartBtn.click();
+            }
+            qaBtn.classList.add('active');
+            qaBtn.title = 'Q&A Mode Active - Click to Stop';
+          } else {
+            // Stopping Q&A
+            const qaStopBtn = document.getElementById('qa-stop-btn');
+            if (qaStopBtn) {
+              qaStopBtn.click();
+            }
+            qaBtn.classList.remove('active');
+            qaBtn.title = 'Toggle Q&A Mode';
+          }
+          updateAIStatus();
+        }
+      });
+    }
+    
+    // D&D button - toggle D&D campaign panel
+    if (dndBtn) {
+      dndBtn.addEventListener('click', () => {
+        const dndPanel = document.getElementById('dnd-campaign-panel');
+        if (dndPanel) {
+          const isVisible = dndPanel.style.display !== 'none';
+          dndPanel.style.display = isVisible ? 'none' : 'block';
+          
+          if (!isVisible) {
+            // Panel opened - load campaign state
+            loadDndCampaignState();
+            dndBtn.classList.add('active');
+            dndBtn.title = 'D&D Campaign Active - Click to Hide';
+          } else {
+            dndBtn.classList.remove('active');
+            dndBtn.title = 'D&D Campaign';
+          }
+        }
+      });
+    }
+    
+    // Setup D&D controls
+    setupDndControls();
+    
+    // Status button - show AI status/details (toggle status indicator visibility or open details)
+    if (statusBtn) {
+      statusBtn.addEventListener('click', () => {
+        // Toggle status indicator visibility or show detailed status
+        const statusIndicator = document.getElementById('ai-status-indicator');
+        if (statusIndicator) {
+          // If hidden, show it; if visible, could show more details
+          if (statusIndicator.style.display === 'none') {
+            statusIndicator.style.display = 'block';
+          } else {
+            // Already visible - could show a detailed modal or just highlight it
+            statusIndicator.style.animation = 'pulse 0.5s ease-in-out';
+            setTimeout(() => {
+              statusIndicator.style.animation = '';
+            }, 500);
+          }
+        }
+      });
+    }
+    
+    // Settings button - open AI settings
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', () => {
+      // Open overlay widget to AI Control Panel (Q&A tab)
+      const overlayWidget = document.getElementById('overlay-widget');
+      if (overlayWidget) {
+        overlayWidget.classList.remove('hidden');
+        // Switch to Q&A tab (default)
+        const qaTab = document.querySelector('.ai-tab-btn[data-tab="qa"]');
+        if (qaTab) {
+          qaTab.click();
+        }
+      }
+      });
+    }
+    
+    // Update status indicator more frequently for real-time state (every 1 second)
+    setInterval(() => {
+      updateAIManagementStatus();
+    }, 1000);
+    
+    // Update D&D campaign state periodically (every 5 seconds)
+    setInterval(() => {
+      const dndPanel = document.getElementById('dnd-campaign-panel');
+      if (dndPanel && dndPanel.style.display !== 'none') {
+        loadDndCampaignState();
+      }
+    }, 5000);
+    
+    // Initial status update
+    updateAIManagementStatus();
+  }
+  
+  // Setup AI On/Off Toggle (Dashboard)
+  function setupAIDashboardToggle() {
+    console.log('🔌 Setting up AI Dashboard Toggle');
+    
+    const toggleSwitch = document.getElementById('ai-dashboard-toggle-switch');
+    const toggleContainer = document.getElementById('ai-dashboard-toggle-container');
+    const toggleLabel = document.getElementById('ai-dashboard-toggle-label');
+    const toggleStatus = document.getElementById('ai-dashboard-toggle-status');
+    
+    if (!toggleSwitch || !toggleContainer) {
+      console.warn('⚠️ Dashboard toggle elements not found');
+      return;
+    }
+    
+    // Check current mode on load
+    checkAIDashboardMode();
+    
+    // Update toggle every 2 seconds to stay in sync
+    setInterval(checkAIDashboardMode, 2000);
+    
+    // Click handler for the toggle
+    toggleContainer.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Get current state from the switch style
+      const isCurrentlyOn = toggleSwitch.style.background === 'var(--accent-primary)' || 
+                           toggleSwitch.style.background.includes('rgb') ||
+                           toggleSwitch.style.background === '';
+      const isOn = !isCurrentlyOn;
+      
+      try {
+        console.log(`🔌 ${isOn ? 'Turning AI ON' : 'Turning AI OFF'}...`);
+        
+        // Set mode to MUTED if turning off, or JUST_CHATTING if turning on
+        const mode = isOn ? 'JUST_CHATTING' : 'MUTED';
+        
+        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to ${isOn ? 'enable' : 'disable'} AI: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        console.log(`✅ AI ${isOn ? 'enabled' : 'disabled'}:`, result);
+        
+        // Update UI
+        updateDashboardToggleUI(isOn);
+        
+      } catch (err) {
+        console.error(`❌ Error ${isOn ? 'enabling' : 'disabling'} AI:`, err);
+        alert(`Error ${isOn ? 'enabling' : 'disabling'} AI: ${err instanceof Error ? err.message : String(err)}`);
+        // Revert toggle on error
+        updateDashboardToggleUI(!isOn);
       }
     });
+    
+    // Update toggle UI based on state
+    function updateDashboardToggleUI(isOn) {
+      if (toggleSwitch) {
+        if (isOn) {
+          // ON state - green/primary color, slider on right
+          toggleSwitch.style.background = 'var(--accent-primary)';
+          const slider = toggleSwitch.querySelector('div');
+          if (slider) {
+            slider.style.left = '20px'; // Move to right (40px width - 18px slider - 2px margin)
+          }
+        } else {
+          // OFF state - gray/error color, slider on left
+          toggleSwitch.style.background = 'var(--error-color)';
+          const slider = toggleSwitch.querySelector('div');
+          if (slider) {
+            slider.style.left = '2px'; // Move to left
+          }
+        }
+      }
+      if (toggleLabel) {
+        toggleLabel.textContent = isOn ? 'ON' : 'OFF';
+        toggleLabel.style.color = isOn ? 'var(--accent-primary)' : 'var(--error-color)';
+      }
+      if (toggleStatus) {
+        toggleStatus.textContent = isOn ? 'Active' : 'Muted';
+        toggleStatus.style.color = isOn ? 'var(--success-color)' : 'var(--error-color)';
+      }
+    }
+    
+    // Check current AI mode
+    async function checkAIDashboardMode() {
+      try {
+        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
+        if (response.ok) {
+          const data = await response.json();
+          const isMuted = data.mode === 'MUTED';
+          
+          updateDashboardToggleUI(!isMuted);
+          
+          // Update mode selector if it exists
+          const modeSelector = document.getElementById('ai-mode-selector');
+          if (modeSelector && data.mode && modeSelector.value !== data.mode) {
+            modeSelector.value = data.mode;
+          }
+        }
+      } catch (err) {
+        // Silently fail - API might not be available
+        console.debug('Could not check AI mode:', err);
+      }
+    }
+  }
+  
+  // Setup D&D Controls
+  function setupDndControls() {
+    const dndStartBtn = document.getElementById('dnd-start-btn');
+    const dndStopBtn = document.getElementById('dnd-stop-btn');
+    
+    if (!dndStartBtn) {
+      console.error('❌ D&D Start button not found!');
+      return;
+    }
+    if (!dndStopBtn) {
+      console.warn('⚠️ D&D Stop button not found');
+    }
+    console.log('✅ D&D controls setup: Start button found');
+    
+    // Start D&D Campaign
+    if (dndStartBtn) {
+      console.log('✅ D&D Start button found, attaching click handler');
+      dndStartBtn.addEventListener('click', async () => {
+        try {
+          console.log('🎲 Starting D&D campaign...');
+          console.log('   Button clicked, beginning startup sequence...');
+          
+          // Disable button immediately for feedback
+          if (dndStartBtn) {
+            dndStartBtn.disabled = true;
+            dndStartBtn.textContent = 'Starting...';
+          }
+          
+          // Step 1: Enable D&D mode first
+          console.log('   Step 1: Setting AI mode to DND...');
+          try {
+            const modeResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mode: 'DND' }),
+            });
+            
+            if (!modeResponse.ok) {
+              const errorText = await modeResponse.text();
+              console.warn(`⚠️ Mode API returned ${modeResponse.status}: ${errorText}`);
+              // Continue anyway - mode might already be set
+            } else {
+              console.log('   ✅ AI mode set to DND');
+            }
+          } catch (modeErr) {
+            console.error('❌ Error setting AI mode:', modeErr);
+            throw new Error(`Failed to set AI mode: ${modeErr.message}`);
+          }
+          
+          // Step 2: Enable D&D mode via D&D API
+          console.log('   Step 2: Enabling D&D mode...');
+          try {
+            const dndModeResponse = await fetch('http://localhost:3007/api/dnd/mode/enable', {
+              method: 'POST',
+            });
+            
+            if (!dndModeResponse.ok) {
+              const errorText = await dndModeResponse.text();
+              console.warn(`⚠️ D&D mode API error: ${dndModeResponse.status} ${errorText}`);
+              // Continue anyway - might already be enabled
+            } else {
+              console.log('   ✅ D&D mode enabled');
+            }
+          } catch (dndModeErr) {
+            console.error('❌ Error enabling D&D mode:', dndModeErr);
+            throw new Error(`Failed to enable D&D mode: ${dndModeErr.message}`);
+          }
+          
+          // Step 3: Check if campaign exists, if not start new series
+          console.log('   Step 3: Checking campaign state...');
+          let campaignState = null;
+          try {
+            const stateResponse = await fetch('http://localhost:3007/api/dnd/state');
+            
+            if (stateResponse.ok) {
+              campaignState = await stateResponse.json();
+              console.log('   ✅ Campaign state retrieved:', campaignState?.seriesId ? `Series ${campaignState.seriesId}` : 'No series');
+            } else {
+              console.log(`   ⚠️ No existing campaign found (${stateResponse.status})`);
+            }
+          } catch (stateErr) {
+            console.error('❌ Error checking campaign state:', stateErr);
+            throw new Error(`Failed to check campaign state: ${stateErr.message}`);
+          }
+          
+          if (!campaignState || !campaignState.seriesId) {
+            // Start new series with default party
+            console.log('   Step 4: Starting new campaign series...');
+            const defaultParty = {
+              characters: [
+                { name: 'Aria', class: 'Wizard', race: 'Elf', level: 3, xp: 900, xpToNext: 600, hp: 20, maxHp: 20, ac: 12, spellSlots: { '1': 4, '2': 2 }, skills: { 'Arcana': 5, 'Investigation': 4, 'History': 4 }, conditions: [], inventory: ['Staff', 'Spellbook'] },
+                { name: 'Thorin', class: 'Fighter', race: 'Dwarf', level: 3, xp: 900, xpToNext: 600, hp: 32, maxHp: 32, ac: 18, skills: { 'Athletics': 5, 'Intimidation': 3, 'Survival': 4 }, conditions: [], inventory: ['Longsword', 'Shield', 'Chainmail'] },
+                { name: 'Luna', class: 'Rogue', race: 'Halfling', level: 3, xp: 900, xpToNext: 600, hp: 24, maxHp: 24, ac: 15, skills: { 'Stealth': 7, 'Sleight of Hand': 6, 'Perception': 5 }, conditions: [], inventory: ['Daggers', 'Thieves\' Tools'] },
+                { name: 'Kael', class: 'Cleric', race: 'Human', level: 3, xp: 900, xpToNext: 600, hp: 28, maxHp: 28, ac: 16, spellSlots: { '1': 4, '2': 2 }, skills: { 'Medicine': 5, 'Religion': 4, 'Insight': 4 }, conditions: [], inventory: ['Mace', 'Holy Symbol', 'Chain Shirt'] },
+              ],
+              gold: 150,
+              level: 3,
+            };
+            
+            console.log('   Sending series start request...');
+            const seriesResponse = await fetch('http://localhost:3007/api/dnd/series/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ party: defaultParty }),
+            });
+            
+            if (!seriesResponse.ok) {
+              const errorText = await seriesResponse.text();
+              console.error(`❌ Series start failed: ${seriesResponse.status} ${errorText}`);
+              throw new Error(`Failed to start new campaign series: ${seriesResponse.status} ${errorText}`);
+            }
+            
+            campaignState = await seriesResponse.json();
+            console.log('   ✅ Started new D&D campaign series:', campaignState?.seriesId || 'Unknown ID');
+          } else {
+            console.log('   ✅ Using existing campaign');
+          }
+          
+          // Step 5: Update UI
+          console.log('   Step 5: Updating UI...');
+          if (dndStartBtn) {
+            dndStartBtn.disabled = true;
+            dndStartBtn.textContent = 'Started';
+          }
+          if (dndStopBtn) dndStopBtn.disabled = false;
+          
+          // Load and display campaign state
+          loadDndCampaignState();
+          
+          // Show success
+          if (window.notificationManager) {
+            window.notificationManager.show('D&D campaign started!', 'success');
+          }
+          
+          console.log('✅ D&D campaign started successfully');
+        } catch (err) {
+          console.error('❌ Error starting D&D campaign:', err);
+          
+          // Re-enable button on error
+          if (dndStartBtn) {
+            dndStartBtn.disabled = false;
+            dndStartBtn.textContent = 'Start';
+          }
+          
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          alert(`Error starting D&D campaign:\n\n${errorMsg}\n\nCheck console for details.`);
+        }
+      });
+    }
+    
+    // Stop D&D Campaign
+    if (dndStopBtn) {
+      dndStopBtn.addEventListener('click', async () => {
+        try {
+          console.log('🎲 Stopping D&D campaign...');
+          
+          // Disable D&D mode
+          const dndModeResponse = await fetch('http://localhost:3007/api/dnd/mode/disable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fallbackMode: 'JUST_CHATTING' }),
+          });
+          
+          // Set mode back to JUST_CHATTING
+          await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'JUST_CHATTING' }),
+          });
+          
+          // Update UI
+          if (dndStartBtn) dndStartBtn.disabled = false;
+          if (dndStopBtn) dndStopBtn.disabled = true;
+          
+          // Hide panel
+          const dndPanel = document.getElementById('dnd-campaign-panel');
+          if (dndPanel) {
+            dndPanel.style.display = 'none';
+          }
+          
+          const dndBtn = document.getElementById('ai-dnd-btn');
+          if (dndBtn) {
+            dndBtn.classList.remove('active');
+            dndBtn.title = 'D&D Campaign';
+          }
+          
+          if (window.notificationManager) {
+            window.notificationManager.show('D&D campaign stopped', 'info');
+          }
+          
+          console.log('✅ D&D campaign stopped');
+        } catch (err) {
+          console.error('❌ Error stopping D&D campaign:', err);
+          alert(`Error stopping D&D campaign: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    }
+  }
+  
+  // Load and display D&D campaign state
+  async function loadDndCampaignState() {
+    try {
+      const response = await fetch('http://localhost:3007/api/dnd/state');
+      if (!response.ok) {
+        // Campaign not started yet
+        const partyList = document.getElementById('dnd-party-list');
+        const locationEl = document.getElementById('dnd-location');
+        const goldEl = document.getElementById('dnd-gold');
+        const sessionInfo = document.getElementById('dnd-session-info');
+        
+        if (partyList) partyList.textContent = 'No campaign active';
+        if (locationEl) locationEl.textContent = '-';
+        if (goldEl) goldEl.textContent = '-';
+        if (sessionInfo) sessionInfo.textContent = 'Not started';
+        
+        const dndStartBtn = document.getElementById('dnd-start-btn');
+        const dndStopBtn = document.getElementById('dnd-stop-btn');
+        if (dndStartBtn) dndStartBtn.disabled = false;
+        if (dndStopBtn) dndStopBtn.disabled = true;
+        return;
+      }
+      
+      const state = await response.json();
+      
+      // Update session info
+      const sessionInfo = document.getElementById('dnd-session-info');
+      if (sessionInfo) {
+        sessionInfo.textContent = `Session ${state.sessionNumber || 1}`;
+      }
+      
+      // Update location
+      const locationEl = document.getElementById('dnd-location');
+      if (locationEl && state.story) {
+        locationEl.textContent = state.story.location || 'Unknown';
+      }
+      
+      // Update gold
+      const goldEl = document.getElementById('dnd-gold');
+      if (goldEl && state.party) {
+        goldEl.textContent = state.party.gold || 0;
+      }
+      
+      // Update party display
+      const partyList = document.getElementById('dnd-party-list');
+      if (partyList && state.party && state.party.characters) {
+        const partyHtml = state.party.characters.map(char => {
+          const hpPercent = Math.round((char.hp / char.maxHp) * 100);
+          const hpColor = hpPercent > 60 ? 'var(--success-color)' : hpPercent > 30 ? '#ffa500' : 'var(--error-color)';
+          const raceDisplay = char.race ? ` ${char.race}` : '';
+          return `
+            <div style="margin-bottom: 6px; padding: 6px; background: var(--bg-primary); border-radius: 4px; border-left: 3px solid ${hpColor};">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <span style="font-weight: 600; color: var(--text-primary);">${char.name}</span>
+                <span style="font-size: 9px; color: var(--text-tertiary);">Lv.${char.level} ${char.class}${raceDisplay}</span>
+              </div>
+              <div style="font-size: 9px; color: var(--text-secondary);">
+                HP: <span style="color: ${hpColor};">${char.hp}/${char.maxHp}</span> | AC: ${char.ac}
+                ${char.conditions && char.conditions.length > 0 ? ` | ${char.conditions.join(', ')}` : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+        partyList.innerHTML = partyHtml || 'No party members';
+      }
+      
+      // Update button states
+      const dndStartBtn = document.getElementById('dnd-start-btn');
+      const dndStopBtn = document.getElementById('dnd-stop-btn');
+      const dndModeStatus = await fetch('http://localhost:3007/api/dnd/mode/status').catch(() => null);
+      
+      if (dndModeStatus && dndModeStatus.ok) {
+        const modeData = await dndModeStatus.json();
+        const isActive = modeData.dndModeActive || modeData.isDndMode;
+        
+        if (dndStartBtn) dndStartBtn.disabled = isActive;
+        if (dndStopBtn) dndStopBtn.disabled = !isActive;
+      }
+    } catch (err) {
+      console.debug('Could not load D&D campaign state:', err);
+    }
+  }
+  
+  // Update AI Management Panel status indicator
+  async function updateAIManagementStatus() {
+    try {
+      const statusText = document.getElementById('ai-status-text');
+      const triviaBtn = document.getElementById('ai-trivia-btn');
+      const qaBtn = document.getElementById('ai-qa-btn');
+      
+      if (!statusText) return;
+      
+      // Fetch detailed AI status from controller
+      let aiState = 'idle';
+      let aiStateDisplay = 'Idle';
+      let statusColor = 'var(--text-tertiary)';
+      
+      try {
+        const aiStatusResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/status`);
+        if (aiStatusResponse.ok) {
+          const aiStatus = await aiStatusResponse.json();
+          aiState = aiStatus.state || 'idle';
+          
+          // Update mode selector if mode is available
+          const modeSelector = document.getElementById('ai-mode-selector');
+          if (modeSelector && aiStatus.currentMode && modeSelector.value !== aiStatus.currentMode) {
+            modeSelector.value = aiStatus.currentMode;
+          }
+          
+          // Map states to display text and colors
+          const stateMap = {
+            'idle': { text: 'Idle', color: 'var(--text-tertiary)', emoji: '💤' },
+            'listening': { text: 'Listening...', color: 'var(--accent-primary)', emoji: '👂' },
+            'thinking': { text: 'Thinking...', color: '#ffa500', emoji: '🧠' },
+            'speaking': { text: 'Speaking...', color: '#28a745', emoji: '🗣️' },
+          };
+          
+          const stateInfo = stateMap[aiState] || stateMap['idle'];
+          aiStateDisplay = `${stateInfo.emoji} ${stateInfo.text}`;
+          statusColor = stateInfo.color;
+        }
+      } catch (e) {
+        // AI Status API might not be available, fall back to feature-based status
+        console.debug('AI Status API not available, using feature-based status');
+      }
+      
+      // Also check mode separately to ensure mode selector stays in sync
+      try {
+        const modeResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
+        if (modeResponse.ok) {
+          const modeData = await modeResponse.json();
+          const modeSelector = document.getElementById('ai-mode-selector');
+          if (modeSelector && modeData.mode && modeSelector.value !== modeData.mode) {
+            modeSelector.value = modeData.mode;
+          }
+        }
+      } catch (e) {
+        // Silently fail
+      }
+      
+      // Check trivia status
+      let triviaActive = false;
+      try {
+        const triviaResponse = await fetch('http://localhost:3003/api/trivia/status');
+        if (triviaResponse.ok) {
+          const triviaStatus = await triviaResponse.json();
+          triviaActive = triviaStatus && triviaStatus.active;
+        }
+      } catch (e) {
+        // Trivia API might not be available
+      }
+      
+      // Check Q&A status
+      const qaEnabled = document.getElementById('qa-mode-enabled');
+      const qaActive = qaEnabled && qaEnabled.checked;
+      
+      // Update buttons
+      if (triviaBtn) {
+        if (triviaActive) {
+          triviaBtn.classList.add('active');
+          triviaBtn.title = 'Trivia Active - Click to Stop';
+        } else {
+          triviaBtn.classList.remove('active');
+          triviaBtn.title = 'Start/Stop Trivia';
+        }
+      }
+      
+      if (qaBtn) {
+        if (qaActive) {
+          qaBtn.classList.add('active');
+          qaBtn.title = 'Q&A Mode Active - Click to Stop';
+        } else {
+          qaBtn.classList.remove('active');
+          qaBtn.title = 'Toggle Q&A Mode';
+        }
+      }
+      
+      // Update status text with AI state (or fallback to feature-based)
+      const statusDetails = document.getElementById('ai-status-details');
+      
+      if (aiState !== 'idle' || (!triviaActive && !qaActive)) {
+        // Show detailed AI state
+        statusText.textContent = aiStateDisplay;
+        statusText.style.color = statusColor;
+        
+        // Show additional details if available
+        if (statusDetails) {
+          try {
+            const aiStatusResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/status`);
+            if (aiStatusResponse.ok) {
+              const aiStatus = await aiStatusResponse.json();
+              const details = [];
+              if (aiStatus.queueDepth > 0) {
+                details.push(`${aiStatus.queueDepth} in queue`);
+              }
+              if (aiStatus.currentMode) {
+                details.push(`Mode: ${aiStatus.currentMode}`);
+                
+                // Update mode selector dropdown
+                const modeSelector = document.getElementById('ai-mode-selector');
+                if (modeSelector && modeSelector.value !== aiStatus.currentMode) {
+                  modeSelector.value = aiStatus.currentMode;
+                }
+                
+                // Update mode display text
+                const modeText = document.getElementById('ai-mode-text');
+                if (modeText) {
+                  const modeLabels = {
+                    'JUST_CHATTING': 'Just Chatting',
+                    'CHILL': 'Chill',
+                    'HYPE': 'Hype',
+                    'QA': 'Q&A',
+                    'STORYTIME': 'Storytime',
+                    'DND': 'D&D',
+                    'AFK': 'AFK',
+                    'SAFE': 'Safe',
+                    'MUTED': 'Muted'
+                  };
+                  modeText.textContent = modeLabels[aiStatus.currentMode] || aiStatus.currentMode;
+                }
+              }
+              statusDetails.textContent = details.length > 0 ? details.join(' • ') : '';
+            }
+          } catch (e) {
+            statusDetails.textContent = '';
+          }
+        }
+      } else {
+        // Fallback: show active features if AI is idle but features are active
+        const activeFeatures = [];
+        if (triviaActive) activeFeatures.push('Trivia');
+        if (qaActive) activeFeatures.push('Q&A');
+        
+        if (activeFeatures.length > 0) {
+          statusText.textContent = `Active: ${activeFeatures.join(', ')}`;
+          statusText.style.color = 'var(--accent-primary)';
+          if (statusDetails) statusDetails.textContent = '';
+        } else {
+          statusText.textContent = aiStateDisplay;
+          statusText.style.color = statusColor;
+          if (statusDetails) statusDetails.textContent = '';
+        }
+      }
+    } catch (err) {
+      console.debug('AI management status update failed:', err);
+    }
+  }
+  
+  // Setup AI Control Panel
+  function setupAIControlPanel() {
+    // Setup tab switching
+    const tabButtons = document.querySelectorAll('.ai-tab-btn');
+    const tabContents = document.querySelectorAll('.ai-tab-content');
+    
+    // Initialize: Show only the active tab (Analytics by default)
+    tabContents.forEach(content => {
+      content.style.display = 'none';
+    });
+    const activeTab = document.querySelector('.ai-tab-btn.active');
+    if (activeTab) {
+      const targetTab = activeTab.dataset.tab;
+      const targetContent = document.getElementById(`ai-tab-${targetTab}`);
+      if (targetContent) {
+        targetContent.style.display = 'block';
+      }
+    }
+    
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetTab = btn.dataset.tab;
+        
+        // Update button states
+        tabButtons.forEach(b => {
+          b.classList.remove('active');
+          b.style.borderBottom = 'none';
+          b.style.color = 'var(--text-secondary)';
+          b.style.fontWeight = 'normal';
+        });
+        btn.classList.add('active');
+        btn.style.borderBottom = '2px solid var(--accent-primary)';
+        btn.style.color = 'var(--accent-primary)';
+        btn.style.fontWeight = '600';
+        
+        // Show/hide tab contents
+        tabContents.forEach(content => {
+          content.style.display = 'none';
+        });
+        const targetContent = document.getElementById(`ai-tab-${targetTab}`);
+        if (targetContent) {
+          targetContent.style.display = 'block';
+        }
+      });
+    });
+    
+    // Setup Analytics Dashboard
+    setupAnalyticsDashboard();
+    
+    // Setup Q&A Mode controls
+    setupQAModeControls();
+    
+    // Setup Segment controls
+    setupSegmentControls();
+    
+    // Update AI status periodically
+    updateAIStatus();
+    setInterval(updateAIStatus, 5000); // Update every 5 seconds
+  }
+  
+  
+  // Setup Analytics Dashboard
+  function setupAnalyticsDashboard() {
+    console.log('📊 Setting up Analytics Dashboard');
+    
+    // Export buttons
+    const exportJsonBtn = document.getElementById('analytics-export-json');
+    const exportCsvBtn = document.getElementById('analytics-export-csv');
+    
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener('click', async () => {
+        try {
+          const response = await fetch('http://localhost:3005/api/analytics/export?format=json');
+          if (!response.ok) throw new Error('Export failed');
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `analytics-export-${Date.now()}.json`;
+          a.click();
+          window.URL.revokeObjectURL(url);
+        } catch (err) {
+          console.error('❌ Error exporting JSON:', err);
+          alert('Failed to export analytics data');
+        }
+      });
+    }
+    
+    if (exportCsvBtn) {
+      exportCsvBtn.addEventListener('click', async () => {
+        try {
+          const response = await fetch('http://localhost:3005/api/analytics/export?format=csv');
+          if (!response.ok) throw new Error('Export failed');
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `analytics-export-${Date.now()}.csv`;
+          a.click();
+          window.URL.revokeObjectURL(url);
+        } catch (err) {
+          console.error('❌ Error exporting CSV:', err);
+          alert('Failed to export analytics data');
+        }
+      });
+    }
+    
+    // Update analytics every 2 seconds
+    updateAnalytics();
+    setInterval(updateAnalytics, 2000);
+  }
+  
+  // Update Analytics Dashboard
+  async function updateAnalytics() {
+    try {
+      const response = await fetch('http://localhost:3005/api/analytics/realtime');
+      if (!response.ok) return;
+      
+      const data = await response.json();
+      
+      // Update real-time metrics
+      const responseRateEl = document.getElementById('analytics-response-rate');
+      const queueDepthEl = document.getElementById('analytics-queue-depth');
+      const totalCostEl = document.getElementById('analytics-total-cost');
+      const totalTokensEl = document.getElementById('analytics-total-tokens');
+      const totalResponsesEl = document.getElementById('analytics-total-responses');
+      const avgResponseTimeEl = document.getElementById('analytics-avg-response-time');
+      const uptimeEl = document.getElementById('analytics-uptime');
+      const lastMinuteEl = document.getElementById('analytics-last-minute');
+      const lastHourEl = document.getElementById('analytics-last-hour');
+      const costHourEl = document.getElementById('analytics-cost-hour');
+      
+      if (responseRateEl) responseRateEl.textContent = `${data.current.responseRate}/min`;
+      if (queueDepthEl) queueDepthEl.textContent = data.current.queueDepth;
+      if (totalCostEl) totalCostEl.textContent = `$${data.session.totalCost.toFixed(4)}`;
+      if (totalTokensEl) totalTokensEl.textContent = data.tokens.total.toLocaleString();
+      if (totalResponsesEl) totalResponsesEl.textContent = data.session.totalResponses;
+      if (avgResponseTimeEl) {
+        const avgMs = data.session.avgResponseTime || 0;
+        avgResponseTimeEl.textContent = avgMs > 1000 ? `${(avgMs / 1000).toFixed(1)}s` : `${Math.round(avgMs)}ms`;
+      }
+      if (uptimeEl) {
+        const seconds = data.current.uptime;
+        const hours = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+        uptimeEl.textContent = hours > 0 ? `${hours}h ${mins}m` : `${mins}m ${secs}s`;
+      }
+      if (lastMinuteEl) lastMinuteEl.textContent = data.recent.responsesLastMinute;
+      if (lastHourEl) lastHourEl.textContent = data.recent.responsesLastHour;
+      if (costHourEl) costHourEl.textContent = `$${data.recent.costLastHour.toFixed(4)}`;
+      
+      // Update top chatters
+      try {
+        const chattersResponse = await fetch('http://localhost:3005/api/analytics/top-chatters?limit=5');
+        if (chattersResponse.ok) {
+          const chattersData = await chattersResponse.json();
+          const chattersEl = document.getElementById('analytics-top-chatters');
+          if (chattersEl) {
+            if (chattersData.chatters && chattersData.chatters.length > 0) {
+              chattersEl.innerHTML = chattersData.chatters.map((chatter, idx) => 
+                `<div style="margin-bottom: 4px;">
+                  <span style="color: var(--text-primary); font-weight: 600;">${idx + 1}. ${chatter.username}</span>
+                  <span style="color: var(--text-tertiary); margin-left: 8px;">${chatter.messageCount} messages</span>
+                </div>`
+              ).join('');
+            } else {
+              chattersEl.textContent = 'No chat data yet';
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore errors for top chatters
+      }
+    } catch (err) {
+      // Silently fail - analytics API might not be available
+      console.debug('Analytics update failed:', err);
+    }
+  }
+  
+  // Setup Q&A Mode Controls
+  function setupQAModeControls() {
+    const qaStartBtn = document.getElementById('qa-start-btn');
+    const qaStopBtn = document.getElementById('qa-stop-btn');
+    const qaEnabledCheckbox = document.getElementById('qa-mode-enabled');
+    
+    if (qaStartBtn) {
+      qaStartBtn.addEventListener('click', async () => {
+        try {
+          console.log('🎯 Starting Q&A mode...');
+          
+          // Call API to set mode to QA
+          const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'QA' }),
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to start Q&A mode: ${response.statusText}`);
+          }
+          
+          const result = await response.json();
+          console.log('✅ Q&A mode started:', result);
+          
+          if (qaEnabledCheckbox) qaEnabledCheckbox.checked = true;
+          qaStartBtn.disabled = true;
+          if (qaStopBtn) qaStopBtn.disabled = false;
+          updateAIStatus();
+        } catch (err) {
+          console.error('❌ Error starting Q&A mode:', err);
+          alert(`Error starting Q&A mode: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    }
+    
+    if (qaStopBtn) {
+      qaStopBtn.addEventListener('click', async () => {
+        try {
+          console.log('🎯 Stopping Q&A mode...');
+          
+          // Call API to set mode back to JUST_CHATTING (default)
+          const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'JUST_CHATTING' }),
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to stop Q&A mode: ${response.statusText}`);
+          }
+          
+          const result = await response.json();
+          console.log('✅ Q&A mode stopped:', result);
+          
+          if (qaEnabledCheckbox) qaEnabledCheckbox.checked = false;
+          if (qaStartBtn) qaStartBtn.disabled = false;
+          qaStopBtn.disabled = true;
+          updateAIStatus();
+        } catch (err) {
+          console.error('❌ Error stopping Q&A mode:', err);
+          alert(`Error stopping Q&A mode: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    }
+    
+    // Check current mode on load
+    checkCurrentMode();
+  }
+  
+  // Check current mode and update UI
+  async function checkCurrentMode() {
+    try {
+      const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
+      if (response.ok) {
+        const data = await response.json();
+        const qaEnabledCheckbox = document.getElementById('qa-mode-enabled');
+        const qaStartBtn = document.getElementById('qa-start-btn');
+        const qaStopBtn = document.getElementById('qa-stop-btn');
+        
+        if (data.mode === 'QA') {
+          if (qaEnabledCheckbox) qaEnabledCheckbox.checked = true;
+          if (qaStartBtn) qaStartBtn.disabled = true;
+          if (qaStopBtn) qaStopBtn.disabled = false;
+        } else {
+          if (qaEnabledCheckbox) qaEnabledCheckbox.checked = false;
+          if (qaStartBtn) qaStartBtn.disabled = false;
+          if (qaStopBtn) qaStopBtn.disabled = true;
+        }
+      }
+    } catch (err) {
+      console.debug('Could not check current mode:', err);
+    }
+  }
+  
+  // Setup Segment Controls
+  function setupSegmentControls() {
+    const segmentSaveBtn = document.getElementById('segment-save-btn');
+    const quickBtns = document.querySelectorAll('.segment-quick-btn');
+    
+    if (segmentSaveBtn) {
+      segmentSaveBtn.addEventListener('click', async () => {
+        try {
+          const segmentSelector = document.getElementById('segment-selector');
+          const segmentBehavior = document.getElementById('segment-behavior');
+          const segment = segmentSelector ? segmentSelector.value : 'normal';
+          const behavior = segmentBehavior ? segmentBehavior.value : 'normal';
+          
+          // TODO: Call API to save segment settings
+          console.log('Saving segment settings:', { segment, behavior });
+          if (window.notificationManager) {
+            window.notificationManager.show('Segment settings saved!', 'success');
+          } else {
+            alert('Segment settings saved!');
+          }
+        } catch (err) {
+          console.error('Error saving segment settings:', err);
+        }
+      });
+    }
+    
+    quickBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const segment = btn.dataset.segment;
+        const segmentSelector = document.getElementById('segment-selector');
+        const segmentBehavior = document.getElementById('segment-behavior');
+        
+        if (segmentSelector) segmentSelector.value = segment;
+        
+        // Set appropriate behavior based on segment
+        const behaviorMap = {
+          'normal': 'normal',
+          'gaming': 'chatty',
+          'just-chatting': 'chatty',
+          'hype': 'hype'
+        };
+        if (segmentBehavior) {
+          segmentBehavior.value = behaviorMap[segment] || 'normal';
+        }
+        
+        console.log('Quick switch to segment:', segment);
+      });
+    });
+  }
+  
+  // Update AI Status Overview
+  async function updateAIStatus() {
+    // Also update mode selector if it exists
+    const modeSelector = document.getElementById('ai-mode-selector');
+    if (modeSelector) {
+      try {
+        const modeResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
+        if (modeResponse.ok) {
+          const modeData = await modeResponse.json();
+          if (modeData.mode && modeSelector.value !== modeData.mode) {
+            modeSelector.value = modeData.mode;
+            
+            // Update mode display text
+            const modeText = document.getElementById('ai-mode-text');
+            if (modeText) {
+              const modeLabels = {
+                'JUST_CHATTING': 'Just Chatting',
+                'CHILL': 'Chill',
+                'HYPE': 'Hype',
+                'QA': 'Q&A',
+                'STORYTIME': 'Storytime',
+                'DND': 'D&D',
+                'AFK': 'AFK',
+                'SAFE': 'Safe',
+                'MUTED': 'Muted'
+              };
+              modeText.textContent = modeLabels[modeData.mode] || modeData.mode;
+            }
+          }
+        }
+      } catch (err) {
+        // Silently fail - API might not be available
+      }
+    }
+    try {
+      // Check trivia status
+      let triviaActive = false;
+      try {
+        const triviaResponse = await fetch('http://localhost:3003/api/trivia/status');
+        if (triviaResponse.ok) {
+          const triviaStatus = await triviaResponse.json();
+          triviaActive = triviaStatus && triviaStatus.active;
+        }
+      } catch (e) {
+        // Trivia API might not be available
+      }
+      
+      const activeFeatures = [];
+      if (triviaActive) {
+        activeFeatures.push('Trivia');
+      }
+      
+      const qaEnabled = document.getElementById('qa-mode-enabled');
+      if (qaEnabled && qaEnabled.checked) {
+        activeFeatures.push('Q&A');
+      }
+      
+      // Update status display
+      const statusText = document.getElementById('ai-status-text');
+      const featuresText = document.getElementById('ai-features-text');
+      
+      if (statusText) {
+        statusText.textContent = activeFeatures.length > 0 ? 'Active' : 'Idle';
+      }
+      if (featuresText) {
+        featuresText.textContent = activeFeatures.length > 0 ? activeFeatures.join(', ') : 'None';
+      }
+    } catch (err) {
+      // Silently fail
+      console.debug('AI status update failed:', err);
+    }
+  }
+  
+  // Trivia Controls
+  function setupTriviaControls() {
+    console.log('🎮 Setting up Trivia controls');
+    
+    // Category selector - show/hide custom category input
+    const categorySelect = document.getElementById('trivia-category');
+    const customCategoryInput = document.getElementById('trivia-custom-category');
+    if (categorySelect && customCategoryInput) {
+      categorySelect.addEventListener('change', (e) => {
+        if (e.target.value === 'custom') {
+          customCategoryInput.style.display = 'block';
+        } else {
+          customCategoryInput.style.display = 'none';
+        }
+      });
+    }
+    
+    // Start Trivia button
+    const startTriviaBtn = document.getElementById('start-trivia-btn');
+    if (startTriviaBtn) {
+      startTriviaBtn.addEventListener('click', async () => {
+        await startTriviaSession();
+      });
+    }
+    
+    // Stop Trivia button
+    const stopTriviaBtn = document.getElementById('stop-trivia-btn');
+    if (stopTriviaBtn) {
+      stopTriviaBtn.addEventListener('click', () => {
+        stopTriviaSession();
+      });
+    }
+    
+    // Award All Winners button
+    const awardAllBtn = document.getElementById('award-all-winners-btn');
+    if (awardAllBtn) {
+      awardAllBtn.addEventListener('click', async () => {
+        await awardAllWinners();
+      });
+    }
+    
+    // Export Winners button
+    const exportWinnersBtn = document.getElementById('export-winners-btn');
+    if (exportWinnersBtn) {
+      exportWinnersBtn.addEventListener('click', () => {
+        exportWinnersList();
+      });
+    }
+    
+    // Load pending awards on overlay widget open
+    const overlayWidget = document.getElementById('overlay-widget');
+    if (overlayWidget) {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+            if (!overlayWidget.classList.contains('hidden')) {
+              loadPendingAwards();
+              updateTriviaUI();
+            }
+          }
+        });
+      });
+      observer.observe(overlayWidget, { attributes: true });
+    }
+    
+    // Auto-refresh trivia UI every 5 seconds when active
+    setInterval(() => {
+      updateTriviaUI();
+    }, 5000);
+  }
+  
+  // Start Trivia Session
+  async function startTriviaSession() {
+    try {
+      const categorySelect = document.getElementById('trivia-category');
+      const customCategoryInput = document.getElementById('trivia-custom-category');
+      const difficultySelect = document.getElementById('trivia-difficulty');
+      const questionCountInput = document.getElementById('trivia-question-count');
+      const startBtn = document.getElementById('start-trivia-btn');
+      const statusEl = document.getElementById('trivia-generating-status');
+      
+      const category = categorySelect.value === 'custom' 
+        ? customCategoryInput.value.trim() 
+        : categorySelect.value;
+      const difficulty = difficultySelect.value;
+      const questionCount = parseInt(questionCountInput.value) || 10;
+      
+      if (!category) {
+        alert('Please select or enter a category');
+        return;
+      }
+      
+      if (questionCount < 5 || questionCount > 50) {
+        alert('Question count must be between 5 and 50');
+        return;
+      }
+      
+      // Show generating status
+      startBtn.disabled = true;
+      statusEl.style.display = 'block';
+      statusEl.textContent = `Generating ${questionCount} questions...`;
+      
+      // Call trivia API to start session
+      const response = await fetch('http://localhost:3003/api/trivia/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category,
+          difficulty,
+          questionCount,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(errorData.error || `Failed to start trivia: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Trivia session started:', data);
+      
+      // Update UI to show active trivia panel
+      document.getElementById('trivia-start-panel').style.display = 'none';
+      document.getElementById('trivia-active-panel').style.display = 'block';
+      document.getElementById('trivia-winners-panel').style.display = 'none';
+      
+      statusEl.textContent = 'Trivia started!';
+      setTimeout(() => {
+        statusEl.style.display = 'none';
+      }, 2000);
+      
+      // Start updating trivia UI
+      updateTriviaUI();
+    } catch (err) {
+      console.error('❌ Error starting trivia:', err);
+      alert(`Error starting trivia: ${err.message}`);
+      document.getElementById('start-trivia-btn').disabled = false;
+      document.getElementById('trivia-generating-status').style.display = 'none';
+    }
+  }
+  
+  // Stop Trivia Session
+  async function stopTriviaSession() {
+    try {
+      if (!confirm('Stop trivia session? Winners list will be compiled automatically.')) {
+        return;
+      }
+      
+      const response = await fetch('http://localhost:3003/api/trivia/stop', {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to stop trivia: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Trivia session stopped:', data);
+      
+      // Update UI to show winners panel (works for both modal and overlay)
+      const activePanel = document.getElementById('trivia-active-panel');
+      const winnersPanel = document.getElementById('trivia-winners-panel');
+      
+      if (activePanel) activePanel.style.display = 'none';
+      if (winnersPanel) winnersPanel.style.display = 'block';
+      
+      // Load pending awards
+      loadPendingAwards();
+      
+      // Add "Back to Start" button after winners are displayed
+      setupTriviaResetButton();
+      
+      // Ensure modal stays open
+      const triviaModal = document.getElementById('trivia-modal');
+      if (triviaModal) {
+        triviaModal.classList.remove('hidden');
+      }
+    } catch (err) {
+      console.error('❌ Error stopping trivia:', err);
+      alert(`Error stopping trivia: ${err.message}`);
+    }
+  }
+  
+  // Update Trivia UI (current question, timer, leaderboard)
+  async function updateTriviaUI() {
+    try {
+      const response = await fetch('http://localhost:3003/api/trivia/status');
+      if (!response.ok) return;
+      
+      const data = await response.json();
+      
+      if (data.active) {
+        // Show active panel, hide start and winners
+        document.getElementById('trivia-start-panel').style.display = 'none';
+        document.getElementById('trivia-active-panel').style.display = 'block';
+        document.getElementById('trivia-winners-panel').style.display = 'none';
+        
+        // Update current question
+        if (data.currentQuestion) {
+          document.getElementById('trivia-question-number').textContent = data.currentQuestion.number || '-';
+          document.getElementById('trivia-total-questions').textContent = data.totalQuestions || '-';
+          document.getElementById('trivia-question-text').textContent = data.currentQuestion.text || '-';
+          document.getElementById('trivia-timer').textContent = formatTime(data.timeRemaining || 0);
+        }
+        
+        // Update leaderboard
+        if (data.leaderboard && data.leaderboard.length > 0) {
+          const leaderboardList = document.getElementById('trivia-leaderboard-list');
+          leaderboardList.innerHTML = data.leaderboard.slice(0, 10).map((user, idx) => 
+            `<div style="padding: 4px 0; border-bottom: 1px solid var(--border-color);">
+              <span style="font-weight: 600;">${idx + 1}.</span> 
+              <span>${user.displayName || user.username}</span> 
+              <span style="float: right; color: var(--accent-primary);">${user.totalPoints} pts</span>
+            </div>`
+          ).join('');
+        } else {
+          document.getElementById('trivia-leaderboard-list').innerHTML = 'No scores yet...';
+        }
+      } else {
+        // Not active - check if there are pending awards
+        try {
+          const pendingResponse = await fetch('http://localhost:3003/api/trivia/pending-awards');
+          if (pendingResponse.ok) {
+            const pendingData = await pendingResponse.json();
+            if (pendingData && pendingData.awards && pendingData.awards.length > 0) {
+              // Show winners panel (loadPendingAwards will handle this)
+              await loadPendingAwards();
+              return;
+            }
+          }
+        } catch (e) {
+          // Ignore errors
+        }
+        // No pending awards - reset to start
+        resetTriviaUI();
+      }
+    } catch (err) {
+      // Silently fail - trivia might not be active
+      console.debug('Trivia status update failed:', err);
+      resetTriviaUI();
+    }
+  }
+  
+  // Reset Trivia UI to start state
+  function resetTriviaUI() {
+    document.getElementById('trivia-start-panel').style.display = 'block';
+    document.getElementById('trivia-active-panel').style.display = 'none';
+    document.getElementById('trivia-winners-panel').style.display = 'none';
+    
+    // Remove reset button if it exists
+    const resetBtn = document.getElementById('trivia-reset-btn');
+    if (resetBtn) {
+      resetBtn.remove();
+    }
+  }
+  
+  // Setup "Back to Start" button in winners panel
+  function setupTriviaResetButton() {
+    const winnersPanel = document.getElementById('trivia-winners-panel');
+    const resetBtn = document.getElementById('trivia-reset-btn');
+    
+    if (winnersPanel && !resetBtn) {
+      // Create reset button
+      const btn = document.createElement('button');
+      btn.id = 'trivia-reset-btn';
+      btn.className = 'overlay-action-btn';
+      btn.style.cssText = 'width: 100%; margin-top: 12px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color);';
+      btn.textContent = '🔄 Back to Start New Trivia';
+      btn.onclick = resetTriviaUI;
+      
+      // Insert after award actions
+      const awardActions = document.getElementById('trivia-award-actions');
+      if (awardActions && awardActions.parentNode) {
+        awardActions.parentNode.insertBefore(btn, awardActions.nextSibling);
+      }
+    }
+  }
+  
+  // Load Pending Awards
+  async function loadPendingAwards() {
+    try {
+      const response = await fetch('http://localhost:3003/api/trivia/pending-awards');
+      if (!response.ok) {
+        // No pending awards
+        document.getElementById('trivia-winners-panel').style.display = 'none';
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (data && !data.awarded && data.awards && data.awards.length > 0) {
+        // Show winners panel
+        document.getElementById('trivia-winners-panel').style.display = 'block';
+        
+        // Update summary
+        document.getElementById('trivia-total-winners').textContent = data.totalAwards || 0;
+        document.getElementById('trivia-total-channel-points').textContent = data.totalChannelPoints || 0;
+        document.getElementById('trivia-award-status-text').textContent = 'Pending';
+        
+        // Update winners table
+        const tbody = document.getElementById('trivia-winners-table-body');
+        tbody.innerHTML = data.awards.map((award, idx) => 
+          `<tr>
+            <td style="padding: 6px; text-align: center;">${award.position || idx + 1}</td>
+            <td style="padding: 6px;">${award.displayName || award.username}</td>
+            <td style="padding: 6px; text-align: right;">${award.triviaPoints}</td>
+            <td style="padding: 6px; text-align: right; color: var(--accent-primary); font-weight: 600;">${award.channelPoints}</td>
+            <td style="padding: 6px; text-align: right;">${award.correctAnswers || 0}</td>
+          </tr>`
+        ).join('');
+        
+        // Enable award button
+        document.getElementById('award-all-winners-btn').disabled = false;
+        document.getElementById('award-all-winners-btn').textContent = `🎁 Award All Winners (${data.totalChannelPoints} points)`;
+      } else if (data && data.awarded) {
+        // Already awarded - add back to start option
+        document.getElementById('trivia-award-status-text').textContent = `Awarded on ${new Date(data.awardedAt).toLocaleString()}`;
+        document.getElementById('award-all-winners-btn').disabled = true;
+        document.getElementById('award-all-winners-btn').textContent = '✅ Already Awarded';
+        
+        // Add "Back to Start" button if not already present
+        setupTriviaResetButton();
+      } else {
+        // No pending awards - reset to start panel
+        resetTriviaUI();
+      }
+    } catch (err) {
+      console.error('❌ Error loading pending awards:', err);
+    }
+  }
+  
+  // Award All Winners
+  async function awardAllWinners() {
+    try {
+      const pendingAwards = await fetch('http://localhost:3003/api/trivia/pending-awards').then(r => r.json());
+      if (!pendingAwards || pendingAwards.awarded) {
+        alert('Awards already processed or no pending awards');
+        return;
+      }
+      
+      const confirmed = confirm(`Award ${pendingAwards.totalChannelPoints} channel points to ${pendingAwards.totalAwards} winners?`);
+      if (!confirmed) return;
+      
+      // Show progress
+      const progressEl = document.getElementById('trivia-award-progress');
+      const progressText = document.getElementById('trivia-award-progress-text');
+      const progressBar = document.getElementById('trivia-award-progress-bar');
+      const awardBtn = document.getElementById('award-all-winners-btn');
+      
+      progressEl.style.display = 'block';
+      awardBtn.disabled = true;
+      
+      // Call API to award all
+      const response = await fetch('http://localhost:3003/api/trivia/award-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to award winners: ${response.statusText}`);
+      }
+      
+      const results = await response.json();
+      console.log('✅ Awards completed:', results);
+      
+      // Hide progress, show results
+      progressEl.style.display = 'none';
+      const resultsEl = document.getElementById('trivia-award-results');
+      resultsEl.style.display = 'block';
+      
+      document.getElementById('trivia-award-successful').textContent = results.successful || 0;
+      document.getElementById('trivia-award-failed').textContent = results.failed || 0;
+      document.getElementById('trivia-award-skipped').textContent = results.skipped || 0;
+      
+      // Show failed users if any
+      if (results.errors && results.errors.length > 0) {
+        const failedList = document.getElementById('trivia-award-failed-list');
+        failedList.innerHTML = results.errors.map(err => 
+          `<li>${err.username}: ${err.error}</li>`
+        ).join('');
+        document.getElementById('trivia-award-failed-users').style.display = 'block';
+      }
+      
+      // Update button state
+      awardBtn.disabled = true;
+      awardBtn.textContent = '✅ Already Awarded';
+      document.getElementById('trivia-award-status-text').textContent = 'Awarded';
+      
+      alert(`Awarded ${results.successful} winners! ${results.failed > 0 ? `${results.failed} failed.` : ''}`);
+      
+      // Reload pending awards to refresh UI
+      await loadPendingAwards();
+      
+      // Setup reset button after awards are processed
+      setupTriviaResetButton();
+    } catch (err) {
+      console.error('❌ Error awarding winners:', err);
+      alert(`Error awarding winners: ${err.message}`);
+      document.getElementById('trivia-award-progress').style.display = 'none';
+      document.getElementById('award-all-winners-btn').disabled = false;
+    }
+  }
+  
+  // Export Winners List
+  function exportWinnersList() {
+    // TODO: Implement CSV export
+    alert('CSV export coming soon!');
+  }
+  
+  // Format Time (MM:SS)
+  function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  
+  // Open Trivia Modal
+  function openTriviaModal() {
+    console.log('🔄 Opening Trivia Modal...');
+    const triviaModal = document.getElementById('trivia-modal');
+    if (triviaModal) {
+      console.log('✅ Trivia modal found, removing hidden class');
+      console.log('   Modal classes before:', triviaModal.className);
+      triviaModal.classList.remove('hidden');
+      console.log('   Modal classes after:', triviaModal.className);
+      console.log('   Modal display style:', window.getComputedStyle(triviaModal).display);
+      
+      // Ensure modal is visible
+      triviaModal.style.display = 'flex';
+      
+      // Load current trivia status
+      updateTriviaUI();
+      loadPendingAwards();
+    } else {
+      console.error('❌ Trivia modal not found in DOM! Looking for #trivia-modal');
+      // Try to find it in different ways
+      const allModals = document.querySelectorAll('[id*="trivia"]');
+      console.log('   Found elements with "trivia" in ID:', Array.from(allModals).map(el => el.id));
+      alert('Trivia modal not found. Please refresh the page.');
+    }
+  }
+  
+  // Close Trivia Modal
+  function closeTriviaModal() {
+    const triviaModal = document.getElementById('trivia-modal');
+    if (triviaModal) {
+      triviaModal.classList.add('hidden');
+    }
+  }
+  
+  // Setup Trivia Modal
+  function setupTriviaModal() {
+    const closeBtn = document.getElementById('trivia-modal-close');
+    const triviaModal = document.getElementById('trivia-modal');
+    
+    if (closeBtn) {
+      closeBtn.addEventListener('click', closeTriviaModal);
+    } else {
+      console.warn('⚠️ Trivia modal close button not found');
+    }
+    
+    // Close modal when clicking outside
+    if (triviaModal) {
+      triviaModal.addEventListener('click', (e) => {
+        if (e.target === triviaModal) {
+          closeTriviaModal();
+        }
+      });
+    } else {
+      console.warn('⚠️ Trivia modal not found in DOM');
+    }
+  }
+  
+  // VTuber Controls
+  function setupVTuberControls() {
+    console.log('🎭 Setting up VTuber controls');
+    
+    // Load VTuber config when overlay widget opens
+    const overlayWidget = document.getElementById('overlay-widget');
+    if (overlayWidget) {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+            if (!overlayWidget.classList.contains('hidden')) {
+              loadVTuberConfig();
+            }
+          }
+        });
+      });
+      observer.observe(overlayWidget, { attributes: true });
+    }
+    
+    // Copy VTuber URL button
+    const copyVTuberUrlBtn = document.getElementById('copy-vtuber-url');
+    if (copyVTuberUrlBtn) {
+      copyVTuberUrlBtn.addEventListener('click', () => {
+        const urlEl = document.getElementById('vtuber-overlay-url');
+        const url = urlEl ? urlEl.textContent : 'http://localhost:8080/overlay?name=vtuberOverlay';
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(url).then(() => {
+            const originalText = copyVTuberUrlBtn.textContent;
+            copyVTuberUrlBtn.textContent = '✓';
+            setTimeout(() => {
+              copyVTuberUrlBtn.textContent = originalText;
+            }, 1500);
+          });
+        }
+      });
+    }
+    
+    // State buttons
+    const stateButtons = document.querySelectorAll('.vtuber-state-btn');
+    stateButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const state = btn.dataset.state;
+        setVTuberState(state);
+      });
+    });
+    
+    // Image upload inputs (will need IPC handler for file uploads)
+    const imageInputs = document.querySelectorAll('.vtuber-image-input');
+    imageInputs.forEach(input => {
+      input.addEventListener('change', (e) => {
+        const state = input.dataset.state;
+        const file = e.target.files[0];
+        if (file) {
+          console.log(`📤 Would upload ${state} image:`, file.name);
+          showCustomAlert('File upload via UI coming soon. For now, place images in: {userDataPath}/vtuber/images/', 'info');
+        }
+      });
+    });
+    
+    // Position controls
+    const applyPositionBtn = document.getElementById('apply-vtuber-position');
+    if (applyPositionBtn) {
+      applyPositionBtn.addEventListener('click', () => {
+        applyVTuberPosition();
+      });
+    }
+    
+    // VTuber type selector
+    const vtuberTypeSelect = document.getElementById('vtuber-type-select');
+    const iframeConfig = document.getElementById('vtuber-iframe-config');
+    const saveVTuberTypeBtn = document.getElementById('save-vtuber-type');
+    
+    if (vtuberTypeSelect) {
+      vtuberTypeSelect.addEventListener('change', (e) => {
+        const type = e.target.value;
+        if (type === 'iframe') {
+          iframeConfig.style.display = 'block';
+        } else {
+          iframeConfig.style.display = 'none';
+        }
+      });
+    }
+    
+    if (saveVTuberTypeBtn) {
+      saveVTuberTypeBtn.addEventListener('click', () => {
+        saveVTuberType();
+      });
+    }
+  }
+  
+  // Save VTuber type configuration
+  async function saveVTuberType() {
+    try {
+      const typeSelect = document.getElementById('vtuber-type-select');
+      const iframeUrl = document.getElementById('vtuber-iframe-url');
+      const type = typeSelect.value;
+      
+      let vtuberConfig = {
+        type: type === 'pngtuber' ? 'pngtuber' : 'vtuber',
+        vtuberConfig: {
+          type: type === 'pngtuber' ? null : type,
+          url: type === 'iframe' ? iframeUrl.value : null,
+          modelPath: null,
+        }
+      };
+      
+      const response = await fetch('http://localhost:8080/api/vtuber/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vtuberConfig)
+      });
+      
+      if (response.ok) {
+        const config = await response.json();
+        console.log('✅ VTuber type saved:', config);
+        showCustomAlert('VTuber type saved!', 'success');
+        loadVTuberConfig(); // Reload to update UI
+      } else {
+        console.error('❌ Failed to save VTuber type:', response.status);
+      }
+    } catch (err) {
+      console.error('❌ Error saving VTuber type:', err);
+    }
+  }
+  
+  // Load VTuber configuration
+  async function loadVTuberConfig() {
+    try {
+      const response = await fetch('http://localhost:8080/api/vtuber/config');
+      if (response.ok) {
+        const config = await response.json();
+        console.log('✅ VTuber config loaded:', config);
+        
+        // Update image status indicators
+        if (config.images) {
+          Object.keys(config.images).forEach(state => {
+            const statusEl = document.querySelector(`.image-status[data-state="${state}"]`);
+            if (statusEl) {
+              const imageInfo = config.images[state];
+              if (imageInfo && imageInfo.exists) {
+                statusEl.textContent = `✓ ${imageInfo.filename}`;
+                statusEl.style.color = 'var(--success, #4caf50)';
+              } else {
+                statusEl.textContent = 'No image';
+                statusEl.style.color = 'var(--text-tertiary, #999)';
+              }
+            }
+          });
+        }
+        
+        // Update VTuber type selector
+        const typeSelect = document.getElementById('vtuber-type-select');
+        const iframeConfig = document.getElementById('vtuber-iframe-config');
+        const iframeUrl = document.getElementById('vtuber-iframe-url');
+        
+        if (typeSelect) {
+          if (config.type === 'vtuber' && config.vtuberConfig && config.vtuberConfig.type) {
+            typeSelect.value = config.vtuberConfig.type;
+            if (config.vtuberConfig.type === 'iframe') {
+              iframeConfig.style.display = 'block';
+              if (iframeUrl && config.vtuberConfig.url) {
+                iframeUrl.value = config.vtuberConfig.url;
+              }
+            }
+          } else {
+            typeSelect.value = 'pngtuber';
+            if (iframeConfig) iframeConfig.style.display = 'none';
+          }
+        }
+        
+        // Update position controls
+        if (config.position) {
+          const pos = config.position;
+          const xInput = document.getElementById('vtuber-pos-x');
+          const yInput = document.getElementById('vtuber-pos-y');
+          const widthInput = document.getElementById('vtuber-width');
+          const heightInput = document.getElementById('vtuber-height');
+          const scaleInput = document.getElementById('vtuber-scale');
+          const opacityInput = document.getElementById('vtuber-opacity');
+          
+          if (xInput) xInput.value = pos.x || 0;
+          if (yInput) yInput.value = pos.y || 0;
+          if (widthInput) widthInput.value = pos.width || 500;
+          if (heightInput) heightInput.value = pos.height || 500;
+          if (scaleInput) scaleInput.value = config.scale || 1.0;
+          if (opacityInput) opacityInput.value = config.opacity || 1.0;
+        }
+      } else {
+        console.warn('⚠️ Could not load VTuber config:', response.status);
+      }
+    } catch (err) {
+      console.error('❌ Error loading VTuber config:', err);
+    }
+  }
+  
+  // Set VTuber state
+  async function setVTuberState(state) {
+    try {
+      const response = await fetch('http://localhost:8080/api/vtuber/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ VTuber state set:', result);
+        
+        // Update button states
+        document.querySelectorAll('.vtuber-state-btn').forEach(btn => {
+          btn.classList.remove('active');
+          if (btn.dataset.state === state) {
+            btn.classList.add('active');
+          }
+        });
+      } else {
+        console.error('❌ Failed to set VTuber state:', response.status);
+      }
+    } catch (err) {
+      console.error('❌ Error setting VTuber state:', err);
+    }
+  }
+  
+  // Apply VTuber position
+  async function applyVTuberPosition() {
+    try {
+      const x = parseInt(document.getElementById('vtuber-pos-x').value) || 0;
+      const y = parseInt(document.getElementById('vtuber-pos-y').value) || 0;
+      const width = parseInt(document.getElementById('vtuber-width').value) || 500;
+      const height = parseInt(document.getElementById('vtuber-height').value) || 500;
+      const scale = parseFloat(document.getElementById('vtuber-scale').value) || 1.0;
+      const opacity = parseFloat(document.getElementById('vtuber-opacity').value) || 1.0;
+      
+      const response = await fetch('http://localhost:8080/api/vtuber/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          position: { x, y, width, height, anchor: 'top-left' },
+          scale,
+          opacity
+        })
+      });
+      
+      if (response.ok) {
+        const config = await response.json();
+        console.log('✅ VTuber position updated:', config);
+        showCustomAlert('Position updated!', 'success');
+      } else {
+        console.error('❌ Failed to update position:', response.status);
+      }
+    } catch (err) {
+      console.error('❌ Error updating position:', err);
+    }
+  }
+  
+  setupAIControlPanel(); // Must be called before setupTriviaControls
+  setupVTuberControls();
+  setupTriviaControls();
+  setupAIManagementPanel(); // Setup the dashboard widget
+  setupTriviaModal(); // Setup trivia modal
+  
+  // Overlay Management Functionality
+  if (createOverlayBtn && newOverlayNameInput) {
+    createOverlayBtn.addEventListener('click', () => {
+      const overlayName = newOverlayNameInput.value.trim();
+      const templateSelect = document.getElementById('overlay-template');
+      const template = templateSelect ? templateSelect.value : 'center-media';
+      
+      if (!overlayName) {
+        showCustomAlert('Please enter a name for the overlay', 'error');
+        return;
+      }
+      
+      
+      // Create overlay name that includes template info
+      const overlayId = overlayName.toLowerCase().replace(/\s+/g, '-');
+      const displayName = `${overlayName} (${getTemplateDisplayName(template)})`;
+      
+      // Check for duplicate names
+      const savedOverlays = getSavedOverlays();
+      const isDuplicate = savedOverlays.some(overlay => 
+        overlay.id === overlayId || overlay.name.toLowerCase() === overlayName.toLowerCase()
+      );
+      
+      if (isDuplicate) {
+        showCustomAlert(`An overlay with the name "${overlayName}" already exists. Please choose a different name.`, 'error');
+        return;
+      }
+      
+      // Save overlay to localStorage
+      savedOverlays.push({
+        id: overlayId,
+        name: overlayName,
+        displayName: displayName,
+        template: template,
+        createdAt: new Date().toISOString()
+      });
+      saveOverlays(savedOverlays);
+      
+      // Create new overlay option
+      const option = document.createElement('option');
+      option.value = overlayId;
+      option.textContent = displayName;
+      option.dataset.template = template;
+      overlaySelect.appendChild(option);
+      
+      // Clear input
+      newOverlayNameInput.value = '';
+      
+      // Show success message
+      showCustomAlert(`Overlay "${overlayName}" created successfully!`, 'success');
+      
+      // Update all overlay selects in forms
+      updateAllOverlaySelects();
+      
+      console.log(`✅ Created and saved new overlay: ${overlayName} with template: ${template}`);
+    });
+  }
+  
+  if (deleteOverlayBtn && overlaySelect) {
+    deleteOverlayBtn.addEventListener('click', async () => {
+      const selectedValue = overlaySelect.value;
+      
+      // Use custom confirm dialog instead of native confirm
+      const overlayName = overlaySelect.options[overlaySelect.selectedIndex].textContent;
+      if (confirm(`Are you sure you want to delete the "${overlayName}" overlay?`)) {
+        // Close all WebSocket connections for this overlay
+        if (window.electronAPI && window.electronAPI.closeOverlayConnections) {
+          try {
+            const result = await window.electronAPI.closeOverlayConnections(selectedValue);
+            if (result.success) {
+              console.log(`🔌 Closed ${result.closedCount} connection(s) for overlay: ${selectedValue}`);
+            }
+          } catch (error) {
+            console.error('Error closing overlay connections:', error);
+          }
+        }
+        
+        // Remove from localStorage
+        const savedOverlays = getSavedOverlays();
+        const updatedOverlays = savedOverlays.filter(o => o.id !== selectedValue);
+        saveOverlays(updatedOverlays);
+        
+        // Remove from select
+        const option = overlaySelect.querySelector(`option[value="${selectedValue}"]`);
+        if (option) {
+          option.remove();
+        }
+        
+        // Reset to default overlay (second in list)
+        overlaySelect.value = getDefaultOverlay();
+        
+        // Update all overlay selects in forms
+        updateAllOverlaySelects();
+        
+        // Update overlay URL to reflect new selection
+        updateOverlayUrl();
+        
+        // Update preview iframe
+        updatePreviewIframe();
+        
+        // Force connection status update (after a short delay to let connections close)
+        setTimeout(() => {
+          updateOverlayConnectionStatus();
+        }, 100);
+        
+        console.log(`✅ Deleted overlay: ${selectedValue}`);
+        showCustomAlert(`Overlay "${overlayName}" deleted successfully`, 'success');
+      }
+    });
+  }
+  
+  if (overlaySelect) {
+    overlaySelect.addEventListener('change', () => {
+      updateOverlayUrl();
+      updatePreviewIframe();
+    });
+  }
+  
+  // Initialize overlay management - load saved overlays first
+  loadSavedOverlaysIntoUI();
+  updateAllOverlaySelects();
+  updateOverlayUrl();
+  
+  // Start periodic connection status updates
+  updateOverlayConnectionStatus();
+  setInterval(updateOverlayConnectionStatus, 3000); // Update every 3 seconds
+  
+  // Predefined overlay cards removed - only user-created overlays will be shown
+  
+  // Ensure overlay selects are updated after a short delay to catch any late-loading forms
+  setTimeout(() => {
+    updateAllOverlaySelects();
+    console.log('🔄 Refreshed overlay selects after delay');
+  }, 1000);
+  
+  // Hydration tracker handlers
+  const openHydrationSettingsBtn = document.getElementById('open-hydration-settings');
+  const copyHydrationUrlBtn = document.getElementById('copy-hydration-url');
+  
+  if (openHydrationSettingsBtn) {
+    openHydrationSettingsBtn.addEventListener('click', () => {
+      openHydrationSettings();
+    });
+  }
+  
+  if (copyHydrationUrlBtn) {
+    copyHydrationUrlBtn.addEventListener('click', () => {
+      const url = 'http://localhost:8080/hydration';
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => {
+          showCustomAlert('Hydration overlay URL copied to clipboard!', 'success');
+        }).catch(err => {
+          console.error('Failed to copy:', err);
+          showCustomAlert('Failed to copy URL to clipboard', 'error');
+        });
+      }
+    });
+  }
+}
+
+// Hydration Settings Functions
+async function openHydrationSettings() {
+  const modal = document.getElementById('hydration-settings-modal');
+  if (!modal) return;
+  
+  // Load current config
+  if (window.electronAPI && window.electronAPI.getHydrationConfig) {
+    try {
+      const config = await window.electronAPI.getHydrationConfig();
+      
+      // Populate form fields
+      document.getElementById('hydration-goal').value = config.streamGoal || 64;
+      document.getElementById('hydration-increment').value = config.incrementAmount || 8;
+      document.getElementById('hydration-keyword').value = config.redemptionKeyword || 'hydrate';
+      document.getElementById('hydration-reset-on-live').checked = config.resetOnLive !== false;
+      document.getElementById('hydration-water-color').value = config.waterColor || '#4fc3f7';
+      document.getElementById('hydration-text-color').value = config.textColor || '#ffffff';
+      document.getElementById('hydration-size').value = config.gaugeSize || 200;
+      document.getElementById('hydration-size-value').textContent = config.gaugeSize || 200;
+      document.getElementById('hydration-pos-x').value = config.positionX || 50;
+      document.getElementById('hydration-pos-y').value = config.positionY || 50;
+      
+      // Set gauge style radio button
+      const gaugeStyleRadio = document.querySelector(`input[name="gauge-style"][value="${config.gaugeStyle || 'circular'}"]`);
+      if (gaugeStyleRadio) gaugeStyleRadio.checked = true;
+      updateGaugeStyleButtons();
+    } catch (error) {
+      console.error('Error loading hydration config:', error);
+    }
+  }
+  
+  modal.classList.remove('hidden');
+  
+  // Disable hotkeys when modal is open
+  if (window.electronAPI && window.electronAPI.disableHotkeys) {
+    window.electronAPI.disableHotkeys();
+  }
+}
+
+function closeHydrationSettings() {
+  const modal = document.getElementById('hydration-settings-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    
+    // Re-enable hotkeys
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+}
+
+async function saveHydrationSettings() {
+  if (!window.electronAPI || !window.electronAPI.saveHydrationConfig) {
+    console.error('electronAPI not available');
+    return;
+  }
+  
+  try {
+    const config = {
+      streamGoal: parseInt(document.getElementById('hydration-goal').value) || 64,
+      incrementAmount: parseInt(document.getElementById('hydration-increment').value) || 8,
+      redemptionKeyword: document.getElementById('hydration-keyword').value.trim() || 'hydrate',
+      currentProgress: 0, // Keep existing progress, will be loaded from saved config
+      gaugeStyle: document.querySelector('input[name="gauge-style"]:checked')?.value || 'circular',
+      waterColor: document.getElementById('hydration-water-color').value,
+      backgroundColor: 'transparent',
+      textColor: document.getElementById('hydration-text-color').value,
+      gaugeSize: parseInt(document.getElementById('hydration-size').value) || 200,
+      positionX: parseInt(document.getElementById('hydration-pos-x').value) || 50,
+      positionY: parseInt(document.getElementById('hydration-pos-y').value) || 50,
+      borderWidth: 0,
+      borderColor: '#ffffff',
+      borderRadius: 10,
+      resetOnLive: document.getElementById('hydration-reset-on-live').checked
+    };
+    
+    // Load existing config to preserve currentProgress
+    const existingConfig = await window.electronAPI.getHydrationConfig();
+    config.currentProgress = existingConfig.currentProgress || 0;
+    
+    const result = await window.electronAPI.saveHydrationConfig(config);
+    if (result.success) {
+      showCustomAlert('Hydration settings saved!', 'success');
+      closeHydrationSettings();
+    } else {
+      showCustomAlert('Failed to save hydration settings', 'error');
+    }
+  } catch (error) {
+    console.error('Error saving hydration settings:', error);
+    showCustomAlert('Error saving settings: ' + error.message, 'error');
+  }
+}
+
+function updateGaugeStyleButtons() {
+  const radioLabels = document.querySelectorAll('label:has(input[name="gauge-style"])');
+  radioLabels.forEach(label => {
+    const radio = label.querySelector('input[type="radio"]');
+    if (radio && radio.checked) {
+      label.style.background = 'var(--accent)';
+      label.style.color = 'white';
+      label.style.borderColor = 'var(--accent)';
+    } else {
+      label.style.background = 'var(--bg-secondary)';
+      label.style.color = 'var(--text-primary)';
+      label.style.borderColor = 'var(--border-color)';
+    }
+  });
+}
+
+// Setup hydration settings event handlers
+function setupHydrationSettings() {
+  // Close button
+  const closeBtn = document.getElementById('hydration-settings-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => closeHydrationSettings());
+  }
+  
+  // Close on backdrop click
+  const modal = document.getElementById('hydration-settings-modal');
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeHydrationSettings();
+      }
+    });
+  }
+  
+  // Save button
+  const saveBtn = document.getElementById('hydration-save');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => saveHydrationSettings());
+  }
+  
+  // Test button
+  const testBtn = document.getElementById('hydration-test');
+  if (testBtn) {
+    testBtn.addEventListener('click', async () => {
+      if (window.electronAPI && window.electronAPI.updateHydrationProgress) {
+        try {
+          await window.electronAPI.updateHydrationProgress();
+          showCustomAlert('Hydration updated! Check your overlay.', 'success');
+        } catch (error) {
+          console.error('Error testing hydration:', error);
+          showCustomAlert('Error testing hydration', 'error');
+        }
+      }
+    });
+  }
+  
+  // Manual reset button
+  const resetBtn = document.getElementById('hydration-manual-reset');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async () => {
+      if (confirm('Are you sure you want to reset hydration progress to 0?')) {
+        if (window.electronAPI && window.electronAPI.resetHydration) {
+          try {
+            await window.electronAPI.resetHydration();
+            showCustomAlert('Hydration progress reset to 0', 'success');
+          } catch (error) {
+            console.error('Error resetting hydration:', error);
+            showCustomAlert('Error resetting hydration', 'error');
+          }
+        }
+      }
+    });
+  }
+  
+  // Gauge style radio buttons
+  const gaugeStyleRadios = document.querySelectorAll('input[name="gauge-style"]');
+  gaugeStyleRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      updateGaugeStyleButtons();
+    });
+  });
+  
+  // Size slider update
+  const sizeSlider = document.getElementById('hydration-size');
+  const sizeValue = document.getElementById('hydration-size-value');
+  if (sizeSlider && sizeValue) {
+    sizeSlider.addEventListener('input', () => {
+      sizeValue.textContent = sizeSlider.value;
+    });
+  }
+  
+  console.log('✅ Hydration settings handlers setup complete');
+}
+
+// Predefined overlay cards function removed - only user-created overlays are supported
+
+// Get overlay URL
+function getOverlayUrl(overlayName) {
+  return `http://localhost:8080/overlay?name=${overlayName}`;
+}
+
+// Helper functions for overlay management
+function updateAllOverlaySelects() {
+  // Get all overlay options from the main overlay select
+  const mainOverlaySelect = document.getElementById('overlay-select');
+  if (!mainOverlaySelect) return;
+  
+  const options = Array.from(mainOverlaySelect.options).map(option => ({
+    value: option.value,
+    text: option.textContent
+  }));
+  
+  // Update multi-media form overlay select
+  const multiMediaOverlaySelect = document.getElementById('multi-media-overlay-select');
+  if (multiMediaOverlaySelect) {
+    const currentValue = multiMediaOverlaySelect.value;
+    console.log('🔄 Updating multi-media overlay select. Current value:', currentValue);
+    console.log('🔄 Available options:', options);
+    multiMediaOverlaySelect.innerHTML = '';
+    
+    options.forEach(option => {
+      const optionElement = document.createElement('option');
+      optionElement.value = option.value;
+      optionElement.textContent = option.text;
+      if (option.value === currentValue) {
+        optionElement.selected = true;
+      }
+      multiMediaOverlaySelect.appendChild(optionElement);
+    });
+    console.log('✅ Multi-media overlay select updated with', options.length, 'options');
+  } else {
+    console.log('⚠️ Multi-media overlay select not found');
+  }
+  
+  // Update alert form overlay select
+  const alertOverlaySelect = document.getElementById('alert-overlay-select');
+  if (alertOverlaySelect) {
+    const currentValue = alertOverlaySelect.value;
+    console.log('🔄 Updating alert overlay select. Current value:', currentValue);
+    console.log('🔄 Available options for alert:', options);
+    alertOverlaySelect.innerHTML = '';
+    
+    options.forEach(option => {
+      const optionElement = document.createElement('option');
+      optionElement.value = option.value;
+      optionElement.textContent = option.text;
+      if (option.value === currentValue) {
+        optionElement.selected = true;
+      }
+      alertOverlaySelect.appendChild(optionElement);
+    });
+    console.log('✅ Alert overlay select updated with', options.length, 'options');
+  } else {
+    console.log('⚠️ Alert overlay select not found');
+  }
+}
+
+function updateOverlayUrl() {
+  const overlaySelect = document.getElementById('overlay-select');
+  const overlayUrlDisplay = document.getElementById('overlay-url-display');
+  
+  if (overlaySelect && overlayUrlDisplay) {
+    const selectedOverlay = overlaySelect.value;
+    const baseUrl = 'http://localhost:8080/overlay';
+    const url = `${baseUrl}?name=${selectedOverlay}`;
+    overlayUrlDisplay.textContent = url;
+  }
+}
+
+function getTemplateDisplayName(template) {
+  const templateNames = {
+    'center-media': 'Center Media',
+    'fullscreen-media': 'Full Screen',
+    // Legacy templates (kept for backward compatibility)
+    'text-only': 'Text Only',
+    'custom': 'Custom'
+  };
+  return templateNames[template] || 'Center Media';
+}
+
+// Overlay persistence functions
+function getSavedOverlays() {
+  try {
+    const saved = localStorage.getItem('customOverlays');
+    return saved ? JSON.parse(saved) : [];
+  } catch (error) {
+    console.error('Error loading saved overlays:', error);
+    return [];
+  }
+}
+
+function saveOverlays(overlays) {
+  try {
+    localStorage.setItem('customOverlays', JSON.stringify(overlays));
+    console.log('✅ Saved overlays to localStorage:', overlays.length);
+  } catch (error) {
+    console.error('Error saving overlays:', error);
+  }
+}
+
+function loadSavedOverlaysIntoUI() {
+  const overlaySelect = document.getElementById('overlay-select');
+  if (!overlaySelect) return;
+  
+  const savedOverlays = getSavedOverlays();
+  console.log(`📂 Loading ${savedOverlays.length} saved overlays...`);
+  
+  // Remove all options except 'main'
+  Array.from(overlaySelect.options).forEach(option => {
+    if (option.value !== 'main') {
+      option.remove();
+    }
+  });
+  
+  // Predefined overlays removed - only user-created overlays will be shown
+  
+  // Add saved overlays
+  savedOverlays.forEach(overlay => {
+    const option = document.createElement('option');
+    option.value = overlay.id;
+    option.textContent = overlay.displayName;
+    option.dataset.template = overlay.template;
+    overlaySelect.appendChild(option);
+    console.log(`✅ Loaded custom overlay: ${overlay.displayName}`);
+  });
+}
+
+function updatePreviewIframe(overlayName = null) {
+  const overlaySelect = document.getElementById('overlay-select');
+  const overlayIframe = document.getElementById('overlay-iframe');
+  
+  if (!overlayIframe) return;
+  
+  const selectedOverlay = overlayName || (overlaySelect ? overlaySelect.value : 'default');
+  
+  // Determine the correct URL for the iframe
+  let iframeUrl;
+  iframeUrl = `http://localhost:8080/overlay?name=${selectedOverlay}`;
+  
+  console.log(`🔄 Updating preview iframe to: ${iframeUrl}`);
+  
+  // Only update if the src is different to avoid unnecessary reloads
+  if (overlayIframe.src !== iframeUrl && !overlayIframe.src.endsWith(iframeUrl)) {
+    overlayIframe.src = iframeUrl;
+    console.log(`✅ Preview iframe updated to ${selectedOverlay} overlay`);
+  }
+}
+
+async function updateOverlayConnectionStatus() {
+  const connectionsList = document.getElementById('overlay-connections-list');
+  if (!connectionsList) return;
+  
+  try {
+    if (window.electronAPI && window.electronAPI.getConnectedOverlays) {
+      const connections = await window.electronAPI.getConnectedOverlays();
+      
+      // Filter out dashboard preview from connection status
+      const actualConnections = connections.filter(conn => conn.name !== 'dashboard-preview');
+      
+      if (actualConnections.length === 0) {
+        connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">⚠️ No overlays connected. Open overlay in OBS to connect.</div>';
+      } else {
+        // Group connections by overlay name and count clients
+        const connectionMap = new Map();
+        actualConnections.forEach(conn => {
+          const count = connectionMap.get(conn.name) || 0;
+          connectionMap.set(conn.name, count + conn.clientCount);
+        });
+        
+        const html = Array.from(connectionMap.entries()).map(([name, count]) => 
+          `<div style="color: var(--accent-color); margin: 4px 0;">
+            ✅ <strong>${name}</strong> - ${count} client${count !== 1 ? 's' : ''} connected
+          </div>`
+        ).join('');
+        
+        const total = Array.from(connectionMap.values()).reduce((sum, count) => sum + count, 0);
+        const header = `<div style="color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;">
+          🔗 ${total} total connection${total !== 1 ? 's' : ''} across ${connectionMap.size} overlay${connectionMap.size !== 1 ? 's' : ''}
+        </div>`;
+        
+        connectionsList.innerHTML = header + html;
+      }
+    } else {
+      connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">Connection status unavailable. Restart app to enable.</div>';
+    }
+  } catch (error) {
+    // Handler not registered yet - needs app restart
+    if (error.message?.includes('No handler registered')) {
+      connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">⚠️ Restart app to see connection status</div>';
+    } else {
+      console.error('Error updating overlay connection status:', error);
+      connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">Error loading connections</div>';
+    }
   }
 }
 
@@ -4550,7 +9355,10 @@ function setupAlertTypeFilter() {
         'gift-sub': 'Gift Sub',
         'gift-sub-received': 'Gift Received',
         'raid': 'Raid',
-        'bits': 'Bits'
+        'bits': 'Bits',
+        'ban': 'Ban',
+        'daily-checkin': 'Daily Checkin',
+        'first-chat-walkon': 'Walk On (First Chat)'
       };
       
       selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
@@ -4567,6 +9375,10 @@ function setupAlertTypeFilter() {
       'gift-sub-received': 'Gift Received',
       'raid': 'Raid',
       'bits': 'Bits',
+      'ban': 'Ban',
+      'channel-points': 'Channel Point Redemption',
+      'daily-checkin': 'Daily Checkin',
+      'first-chat-walkon': 'Walk On (First Chat)'
     };
     selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
   }
@@ -4581,12 +9393,19 @@ function setupAlertWidget() {
   const alertWidget = document.getElementById('alert-widget');
   const closeBtn = document.getElementById('close-alert-widget');
   const alertTypeSelect = document.getElementById('alert-type');
+  const selectedAlertTypeName = document.getElementById('selected-alert-type-name');
   const alertTextInput = document.getElementById('alert-text');
   const alertDurationInput = document.getElementById('alert-duration');
   const alertBitsThresholdInput = document.getElementById('alert-bits-threshold');
   const bitsThresholdGroup = document.getElementById('bits-threshold-group');
   const alertSoundInput = document.getElementById('alert-sound');
   const alertImageInput = document.getElementById('alert-image');
+  const alertVideoInput = document.getElementById('alert-video');
+  const alertVideoSettings = document.getElementById('alert-video-settings');
+  const alertVideoLoop = document.getElementById('alert-video-loop');
+  const alertVideoVolume = document.getElementById('alert-video-volume');
+  const alertVideoVolumeValue = document.getElementById('alert-video-volume-value');
+  const alertVideoDisplayMode = document.getElementById('alert-video-display-mode');
   const saveAlertBtn = document.getElementById('save-alert');
   const clearAlertsBtn = document.getElementById('clear-alerts');
   const alertPreviewArea = document.getElementById('alert-preview-area');
@@ -4614,17 +9433,17 @@ function setupAlertWidget() {
   const animationDelayValue = document.getElementById('animation-delay-value');
   
   
-  // Queue control elements
-  const clearQueueBtn = document.getElementById('clear-queue');
-  const skipCurrentBtn = document.getElementById('skip-current');
-  const hardStopBtn = document.getElementById('hard-stop');
-  const queueStatusBtn = document.getElementById('queue-status');
-  const queueInfo = document.getElementById('queue-info');
+  // Compact queue control widget elements (on dashboard)
+  const queueWidgetClear = document.getElementById('queue-widget-clear');
+  const queueWidgetSkip = document.getElementById('queue-widget-skip');
+  const queueWidgetStop = document.getElementById('queue-widget-stop');
+  const queueWidgetStatus = document.getElementById('queue-widget-status');
   
   
   
-  // Alert storage
-  let savedAlerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  // Alert storage - make it globally accessible for window functions
+  window.savedAlerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  let savedAlerts = window.savedAlerts; // Keep local reference for backward compatibility
   
   
   // Helper function to convert file to base64
@@ -4718,6 +9537,12 @@ function setupAlertWidget() {
         bitsThresholdGroup.style.display = selectedType === 'bits' ? 'block' : 'none';
       }
       
+      // Show/hide daily check-in settings based on alert type
+      const dailyCheckinSettings = document.getElementById('daily-checkin-settings');
+      if (dailyCheckinSettings) {
+        dailyCheckinSettings.style.display = selectedType === 'daily-checkin' ? 'block' : 'none';
+      }
+      
       // Update alert list to show only matching alerts
       updateAlertList();
       
@@ -4731,8 +9556,28 @@ function setupAlertWidget() {
           'gift-sub-received': 'Gift Sub Received',
           'raid': 'Raid',
           'bits': 'Bits',
+          'ban': 'Ban',
+          'channel-points': 'Channel Point Redemption',
+          'daily-checkin': 'Daily Checkin'
         };
         selectedAlertTypeName.textContent = typeNames[selectedType] || 'Unknown';
+      }
+      
+      // Update placeholder text based on alert type
+      if (alertTextInput) {
+        const placeholderTexts = {
+          'follower': 'Welcome {username}!',
+          'subscriber': '{username} subscribed!',
+          'resubscriber': '{username} resubscribed for {months} months!',
+          'gift-sub': '{username} gifted {tier} to {recipient}!',
+          'gift-sub-received': '{username} received a gift sub!',
+          'raid': '{username} raided with {viewers} viewers!',
+          'bits': '{username} cheered {bits} bits!',
+          'ban': '{username} has been banned by {moderator}!',
+          'daily-checkin': '{username} checked in! Total: {total_checkins}',
+          'first-chat-walkon': 'Welcome {username} to the stream!'
+        };
+        alertTextInput.placeholder = placeholderTexts[selectedType] || 'Welcome {username}!';
       }
       
       // Update preview when type changes
@@ -4772,6 +9617,262 @@ function setupAlertWidget() {
   // Setup alert type change handler to filter saved alerts
   setupAlertTypeFilter();
   
+  // Walk-on (First Chat) follower selection UI
+  const alertWalkonUsersGroup = document.getElementById('alert-walkon-users-group');
+  const alertWalkonSearch = document.getElementById('alert-walkon-search');
+  const alertWalkonSelected = document.getElementById('alert-walkon-selected');
+  const alertWalkonFollowerList = document.getElementById('alert-walkon-follower-list');
+  
+  // Track selected followers
+  let selectedWalkonUsers = [];
+  let allFollowers = [];
+  
+  // Function to load followers
+  async function loadWalkonFollowers() {
+    try {
+      if (window.electronAPI && window.electronAPI.getFollowersWithUsers) {
+        allFollowers = await window.electronAPI.getFollowersWithUsers();
+        renderWalkonFollowerList();
+        console.log(`✅ Loaded ${allFollowers.length} followers for walk-on selection`);
+      } else {
+        console.error('getFollowersWithUsers API not available');
+      }
+    } catch (error) {
+      console.error('Error loading followers:', error);
+    }
+  }
+  
+  // Function to render follower list
+  function renderWalkonFollowerList(searchTerm = '') {
+    if (!alertWalkonFollowerList) return;
+    
+    const search = searchTerm.toLowerCase().trim();
+    const filtered = allFollowers.filter(f => {
+      if (!search) return true; // Show all if no search term
+      const username = (f.username || '').toLowerCase();
+      const displayName = (f.display_name || '').toLowerCase();
+      return username.includes(search) || displayName.includes(search);
+    });
+    
+    alertWalkonFollowerList.innerHTML = '';
+    
+    if (filtered.length === 0) {
+      alertWalkonFollowerList.innerHTML = '<div style="padding: 12px; text-align: center; color: var(--text-tertiary);">No followers found matching search</div>';
+      return;
+    }
+    
+    // Show count
+    const countInfo = document.createElement('div');
+    countInfo.style.cssText = 'padding: 8px 12px; font-size: 11px; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); background: var(--bg-secondary);';
+    countInfo.textContent = search ? `Showing ${filtered.length} of ${allFollowers.length} followers` : `Showing all ${filtered.length} followers`;
+    alertWalkonFollowerList.appendChild(countInfo);
+    
+    filtered.forEach(follower => {
+      const item = document.createElement('div');
+      const isSelected = selectedWalkonUsers.some(u => u.user_id === follower.user_id);
+      item.style.cssText = `
+        padding: 10px;
+        cursor: pointer;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: ${isSelected ? 'var(--accent)' : 'transparent'};
+        color: ${isSelected ? 'white' : 'var(--text-primary)'};
+        transition: background 0.2s ease;
+      `;
+      item.innerHTML = `
+        <img src="${follower.profile_image_url || ''}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'">
+        <div style="flex: 1;">
+          <div style="font-weight: 600;">${escapeHtml(follower.display_name || follower.username)}</div>
+          <div style="font-size: 11px; opacity: 0.7;">${escapeHtml(follower.username)}</div>
+        </div>
+        ${isSelected ? '<span style="color: white; font-size: 18px;">✓</span>' : ''}
+      `;
+      item.addEventListener('click', () => toggleWalkonUser(follower));
+      alertWalkonFollowerList.appendChild(item);
+    });
+  }
+  
+  // Function to escape HTML
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  
+  // Function to toggle user selection
+  function toggleWalkonUser(follower) {
+    const index = selectedWalkonUsers.findIndex(u => u.user_id === follower.user_id);
+    if (index >= 0) {
+      selectedWalkonUsers.splice(index, 1);
+    } else {
+      selectedWalkonUsers.push(follower);
+    }
+    renderWalkonSelected();
+    renderWalkonFollowerList(alertWalkonSearch ? alertWalkonSearch.value : '');
+  }
+  
+  // Function to render selected users
+  function renderWalkonSelected() {
+    if (!alertWalkonSelected) return;
+    
+    if (selectedWalkonUsers.length === 0) {
+      alertWalkonSelected.innerHTML = '<div style="color: var(--text-tertiary); font-size: 12px; align-self: center; width: 100%; text-align: center;">No users selected</div>';
+      return;
+    }
+    
+    alertWalkonSelected.innerHTML = selectedWalkonUsers.map(user => {
+      const isManual = user.user_id && user.user_id.startsWith('manual_');
+      const label = isManual ? '📝 ' : ''; // Mark manual entries
+      return `<div style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--accent); color: white; border-radius: 4px; font-size: 12px;">
+        <span>${label}${escapeHtml(user.display_name || user.username)}</span>
+        <button onclick="removeWalkonUser('${user.user_id}')" style="background: rgba(255,255,255,0.2); border: none; color: white; border-radius: 50%; width: 18px; height: 18px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; padding: 0;">×</button>
+      </div>`;
+    }).join('');
+  }
+  
+  // Function to remove user from selection (exposed globally)
+  window.removeWalkonUser = function(userId) {
+    selectedWalkonUsers = selectedWalkonUsers.filter(u => u.user_id !== userId);
+    renderWalkonSelected();
+    renderWalkonFollowerList(alertWalkonSearch ? alertWalkonSearch.value : '');
+  };
+  
+  // Show/hide walkon users group based on alert type
+  if (alertTypeSelect && alertWalkonUsersGroup) {
+    function updateWalkonUserFieldVisibility() {
+      const selectedType = alertTypeSelect.value;
+      if (selectedType === 'first-chat-walkon') {
+        alertWalkonUsersGroup.style.display = 'block';
+        if (allFollowers.length === 0) {
+          loadWalkonFollowers();
+        }
+      } else {
+        alertWalkonUsersGroup.style.display = 'none';
+        selectedWalkonUsers = [];
+        if (alertWalkonSearch) alertWalkonSearch.value = '';
+        if (alertWalkonFollowerList) {
+          alertWalkonFollowerList.innerHTML = '';
+          alertWalkonFollowerList.style.display = 'none';
+        }
+        const manualInput = document.getElementById('alert-walkon-manual-username');
+        if (manualInput) manualInput.value = '';
+        // Keep allFollowers loaded for faster switching back
+      }
+    }
+    
+    alertTypeSelect.addEventListener('change', updateWalkonUserFieldVisibility);
+    updateWalkonUserFieldVisibility();
+  }
+  
+  // Function to add manual username
+  function addManualUsername() {
+    const manualInput = document.getElementById('alert-walkon-manual-username');
+    if (!manualInput) return;
+    
+    const username = manualInput.value.trim();
+    if (!username) {
+      alert('Please enter a username');
+      return;
+    }
+    
+    const userLower = username.toLowerCase();
+    
+    // Check if already added
+    const alreadyAdded = selectedWalkonUsers.some(u => 
+      (u.username && u.username.toLowerCase() === userLower) ||
+      (u.user_id && u.user_id === 'manual_' + userLower)
+    );
+    
+    if (alreadyAdded) {
+      alert('User already in list');
+      manualInput.value = '';
+      return;
+    }
+    
+    // Create a manual user entry (without user_id from API)
+    const manualUser = {
+      user_id: 'manual_' + userLower, // Special ID for manual entries
+      username: userLower,
+      display_name: username
+    };
+    
+    selectedWalkonUsers.push(manualUser);
+    renderWalkonSelected();
+    renderWalkonFollowerList(alertWalkonSearch ? alertWalkonSearch.value : '');
+    manualInput.value = '';
+    
+    console.log('✅ Added manual username:', username);
+  }
+  
+  // Manual username entry handlers
+  const manualUsernameInput = document.getElementById('alert-walkon-manual-username');
+  const addManualButton = document.getElementById('alert-walkon-add-manual');
+  
+  if (addManualButton) {
+    addManualButton.addEventListener('click', addManualUsername);
+  }
+  
+  if (manualUsernameInput) {
+    manualUsernameInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addManualUsername();
+      }
+    });
+  }
+  
+  // Reset first-time chatters for testing
+  const resetTestButton = document.getElementById('alert-walkon-reset-test');
+  if (resetTestButton) {
+    resetTestButton.addEventListener('click', async () => {
+      if (confirm('Reset first-time chatters list? This will allow testing the same users again.\n\nNote: This only affects the walk-on detection, not saved alert configurations.')) {
+        try {
+          if (window.electronAPI && window.electronAPI.resetFirstTimeChatters) {
+            const result = await window.electronAPI.resetFirstTimeChatters();
+            if (result.success) {
+              alert('✅ First-time chatters list reset!\n\nYou can now test the walk-on alert again with the same users.');
+              console.log('✅ First-time chatters reset:', result.message);
+            } else {
+              alert('❌ Error resetting: ' + (result.error || 'Unknown error'));
+            }
+          } else {
+            alert('❌ Reset function not available');
+          }
+        } catch (error) {
+          console.error('Error resetting first-time chatters:', error);
+          alert('❌ Error: ' + error.message);
+        }
+      }
+    });
+  }
+  
+  // Search handler
+  if (alertWalkonSearch) {
+    alertWalkonSearch.addEventListener('input', (e) => {
+      const searchTerm = e.target.value;
+      renderWalkonFollowerList(searchTerm);
+      if (allFollowers.length > 0) {
+        alertWalkonFollowerList.style.display = 'block';
+      }
+    });
+    
+    alertWalkonSearch.addEventListener('focus', () => {
+      if (allFollowers.length > 0) {
+        alertWalkonFollowerList.style.display = 'block';
+        renderWalkonFollowerList(alertWalkonSearch.value);
+      }
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (alertWalkonFollowerList && alertWalkonUsersGroup && !alertWalkonUsersGroup.contains(e.target)) {
+        alertWalkonFollowerList.style.display = 'none';
+      }
+    });
+  }
+  
   // Close widget when clicking on backdrop
   const alertBackdrop = document.querySelector('.alert-widget-backdrop');
   if (alertBackdrop) {
@@ -4796,6 +9897,7 @@ function setupAlertWidget() {
     // Check for new files first, then existing media when editing
     let soundFile = alertSoundInput.files[0];
     let imageFile = alertImageInput.files[0];
+    let videoFile = alertVideoInput.files[0];
     
     // If no new files and we're editing, use existing media
     if (!soundFile && window.editingAlertMedia?.soundFile) {
@@ -4803,6 +9905,9 @@ function setupAlertWidget() {
     }
     if (!imageFile && window.editingAlertMedia?.imageFile) {
       imageFile = window.editingAlertMedia.imageFile;
+    }
+    if (!videoFile && window.editingAlertMedia?.videoFile) {
+      videoFile = window.editingAlertMedia.videoFile;
     }
     
     if (!text.trim()) {
@@ -4820,7 +9925,9 @@ function setupAlertWidget() {
       bits: '100',
       months: '3',
       message: 'Thanks for the follow!',
-      reward: 'Test Reward'
+      reward: 'Test Reward',
+      moderator: 'TestModerator',
+      reason: 'Spam'
     };
     
     // Process text with sample data for preview
@@ -4857,44 +9964,81 @@ function setupAlertWidget() {
       `;
     }
     
-    let previewHTML = '<div class="alert-preview-content">';
+    // Build position style for text
+    let positionStyle = '';
+    switch(textPosition) {
+      case 'topLeft':
+        positionStyle = 'top: 10%; left: 10%;';
+        break;
+      case 'topCenter':
+        positionStyle = 'top: 10%; left: 50%; transform: translateX(-50%);';
+        break;
+      case 'topRight':
+        positionStyle = 'top: 10%; right: 10%;';
+        break;
+      case 'midLeft':
+        positionStyle = 'top: 50%; left: 10%; transform: translateY(-50%);';
+        break;
+      case 'center':
+        positionStyle = 'top: 50%; left: 50%; transform: translate(-50%, -50%);';
+        break;
+      case 'midRight':
+        positionStyle = 'top: 50%; right: 10%; transform: translateY(-50%);';
+        break;
+      case 'bottomLeft':
+        positionStyle = 'bottom: 10%; left: 10%;';
+        break;
+      case 'bottomCenter':
+        positionStyle = 'bottom: 10%; left: 50%; transform: translateX(-50%);';
+        break;
+      case 'bottomRight':
+        positionStyle = 'bottom: 10%; right: 10%;';
+        break;
+    }
+    
+    let previewHTML = '<div class="alert-preview-content" style="position: relative; width: 100%; height: 300px; background: rgba(0,0,0,0.1); border: 1px solid var(--border-color);">';
     
     if (imageFile) {
       if (imageFile instanceof File) {
         // New file from input
         const imageUrl = URL.createObjectURL(imageFile);
-        previewHTML += `<img src="${imageUrl}" alt="Alert Image" />`;
+        previewHTML += `<img src="${imageUrl}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
       } else if (imageFile.data) {
         // Legacy base64 data
-        previewHTML += `<img src="${imageFile.data}" alt="Alert Image" />`;
+        previewHTML += `<img src="${imageFile.data}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
       } else if (imageFile.path && window.electronAPI && window.electronAPI.getMediaFile) {
         // Existing saved file with path - load from disk
         try {
           const result = await window.electronAPI.getMediaFile(imageFile.path);
           if (result.success) {
-            previewHTML += `<img src="${result.data}" alt="Alert Image" />`;
+            previewHTML += `<img src="${result.data}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
           } else {
             // Fallback to placeholder if loading fails
-            previewHTML += `<div class="image-placeholder">📷 ${imageFile.name || 'Alert Image'}</div>`;
+            previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name || 'Alert Image'}</div>`;
           }
         } catch (error) {
           console.error('Error loading preview image:', error);
-          previewHTML += `<div class="image-placeholder">📷 ${imageFile.name || 'Alert Image'}</div>`;
+          previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name || 'Alert Image'}</div>`;
         }
       } else if (imageFile.name) {
         // Existing file (show placeholder)
-        previewHTML += `<div class="image-placeholder">📷 ${imageFile.name}</div>`;
+        previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name}</div>`;
       }
     }
     
-    previewHTML += `<h3>${getAlertTypeDisplayName(type)}</h3>`;
-    previewHTML += `<p style="${textStyle}">${processedText}</p>`;
-    previewHTML += `<p><small>Duration: ${duration}s</small></p>`;
+    // Add positioned text
+    previewHTML += `<div style="position: absolute; ${positionStyle} white-space: nowrap;">`;
+    previewHTML += `<p style="${textStyle} margin: 0;">${processedText}</p>`;
+    previewHTML += `</div>`;
     
+    // Add info at bottom
+    previewHTML += `<div style="position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--text-tertiary); text-align: center;">`;
+    previewHTML += `<div><small>Position: ${textPosition} | Duration: ${duration}s</small></div>`;
     if (soundFile) {
       const soundName = soundFile.name || 'Existing Sound';
-      previewHTML += `<p><small>🔊 Sound: ${soundName}</small></p>`;
+      previewHTML += `<div><small>🔊 Sound: ${soundName}</small></div>`;
     }
+    previewHTML += `</div>`;
     
     previewHTML += '</div>';
     alertPreviewArea.innerHTML = previewHTML;
@@ -4908,13 +10052,15 @@ function setupAlertWidget() {
       'resubscriber': 'Resubscriber',
       'raid': 'Raid',
       'gift-sub': 'Gifted Subscription',
-      'bits': 'Bits Donation'
+      'bits': 'Bits Donation',
+      'daily-checkin': 'Daily Checkin',
+      'first-chat-walkon': 'Walk On (First Chat)'
     };
     return typeNames[type] || type;
   }
   
   // Event listeners for form changes
-  [alertTypeSelect, alertTextInput, alertDurationInput, alertSoundInput, alertImageInput].forEach(element => {
+  [alertTypeSelect, alertTextInput, alertDurationInput, alertSoundInput, alertImageInput, alertVideoInput].forEach(element => {
     if (element) {
       element.addEventListener('change', () => updatePreview().catch(console.error));
       element.addEventListener('input', () => updatePreview().catch(console.error));
@@ -4943,12 +10089,132 @@ function setupAlertWidget() {
         const duration = await getMediaDuration(file);
         if (duration && duration > parseInt(alertDurationInput.value)) {
           alertDurationInput.value = duration;
-          console.log(`🎵 Auto-updated duration to ${duration}s for image/video file`);
+          console.log(`🎵 Auto-updated duration to ${duration}s for image file`);
           updatePreview().catch(console.error);
         }
       }
     });
   }
+  
+  if (alertVideoInput) {
+    alertVideoInput.addEventListener('change', async () => {
+      const file = alertVideoInput.files[0];
+      if (file) {
+        // Show video settings panel
+        if (alertVideoSettings) {
+          alertVideoSettings.style.display = 'block';
+        }
+        
+        const duration = await getMediaDuration(file);
+        if (duration && duration > parseInt(alertDurationInput.value)) {
+          alertDurationInput.value = duration;
+          console.log(`🎬 Auto-updated duration to ${duration}s for video file`);
+          updatePreview().catch(console.error);
+        }
+      } else {
+        // Hide video settings panel if no file
+        if (alertVideoSettings) {
+          alertVideoSettings.style.display = 'none';
+        }
+      }
+    });
+  }
+  
+  // Video volume slider
+  if (alertVideoVolume && alertVideoVolumeValue) {
+    alertVideoVolume.addEventListener('input', () => {
+      alertVideoVolumeValue.textContent = alertVideoVolume.value + '%';
+    });
+  }
+  
+  // Media removal buttons
+  const removeSoundBtn = document.getElementById('remove-alert-sound');
+  const removeImageBtn = document.getElementById('remove-alert-image');
+  const removeVideoBtn = document.getElementById('remove-alert-video');
+  
+  // Helper function to show/hide remove buttons based on file selection
+  function updateRemoveButtons() {
+    // Sound file
+    if (removeSoundBtn) {
+      const hasSound = alertSoundInput.files[0] || window.editingAlertMedia?.soundFile;
+      removeSoundBtn.style.display = hasSound ? 'inline-block' : 'none';
+    }
+    
+    // Image file
+    if (removeImageBtn) {
+      const hasImage = alertImageInput.files[0] || window.editingAlertMedia?.imageFile;
+      removeImageBtn.style.display = hasImage ? 'inline-block' : 'none';
+    }
+    
+    // Video file
+    if (removeVideoBtn) {
+      const hasVideo = alertVideoInput.files[0] || window.editingAlertMedia?.videoFile;
+      removeVideoBtn.style.display = hasVideo ? 'inline-block' : 'none';
+    }
+  }
+  
+  // Update remove buttons when files change
+  if (alertSoundInput) {
+    alertSoundInput.addEventListener('change', () => {
+      updateRemoveButtons();
+    });
+  }
+  
+  if (alertImageInput) {
+    alertImageInput.addEventListener('change', () => {
+      updateRemoveButtons();
+    });
+  }
+  
+  if (alertVideoInput) {
+    alertVideoInput.addEventListener('change', () => {
+      updateRemoveButtons();
+    });
+  }
+  
+  // Remove sound file
+  if (removeSoundBtn) {
+    removeSoundBtn.addEventListener('click', () => {
+      alertSoundInput.value = '';
+      if (window.editingAlertMedia) {
+        window.editingAlertMedia.soundFile = null;
+      }
+      updateRemoveButtons();
+      updatePreview().catch(console.error);
+      console.log('Sound file removed');
+    });
+  }
+  
+  // Remove image file
+  if (removeImageBtn) {
+    removeImageBtn.addEventListener('click', () => {
+      alertImageInput.value = '';
+      if (window.editingAlertMedia) {
+        window.editingAlertMedia.imageFile = null;
+      }
+      updateRemoveButtons();
+      updatePreview().catch(console.error);
+      console.log('Image file removed');
+    });
+  }
+  
+  // Remove video file
+  if (removeVideoBtn) {
+    removeVideoBtn.addEventListener('click', () => {
+      alertVideoInput.value = '';
+      if (window.editingAlertMedia) {
+        window.editingAlertMedia.videoFile = null;
+      }
+      // Hide video settings panel
+      if (alertVideoSettings) {
+        alertVideoSettings.style.display = 'none';
+      }
+      updateRemoveButtons();
+      updatePreview().catch(console.error);
+      console.log('Video file removed');
+    });
+  }
+  
   
   // Save alert
   if (saveAlertBtn) {
@@ -4958,19 +10224,18 @@ function setupAlertWidget() {
       let duration = parseInt(alertDurationInput.value) || 5;
       const soundFile = alertSoundInput.files[0];
       const imageFile = alertImageInput.files[0];
+      const videoFile = alertVideoInput.files[0];
       
-      if (!text) {
-        alert('Please enter alert text');
-        return;
-      }
+      // Alert text is now optional - alerts can have just images/videos/sounds without text
       
       // Auto-detect duration from media files
       const soundDuration = await getMediaDuration(soundFile);
       const imageDuration = await getMediaDuration(imageFile);
+      const videoDuration = await getMediaDuration(videoFile);
       
       // Use the longer duration if media is present
-      if (soundDuration || imageDuration) {
-        const mediaDuration = Math.max(soundDuration || 0, imageDuration || 0);
+      if (soundDuration || imageDuration || videoDuration) {
+        const mediaDuration = Math.max(soundDuration || 0, imageDuration || 0, videoDuration || 0);
         if (mediaDuration > duration) {
           duration = mediaDuration;
           alertDurationInput.value = duration;
@@ -4984,6 +10249,7 @@ function setupAlertWidget() {
       // Save media files to disk instead of base64
       let soundFilePath = null;
       let imageFilePath = null;
+      let videoFilePath = null;
       
       if (soundFile && window.electronAPI && window.electronAPI.saveMediaFile) {
         try {
@@ -5021,6 +10287,24 @@ function setupAlertWidget() {
         }
       }
       
+      if (videoFile && window.electronAPI && window.electronAPI.saveMediaFile) {
+        try {
+          const base64Data = await fileToBase64(videoFile);
+          const result = await window.electronAPI.saveMediaFile({
+            base64Data: base64Data,
+            buttonId: alertId,
+            mediaType: 'video',
+            originalName: videoFile.name
+          });
+          if (result.success) {
+            videoFilePath = result.filePath;
+            console.log(`💾 Alert video saved to: ${videoFilePath}`);
+          }
+        } catch (error) {
+          console.error('Error saving alert video:', error);
+        }
+      }
+      
       // Get styling values
       const textStyling = {
         position: alertTextPositionSelect ? alertTextPositionSelect.value : 'topCenter',
@@ -5043,11 +10327,17 @@ function setupAlertWidget() {
       // Get volume value
       const soundVolume = alertSoundVolumeRange ? parseInt(alertSoundVolumeRange.value) : 100;
       
+      // Get overlay selection
+      const overlaySelect = document.getElementById('alert-overlay-select')?.value || 'default';
+      
+      console.log('🔍 Creating alert with overlay:', overlaySelect);
+      
       const alertData = {
         id: alertId,
         type: type,
         text: text,
         duration: duration,
+        overlay: overlaySelect,
         bitsThreshold: type === 'bits' ? (parseInt(alertBitsThresholdInput.value) || 10) : null,
         textStyling: textStyling,
         animation: animation,
@@ -5064,6 +10354,30 @@ function setupAlertWidget() {
           type: imageFile.type,
           path: imageFilePath // Store file path instead of base64
         } : null,
+        videoFile: videoFilePath ? {
+          name: videoFile.name,
+          size: videoFile.size,
+          type: videoFile.type,
+          path: videoFilePath, // Store file path instead of base64
+          loop: alertVideoLoop ? alertVideoLoop.checked : false,
+          volume: alertVideoVolume ? parseInt(alertVideoVolume.value) : 100,
+          displayMode: alertVideoDisplayMode ? alertVideoDisplayMode.value : 'center'
+        } : null,
+        // Include daily check-in config if this is a daily-checkin alert
+        dailyCheckinConfig: type === 'daily-checkin' ? {
+          enabled: document.getElementById('daily-checkin-enabled')?.checked ?? true,
+          rewardName: document.getElementById('daily-checkin-reward-name')?.value || 'Daily Check-In',
+          chatResponse: document.getElementById('daily-checkin-chat-response')?.value || 'Welcome back {username}!',
+          alreadyCheckedMessage: document.getElementById('daily-checkin-already-checked-message')?.value || 'You\'ve already checked in today!',
+          showStreak: document.getElementById('daily-checkin-show-streak')?.checked ?? false,
+          sendToChat: document.getElementById('daily-checkin-send-to-chat')?.checked ?? true,
+          testMode: document.getElementById('daily-checkin-test-mode')?.checked ?? false
+        } : null,
+        walkonUsers: type === 'first-chat-walkon' ? selectedWalkonUsers.map(u => ({
+          user_id: u.user_id,
+          username: u.username,
+          display_name: u.display_name
+        })) : [],
         variations: [],
         randomMode: false,
         createdAt: new Date().toISOString()
@@ -5092,8 +10406,30 @@ function setupAlertWidget() {
               console.log('Preserved existing image file:', window.editingAlertMedia.imageFile.name);
             }
             
+            if (!videoFilePath && window.editingAlertMedia?.videoFile) {
+              alertData.videoFile = {
+                ...window.editingAlertMedia.videoFile,
+                loop: alertVideoLoop ? alertVideoLoop.checked : window.editingAlertMedia.videoFile.loop,
+                volume: alertVideoVolume ? parseInt(alertVideoVolume.value) : window.editingAlertMedia.videoFile.volume,
+                displayMode: alertVideoDisplayMode ? alertVideoDisplayMode.value : window.editingAlertMedia.videoFile.displayMode
+              };
+              console.log('Preserved existing video file with updated settings:', window.editingAlertMedia.videoFile.name, 'volume:', alertData.videoFile.volume + '%');
+            }
+            
+            // Preserve existing text styling and animation if they weren't explicitly changed
+            if (!textStyling || Object.keys(textStyling).length === 0) {
+              alertData.textStyling = savedAlerts[alertIndex].textStyling || alertData.textStyling;
+              console.log('Preserved existing text styling');
+            }
+            
+            if (!animation || Object.keys(animation).length === 0) {
+              alertData.animation = savedAlerts[alertIndex].animation || alertData.animation;
+              console.log('Preserved existing animation');
+            }
+            
             savedAlerts[alertIndex] = alertData;
-            console.log('Updated existing alert:', window.editingAlertId);
+            console.log('✅ Updated existing alert:', window.editingAlertId);
+            console.log('✅ Alert overlay property:', alertData.overlay);
           } else {
             console.error('Alert to edit not found:', window.editingAlertId);
             savedAlerts.push(alertData);
@@ -5104,10 +10440,25 @@ function setupAlertWidget() {
         } else {
           // Create new alert
           savedAlerts.push(alertData);
-          console.log('Created new alert:', alertId);
+          console.log('✅ Created new alert:', alertId);
+          console.log('✅ Alert overlay property:', alertData.overlay);
         }
         
         localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+        console.log('💾 Saved to localStorage. Verifying overlay property persisted...');
+        
+        // Verify the alert was saved correctly with overlay
+        const savedAlertsCheck = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+        const savedAlert = savedAlertsCheck.find(a => a.id === alertId);
+        if (savedAlert) {
+          console.log('✅ Verified alert in localStorage has overlay:', savedAlert.overlay);
+        } else {
+          console.error('❌ Alert not found in localStorage after save');
+        }
+        
+        // Update alertSystem's in-memory cache
+        alertSystem.updateAlerts();
+        console.log('✅ Updated alertSystem cache with new alerts');
         
         updateAlertList();
         clearForm();
@@ -5124,9 +10475,12 @@ function setupAlertWidget() {
     clearAlertsBtn.addEventListener('click', () => {
       if (confirm('Are you sure you want to clear all saved alerts?')) {
         savedAlerts = [];
+        window.savedAlerts = savedAlerts; // Keep window reference in sync
         localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+        alertSystem.updateAlerts();
         updateAlertList();
-        console.log('All alerts cleared');
+        clearForm();
+        console.log('All alerts cleared - form cleared');
       }
     });
   }
@@ -5157,6 +10511,24 @@ function setupAlertWidget() {
     alertDurationInput.value = '5';
     alertSoundInput.value = '';
     alertImageInput.value = '';
+    alertVideoInput.value = '';
+    
+    // Reset video settings
+    if (alertVideoSettings) {
+      alertVideoSettings.style.display = 'none';
+    }
+    if (alertVideoLoop) {
+      alertVideoLoop.checked = false;
+    }
+    if (alertVideoVolume) {
+      alertVideoVolume.value = '100';
+      if (alertVideoVolumeValue) {
+        alertVideoVolumeValue.textContent = '100%';
+      }
+    }
+    if (alertVideoDisplayMode) {
+      alertVideoDisplayMode.value = 'center';
+    }
     
     // Reset volume slider
     if (alertSoundVolumeRange) {
@@ -5227,6 +10599,22 @@ function setupAlertWidget() {
       alertAnimationEasingSelect.value = 'ease';
     }
     
+    // Hide all remove buttons
+    updateRemoveButtons();
+    
+    // Reset walkon selections
+    if (alertWalkonUsersGroup) {
+      selectedWalkonUsers = [];
+      if (alertWalkonSelected) renderWalkonSelected();
+      if (alertWalkonSearch) alertWalkonSearch.value = '';
+      if (alertWalkonFollowerList) {
+        alertWalkonFollowerList.innerHTML = '';
+        alertWalkonFollowerList.style.display = 'none';
+      }
+      const manualInput = document.getElementById('alert-walkon-manual-username');
+      if (manualInput) manualInput.value = '';
+    }
+    
     updatePreview().catch(console.error);
   }
   
@@ -5240,6 +10628,9 @@ function setupAlertWidget() {
       'gift-sub-received': 'Gift Received',
       'raid': 'Raid',
       'bits': 'Bits',
+      'channel-points': 'Channel Point Redemption',
+      'daily-checkin': 'Daily Checkin',
+      'first-chat-walkon': 'Walk On (First Chat)'
     };
     return typeNames[alertType] || alertType;
   }
@@ -5277,20 +10668,30 @@ function setupAlertWidget() {
     const variationsHtml = `
       <div class="alert-variations-list">
         <div class="variations-header">
-          <span>Variations (${filteredAlerts.length}):</span>
-          <label class="random-toggle">
-            <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
-                   onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
-            Random
-          </label>
+          <span>Variations (${filteredAlerts.length} total, ${filteredAlerts.filter(a => a.enabled !== false).length} enabled):</span>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', true)" style="padding: 4px 8px; font-size: 12px;">Enable All</button>
+            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', false)" style="padding: 4px 8px; font-size: 12px;">Disable All</button>
+            <label class="random-toggle">
+              <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
+                     onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
+              Random Mode
+            </label>
+          </div>
+        </div>
+        <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
+          <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
         </div>
         <div class="variations-items">
           ${filteredAlerts.map((alert, index) => `
-            <div class="variation-item ${alert.enabled !== false ? 'enabled' : ''}">
+            <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
               <label class="variation-toggle">
                 <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
                        onchange="toggleAlert('${alert.id}', this.checked)" />
-                <span class="variation-text">${alert.text}</span>
+                <span class="variation-text">
+                  ${alert.enabled !== false ? '✓' : '○'} ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
+                  <span class="overlay-badge">${alert.overlay || 'main'}</span>
+                </span>
               </label>
               <div class="variation-actions">
                 <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
@@ -5319,6 +10720,8 @@ function setupAlertWidget() {
     const alert = savedAlerts.find(a => a.id === alertId);
     if (alert) {
       console.log('🎭 Testing specific saved alert:', alertId, alert);
+      console.log('🎯 Alert overlay setting:', alert.overlay || 'NOT SET (will default to default)');
+      console.log('🎬 Alert animation in saved data:', alert.animation);
       
       // Create sample user data for the alert
       const sampleUserData = {
@@ -5330,7 +10733,9 @@ function setupAlertWidget() {
         bits: '100',
         months: '3',
         message: 'Thanks for the follow!',
-        reward: 'Test Reward'
+        reward: 'Test Reward',
+        moderator: 'TestModerator',
+        reason: 'Spam'
       };
       
       // Directly trigger this specific alert - bypass the overlay event system
@@ -5348,7 +10753,7 @@ function setupAlertWidget() {
   
   // Delete alert
   // Display existing media files in the form
-  function displayExistingMedia(soundFile, imageFile) {
+  function displayExistingMedia(soundFile, imageFile, videoFile) {
     // Display existing sound file
     if (soundFile) {
       const soundFileLabel = document.querySelector('label[for="alert-sound"]');
@@ -5370,6 +10775,44 @@ function setupAlertWidget() {
         imageFileLabel.style.fontWeight = 'bold';
       }
     }
+    
+    // Display existing video file
+    if (videoFile) {
+      const videoFileLabel = document.querySelector('label[for="alert-video"]');
+      if (videoFileLabel) {
+        const fileName = videoFile.name || 'Existing Video File';
+        videoFileLabel.textContent = `Video File: ${fileName}`;
+        videoFileLabel.style.color = 'var(--accent-color)';
+        videoFileLabel.style.fontWeight = 'bold';
+      }
+      
+      // Show video settings panel
+      const videoSettings = document.getElementById('alert-video-settings');
+      if (videoSettings) {
+        videoSettings.style.display = 'block';
+      }
+      
+      // Populate video settings
+      const videoLoop = document.getElementById('alert-video-loop');
+      if (videoLoop && videoFile.loop !== undefined) {
+        videoLoop.checked = videoFile.loop;
+      }
+      
+      const videoVolume = document.getElementById('alert-video-volume');
+      const videoVolumeValue = document.getElementById('alert-video-volume-value');
+      if (videoVolume && videoFile.volume !== undefined) {
+        videoVolume.value = videoFile.volume;
+        if (videoVolumeValue) {
+          videoVolumeValue.textContent = videoFile.volume + '%';
+        }
+      }
+      
+      const videoDisplayMode = document.getElementById('alert-video-display-mode');
+      if (videoDisplayMode && videoFile.displayMode !== undefined) {
+        videoDisplayMode.value = videoFile.displayMode;
+      }
+      
+    }
   }
 
   window.editAlert = function(alertId) {
@@ -5390,11 +10833,18 @@ function setupAlertWidget() {
     }
     
     if (alertTextInput) {
-      alertTextInput.value = alertToEdit.text;
+      alertTextInput.value = alertToEdit.text || '';
     }
     
     if (alertDurationInput) {
       alertDurationInput.value = alertToEdit.duration || 5;
+    }
+    
+    // Set overlay selection
+    const alertOverlaySelect = document.getElementById('alert-overlay-select');
+    if (alertOverlaySelect && alertToEdit.overlay) {
+      alertOverlaySelect.value = alertToEdit.overlay;
+      console.log(`📝 [Edit Alert] Setting overlay to: ${alertToEdit.overlay}`);
     }
     
     // Populate bits threshold if it's a bits alert
@@ -5468,15 +10918,79 @@ function setupAlertWidget() {
       }
     }
     
+    // Populate video settings if video file exists
+    if (alertToEdit.videoFile) {
+      if (alertVideoVolume && alertToEdit.videoFile.volume !== undefined) {
+        alertVideoVolume.value = alertToEdit.videoFile.volume;
+        if (alertVideoVolumeValue) {
+          alertVideoVolumeValue.textContent = alertToEdit.videoFile.volume + '%';
+        }
+      }
+      if (alertVideoLoop && alertToEdit.videoFile.loop !== undefined) {
+        alertVideoLoop.checked = alertToEdit.videoFile.loop;
+      }
+      if (alertVideoDisplayMode && alertToEdit.videoFile.displayMode) {
+        alertVideoDisplayMode.value = alertToEdit.videoFile.displayMode;
+      }
+      console.log('Loaded video settings - volume:', alertToEdit.videoFile.volume, 'loop:', alertToEdit.videoFile.loop);
+    }
+    
+    // Populate daily check-in config if this is a daily-checkin alert
+    if (alertToEdit.type === 'daily-checkin' && alertToEdit.dailyCheckinConfig) {
+      const config = alertToEdit.dailyCheckinConfig;
+      
+      const enabledCheckbox = document.getElementById('daily-checkin-enabled');
+      if (enabledCheckbox) enabledCheckbox.checked = config.enabled ?? true;
+      
+      const rewardNameInput = document.getElementById('daily-checkin-reward-name');
+      if (rewardNameInput) rewardNameInput.value = config.rewardName || 'Daily Check-In';
+      
+      const chatResponseInput = document.getElementById('daily-checkin-chat-response');
+      if (chatResponseInput) chatResponseInput.value = config.chatResponse || 'Welcome back {username}!';
+      
+      const alreadyCheckedInput = document.getElementById('daily-checkin-already-checked-message');
+      if (alreadyCheckedInput) alreadyCheckedInput.value = config.alreadyCheckedMessage || 'You\'ve already checked in today!';
+      
+      const showStreakCheckbox = document.getElementById('daily-checkin-show-streak');
+      if (showStreakCheckbox) showStreakCheckbox.checked = config.showStreak ?? false;
+      
+      const sendToChatCheckbox = document.getElementById('daily-checkin-send-to-chat');
+      if (sendToChatCheckbox) sendToChatCheckbox.checked = config.sendToChat ?? true;
+      
+      const testModeCheckbox = document.getElementById('daily-checkin-test-mode');
+      if (testModeCheckbox) testModeCheckbox.checked = config.testMode ?? false;
+      
+      console.log('Loaded daily check-in config for editing');
+    }
+    
+    // Populate walk-on users if this is a first-chat-walkon alert
+    if (alertToEdit.type === 'first-chat-walkon' && alertToEdit.walkonUsers) {
+      selectedWalkonUsers = alertToEdit.walkonUsers || [];
+      if (allFollowers.length === 0) {
+        loadWalkonFollowers().then(() => {
+          renderWalkonSelected();
+          renderWalkonFollowerList();
+        });
+      } else {
+        renderWalkonSelected();
+        renderWalkonFollowerList();
+      }
+      console.log('Loaded walk-on users for editing:', selectedWalkonUsers.length);
+    }
+    
     // Store the alert ID and existing media for editing
     window.editingAlertId = alertId;
     window.editingAlertMedia = {
       soundFile: alertToEdit.soundFile,
-      imageFile: alertToEdit.imageFile
+      imageFile: alertToEdit.imageFile,
+      videoFile: alertToEdit.videoFile
     };
     
     // Display existing media files in the form
-    displayExistingMedia(alertToEdit.soundFile, alertToEdit.imageFile);
+    displayExistingMedia(alertToEdit.soundFile, alertToEdit.imageFile, alertToEdit.videoFile);
+    
+    // Update remove buttons visibility
+    updateRemoveButtons();
     
     // Update preview
     updatePreview().catch(console.error);
@@ -5493,70 +11007,74 @@ function setupAlertWidget() {
   window.deleteAlert = function(alertId) {
     if (confirm('Are you sure you want to delete this alert?')) {
       savedAlerts = savedAlerts.filter(a => a.id !== alertId);
+      window.savedAlerts = savedAlerts; // Keep window reference in sync
       localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+      alertSystem.updateAlerts();
       updateAlertList();
       console.log('Alert deleted:', alertId);
+      
+      // Clear the form if no alerts remain
+      if (savedAlerts.length === 0) {
+        clearForm();
+        console.log('All alerts deleted - form cleared');
+      }
     }
   };
   
 
-  // Queue control event listeners
-  if (clearQueueBtn) {
-    clearQueueBtn.addEventListener('click', () => {
+  // Compact queue control widget event listeners (on dashboard)
+  if (queueWidgetClear) {
+    queueWidgetClear.addEventListener('click', () => {
       alertQueue.clearQueue();
-      updateQueueStatus();
+      updateQueueWidgetStatus();
     });
   }
   
-  if (skipCurrentBtn) {
-    skipCurrentBtn.addEventListener('click', () => {
+  if (queueWidgetSkip) {
+    queueWidgetSkip.addEventListener('click', () => {
+      alertQueue.skipCurrentAlert();
+      updateQueueWidgetStatus();
+    });
+  }
+  
+  if (queueWidgetStop) {
+    queueWidgetStop.addEventListener('click', () => {
       alertQueue.clearCurrentAlert();
-      updateQueueStatus();
+      updateQueueWidgetStatus();
     });
   }
   
-  if (hardStopBtn) {
-    hardStopBtn.addEventListener('click', () => {
-      alertQueue.hardStop();
-      updateQueueStatus();
-    });
-  }
-  
-  if (queueStatusBtn) {
-    queueStatusBtn.addEventListener('click', () => {
-      updateQueueStatus();
-      const status = alertQueue.getStatus();
-      console.log('Queue Status:', status);
-    });
-  }
-  
-  // Update queue status display
-  function updateQueueStatus() {
-    if (!queueInfo) return;
+  // Update compact queue widget status
+  function updateQueueWidgetStatus() {
+    if (!queueWidgetStatus) return;
     
     const status = alertQueue.getStatus();
-    const statusText = queueInfo.querySelector('.queue-status-text');
+    queueWidgetStatus.textContent = status.queueLength;
     
-    if (statusText) {
-      let statusMessage = `Queue: ${status.queueLength} alerts`;
-      statusMessage += ` | Processing: ${status.isProcessing ? 'Yes' : 'No'}`;
-      
-      if (status.currentAlert) {
-        statusMessage += ` | Current: ${status.currentAlert.type}`;
-      }
-      
-      statusText.textContent = statusMessage;
+    // Update status color based on queue state
+    if (status.isProcessing) {
+      queueWidgetStatus.style.background = '#ffc107';
+      queueWidgetStatus.style.color = '#000';
+    } else if (status.queueLength > 0) {
+      queueWidgetStatus.style.background = '#17a2b8';
+      queueWidgetStatus.style.color = '#fff';
+    } else {
+      queueWidgetStatus.style.background = '#6c757d';
+      queueWidgetStatus.style.color = '#fff';
     }
   }
   
+  
   // Update queue status every second
-  setInterval(updateQueueStatus, 1000);
+  setInterval(() => {
+    updateQueueWidgetStatus();
+  }, 1000);
   
   
   // Initialize
   updateAlertList();
   updatePreview();
-  updateQueueStatus();
+  updateQueueWidgetStatus();
 }
 
 // Global functions for inline event handlers
@@ -5592,20 +11110,30 @@ window.updateAlertList = function() {
   const variationsHtml = `
     <div class="alert-variations-list">
       <div class="variations-header">
-        <span>Variations (${filteredAlerts.length}):</span>
-        <label class="random-toggle">
-          <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
-                 onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
-          Random
-        </label>
+        <span>Variations (${filteredAlerts.length} total, ${filteredAlerts.filter(a => a.enabled !== false).length} enabled):</span>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', true)" style="padding: 4px 8px; font-size: 12px;">Enable All</button>
+          <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', false)" style="padding: 4px 8px; font-size: 12px;">Disable All</button>
+          <label class="random-toggle">
+            <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
+                   onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
+            Random Mode
+          </label>
+        </div>
+      </div>
+      <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
+        <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
       </div>
       <div class="variations-items">
         ${filteredAlerts.map((alert, index) => `
-          <div class="variation-item ${alert.enabled !== false ? 'enabled' : ''}">
+          <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
             <label class="variation-toggle">
               <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
                      onchange="toggleAlert('${alert.id}', this.checked)" />
-              <span class="variation-text">${alert.text}</span>
+              <span class="variation-text">
+                ${alert.enabled !== false ? '✓' : '○'} ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
+                <span class="overlay-badge">${alert.overlay || 'main'}</span>
+              </span>
             </label>
             <div class="variation-actions">
               <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
@@ -5632,10 +11160,11 @@ window.updateAlertList = function() {
 };
 
 window.toggleAlert = function(alertId, enabled) {
-  const alert = savedAlerts.find(a => a.id === alertId);
+  const alert = window.savedAlerts.find(a => a.id === alertId);
   if (alert) {
     alert.enabled = enabled;
-    localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+    localStorage.setItem('twitchAlerts', JSON.stringify(window.savedAlerts));
+    alertSystem.updateAlerts();
     updateAlertList();
     console.log('Toggled alert:', alertId, 'enabled:', enabled);
   }
@@ -5643,15 +11172,33 @@ window.toggleAlert = function(alertId, enabled) {
 
 window.toggleRandomModeForType = function(alertType, randomMode) {
   // Update random mode for all alerts of this type
-  savedAlerts.forEach(alert => {
+  window.savedAlerts.forEach(alert => {
     if (alert.type === alertType) {
       alert.randomMode = randomMode;
     }
   });
   
-  localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+  localStorage.setItem('twitchAlerts', JSON.stringify(window.savedAlerts));
+  alertSystem.updateAlerts();
   updateAlertList();
   console.log('Toggled random mode for type:', alertType, 'random:', randomMode);
+};
+
+window.toggleAllAlertsForType = function(alertType, enabled) {
+  // Enable or disable all alerts of this type
+  let count = 0;
+  window.savedAlerts.forEach(alert => {
+    if (alert.type === alertType) {
+      alert.enabled = enabled;
+      count++;
+    }
+  });
+  
+  localStorage.setItem('twitchAlerts', JSON.stringify(window.savedAlerts));
+  alertSystem.updateAlerts();
+  updateAlertList();
+  console.log(`${enabled ? 'Enabled' : 'Disabled'} ${count} alerts for type: ${alertType}`);
+  showCustomAlert(`${enabled ? 'Enabled' : 'Disabled'} all ${count} ${alertType} alerts`, 'success');
 };
 
 // Global replace placeholders function
@@ -5663,12 +11210,19 @@ function replacePlaceholders(text, userData) {
   // Replace common placeholders
   processedText = processedText.replace(/\{username\}/g, userData.username || userData.user_name || userData.user || 'Unknown');
   processedText = processedText.replace(/\{display_name\}/g, userData.display_name || userData.user_name || userData.user || 'Unknown');
-  processedText = processedText.replace(/\{tier\}/g, userData.tier || userData.sub_plan || '');
-  processedText = processedText.replace(/\{viewers\}/g, userData.viewers || userData.view_count || userData.viewer_count || '');
-  processedText = processedText.replace(/\{bits\}/g, userData.bits || userData.bits_used || userData.bits_amount || userData.amount || '');
-  processedText = processedText.replace(/\{months\}/g, userData.cumulative_months || userData.months || '');
-  processedText = processedText.replace(/\{message\}/g, userData.message || userData.user_input || '');
-  processedText = processedText.replace(/\{reward\}/g, userData.reward || userData.reward_title || '');
+  processedText = processedText.replace(/\{displayName\}/g, userData.displayName || userData.display_name || userData.user_name || userData.user || 'Unknown');
+  processedText = processedText.replace(/\{tier\}/g, String(userData.tier || userData.sub_plan || ''));
+  processedText = processedText.replace(/\{viewers\}/g, String(userData.viewers || userData.view_count || userData.viewer_count || ''));
+  processedText = processedText.replace(/\{bits\}/g, String(userData.bits || userData.bits_used || userData.bits_amount || userData.amount || ''));
+  processedText = processedText.replace(/\{months\}/g, String(userData.cumulative_months || userData.months || ''));
+  processedText = processedText.replace(/\{message\}/g, String(userData.message || userData.user_input || ''));
+  processedText = processedText.replace(/\{reward\}/g, String(userData.reward || userData.reward_title || ''));
+  processedText = processedText.replace(/\{moderator\}/g, String(userData.moderator || ''));
+  processedText = processedText.replace(/\{reason\}/g, String(userData.reason || ''));
+  
+  // Daily Check-In specific placeholders
+  processedText = processedText.replace(/\{total_checkins\}/g, String(userData.total_checkins || '0'));
+  processedText = processedText.replace(/\{streak\}/g, String(userData.streak || '0'));
   
   return processedText;
 }
@@ -5771,8 +11325,10 @@ let alertQueue = {
     });
   },
   
-  // Clear current alert and stop processing
+  // Clear current alert and stop processing (does NOT continue to next alert)
   clearCurrentAlert() {
+    console.log('🛑 Stopping current alert (will not continue to next)');
+    
     this.hardStop();
     
     if (this.currentAlert) {
@@ -5780,7 +11336,36 @@ let alertQueue = {
       this.currentAlert = null;
     }
     
-    console.log('🛑 Current alert cleared');
+    // Reset processing flag to stop the queue
+    this.isProcessing = false;
+    
+    console.log('🛑 Current alert stopped - queue processing halted');
+  },
+
+  // Skip current alert and move to next one
+  skipCurrentAlert() {
+    console.log('⏭️ Skipping current alert and moving to next');
+    
+    if (this.currentAlert) {
+      this.currentAlert.status = 'skipped';
+      this.currentAlert = null;
+    }
+    
+    // Stop current processing
+    this.hardStop();
+    
+    // Reset processing flag to allow next alert to process
+    this.isProcessing = false;
+    
+    // If there are more alerts in queue, start processing the next one immediately
+    if (this.queue.length > 0) {
+      console.log(`⏭️ Moving to next alert (${this.queue.length} remaining in queue)`);
+      setTimeout(() => {
+        this.processQueue();
+      }, 100); // Small delay to ensure cleanup
+    } else {
+      console.log('⏭️ No more alerts in queue');
+    }
   },
   
   // Clear entire queue
@@ -5812,19 +11397,33 @@ let alertQueue = {
       return;
     }
     
+    console.log('🔥 triggerAlert called with alertData:', alertData);
+    console.log('🔥 alertData.overlay:', alertData.overlay);
+    
     if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
       // Process text with user data if available
       const processedText = userData ? replacePlaceholders(alertData.text, userData) : alertData.text;
       
       console.log('🎯 Triggering alert:', { alertData, userData, processedText });
       
+      console.log('🎯 Alert overlay from alertData:', alertData.overlay || 'NOT SET');
+      console.log('🎯 Alert will be sent to overlay:', alertData.overlay || getDefaultOverlay());
+      console.log('🎬 Alert animation config:', alertData.animation);
+      console.log('📝 Alert text:', alertData.text);
+      console.log('📝 Processed text:', processedText);
+      console.log('📝 Processed text length:', processedText ? processedText.length : 'null/undefined');
+      console.log('📝 Processed text trim check:', processedText && processedText.trim() ? 'HAS CONTENT' : 'EMPTY OR NULL');
+      console.log('🎨 Alert textStyling:', alertData.textStyling);
+      console.log('📍 Text position:', alertData.textStyling?.position || 'topCenter');
+      
       const payload = {
         type: 'buttonTrigger',
+        targetOverlay: alertData.overlay || getDefaultOverlay(), // Route to specific overlay
         options: {
           clearPrevious: true,
           durationMs: alertData.duration * 1000
         },
-        slots: {
+        slots: processedText && processedText.trim() ? {
           [alertData.textStyling?.position || 'topCenter']: {
             text: processedText,
             style: {
@@ -5837,17 +11436,23 @@ let alertQueue = {
               textAlign: 'center',
               zIndex: '1'
             },
-            animation: alertData.animation?.type !== 'none' ? {
+            animation: (alertData.animation && alertData.animation.type && alertData.animation.type !== 'none') ? {
               name: alertData.animation.type,
-              duration: alertData.animation.duration,
-              delay: alertData.animation.delay,
-              iterationCount: alertData.animation.iteration,
-              timingFunction: alertData.animation.easing
+              duration: alertData.animation.duration || '1s',
+              delay: alertData.animation.delay || '0s',
+              iterationCount: alertData.animation.iteration || '1',
+              timingFunction: alertData.animation.easing || 'ease'
             } : null
           }
-        },
-        centerMedia: []
+        } : {},
+        centerMedia: [],
+        fullscreenMedia: [] // New: fullscreen media support for alerts
       };
+      
+      console.log('🎬 Payload animation data:', payload.slots[alertData.textStyling?.position || 'topCenter']?.animation);
+      console.log('📦 Payload slots object:', payload.slots);
+      console.log('📦 Payload slots keys:', Object.keys(payload.slots));
+      console.log('📦 Payload slots topCenter:', payload.slots.topCenter);
       
       // Add image if present
       if (alertData.imageFile) {
@@ -5863,23 +11468,20 @@ let alertQueue = {
             alt: 'Alert Image'
           });
         } else if (alertData.imageFile.path) {
-          // This is a saved alert with file path - load from disk like multi-media buttons
-          console.log('🖼️ Loading alert image from disk:', alertData.imageFile.path);
+          // This is a saved alert with file path - serve via HTTP like multi-media buttons
+          console.log('🖼️ Converting alert image path to HTTP URL:', alertData.imageFile.path);
           try {
-            if (window.electronAPI && window.electronAPI.getMediaFile) {
-              const result = await window.electronAPI.getMediaFile(alertData.imageFile.path);
-              if (result.success) {
-                const sizeKB = (result.data.length / 1024).toFixed(2);
-                console.log(`✅ Alert image loaded: ${alertData.imageFile.path} (${sizeKB} KB)`);
+            // Use the relative path directly (same as multimedia buttons)
+            const relativePath = alertData.imageFile.path.replace(/\\/g, '/');
+            const imageSrc = `http://localhost:8080/media/${encodeURIComponent(relativePath)}`;
+            console.log(`✅ Serving alert image via HTTP: ${imageSrc}`);
+            console.log(`🔍 Image relative path: ${relativePath}`);
+            
                 payload.centerMedia.push({
                   type: 'image',
-                  src: result.data, // Send base64 data URI like multi-media buttons
+              src: imageSrc, // Use HTTP URL instead of base64
                   alt: 'Alert Image'
                 });
-              } else {
-                console.error('Failed to load alert image:', result.error);
-              }
-            }
           } catch (error) {
             console.error('Error loading alert image:', error);
           }
@@ -5896,6 +11498,76 @@ let alertQueue = {
         }
       }
       
+      // Add video file if present
+      if (alertData.videoFile) {
+        if (alertData.videoFile instanceof File) {
+          // Fresh file upload - use blob URL (video settings not available for unsaved alerts)
+          const videoUrl = URL.createObjectURL(alertData.videoFile);
+          console.log('🎬 Created blob URL for fresh video file:', videoUrl);
+          const videoItem = {
+            type: 'video',
+            src: videoUrl,
+            loop: false,
+            volume: 1.0,
+            muted: false
+          };
+          
+          // For fresh uploads, use center media by default
+          payload.centerMedia.push(videoItem);
+        } else if (alertData.videoFile.path) {
+          // This is a saved alert with file path - serve via HTTP like multi-media buttons
+          console.log('🎬 Converting alert video path to HTTP URL:', alertData.videoFile.path);
+          console.log('🎬 Video file object:', alertData.videoFile);
+          try {
+            // Use the relative path directly (same as multimedia buttons)
+            const relativePath = alertData.videoFile.path.replace(/\\/g, '/');
+            const videoSrc = `http://localhost:8080/media/${encodeURIComponent(relativePath)}`;
+            console.log(`✅ Serving alert video via HTTP: ${videoSrc}`);
+            console.log(`🔍 Video relative path: ${relativePath}`);
+            
+            const videoItem = {
+              type: 'video',
+              src: videoSrc, // Use HTTP URL instead of base64
+              loop: alertData.videoFile.loop || false,
+              volume: (alertData.videoFile.volume || 100) / 100, // Convert percentage to 0-1
+              muted: false
+            };
+            
+            console.log('🎬 Video item created:', videoItem);
+            
+            // Add to appropriate media array based on display mode
+            const displayMode = alertData.videoFile.displayMode || 'center';
+            console.log('🎬 Alert video displayMode:', displayMode);
+            if (displayMode === 'fullscreen') {
+              payload.fullscreenMedia.push(videoItem);
+              console.log('🎬 Added video to fullscreenMedia');
+            } else {
+              payload.centerMedia.push(videoItem);
+              console.log('🎬 Added video to centerMedia');
+            }
+            
+            console.log('🎬 CenterMedia array now has:', payload.centerMedia.length, 'items');
+          } catch (error) {
+            console.error('Error loading alert video:', error);
+          }
+        } else if (alertData.videoFile.data) {
+          // Legacy: saved alert with base64 data (backwards compatibility)
+          console.log('🎬 Using legacy base64 data for alert video');
+          const videoItem = {
+            type: 'video',
+            src: alertData.videoFile.data, // Use base64 data directly
+            loop: alertData.videoFile.loop || false,
+            volume: (alertData.videoFile.volume || 100) / 100,
+            muted: false
+          };
+          
+          
+          payload.centerMedia.push(videoItem);
+        } else {
+          console.warn('🎬 Unknown video file format:', alertData.videoFile);
+        }
+      }
+      
       // Log payload summary instead of full object to avoid base64 spam
       const payloadSummary = {
         type: payload.type,
@@ -5907,7 +11579,11 @@ let alertQueue = {
         })) : 'none'
       };
       console.log('📤 Sending overlay message with payload:', payloadSummary);
+      console.log('🎬 Full centerMedia array:', payload.centerMedia);
+      console.log(`🎯 SENDING ALERT TO OVERLAY: "${payload.targetOverlay}"`);
+      console.log(`📊 Alert overlay setting: ${alertData.overlay || 'NOT SET (defaulting to default)'}`);
       window.electronAPI.sendOverlayMessage(payload);
+      console.log(`✅ Alert sent via WebSocket to overlay: "${payload.targetOverlay}"`);
       
       // Play sound if present - store reference for hard stop
       if (alertData.soundFile) {
@@ -5918,7 +11594,9 @@ let alertQueue = {
         if (alertData.soundFile instanceof File) {
           // Fresh file upload
           this.currentAudio = new Audio(URL.createObjectURL(alertData.soundFile));
-          this.currentAudio.volume = volume;
+          // Set volume immediately to prevent loud burst
+          this.currentAudio.volume = 0; // Start muted
+          this.currentAudio.volume = volume; // Then set to desired volume
           this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
         } else if (alertData.soundFile.path) {
           // Saved alert with file path - load from disk for audio playback
@@ -5930,7 +11608,9 @@ let alertQueue = {
                 const sizeKB = (result.data.length / 1024).toFixed(2);
                 console.log(`✅ Alert sound loaded: ${alertData.soundFile.path} (${sizeKB} KB)`);
                 this.currentAudio = new Audio(result.data);
-                this.currentAudio.volume = volume;
+                // Set volume immediately to prevent loud burst
+                this.currentAudio.volume = 0; // Start muted
+                this.currentAudio.volume = volume; // Then set to desired volume
                 this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
               } else {
                 console.error('Failed to load alert sound:', result.error);
@@ -5943,7 +11623,9 @@ let alertQueue = {
           // Legacy: saved alert with base64 data (backwards compatibility)
           console.log('🎵 Using legacy base64 data for alert sound');
           this.currentAudio = new Audio(alertData.soundFile.data);
-          this.currentAudio.volume = volume;
+          // Set volume immediately to prevent loud burst
+          this.currentAudio.volume = 0; // Start muted
+          this.currentAudio.volume = volume; // Then set to desired volume
           this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
         }
       }
@@ -6060,9 +11742,12 @@ let alertSystem = {
   
   // Trigger alert for specific event type
   triggerAlertForEvent(eventType, userData) {
+    console.log(`🔍 Looking for alerts of type: ${eventType}`);
+    console.log(`📋 Available alert types:`, this.alerts.map(a => a.type));
     const alertsOfType = this.alerts.filter(a => a.type === eventType);
     if (alertsOfType.length === 0) {
       console.log(`⚠️ No alerts found for event type: ${eventType}`);
+      console.log(`💡 Create a "${eventType}" alert in Tools → Alerts to fix this`);
       return;
     }
     
@@ -6070,6 +11755,50 @@ let alertSystem = {
     const enabledAlerts = alertsOfType.filter(a => a.enabled !== false);
     if (enabledAlerts.length === 0) {
       console.log(`⚠️ No enabled alerts found for event type: ${eventType}`);
+      return;
+    }
+    
+    // For first-chat-walkon, check if user is in selected walkon users list
+    if (eventType === 'first-chat-walkon') {
+      const username = (userData.username || userData.user_name || '').toLowerCase();
+      const userId = userData.user_id;
+      
+        const alertsMatchingUser = enabledAlerts.filter(alert => {
+        // If no walkonUsers specified, don't trigger (safety)
+        if (!alert.walkonUsers || alert.walkonUsers.length === 0) {
+          console.log(`⏭️ Alert "${alert.id}" has no walkon users configured, skipping`);
+          return false;
+        }
+        // Check if user is in the selected list (by username or user_id)
+        const isInList = alert.walkonUsers.some(wu => {
+          // Match by exact user_id (for followers from API)
+          if (wu.user_id && wu.user_id === userId) return true;
+          // Match by username (case-insensitive) - works for both API followers and manual entries
+          const wuUsername = (wu.username || '').toLowerCase();
+          if (wuUsername && wuUsername === username) return true;
+          return false;
+        });
+        
+        if (!isInList) {
+          console.log(`⏭️ User "${username}" not in walkon list for alert "${alert.id}", skipping`);
+        }
+        return isInList;
+      });
+      
+      if (alertsMatchingUser.length === 0) {
+        console.log(`⚠️ No alerts matched for walk-on user: ${username}`);
+        return;
+      }
+      
+      // Use alertsMatchingUser instead of enabledAlerts for the rest
+      const alertToTrigger = alertsMatchingUser[0].randomMode 
+        ? alertsMatchingUser[Math.floor(Math.random() * alertsMatchingUser.length)]
+        : alertsMatchingUser[0];
+      
+      console.log(`🎯 Triggering walk-on alert for ${username}:`, userData);
+      console.log(`🎯 Alert text before processing:`, alertToTrigger.text);
+      
+      alertQueue.addToQueue(alertToTrigger, userData);
       return;
     }
     
@@ -6112,6 +11841,8 @@ let alertSystem = {
   }
 };
 
+// Expose alertSystem to global scope
+window.alertSystem = alertSystem;
 
 // Expose alertQueue to global scope
 window.alertQueue = alertQueue;
@@ -6138,6 +11869,90 @@ window.testMultipleAlerts = () => {
   alertQueue.addToQueue(alert3, testData);
   
   console.log('Added 3 test alerts to queue');
+};
+
+// Reset first-time chatters (for testing)
+// Usage: resetWalkonTest() or resetWalkonTest(true) to skip confirmation
+window.resetWalkonTest = async function(skipConfirm = false) {
+  if (!skipConfirm && !confirm('Reset first-time chatters list? This will allow testing the same users again.')) {
+    return { cancelled: true };
+  }
+  
+  try {
+    if (window.electronAPI && window.electronAPI.resetFirstTimeChatters) {
+      const result = await window.electronAPI.resetFirstTimeChatters();
+      if (result.success) {
+        console.log('✅ First-time chatters list reset! You can now test again.');
+        return { success: true, message: result.message };
+      } else {
+        console.error('❌ Error resetting:', result.error);
+        return { success: false, error: result.error };
+      }
+    } else {
+      console.error('❌ Reset function not available');
+      return { success: false, error: 'Reset function not available' };
+    }
+  } catch (error) {
+    console.error('❌ Error resetting first-time chatters:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Test first-chat walk-on event through the full Twitch pipeline
+// Usage: 
+//   testFirstChatWalkon('Iflewthetardis')
+//   testFirstChatWalkon('deathblade', 'DeathBlade', '87654321')
+//   testFirstChatWalkon('TestUser')  // Uses default TestUser
+window.testFirstChatWalkon = function(username = 'TestUser', displayName = null, userId = null) {
+  console.log('🧪 Testing first-chat walk-on event for:', username);
+  
+  // Generate a random user ID if not provided
+  if (!userId) {
+    userId = Math.floor(Math.random() * 100000000).toString();
+  }
+  
+  const display = displayName || (username.charAt(0).toUpperCase() + username.slice(1));
+  const userLower = username.toLowerCase();
+  
+  // Simulate the event data that would come from main.js chat handler
+  const eventData = {
+    type: 'first-chat-walkon',
+    event: {
+      user_id: userId,
+      user_name: userLower,
+      display_name: display
+    }
+  };
+  
+  console.log('🧪 Simulating first-chat-walkon event:', eventData);
+  
+  // Create user data matching what the real handler expects
+  const userData = {
+    username: userLower,
+    display_name: display,
+    user_id: userId,
+    user_name: userLower,
+    ...eventData.event
+  };
+  
+  // Trigger through the same path as real events - directly call alertSystem
+  // This bypasses the IPC layer but tests the alert filtering and triggering logic
+  if (window.alertSystem) {
+    console.log('✅ Triggering first-chat-walkon alert for user:', username);
+    window.alertSystem.triggerAlertForEvent('first-chat-walkon', userData);
+    
+    // Also add to chat display if the function exists (simulates full pipeline)
+    if (typeof addTwitchEvent === 'function') {
+      addTwitchEvent('first-chat-walkon', eventData.event);
+    }
+    
+    console.log('✅ Test first-chat-walkon completed - alert should have triggered if user is in walkon list');
+    console.log('💡 To test, make sure the user is in your walk-on alert\'s selected followers list');
+    return { success: true, eventData, userData };
+  } else {
+    console.error('❌ Alert system not available');
+    return { success: false, error: 'Alert system not available' };
+  }
 };
 
 // Test media duration detection
@@ -6174,12 +11989,22 @@ function showAlertWidget() {
     // Ensure bits threshold is hidden unless alert type is 'bits'
     const alertTypeSelect = document.getElementById('alert-type');
     const bitsThresholdGroup = document.getElementById('bits-threshold-group');
+    const dailyCheckinSettings = document.getElementById('daily-checkin-settings');
     
     if (alertTypeSelect && bitsThresholdGroup) {
       if (alertTypeSelect.value === 'bits') {
         bitsThresholdGroup.style.display = 'block';
       } else {
         bitsThresholdGroup.style.display = 'none';
+      }
+    }
+    
+    // Ensure daily check-in settings are hidden unless alert type is 'daily-checkin'
+    if (alertTypeSelect && dailyCheckinSettings) {
+      if (alertTypeSelect.value === 'daily-checkin') {
+        dailyCheckinSettings.style.display = 'block';
+      } else {
+        dailyCheckinSettings.style.display = 'none';
       }
     }
     
@@ -6214,6 +12039,538 @@ function hideOverlayWidget() {
   }
 }
 
+// ===============================
+// Daily Check-In System
+// ===============================
+
+// In-memory storage for check-ins (will be persisted to file)
+let dailyCheckinData = {
+  viewers: {},
+  liveDays: [], // Array of date strings (YYYY-MM-DD) when stream was live
+  config: {
+    enabled: true,
+    rewardName: 'Daily Check-In',
+    chatResponse: 'Welcome back {username}! You\'ve checked in {total_checkins} times!',
+    alreadyCheckedMessage: 'You\'ve already checked in today, {username}! Come back tomorrow!',
+    showStreak: false,
+    sendToChat: true,
+    testMode: false
+  }
+};
+
+// Load daily check-in data
+async function loadDailyCheckinData() {
+  try {
+    if (window.electronAPI && window.electronAPI.loadDailyCheckins) {
+      const data = await window.electronAPI.loadDailyCheckins();
+      if (data) {
+        dailyCheckinData = data;
+        // Ensure liveDays array exists (for backward compatibility)
+        if (!dailyCheckinData.liveDays) {
+          dailyCheckinData.liveDays = [];
+        }
+        console.log('📊 Loaded daily check-in data:', Object.keys(dailyCheckinData.viewers).length, 'viewers');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error loading daily check-in data:', error);
+  }
+}
+
+// Save daily check-in data
+async function saveDailyCheckinData() {
+  try {
+    if (window.electronAPI && window.electronAPI.saveDailyCheckins) {
+      await window.electronAPI.saveDailyCheckins(dailyCheckinData);
+      console.log('💾 Saved daily check-in data');
+    }
+  } catch (error) {
+    console.error('❌ Error saving daily check-in data:', error);
+  }
+}
+
+// Check if user has already checked in today
+function hasCheckedInToday(userId) {
+  const viewer = dailyCheckinData.viewers[userId];
+  if (!viewer) return false;
+  
+  const lastCheckin = new Date(viewer.last_checkin);
+  const today = new Date();
+  
+  // Check if last check-in was today (same date)
+  return lastCheckin.toDateString() === today.toDateString();
+}
+
+// Process a daily check-in
+async function processDailyCheckin(userData, testMode = false) {
+  const { user_id, user_name, display_name } = userData;
+  
+  // Check test mode setting
+  const testModeCheckbox = document.getElementById('daily-checkin-test-mode');
+  const isTestMode = testMode || (testModeCheckbox && testModeCheckbox.checked);
+  
+  // Record that today is a live day when someone checks in (Twitch already restricts redemption when not live)
+  // Skip this in test mode so test check-ins don't affect live day tracking
+  if (!isTestMode) {
+    const now = new Date();
+    const todayStr = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().split('T')[0]; // YYYY-MM-DD
+    if (!dailyCheckinData.liveDays.includes(todayStr)) {
+      dailyCheckinData.liveDays.push(todayStr);
+      console.log('📅 Recorded live day:', todayStr);
+    }
+  }
+  
+  // Check if user already checked in today (skip in test mode)
+  if (!isTestMode && hasCheckedInToday(user_id)) {
+    console.log('⚠️ User', user_name, 'already checked in today');
+    
+    // Send already checked message if enabled
+    if (dailyCheckinData.config.sendToChat) {
+      const message = dailyCheckinData.config.alreadyCheckedMessage
+        .replace(/{username}/g, user_name)
+        .replace(/{display_name}/g, display_name || user_name);
+      
+      await sendTwitchChatMessage(message);
+    }
+    
+    return false;
+  }
+  
+  // Initialize or update viewer data
+  if (!dailyCheckinData.viewers[user_id]) {
+    dailyCheckinData.viewers[user_id] = {
+      user_id: user_id,
+      username: user_name,
+      display_name: display_name || user_name,
+      total_checkins: 0,
+      last_checkin: null,
+      streak: 0
+    };
+  }
+  
+  const viewer = dailyCheckinData.viewers[user_id];
+  const now = new Date();
+  const todayStr = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().split('T')[0];
+  const todayCheckinDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  // Save the previous last_checkin before updating (needed for streak calculation)
+  const previousLastCheckin = viewer.last_checkin;
+  
+  // Update check-in data
+  viewer.total_checkins++;
+  viewer.last_checkin = now.toISOString();
+  viewer.username = user_name; // Update in case username changed
+  viewer.display_name = display_name || user_name;
+  
+  // Calculate streak if enabled
+  if (dailyCheckinData.config.showStreak) {
+    if (!previousLastCheckin || !previousLastCheckin.includes('T')) {
+      // First check-in ever, start streak at 1
+      viewer.streak = 1;
+      console.log(`📈 First check-in for ${user_name}, streak started at 1`);
+    } else {
+      const lastCheckinDate = new Date(previousLastCheckin);
+      const lastCheckinDay = new Date(lastCheckinDate.getFullYear(), lastCheckinDate.getMonth(), lastCheckinDate.getDate());
+      
+      // Calculate days difference
+      const daysDiff = Math.floor((todayCheckinDate - lastCheckinDay) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff === 1) {
+        // Consecutive day - check if stream was live yesterday
+        const yesterdayStr = new Date(lastCheckinDay).toISOString().split('T')[0];
+        const wasLiveYesterday = dailyCheckinData.liveDays.includes(yesterdayStr);
+        
+        if (wasLiveYesterday) {
+          // Stream was live yesterday and they checked in today = consecutive
+          viewer.streak = (viewer.streak || 0) + 1;
+          console.log(`📈 Streak incremented for ${user_name}: ${viewer.streak} days (stream was live yesterday)`);
+        } else {
+          // Stream wasn't live yesterday, but they're checking in today - maintain streak
+          // Don't increment, but don't reset either (stream wasn't live so it doesn't count against them)
+          viewer.streak = viewer.streak || 1;
+          console.log(`📈 Streak maintained for ${user_name}: ${viewer.streak} days (stream wasn't live yesterday)`);
+        }
+      } else if (daysDiff === 0) {
+        // Same day - shouldn't happen due to hasCheckedInToday check, but safety
+        // Keep streak as is
+      } else {
+        // More than 1 day apart - check which days were missed
+        let missedLiveDays = 0;
+        const checkDate = new Date(lastCheckinDay);
+        checkDate.setDate(checkDate.getDate() + 1); // Start checking from the day after last check-in
+        
+        while (checkDate < todayCheckinDate) {
+          const checkDateStr = checkDate.toISOString().split('T')[0];
+          if (dailyCheckinData.liveDays.includes(checkDateStr)) {
+            missedLiveDays++;
+          }
+          checkDate.setDate(checkDate.getDate() + 1);
+        }
+        
+        if (missedLiveDays === 0) {
+          // No live days were missed - maintain streak
+          viewer.streak = viewer.streak || 1;
+          console.log(`📈 Streak maintained for ${user_name}: ${viewer.streak} days (no live days missed)`);
+        } else {
+          // At least one live day was missed - reset streak to 1
+          viewer.streak = 1;
+          console.log(`📈 Streak reset for ${user_name}: missed ${missedLiveDays} live day(s), streak reset to 1`);
+        }
+      }
+    }
+  }
+  
+  // Save data
+  await saveDailyCheckinData();
+  
+  console.log('✅ Check-in processed for', user_name, '- Total:', viewer.total_checkins, 'Streak:', viewer.streak || 0);
+  
+  // Send chat response if enabled
+  if (dailyCheckinData.config.sendToChat) {
+    let message = dailyCheckinData.config.chatResponse;
+    message = message.replace(/{username}/g, viewer.username);
+    message = message.replace(/{display_name}/g, viewer.display_name);
+    message = message.replace(/{total_checkins}/g, String(viewer.total_checkins));
+    message = message.replace(/{streak}/g, String(viewer.streak || 0));
+    
+    await sendTwitchChatMessage(message);
+  }
+  
+  return true;
+}
+
+// Send message to Twitch chat
+async function sendTwitchChatMessage(message) {
+  try {
+    if (window.electronAPI && window.electronAPI.sendTwitchChatMessage) {
+      await window.electronAPI.sendTwitchChatMessage(message);
+      console.log('💬 Sent chat message:', message);
+    }
+  } catch (error) {
+    console.error('❌ Error sending chat message:', error);
+  }
+}
+
+// Update daily check-in config from UI
+function updateDailyCheckinConfig() {
+  const enabled = document.getElementById('daily-checkin-enabled')?.checked ?? true;
+  const rewardName = document.getElementById('daily-checkin-reward-name')?.value || 'Daily Check-In';
+  const chatResponse = document.getElementById('daily-checkin-chat-response')?.value || 'Welcome back {username}!';
+  const alreadyCheckedMessage = document.getElementById('daily-checkin-already-checked-message')?.value || 'You\'ve already checked in today!';
+  const showStreak = document.getElementById('daily-checkin-show-streak')?.checked ?? false;
+  const sendToChat = document.getElementById('daily-checkin-send-to-chat')?.checked ?? true;
+  const testMode = document.getElementById('daily-checkin-test-mode')?.checked ?? false;
+  
+  dailyCheckinData.config = {
+    enabled,
+    rewardName,
+    chatResponse,
+    alreadyCheckedMessage,
+    showStreak,
+    sendToChat,
+    testMode
+  };
+  
+  saveDailyCheckinData();
+  console.log('⚙️ Updated daily check-in config:', dailyCheckinData.config);
+}
+
+// Load daily check-in config into UI
+function loadDailyCheckinConfigToUI() {
+  const config = dailyCheckinData.config;
+  
+  const enabledCheckbox = document.getElementById('daily-checkin-enabled');
+  if (enabledCheckbox) enabledCheckbox.checked = config.enabled ?? true;
+  
+  const rewardNameInput = document.getElementById('daily-checkin-reward-name');
+  if (rewardNameInput) rewardNameInput.value = config.rewardName || 'Daily Check-In';
+  
+  const chatResponseInput = document.getElementById('daily-checkin-chat-response');
+  if (chatResponseInput) chatResponseInput.value = config.chatResponse || 'Welcome back {username}!';
+  
+  const alreadyCheckedInput = document.getElementById('daily-checkin-already-checked-message');
+  if (alreadyCheckedInput) alreadyCheckedInput.value = config.alreadyCheckedMessage || 'You\'ve already checked in today!';
+  
+  const showStreakCheckbox = document.getElementById('daily-checkin-show-streak');
+  if (showStreakCheckbox) showStreakCheckbox.checked = config.showStreak ?? false;
+  
+  const sendToChatCheckbox = document.getElementById('daily-checkin-send-to-chat');
+  if (sendToChatCheckbox) sendToChatCheckbox.checked = config.sendToChat ?? true;
+  
+  const testModeCheckbox = document.getElementById('daily-checkin-test-mode');
+  if (testModeCheckbox) testModeCheckbox.checked = config.testMode ?? false;
+}
+
+// Initialize daily check-in system
+async function initDailyCheckinSystem() {
+  console.log('🚀 Initializing Daily Check-In System...');
+  
+  // Load data
+  await loadDailyCheckinData();
+  
+  // Load config to UI
+  loadDailyCheckinConfigToUI();
+  
+  // Add change listeners to update config
+  const fields = [
+    'daily-checkin-enabled',
+    'daily-checkin-reward-name',
+    'daily-checkin-chat-response',
+    'daily-checkin-already-checked-message',
+    'daily-checkin-show-streak',
+    'daily-checkin-send-to-chat',
+    'daily-checkin-test-mode'
+  ];
+  
+  fields.forEach(fieldId => {
+    const element = document.getElementById(fieldId);
+    if (element) {
+      element.addEventListener('change', updateDailyCheckinConfig);
+      if (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT') {
+        element.addEventListener('input', updateDailyCheckinConfig);
+      }
+    }
+  });
+  
+  // Add button listeners
+  const viewStatsBtn = document.getElementById('view-checkin-stats');
+  if (viewStatsBtn) {
+    viewStatsBtn.addEventListener('click', showDailyCheckinStats);
+  }
+  
+  const testCheckinBtn = document.getElementById('test-checkin');
+  if (testCheckinBtn) {
+    testCheckinBtn.addEventListener('click', testDailyCheckin);
+  }
+  
+  const clearTodayBtn = document.getElementById('clear-today-checkins');
+  if (clearTodayBtn) {
+    clearTodayBtn.addEventListener('click', clearTodayCheckins);
+  }
+  
+  const clearAllBtn = document.getElementById('clear-all-checkins');
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', clearAllCheckins);
+  }
+  
+  console.log('✅ Daily Check-In System initialized');
+}
+
+// Show daily check-in statistics
+function showDailyCheckinStats() {
+  const modal = document.getElementById('checkin-stats-modal');
+  if (!modal) {
+    console.error('❌ Check-in stats modal not found');
+    return;
+  }
+  
+  // Show the modal
+  modal.classList.remove('hidden');
+  
+  // Disable hotkeys when modal is open
+  if (window.electronAPI && window.electronAPI.disableHotkeys) {
+    window.electronAPI.disableHotkeys();
+  }
+  
+  // Populate and render the stats
+  renderCheckinStats();
+}
+
+// Render check-in statistics data
+function renderCheckinStats() {
+  const viewers = dailyCheckinData.viewers;
+  const viewerList = Object.values(viewers);
+  
+  // Calculate summary stats
+  const totalViewers = viewerList.length;
+  const totalCheckins = viewerList.reduce((sum, v) => sum + v.total_checkins, 0);
+  const today = new Date().toDateString();
+  const todayCheckins = viewerList.filter(v => {
+    if (!v.last_checkin) return false;
+    return new Date(v.last_checkin).toDateString() === today;
+  }).length;
+  
+  // Update summary cards
+  document.getElementById('total-checkin-viewers').textContent = totalViewers;
+  document.getElementById('total-checkins-all').textContent = totalCheckins;
+  document.getElementById('total-checkins-today').textContent = todayCheckins;
+  
+  // Get filter and sort values
+  const sortBy = document.getElementById('stats-sort')?.value || 'total';
+  const filterBy = document.getElementById('stats-filter')?.value || 'all';
+  
+  // Filter viewers
+  let filteredViewers = [...viewerList];
+  if (filterBy === 'today') {
+    filteredViewers = filteredViewers.filter(v => {
+      if (!v.last_checkin) return false;
+      return new Date(v.last_checkin).toDateString() === today;
+    });
+  }
+  
+  // Sort viewers
+  if (sortBy === 'total') {
+    filteredViewers.sort((a, b) => b.total_checkins - a.total_checkins);
+  } else if (sortBy === 'recent') {
+    filteredViewers.sort((a, b) => {
+      const dateA = a.last_checkin ? new Date(a.last_checkin) : new Date(0);
+      const dateB = b.last_checkin ? new Date(b.last_checkin) : new Date(0);
+      return dateB - dateA;
+    });
+  } else if (sortBy === 'username') {
+    filteredViewers.sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+  }
+  
+  // Populate table
+  const tbody = document.getElementById('checkin-stats-tbody');
+  if (!tbody) return;
+  
+  if (filteredViewers.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-tertiary);">
+          No check-in data available yet
+        </td>
+      </tr>
+    `;
+    return;
+  }
+  
+  let rowsHTML = '';
+  filteredViewers.forEach((viewer, index) => {
+    const lastCheckin = viewer.last_checkin ? new Date(viewer.last_checkin).toLocaleDateString() : 'Never';
+    const lastCheckinTime = viewer.last_checkin ? new Date(viewer.last_checkin).toLocaleTimeString() : '';
+    const streak = viewer.streak || 0;
+    
+    rowsHTML += `
+      <tr>
+        <td style="text-align: center; font-weight: 600;">${index + 1}</td>
+        <td>${viewer.display_name || viewer.username}</td>
+        <td style="text-align: center; font-weight: 600; color: var(--accent);">${viewer.total_checkins}</td>
+        <td>${lastCheckin}<br><small style="color: var(--text-tertiary); font-size: 11px;">${lastCheckinTime}</small></td>
+        <td style="text-align: center;">${streak}</td>
+      </tr>
+    `;
+  });
+  
+  tbody.innerHTML = rowsHTML;
+  
+  console.log('📊 Rendered check-in statistics:', filteredViewers.length, 'viewers');
+}
+
+// Test check-in function (simulate a check-in)
+async function testDailyCheckin() {
+  // Create fake test user data
+  const testUser = {
+    user_id: 'test_user_' + Date.now(),
+    user_name: 'TestUser' + Math.floor(Math.random() * 1000),
+    display_name: 'TestUser' + Math.floor(Math.random() * 1000)
+  };
+  
+  console.log('🧪 Testing check-in with test user:', testUser);
+  
+  // Process the check-in
+  const result = await processDailyCheckin(testUser, true);
+  
+  if (result) {
+    // Get the viewer data
+    const viewer = dailyCheckinData.viewers[testUser.user_id];
+    
+    // Create user data with actual check-in counts
+    const userData = {
+      username: viewer.username,
+      display_name: viewer.display_name,
+      user_id: viewer.user_id,
+      total_checkins: viewer.total_checkins,
+      streak: viewer.streak || 0
+    };
+    
+    console.log('🧪 Triggering test alert with data:', userData);
+    
+    // Trigger alert
+    alertSystem.triggerAlertForEvent('daily-checkin', userData);
+    
+    alert(`✅ Test check-in successful!\n\nUsername: ${viewer.username}\nTotal Check-Ins: ${viewer.total_checkins}`);
+  } else {
+    alert('❌ Test check-in failed - check console for details');
+  }
+}
+
+// Clear today's check-ins
+async function clearTodayCheckins() {
+  if (!confirm('Clear all check-ins from today? This will allow users to check in again today.')) {
+    return;
+  }
+  
+  const today = new Date().toDateString();
+  let clearedCount = 0;
+  
+  Object.values(dailyCheckinData.viewers).forEach(viewer => {
+    if (viewer.last_checkin) {
+      const lastCheckinDate = new Date(viewer.last_checkin).toDateString();
+      if (lastCheckinDate === today) {
+        // Set last check-in to yesterday so they can check in again
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        viewer.last_checkin = yesterday.toISOString();
+        clearedCount++;
+      }
+    }
+  });
+  
+  await saveDailyCheckinData();
+  console.log(`🔄 Cleared ${clearedCount} check-ins from today`);
+  alert(`✅ Cleared ${clearedCount} check-ins from today!\n\nUsers can now check in again.`);
+  
+  // Refresh stats if modal is open
+  if (!document.getElementById('checkin-stats-modal')?.classList.contains('hidden')) {
+    renderCheckinStats();
+  }
+}
+
+// Clear all check-in data
+async function clearAllCheckins() {
+  if (!confirm('⚠️ WARNING: This will permanently delete ALL check-in data!\n\nThis includes:\n- All viewer check-in counts\n- All check-in history\n- All streaks\n\nAre you sure?')) {
+    return;
+  }
+  
+  // Double confirmation
+  if (!confirm('This action cannot be undone. Are you absolutely sure?')) {
+    return;
+  }
+  
+  const viewerCount = Object.keys(dailyCheckinData.viewers).length;
+  
+  // Reset viewer data
+  dailyCheckinData.viewers = {};
+  
+  await saveDailyCheckinData();
+  console.log(`🗑️ Cleared all check-in data for ${viewerCount} viewers`);
+  alert(`✅ All check-in data cleared!\n\n${viewerCount} viewers reset.`);
+  
+  // Refresh stats if modal is open
+  if (!document.getElementById('checkin-stats-modal')?.classList.contains('hidden')) {
+    renderCheckinStats();
+  }
+}
+
+// ===============================
+// End Daily Check-In System
+// ===============================
+
+// TODO: Integrate with Twitch Channel Point Redemptions
+// When a Channel Point redemption event is received that matches the reward name
+// configured in Daily Check-In settings, call:
+// 
+// processDailyCheckin({
+//   user_id: event.user_id,
+//   user_name: event.user_name,
+//   display_name: event.user_login
+// });
+//
+// Example integration location: TwitchConnected/tc.js or wherever Twitch EventSub
+// events are processed. Look for 'channel.channel_points_custom_reward_redemption' events.
+
 // Left app menu wiring: toggles File dropdown and wires Quit
 function setupLeftAppMenu() {
   const menuBtn = document.getElementById('menu-file-btn');
@@ -6228,8 +12585,10 @@ function setupLeftAppMenu() {
   }
   // Helper to close other menus (so only one menu is open at a time)
   function closeOtherMenus(exceptDropdown) {
-    const allDropdowns = [menuDropdown, viewDropdown, helpDropdown, editDropdown].filter(Boolean);
-    const allBtns = [menuBtn, viewBtn, helpBtn, editBtn].filter(Boolean);
+    const toolsDropdown = document.getElementById('menu-tools-dropdown');
+    const toolsBtn = document.getElementById('menu-tools-btn');
+    const allDropdowns = [menuDropdown, viewDropdown, helpDropdown, editDropdown, toolsDropdown].filter(Boolean);
+    const allBtns = [menuBtn, viewBtn, helpBtn, editBtn, toolsBtn].filter(Boolean);
     allDropdowns.forEach(dd => {
       if (dd !== exceptDropdown) dd.classList.add('hidden');
     });
@@ -6362,6 +12721,44 @@ function setupLeftAppMenu() {
       if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
     });
   }
+  
+  // Bug Report menu item
+  const helpBugReport = document.getElementById('menu-help-bug-report');
+  if (helpBugReport) {
+    helpBugReport.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        if (window.electronAPI && window.electronAPI.reportBug) {
+          await window.electronAPI.reportBug();
+        }
+      } catch (error) {
+        console.error('Error opening bug report form:', error);
+      }
+      if (helpDropdown) helpDropdown.classList.add('hidden');
+      if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  
+  // Placeholders Guide menu item
+  const helpPlaceholders = document.getElementById('menu-help-placeholders');
+  if (helpPlaceholders) {
+    helpPlaceholders.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openPlaceholdersGuide();
+      if (helpDropdown) helpDropdown.classList.add('hidden');
+      if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  
+  const helpCommands = document.getElementById('menu-help-commands');
+  if (helpCommands) {
+    helpCommands.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openCommandsGuide();
+      if (helpDropdown) helpDropdown.classList.add('hidden');
+      if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
 
   // Edit menu wiring
   const editBtn = document.getElementById('menu-edit-btn');
@@ -6380,6 +12777,15 @@ function setupLeftAppMenu() {
       if (!editBtn.contains(e.target) && !editDropdown.contains(e.target)) { editDropdown.classList.add('hidden'); editBtn.setAttribute('aria-expanded', 'false'); }
     });
   }
+  
+  // Profile Manager button (on dashboard)
+  const openProfileManagerBtn = document.getElementById('open-profile-manager-btn');
+  if (openProfileManagerBtn) {
+    openProfileManagerBtn.addEventListener('click', () => {
+      openProfileModal();
+    });
+  }
+  
   // Tools menu wiring (new)
   const toolsBtn = document.getElementById('menu-tools-btn');
   const toolsDropdown = document.getElementById('menu-tools-dropdown');
@@ -6531,6 +12937,24 @@ function setupLeftAppMenu() {
       if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
     });
   }
+  
+  // Test Twitch Events - commented out but function available via console: testTwitchEvents()
+  /*
+  const toolsTestTwitch = document.getElementById('menu-tools-test-twitch');
+  if (toolsTestTwitch) {
+    toolsTestTwitch.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (toolsDropdown) toolsDropdown.classList.add('hidden');
+      if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
+      // Run the test function
+      if (window.testTwitchEventPipeline) {
+        window.testTwitchEventPipeline();
+      } else {
+        alert('Test function not available. Please reload the application.');
+      }
+    });
+  }
+  */
   
   // Themes population: built-in + dynamic skins
   async function renderToolsThemes() {
@@ -6743,33 +13167,16 @@ function setupLeftAppMenu() {
   if (prefBtn) {
     prefBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (window.electronAPI && typeof window.electronAPI.openPreferences === 'function') {
-        window.electronAPI.openPreferences();
-      } else {
-        try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('open-preferences'); } catch (e) {}
-      }
+      openPreferencesModal();
     });
   }
 }
 
-// Wait for DOM to be ready before initializing theme manager
+// ThemeManager now initialized early in first DOMContentLoaded (before ProfileManager)
+// This ensures ThemeSystem is available when ProfileManager tries to load theme
+// Theme cycling hotkey (Ctrl+Shift+T) also registered in early DOMContentLoaded
+
 document.addEventListener('DOMContentLoaded', () => {
-  themeManager = new ThemeManager();
-  notificationManager = new NotificationManager();
-  
-  // Add hotkey to cycle through themes (Ctrl+Shift+T)
-  document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.shiftKey && e.key === 'T') {
-      e.preventDefault();
-      if (themeManager) {
-        themeManager.cycleTheme();
-      }
-    }
-  });
-  
-  // Export for potential use by other parts of the app
-  window.themeManager = themeManager;
-  window.notificationManager = notificationManager;
   
   // Overlay test functions
   window.testOverlayText = function() {
@@ -6786,7 +13193,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.electronAPI && typeof window.electronAPI.sendOverlayImage === 'function') {
       window.electronAPI.sendOverlayImage({ 
         position: 1, 
-        imageUrl: 'https://via.placeholder.com/200x100/00ff00/000000?text=Test+Image' 
+        imageUrl: 'http://localhost:8080/media/images/VirtualDeck2.png' 
       });
     } else {
       console.log('sendOverlayImage not available');
@@ -6798,7 +13205,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.electronAPI && typeof window.electronAPI.sendOverlayVideo === 'function') {
       window.electronAPI.sendOverlayVideo({ 
         position: 3, 
-        videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4' 
+        videoUrl: 'http://localhost:8080/media/videos/generated-video.mp4' 
       });
     } else {
       console.log('sendOverlayVideo not available');
@@ -6807,18 +13214,18 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Removed duplicate clearOverlay function - using the main one defined earlier
   
-  // Test multi-source functionality
-  window.testMultiSource = function(payload) {
-    console.log('Testing multi-source with payload:', payload);
+  // Utility function to send payload to overlay
+  window.sendOverlayPayload = function(payload) {
+    console.log('Sending payload to overlay:', payload);
     
     // Send to overlay iframe if available - send payload directly
     const overlayIframe = document.getElementById('overlay-iframe');
     if (overlayIframe && overlayIframe.contentWindow) {
       try {
         overlayIframe.contentWindow.postMessage(payload, '*');
-        console.log('Multi-source test sent to overlay iframe');
+        console.log('Payload sent to overlay iframe');
       } catch (error) {
-        console.warn('Failed to send multi-source test to overlay iframe:', error);
+        console.warn('Failed to send payload to overlay iframe:', error);
       }
     }
     
@@ -6826,9 +13233,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
       try {
         window.electronAPI.sendOverlayMessage(payload);
-        console.log('Multi-source test sent via WebSocket');
+        console.log('Payload sent via WebSocket');
       } catch (error) {
-        console.warn('Failed to send multi-source test via WebSocket:', error);
+        console.warn('Failed to send payload via WebSocket:', error);
       }
     }
   };
@@ -6862,11 +13269,13 @@ document.addEventListener('DOMContentLoaded', () => {
         text: pos.text,
         style: {
           fontFamily: 'Arial, sans-serif',
-          fontSize: '18px',
-          color: '#00ff00',
+          fontSize: '48px',
+          color: '#ffffff',
           fontWeight: 'bold',
           textAlign: 'center',
-          zIndex: (index + 1).toString()
+          textShadow: '3px 3px 6px rgba(0, 0, 0, 0.9)',
+          webkitTextStroke: '2px #000',
+          zIndex: '15'
         }
       };
     });
@@ -6874,8 +13283,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Add center media test
     payload.centerMedia = [{
       type: 'image',
-      src: 'https://via.placeholder.com/400x300/ff00ff/ffffff?text=Test+Center+Media',
-      alt: 'Test Center Media'
+      src: 'http://localhost:8080/media/images/VirtualDeck2.png',
+      alt: 'VirtualDeck Logo'
     }];
     
     if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
@@ -6892,30 +13301,9 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('- clearOverlay() - Clear all overlay content');
   
   // Watch for any changes to the document element's data-theme attribute
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
-        const currentTheme = document.documentElement.getAttribute('data-theme');
-        if (currentTheme !== themeManager.getCurrentTheme()) {
-          setTimeout(() => {
-            themeManager.applyTheme(themeManager.getCurrentTheme());
-          }, 10);
-        }
-      }
-    });
-  });
-  
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['data-theme']
-  });
-  
-  // Final theme application after everything else has loaded
-  window.addEventListener('load', () => {
-    setTimeout(() => {
-      themeManager.applyTheme(themeManager.getCurrentTheme());
-    }, 1000);
-  });
+  // Theme persistence is now handled by ProfileManager
+  // Removed MutationObserver and delayed theme application to prevent conflicts
+  // ProfileManager applies the correct theme from profile settings
 
   // Initialize AddEditButtonForm integration (minimal)
   if (window.AddEditButtonForm) {
@@ -6933,10 +13321,13 @@ document.addEventListener('DOMContentLoaded', () => {
           name: buttonData.name,
           hotkey: buttonData.hotkey,
           type: 'multi-media',
+          overlay: buttonData.overlay || getDefaultOverlay(), // Preserve overlay selection
           slots: buttonData.slots,
           centerMedia: buttonData.centerMedia,
           audio: buttonData.audio,
-          options: buttonData.options
+          options: buttonData.options,
+          // Include chat command data if provided
+          chatCommand: buttonData.chatCommand || undefined
         };
 
         // Check if Electron API is available
@@ -6977,6 +13368,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (saveResult && saveResult.success) {
           // Refresh hotkeys to register the new hotkey
           window.electronAPI.refreshHotkeys();
+          
+          // Clear audio cache to ensure new audio files are loaded
+          audioCache.clear();
+          console.log('🧹 Audio cache cleared after multi-media button save');
+          
+          // Force immediate profile save to persist button changes
+          if (profileManager && profileManager.saveCurrentSettings) {
+            await profileManager.saveCurrentSettings();
+            console.log('✅ Profile saved after button edit');
+          }
           
           // Reload buttons
           await loadButtons();
@@ -8747,7 +15148,7 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('🎬 Testing different video sources...');
     
     const videoSources = [
-      'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+      'http://localhost:8080/media/videos/generated-video.mp4',
       'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
       'https://www.w3schools.com/html/mov_bbb.mp4'
     ];
@@ -9059,7 +15460,7 @@ document.addEventListener('DOMContentLoaded', () => {
         {
           id: 'm1',
           type: 'image',
-          src: 'https://via.placeholder.com/400x300/ff6600/ffffff?text=Test+Image',
+          src: 'http://localhost:8080/media/images/VirtualDeck2.png',
           loop: false,
           widthPct: 70,
           align: 'center',
@@ -9356,6 +15757,16 @@ function openAudioForm() {
   delete settingsForm.dataset.resolvedArgs;
   delete settingsForm.dataset.existingFile;
   
+  // Clear chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const redeemName = document.getElementById('redeem-name');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  if (chatCommandEnabled) chatCommandEnabled.checked = false;
+  if (chatCommandKeyword) chatCommandKeyword.value = '';
+  if (redeemName) redeemName.value = '';
+  if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+  
   // Replace file inputs to clear previous file references
   const oldFileInput = document.getElementById('file-input');
   if (oldFileInput) {
@@ -9382,3 +15793,466 @@ function openAudioForm() {
     window.electronAPI.disableHotkeys();
   }
 }
+
+// Preferences Modal Functions
+function openPreferencesModal() {
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.classList.remove('hidden');
+    loadPreferences();
+  }
+}
+
+function closePreferencesModal() {
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.classList.add('hidden');
+  }
+}
+
+function loadPreferences() {
+  // Load preferences from localStorage
+  const preferences = JSON.parse(localStorage.getItem('vdPreferences') || '{}');
+  
+  // Update checkboxes
+  document.getElementById('auto-update-checkbox').checked = preferences.autoUpdate !== false; // default to true
+}
+
+function savePreferences() {
+  const preferences = {
+    autoUpdate: document.getElementById('auto-update-checkbox').checked
+  };
+  
+  // Save to localStorage
+  localStorage.setItem('vdPreferences', JSON.stringify(preferences));
+  
+  // Send preferences to main process if available
+  if (window.electronAPI && window.electronAPI.savePreferences) {
+    window.electronAPI.savePreferences(preferences);
+  }
+  
+  // Show success message
+  if (window.notificationManager) {
+    window.notificationManager.show('Preferences saved successfully!', 'success');
+  }
+  
+  // Close modal
+  closePreferencesModal();
+}
+
+function checkForUpdatesFromPreferences() {
+  // Send check for updates request to main process
+  if (window.electronAPI && window.electronAPI.checkForUpdates) {
+    window.electronAPI.checkForUpdates();
+    if (window.notificationManager) {
+      window.notificationManager.show('Checking for updates...', 'info');
+    }
+  } else {
+    if (window.notificationManager) {
+      window.notificationManager.show('Update checking not available in development mode', 'warning');
+    }
+  }
+}
+
+// Initialize preferences modal event listeners
+function initializePreferencesModal() {
+  // Close button
+  const closeBtn = document.getElementById('preferences-modal-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closePreferencesModal);
+  }
+  
+  // Save button
+  const saveBtn = document.getElementById('save-preferences');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', savePreferences);
+  }
+  
+  // Cancel button
+  const cancelBtn = document.getElementById('cancel-preferences');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', closePreferencesModal);
+  }
+  
+  // Check for updates button
+  const checkUpdatesBtn = document.getElementById('check-updates-button');
+  if (checkUpdatesBtn) {
+    checkUpdatesBtn.addEventListener('click', checkForUpdatesFromPreferences);
+  }
+
+  // Twitch Setup button
+  const twitchSetupBtn = document.getElementById('preferences-twitch-setup');
+  if (twitchSetupBtn) {
+    twitchSetupBtn.addEventListener('click', () => {
+      closePreferencesModal();
+      // Show Twitch config modal (from TwitchConnected/tc.js)
+      if (typeof showTwitchConfigModal === 'function') {
+        showTwitchConfigModal();
+      } else {
+        console.error('showTwitchConfigModal function not found');
+      }
+    });
+  }
+  
+  // Close modal when clicking outside
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.addEventListener('click', (e) => {
+      if (e.target === preferencesModal) {
+        closePreferencesModal();
+      }
+    });
+  }
+
+  // Initialize first-run popup
+  initializeFirstRunPopup();
+}
+
+function initializeFirstRunPopup() {
+  const firstRunPopup = document.getElementById('first-run-twitch-popup');
+  const dontShowCheckbox = document.getElementById('dont-show-welcome-again');
+  const setupBtn = document.getElementById('welcome-popup-setup');
+  const dismissBtn = document.getElementById('welcome-popup-dismiss');
+  const hideKey = 'vd-hide-welcome-twitch-popup';
+
+  // Check if user has opted to hide the popup
+  const shouldHide = localStorage.getItem(hideKey) === '1';
+  
+  // Show popup on first run if not hidden
+  if (!shouldHide && firstRunPopup) {
+    // Delay showing popup slightly to ensure TwitchConnected/tc.js is loaded
+    setTimeout(() => {
+      firstRunPopup.classList.remove('hidden');
+    }, 500);
+  }
+
+  // Handle setup button
+  if (setupBtn) {
+    setupBtn.addEventListener('click', () => {
+      firstRunPopup.classList.add('hidden');
+      
+      // Save "don't show" preference if checked
+      if (dontShowCheckbox && dontShowCheckbox.checked) {
+        localStorage.setItem(hideKey, '1');
+      }
+
+      // Open Twitch config modal
+      if (typeof showTwitchConfigModal === 'function') {
+        setTimeout(() => showTwitchConfigModal(), 300);
+      } else {
+        console.error('showTwitchConfigModal function not found');
+      }
+    });
+  }
+
+  // Handle dismiss button
+  if (dismissBtn) {
+    dismissBtn.addEventListener('click', () => {
+      firstRunPopup.classList.add('hidden');
+      
+      // Save "don't show" preference if checked
+      if (dontShowCheckbox && dontShowCheckbox.checked) {
+        localStorage.setItem(hideKey, '1');
+      }
+    });
+  }
+}
+
+// ============================================================================
+// TWITCH EVENT PIPELINE TESTING
+// ============================================================================
+
+/**
+ * Test function that simulates Twitch follow and subscription events
+ * going through the entire pipeline as if they came from Twitch.
+ * This helps diagnose alert issues.
+ */
+window.testTwitchEventPipeline = function() {
+  console.log('');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('🧪 TWITCH EVENT PIPELINE TEST');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('');
+  
+  // First, check what alerts are configured
+  console.log('📋 STEP 1: Checking configured alerts...');
+  console.log('─────────────────────────────────────────────────────────');
+  const alerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  console.log(`Total alerts configured: ${alerts.length}`);
+  
+  if (alerts.length === 0) {
+    console.log('❌ NO ALERTS CONFIGURED!');
+    console.log('💡 This is why you\'re not seeing alerts.');
+    console.log('💡 Go to Tools → Alerts to create alerts.');
+    console.log('');
+    alert('⚠️ No alerts configured!\n\nYou need to create alerts in Tools → Alerts first.\n\nCreate at least:\n• 1 "Follower" alert\n• 1 "Subscriber" alert');
+    return;
+  }
+  
+  // Group alerts by type
+  const alertsByType = {};
+  alerts.forEach(alert => {
+    if (!alertsByType[alert.type]) {
+      alertsByType[alert.type] = [];
+    }
+    alertsByType[alert.type].push(alert);
+  });
+  
+  console.log('\nAlerts by type:');
+  Object.keys(alertsByType).forEach(type => {
+    const typeAlerts = alertsByType[type];
+    const enabledCount = typeAlerts.filter(a => a.enabled !== false).length;
+    console.log(`  • ${type}: ${typeAlerts.length} total, ${enabledCount} enabled`);
+  });
+  console.log('');
+  
+  // Check for follower alerts
+  const followerAlerts = alertsByType['follower'] || [];
+  const enabledFollowerAlerts = followerAlerts.filter(a => a.enabled !== false);
+  
+  if (followerAlerts.length === 0) {
+    console.log('⚠️ WARNING: No follower alerts configured!');
+  } else if (enabledFollowerAlerts.length === 0) {
+    console.log('⚠️ WARNING: Follower alerts exist but none are enabled!');
+  } else {
+    console.log(`✅ Follower alerts: ${enabledFollowerAlerts.length} enabled`);
+  }
+  
+  // Check for subscriber alerts
+  const subscriberAlerts = alertsByType['subscriber'] || [];
+  const enabledSubscriberAlerts = subscriberAlerts.filter(a => a.enabled !== false);
+  
+  if (subscriberAlerts.length === 0) {
+    console.log('⚠️ WARNING: No subscriber alerts configured!');
+  } else if (enabledSubscriberAlerts.length === 0) {
+    console.log('⚠️ WARNING: Subscriber alerts exist but none are enabled!');
+  } else {
+    console.log(`✅ Subscriber alerts: ${enabledSubscriberAlerts.length} enabled`);
+  }
+  
+  console.log('');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log('📡 STEP 2: Simulating Twitch EventSub events...');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log('');
+  
+  // Test 1: Simulate a FOLLOW event
+  console.log('🧪 TEST 1: Simulating FOLLOW event');
+  console.log('──────────────────────────────────');
+  
+  const followEvent = {
+    type: 'channel.follow',
+    event: {
+      user_id: '123456789',
+      user_login: 'test_follower',
+      user_name: 'TestFollower',
+      display_name: 'TestFollower',
+      broadcaster_user_id: '987654321',
+      broadcaster_user_login: 'yourchannel',
+      broadcaster_user_name: 'YourChannel',
+      followed_at: new Date().toISOString()
+    }
+  };
+  
+  console.log('📤 Sending follow event through pipeline:', followEvent);
+  
+  // Check if the EventSub handler exists
+  if (typeof window.electronAPI !== 'undefined' && window.electronAPI.onTwitchEventSub) {
+    // Manually trigger the EventSub handler
+    // We need to get the handler function directly
+    console.log('✅ EventSub handler found');
+    
+    // Update alert system first
+    if (window.alertSystem) {
+      window.alertSystem.updateAlerts();
+      console.log('✅ Alert system updated');
+    }
+    
+    // Map event to alert type
+    const alertType = 'follower';
+    console.log(`🎯 Alert type for this event: "${alertType}"`);
+    
+    // Check if we have alerts for this type
+    const alertsForType = alerts.filter(a => a.type === alertType && a.enabled !== false);
+    if (alertsForType.length === 0) {
+      console.log(`❌ No enabled alerts found for type "${alertType}"!`);
+      console.log('💡 Create a "Follower" alert in Tools → Alerts');
+    } else {
+      console.log(`✅ Found ${alertsForType.length} enabled alert(s) for "${alertType}"`);
+      
+      // Trigger the alert
+      const userData = {
+        username: followEvent.event.user_name,
+        display_name: followEvent.event.display_name || followEvent.event.user_name,
+        ...followEvent.event
+      };
+      
+      console.log('🚀 Triggering alert with user data:', userData);
+      
+      if (window.alertSystem) {
+        window.alertSystem.triggerAlertForEvent(alertType, userData);
+        console.log('✅ Follow alert triggered!');
+      } else {
+        console.log('❌ Alert system not found!');
+      }
+    }
+    
+    // Add to chat display
+    if (typeof addTwitchEvent === 'function') {
+      addTwitchEvent(followEvent.type, followEvent.event);
+      console.log('✅ Added to chat display');
+    }
+    
+    // Update recent followers
+    if (typeof addRecentFollower === 'function') {
+      addRecentFollower(followEvent.event);
+      console.log('✅ Updated recent followers');
+    }
+  } else {
+    console.log('❌ EventSub handler not found - may not be initialized yet');
+  }
+  
+  console.log('');
+  
+  // Test 2: Simulate a SUBSCRIPTION event
+  console.log('🧪 TEST 2: Simulating SUBSCRIPTION event');
+  console.log('─────────────────────────────────────────');
+  
+  const subEvent = {
+    type: 'channel.subscribe',
+    event: {
+      user_id: '987654321',
+      user_login: 'test_subscriber',
+      user_name: 'TestSubscriber',
+      display_name: 'TestSubscriber',
+      broadcaster_user_id: '123456789',
+      broadcaster_user_login: 'yourchannel',
+      broadcaster_user_name: 'YourChannel',
+      tier: '1000',
+      is_gift: false,
+      cumulative_months: 3,
+      streak_months: 1,
+      duration_months: 1,
+      message: {
+        text: 'Love the stream!',
+        emotes: []
+      }
+    }
+  };
+  
+  console.log('📤 Sending subscription event through pipeline:', subEvent);
+  
+  if (typeof window.electronAPI !== 'undefined' && window.electronAPI.onTwitchEventSub) {
+    console.log('✅ EventSub handler found');
+    
+    // Update alert system
+    if (window.alertSystem) {
+      window.alertSystem.updateAlerts();
+    }
+    
+    // Map event to alert type
+    const alertType = 'subscriber';
+    console.log(`🎯 Alert type for this event: "${alertType}"`);
+    
+    // Check if we have alerts for this type
+    const alertsForType = alerts.filter(a => a.type === alertType && a.enabled !== false);
+    if (alertsForType.length === 0) {
+      console.log(`❌ No enabled alerts found for type "${alertType}"!`);
+      console.log('💡 Create a "Subscriber" alert in Tools → Alerts');
+    } else {
+      console.log(`✅ Found ${alertsForType.length} enabled alert(s) for "${alertType}"`);
+      
+      // Trigger the alert
+      const userData = {
+        username: subEvent.event.user_name,
+        display_name: subEvent.event.display_name || subEvent.event.user_name,
+        tier: subEvent.event.tier,
+        months: subEvent.event.cumulative_months,
+        message: subEvent.event.message,
+        ...subEvent.event
+      };
+      
+      console.log('🚀 Triggering alert with user data:', userData);
+      
+      if (window.alertSystem) {
+        window.alertSystem.triggerAlertForEvent(alertType, userData);
+        console.log('✅ Subscription alert triggered!');
+      } else {
+        console.log('❌ Alert system not found!');
+      }
+    }
+    
+    // Add to chat display
+    if (typeof addTwitchEvent === 'function') {
+      addTwitchEvent(subEvent.type, subEvent.event);
+      console.log('✅ Added to chat display');
+    }
+    
+    // Update recent subscribers
+    if (typeof addRecentSubscriber === 'function') {
+      addRecentSubscriber(subEvent.event);
+      console.log('✅ Updated recent subscribers');
+    }
+  } else {
+    console.log('❌ EventSub handler not found');
+  }
+  
+  console.log('');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('✅ TEST COMPLETE');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('');
+  console.log('📊 RESULTS SUMMARY:');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log(`• Total alerts configured: ${alerts.length}`);
+  console.log(`• Follower alerts enabled: ${enabledFollowerAlerts.length}`);
+  console.log(`• Subscriber alerts enabled: ${enabledSubscriberAlerts.length}`);
+  console.log('');
+  console.log('💡 WHAT TO CHECK:');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log('1. Did you see alerts appear on screen?');
+  console.log('2. Check the console messages above for errors');
+  console.log('3. Make sure you have alerts created in Tools → Alerts');
+  console.log('4. Make sure your alerts are ENABLED (not disabled)');
+  console.log('5. Check if you have an overlay URL open in OBS');
+  console.log('6. Look for any error messages in red above');
+  console.log('');
+  console.log('🔍 If alerts didn\'t show:');
+  console.log('─────────────────────────────────────────────────────────');
+  if (enabledFollowerAlerts.length === 0) {
+    console.log('❌ Create/enable a "Follower" alert in Tools → Alerts');
+  }
+  if (enabledSubscriberAlerts.length === 0) {
+    console.log('❌ Create/enable a "Subscriber" alert in Tools → Alerts');
+  }
+  console.log('• Check that your overlay is properly connected');
+  console.log('• Verify alert queue is working (check alertQueue in console)');
+  console.log('• Test individual alerts using the Test button in Alerts menu');
+  console.log('');
+  
+  // Create a summary alert for the user
+  let summaryMessage = '🧪 Twitch Event Pipeline Test Complete!\n\n';
+  summaryMessage += `Alerts configured: ${alerts.length}\n`;
+  summaryMessage += `Follower alerts enabled: ${enabledFollowerAlerts.length}\n`;
+  summaryMessage += `Subscriber alerts enabled: ${enabledSubscriberAlerts.length}\n\n`;
+  
+  if (enabledFollowerAlerts.length === 0 || enabledSubscriberAlerts.length === 0) {
+    summaryMessage += '⚠️ ISSUES FOUND:\n';
+    if (enabledFollowerAlerts.length === 0) {
+      summaryMessage += '• No enabled follower alerts\n';
+    }
+    if (enabledSubscriberAlerts.length === 0) {
+      summaryMessage += '• No enabled subscriber alerts\n';
+    }
+    summaryMessage += '\n💡 Create/enable alerts in Tools → Alerts';
+  } else {
+    summaryMessage += '✅ Alerts are configured correctly!\n\n';
+    summaryMessage += 'Check console (F12) for detailed logs.\n';
+    summaryMessage += 'Did you see the test alerts appear?';
+  }
+  
+  alert(summaryMessage);
+};
+
+// Add a shorter alias for quick testing
+window.testTwitchEvents = window.testTwitchEventPipeline;
