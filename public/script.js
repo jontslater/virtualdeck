@@ -2494,7 +2494,14 @@ document.addEventListener('drop', (e) => {
   console.log('  - target classes:', e.target.classList);
   console.log('  - files:', e.dataTransfer.files.length);
   
-  if (!isDragMode || !e.target.classList.contains('sound-card')) {
+  // Don't process drops if we're in drag mode and dropping on a sound card
+  if (isDragMode && e.target.classList.contains('sound-card')) {
+    console.log('  ❌ Skipping file drop (in drag mode on sound card)');
+    return;
+  }
+  
+  // Process file drops
+  if (e.dataTransfer.files.length > 0) {
     console.log('  ✅ Processing file drop');
     e.preventDefault();
     e.stopPropagation();
@@ -2507,8 +2514,6 @@ document.addEventListener('drop', (e) => {
       handleFileDrop(file);
       break; // Only handle the first file
     }
-  } else {
-    console.log('  ❌ Skipping file drop (in drag mode on sound card)');
   }
 });
 
@@ -5372,12 +5377,50 @@ function handleFileDrop(file) {
     return;
   }
 
-  // Open add menu
+  // IMPORTANT: Ensure modal is closed and form is fully reset before processing new drop
+  // This fixes the issue where drag and drop stops working after the first app
+  if (!settingsModal.classList.contains('hidden')) {
+    console.log('  ⚠️ Modal is open, closing it first');
+    settingsModal.classList.add('hidden');
+    // Stop any active hotkey recording
+    if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
+    // Re-enable hotkeys if they were disabled
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+
+  // Fully reset the form state
   settingsForm.reset();
   hotkeyInput.value = '';
   hotkeyStatus.textContent = '';
   delete settingsForm.dataset.editingIndex;
   delete settingsForm.dataset.editingId;
+  delete settingsForm.dataset.resolvedPath;
+  delete settingsForm.dataset.resolvedArgs;
+  delete settingsForm.dataset.existingFile;
+
+  // Clear file inputs by replacing them (ensures no stale file references)
+  const oldFileInput = document.getElementById('file-input');
+  if (oldFileInput && oldFileInput.parentNode) {
+    const newFileInput = oldFileInput.cloneNode(false);
+    newFileInput.required = false;
+    newFileInput.id = 'file-input';
+    newFileInput.name = 'file';
+    oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
+  }
+  const oldAppFileInput = document.getElementById('app-file-input');
+  if (oldAppFileInput && oldAppFileInput.parentNode) {
+    const newAppFileInput = oldAppFileInput.cloneNode(false);
+    newAppFileInput.required = false;
+    newAppFileInput.id = 'app-file-input';
+    newAppFileInput.name = 'app-file';
+    oldAppFileInput.parentNode.replaceChild(newAppFileInput, oldAppFileInput);
+  }
+
+  // Re-get file inputs after replacement
+  const refreshedFileInput = document.getElementById('file-input');
+  const refreshedAppFileInput = document.getElementById('app-file-input');
   
   // Clear chat command fields
   const chatCommandEnabled = document.getElementById('chat-command-enabled');
@@ -5413,24 +5456,24 @@ function handleFileDrop(file) {
         // Store the resolved path and args in the form
         settingsForm.dataset.resolvedPath = shortcut.target;
         settingsForm.dataset.resolvedArgs = shortcut.args || '';
-        setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
+        setFileInForm(file, type, audioFileSection, appFileSection, refreshedFileInput, refreshedAppFileInput);
       } else {
         console.warn('  ❌ Failed to resolve shortcut, using original file');
         settingsForm.dataset.resolvedPath = file.path;
         settingsForm.dataset.resolvedArgs = '';
-        setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
+        setFileInForm(file, type, audioFileSection, appFileSection, refreshedFileInput, refreshedAppFileInput);
       }
     }).catch(error => {
       console.error('  ❌ Error resolving shortcut:', error);
       settingsForm.dataset.resolvedPath = file.path;
       settingsForm.dataset.resolvedArgs = '';
-      setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
+      setFileInForm(file, type, audioFileSection, appFileSection, refreshedFileInput, refreshedAppFileInput);
     });
   } else {
     console.log('  🎵 Processing as audio file');
     settingsForm.dataset.resolvedPath = file.path;
     settingsForm.dataset.resolvedArgs = '';
-    setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
+    setFileInForm(file, type, audioFileSection, appFileSection, refreshedFileInput, refreshedAppFileInput);
   }
 
   // Set label to file name (no extension)

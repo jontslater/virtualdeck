@@ -11,12 +11,20 @@ const tmi = require('tmi.js'); // Import tmi.js for Twitch chat
 const WebSocket = require('ws');
 const fetch = require('node-fetch');
 const http = require('http');
-const { autoUpdater } = require('electron-updater');
-const VTuberManager = require('./vtuber-manager');
+// Try to require electron-updater, but make it optional
+let autoUpdater;
+try {
+  autoUpdater = require('electron-updater').autoUpdater;
+  // Configure auto-updater
+  autoUpdater.autoDownload = false; // Don't auto-download, ask user first
+  autoUpdater.autoInstallOnAppQuit = true;
+} catch (error) {
+  console.warn('electron-updater not available:', error.message);
+  console.warn('Auto-update functionality will be disabled. Run "npm install" to enable it.');
+  autoUpdater = null;
+}
 
-// Configure auto-updater
-autoUpdater.autoDownload = false; // Don't auto-download, ask user first
-autoUpdater.autoInstallOnAppQuit = true;
+const VTuberManager = require('./vtuber-manager');
 
 // Global debouncing mechanism to prevent duplicate button triggers
 const recentButtonTriggers = new Map();
@@ -4097,6 +4105,11 @@ function saveStoredPreferences(preferences) {
 
 // Auto-updater event handlers
 function setupAutoUpdater() {
+  if (!autoUpdater) {
+    console.log('Auto-updater not available, skipping setup');
+    return;
+  }
+
   // Detect platform
   const isMac = process.platform === 'darwin';
   const isWindows = process.platform === 'win32';
@@ -4182,6 +4195,10 @@ function setupAutoUpdater() {
 
 // Manual update check function
 function checkForUpdates() {
+  if (!autoUpdater) {
+    console.log('Auto-updater not available');
+    return;
+  }
   setupAutoUpdater();
   autoUpdater.checkForUpdates();
 }
