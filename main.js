@@ -15,7 +15,19 @@ const https = require('https');
 const url = require('url');
 const querystring = require('querystring');
 const { autoUpdater } = require('electron-updater');
-const twitchConfig = require('./twitch-oauth-config.js');
+let twitchConfig = {};
+try {
+  // Try to load project-provided twitch-oauth-config.js (used in development / custom builds)
+  twitchConfig = require('./twitch-oauth-config.js');
+} catch (e) {
+  // If the file is not present (packaged installer may omit it), fall back to environment variables.
+  console.warn('⚠️ twitch-oauth-config.js not found - falling back to environment variables if present');
+  twitchConfig = {
+    clientId: process.env.TWITCH_CLIENT_ID || '',
+    clientSecret: process.env.TWITCH_CLIENT_SECRET || '',
+    redirectUri: process.env.TWITCH_REDIRECT_URI || 'http://localhost:3000/oauth/callback'
+  };
+}
 
 // Configure auto-updater
 autoUpdater.autoDownload = false; // Don't auto-download, ask user first
