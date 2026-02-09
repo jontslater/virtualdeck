@@ -377,6 +377,11 @@
             layout: '{{LAYOUT_CLASS}}'
         };
 
+        // When loaded with ?preview=1 we're the dashboard preview — never play audio (only OBS overlay should)
+        const urlParams = new URLSearchParams(window.location.search || '');
+        const IS_PREVIEW = urlParams.get('preview') === '1';
+        if (IS_PREVIEW) console.log('🔇 Overlay running as preview — audio disabled');
+
         // Global variables
         let overlayWS = null;
         let messageCount = 0;
@@ -728,9 +733,10 @@
             video.className = 'media-element';
             
             // Set muted FIRST (before src) for autoplay to work reliably in browsers
-            video.muted = payload.muted !== false; // Default to muted unless explicitly set to false
+            // In preview mode (dashboard iframe) always mute so only OBS overlay has audio
+            video.muted = IS_PREVIEW || (payload.muted !== false);
             video.loop = payload.loop || false;
-            video.volume = payload.volume || 1.0;
+            video.volume = IS_PREVIEW ? 0 : (payload.volume || 1.0);
             
             // Set autoplay attribute BEFORE setting src
             video.setAttribute('autoplay', '');
@@ -1015,7 +1021,8 @@
         function handleAudio(payload) {
             const audio = document.createElement('audio');
             audio.src = payload.src || payload.url || '';
-            audio.volume = payload.volume || 1.0;
+            audio.muted = IS_PREVIEW; // No audio in dashboard preview
+            audio.volume = IS_PREVIEW ? 0 : (payload.volume || 1.0);
             audio.loop = payload.loop || false;
             audio.autoplay = true;
             

@@ -4262,6 +4262,10 @@ async function handleMultiMediaTrigger(button) {
       if (item.type === 'video' && hasSeparateAudio) {
         console.log('🔇 Muting video because separate audio files are present');
         item.muted = true;
+      } else if (item.type === 'video') {
+        // Video with embedded audio: explicitly unmute so overlay plays sound
+        item.muted = false;
+        if (item.volume === undefined) item.volume = 1.0;
       }
       // Handle different image source types like alert system
       if (item.src instanceof File) {
@@ -7366,9 +7370,9 @@ function updatePreviewIframe(overlayName = null) {
   
   const selectedOverlay = overlayName || (overlaySelect ? overlaySelect.value : 'default');
   
-  // Determine the correct URL for the iframe
+  // Determine the correct URL for the iframe (preview=1 so overlay mutes itself — no double audio with OBS)
   let iframeUrl;
-  iframeUrl = `http://localhost:8080/overlay?name=${selectedOverlay}`;
+  iframeUrl = `http://localhost:8080/overlay?name=${selectedOverlay}&preview=1`;
   
   console.log(`🔄 Updating preview iframe to: ${iframeUrl}`);
   
