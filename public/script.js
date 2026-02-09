@@ -2711,6 +2711,169 @@ if (window.electronAPI && typeof window.electronAPI.onViewToggle === 'function')
   });
 }
 
+// Reset drop zone state
+function resetDropZone() {
+  const dropZone = document.getElementById('add-item-drop-zone');
+  if (dropZone) {
+    dropZone.classList.remove('drag-over');
+  }
+}
+
+// Initialize add item drop zone - minimal working example
+function initializeAddItemDropZone() {
+  console.log('=== INITIALIZING DROP ZONE ===');
+  const dropZone = document.getElementById('add-item-drop-zone');
+  console.log('Drop zone element found:', !!dropZone);
+  console.log('Drop zone element:', dropZone);
+  
+  if (!dropZone) {
+    console.error('Add item drop zone not found!');
+    return;
+  }
+  
+  // Check if already initialized to prevent duplicate listeners
+  if (dropZone.dataset.initialized === 'true') {
+    console.log('Drop zone already initialized, skipping...');
+    return;
+  }
+  
+  // Mark as initialized
+  dropZone.dataset.initialized = 'true';
+  
+  console.log('Add item drop zone initialized:', dropZone);
+  console.log('Drop zone visible:', dropZone.offsetWidth > 0 && dropZone.offsetHeight > 0);
+  
+  // Add click handler to open file dialog
+  console.log('Adding click handler...');
+  dropZone.addEventListener('click', () => {
+    console.log('Drop zone clicked');
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.mp3,.wav,.ogg,.exe,.lnk,.bat,.cmd,.app,.sh,.desktop';
+    fileInput.multiple = false;
+    
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handleFileDrop(e.target.files[0]);
+      }
+    });
+    
+    fileInput.click();
+  });
+  
+  // Minimal working drag and drop handlers (based on your example)
+  console.log('Adding dragover handler...');
+  dropZone.addEventListener('dragover', (e) => {
+    console.log('=== DROP ZONE DRAGOVER ===');
+    console.log('Event target:', e.target);
+    console.log('Current target:', e.currentTarget);
+    console.log('Modal exists?', !!document.getElementById('settings-modal'));
+    console.log('Modal hidden?', document.getElementById('settings-modal')?.classList.contains('hidden'));
+    console.log('Modal display:', document.getElementById('settings-modal')?.style.display);
+    console.log('Modal pointer-events:', document.getElementById('settings-modal')?.style.pointerEvents);
+    console.log('Is drag mode?', isDragMode);
+    e.preventDefault(); // VERY IMPORTANT: enables dropping
+    e.stopPropagation();
+    dropZone.classList.add('drag-over');
+  });
+
+  console.log('Adding dragenter handler...');
+  dropZone.addEventListener('dragenter', (e) => {
+    console.log('dragenter event fired');
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.add('drag-over');
+  });
+
+  console.log('Adding dragleave handler...');
+  dropZone.addEventListener('dragleave', (e) => {
+    console.log('dragleave event fired');
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('drag-over');
+  });
+
+  console.log('Adding drop handler...');
+  dropZone.addEventListener('drop', (e) => {
+    console.log('=== DROP ZONE DROP ===');
+    console.log('Event target:', e.target);
+    console.log('Current target:', e.currentTarget);
+    console.log('Files count:', e.dataTransfer.files.length);
+    console.log('Modal exists?', !!document.getElementById('settings-modal'));
+    console.log('Modal hidden?', document.getElementById('settings-modal')?.classList.contains('hidden'));
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Always reset drop zone styling
+    dropZone.classList.remove('drag-over');
+
+    // Handle the dropped file(s)
+    for (const file of e.dataTransfer.files) {
+      console.log('Dropped file:', file.path);
+      handleFileDrop(file);
+      break; // Only handle first file
+    }
+
+    // Don't set drag-drop-ready state - let user interact with modal
+    const modal = document.getElementById('settings-modal');
+    if (modal) {
+      // Remove any existing drag-drop-ready class
+      modal.classList.remove('drag-drop-ready');
+      console.log('Modal ready for user interaction');
+    }
+
+    // Schedule re-initialization after a delay to ensure everything is ready
+    setTimeout(() => {
+      console.log('Drop zone ready for next drag - re-initializing...');
+      dropZone.classList.remove('drag-over');
+      // Re-initialize the drop zone to ensure it's ready for the next drag
+      initializeAddItemDropZone();
+    }, 100);
+  });
+  
+  console.log('=== DROP ZONE INITIALIZATION COMPLETE ===');
+}
+
+// Re-initialization function removed - no longer needed
+
+// Initialize add item drop zone with a delay to ensure DOM is ready
+setTimeout(() => {
+  console.log('About to initialize drop zone...');
+  const dropZone = document.getElementById('add-item-drop-zone');
+  console.log('Drop zone found during init:', !!dropZone);
+  if (dropZone) {
+    console.log('Drop zone element:', dropZone);
+    console.log('Drop zone visible:', dropZone.offsetWidth > 0 && dropZone.offsetHeight > 0);
+  }
+  initializeAddItemDropZone();
+  console.log('Drop zone initialization completed');
+}, 100);
+
+// Add modal focus handler to re-enable interactions when user focuses
+const modal = document.getElementById('settings-modal');
+if (modal) {
+  modal.addEventListener('focusin', () => {
+    console.log('Modal focused - re-enabling interactions');
+    modal.classList.remove('drag-drop-ready'); // accept interactions
+  });
+} else {
+  console.error('Modal not found during initialization!');
+}
+
+// Debug: Check if drop zone exists after initialization
+setTimeout(() => {
+  const dropZone = document.getElementById('add-item-drop-zone');
+  console.log('Drop zone check after init:', !!dropZone);
+  console.log('Drop zone visible:', dropZone?.offsetWidth > 0 && dropZone?.offsetHeight > 0);
+  console.log('Drop zone classes:', dropZone?.className);
+  console.log('Drop zone style:', dropZone?.style.cssText);
+}, 1000);
+
+// Initialize component visibility dropdown
+initializeVisibilityDropdown();
+>>>>>>> fix/drag-to-add-functionality
+
 // Load and display app version
 loadAppVersion();
 
