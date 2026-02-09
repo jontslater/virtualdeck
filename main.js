@@ -641,6 +641,8 @@ function createWindow() {
         if (win.isMaximized && win.isMaximized()) win.webContents.send('window-maximized');
         else win.webContents.send('window-unmaximized');
       } catch (e) {}
+      // Restore Twitch chat if we have stored OAuth credentials (so user stays "logged in")
+      setTimeout(() => tryRestoreTwitchConnection(), 800);
     } catch (e) { console.warn('Failed to send renderer-ready:', e); }
   });
   // Create context menu
@@ -1086,6 +1088,16 @@ function getOverlayServerUrl() {
   return `http://localhost:${overlayServerPort || 8080}/overlay`;
 }
 
+// Generate a button id that is unique among current config.buttons (avoids duplicate id when add-media runs twice)
+function nextUniqueButtonId(buttons) {
+  const existingIds = new Set((buttons || []).map(b => b && b.id).filter(Boolean));
+  let id;
+  do {
+    id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+  } while (existingIds.has(id));
+  return id;
+}
+
 ipcMain.on('add-media', (event, data) => {
   try {
     console.log('add-media received:', data);
@@ -1094,7 +1106,32 @@ ipcMain.on('add-media', (event, data) => {
     const profile = loadProfile(currentActiveProfile);
     const config = profile; // Keep variable name for compatibility
 
-    // Validate required data
+    // Meld-scene buttons: no file required
+    if (data.type === 'meld-scene') {
+      const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
+      const newButton = {
+        id: (existing && existing.id) || nextUniqueButtonId(config.buttons),
+        label: data.label,
+        type: 'meld-scene',
+        sceneId: data.sceneId,
+        sceneName: data.sceneName || data.label,
+        src: '',
+        hotkey: data.hotkey || undefined,
+        chatCommand: data.chatCommand || undefined
+      };
+      if (typeof data.editingIndex === 'number') {
+        config.buttons[data.editingIndex] = newButton;
+        console.log('✏️ Edited Meld scene button at index', data.editingIndex, ':', newButton.label);
+      } else {
+        config.buttons.push(newButton);
+        console.log('➕ Added Meld scene button:', newButton.label);
+      }
+      saveProfile(currentActiveProfile, config);
+      if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
+      return;
+    }
+
+    // Validate required data (file path) for audio/app
     if (!data.originalPath) {
       console.error('Error: originalPath is missing from add-media data:', data);
       if (win && !win.isDestroyed()) {
@@ -1213,11 +1250,11 @@ ipcMain.on('add-media', (event, data) => {
     // Preserve existing id if present
     const existing = config.buttons[data.editingIndex];
     if (existing && existing.id) newButton.id = existing.id;
-    else newButton.id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+    else newButton.id = nextUniqueButtonId(config.buttons);
     config.buttons[data.editingIndex] = newButton;
     console.log('✏️ Edited button at index', data.editingIndex, ':', newButton.label);
   } else {
-    newButton.id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+    newButton.id = nextUniqueButtonId(config.buttons);
     config.buttons.push(newButton);
     console.log('➕ Added new button:', newButton.label);
   }
@@ -3488,6 +3525,27 @@ ipcMain.on('twitch-connect', (event, creds) => {
   startTwitchChatConnection(creds);
 });
 
+// Restore Twitch chat connection on app startup when we have valid stored OAuth
+async function tryRestoreTwitchConnection() {
+  try {
+    const tc = loadTcConfig();
+    if (!tc.oauth || (!tc.oauth.accessToken && !tc.oauth.refreshToken)) return;
+    if (!tc.oauth.clientId) return;
+    const token = await ensureValidToken();
+    if (!token) return;
+    const username = await getUsernameFromToken(token);
+    if (!username) return;
+    twitchToken = token;
+    twitchUserName = username;
+    twitchClientId = tc.oauth.clientId;
+    console.log('Restoring Twitch chat connection on startup for', username);
+    await startTwitchChatConnection({ username, oauth: token, clientId: tc.oauth.clientId });
+    console.log('Twitch chat connection restored on startup');
+  } catch (e) {
+    console.warn('Could not restore Twitch connection on startup:', e.message);
+  }
+}
+
 let lastFollowerIds = [];
 let lastPollTime = null;
 // Interval handle for follower polling (so we can start/stop when follows topic is enabled)
@@ -5253,22 +5311,6 @@ app.whenReady().then(() => {
     } catch (e) { 
       console.warn('overlay-video failed', e); 
     }
-  });
-
-  // IPC handler to get connected overlays
-  ipcMain.handle('get-connected-overlays', () => {
-    const connections = [];
-    overlayRegistry.forEach((clients, overlayName) => {
-      const activeClients = Array.from(clients).filter(client => client.readyState === WebSocket.OPEN);
-      if (activeClients.length > 0) {
-        connections.push({
-          name: overlayName,
-          connected: true,
-          clientCount: activeClients.length
-        });
-      }
-    });
-    return connections;
   });
 
   // Overlay is now a browser source - no window management needed

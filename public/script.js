@@ -2193,9 +2193,13 @@ async function loadButtons() {
     card.dataset.soundData = JSON.stringify(button);
   if (button.id) card.dataset.buttonId = button.id;
     
-    // Fetch icon for app buttons
+    // Fetch icon for app buttons; use scene icon for meld-scene
     let iconImg = '';
-    if (button.type === 'app') {
+    if (button.type === 'meld-scene') {
+      const meldSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#5c6bc0"/><text x="24" y="30" font-size="18" text-anchor="middle" fill="#fff">Meld</text></svg>';
+      const meldIcon = 'data:image/svg+xml,' + encodeURIComponent(meldSvg);
+      iconImg = `<img src="${meldIcon}" alt="Meld Scene" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;pointer-events:none;" />`;
+    } else if (button.type === 'app') {
       try {
         let iconData = await window.electronAPI.getAppIcon(button.src);
         if (!iconData || iconData === 'null' || iconData === 'undefined') {
@@ -2214,7 +2218,7 @@ async function loadButtons() {
       <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
       <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
       ${iconImg}
-      <div class="sound-type">${button.type}</div>
+      <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type}</div>
       <div class="sound-name">${button.name || button.label || 'Unnamed'}</div>
       <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
     `;
@@ -4175,6 +4179,12 @@ async function handleTrigger(button) {
     } else {
       window.electronAPI.launchApp({ path: button.src });
     }
+  } else if (button.type === "meld-scene") {
+    if (button.sceneId && window.meldClient) {
+      window.meldClient.showScene(button.sceneId).catch(err => console.error('Meld showScene failed:', err));
+    } else {
+      console.warn('Meld scene button missing sceneId or meldClient not loaded');
+    }
   } else if (button.type === "multi-media") {
     // Handle multi-media button trigger
     await handleMultiMediaTrigger(button);
@@ -4594,10 +4604,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   const form = e.target;
   const label = form.label.value.trim();
   
-  // Determine type based on which section is visible
+  // Determine type from hidden input (set when opening form for audio/app/meld-scene)
+  const typeInput = document.getElementById('type-input');
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
-  const type = audioFileSection && audioFileSection.style.display !== 'none' ? 'audio' : 'app';
+  const meldSceneSection = document.getElementById('meld-scene-section');
+  const type = (typeInput && typeInput.value) || (meldSceneSection && meldSceneSection.style.display !== 'none' ? 'meld-scene' : (audioFileSection && audioFileSection.style.display !== 'none' ? 'audio' : 'app'));
   
   // Ensure we reference the hotkey input element safely
   const hotkeyInput = document.getElementById('hotkey-input');
@@ -4639,6 +4651,40 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   
   console.log(`🔍 Saving button with chatCommand:`, chatCommand);
   console.log(`🔍 Form values - enabled: ${chatCommandEnabled}, keyword: "${chatCommandKeyword}", redeemName: "${redeemName}", triggerMethod: "${triggerMethod}"`);
+
+  // Meld-scene: submit with sceneId/sceneName only (guard against double submit)
+  if (type === 'meld-scene') {
+    if (window.__meldSceneSubmitInProgress) return;
+    window.__meldSceneSubmitInProgress = true;
+    const saveBtn = document.getElementById('save-sound');
+    if (saveBtn) saveBtn.disabled = true; // Prevent double submission
+    const meldSelect = document.getElementById('meld-scene-select');
+    const sceneId = meldSelect && meldSelect.value ? meldSelect.value.trim() : '';
+    const sceneName = (meldSelect && meldSelect.selectedOptions && meldSelect.selectedOptions[0]) ? meldSelect.selectedOptions[0].text : '';
+    if (!sceneId) {
+      window.__meldSceneSubmitInProgress = false;
+      if (saveBtn) saveBtn.disabled = false;
+      return alert('Please select a Meld Studio scene.');
+    }
+    window.electronAPI.addMedia({
+      label,
+      type: 'meld-scene',
+      hotkey: completeHotkey,
+      sceneId,
+      sceneName,
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined,
+      chatCommand: chatCommand
+    });
+    window.electronAPI.refreshHotkeys();
+    document.getElementById('settings-modal').classList.add('hidden');
+    // Main sends refresh-ui after save, so onRefreshUI will call loadButtons() once — don't call it here (avoids double render)
+    setTimeout(() => {
+      const btn = document.getElementById('save-sound');
+      if (btn) btn.disabled = false;
+      window.__meldSceneSubmitInProgress = false;
+    }, 100);
+    return;
+  }
 
   // Get the appropriate file input based on type
   const fileInput = type === 'app' ? document.getElementById('app-file-input') : document.getElementById('file-input');
@@ -4876,6 +4922,8 @@ window.editButton = async (index) => {
   console.log(`🔍 editButton: Editing button at index ${index}:`, btn);
   console.log(`🔍 editButton: Button chatCommand data:`, btn.chatCommand);
   const settingsForm = document.getElementById('settings-form');
+  const saveBtn = document.getElementById('save-sound');
+  if (saveBtn) saveBtn.disabled = false;
   // Always set editingIndex for edit, and clear resolvedPath/existingFile for safety
   settingsForm.dataset.editingIndex = index;
   // Store stable id for in-place updates
@@ -4910,16 +4958,25 @@ window.editButton = async (index) => {
   const appFileSection = document.getElementById('app-file-section');
   const fileInput = document.getElementById('file-input');
   const appFileInput = document.getElementById('app-file-input');
+  const meldSceneSectionEdit = document.getElementById('meld-scene-section');
   if (btn.type === 'audio') {
     audioFileSection.style.display = '';
     appFileSection.style.display = 'none';
-    fileInput.required = false; // Not required when editing
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
+    fileInput.required = false;
+    appFileInput.required = false;
+  } else if (btn.type === 'meld-scene') {
+    audioFileSection.style.display = 'none';
+    appFileSection.style.display = 'none';
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.remove('hidden'); meldSceneSectionEdit.style.display = ''; }
+    fileInput.required = false;
     appFileInput.required = false;
   } else {
     audioFileSection.style.display = 'none';
     appFileSection.style.display = '';
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
     fileInput.required = false;
-    appFileInput.required = false; // Not required when editing
+    appFileInput.required = false;
   }
   // Set hotkey and parse modifiers
   const hotkeyInput = document.getElementById('hotkey-input');
@@ -4989,7 +5046,32 @@ window.editButton = async (index) => {
   }
   // Update modal title
   const buttonName = btn.name || btn.label || 'Unknown';
-  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : btn.type === 'multi-media' ? 'Multi-Media' : 'App'}: ${buttonName}`;
+  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : btn.type === 'multi-media' ? 'Multi-Media' : btn.type === 'meld-scene' ? 'Meld Scene' : 'App'}: ${buttonName}`;
+  // Handle meld-scene: show meld section and set scene select
+  if (btn.type === 'meld-scene') {
+    const typeInputEl = document.getElementById('type-input');
+    if (typeInputEl) typeInputEl.value = 'meld-scene';
+    if (audioFileSection) audioFileSection.style.display = 'none';
+    if (appFileSection) appFileSection.style.display = 'none';
+    const meldSection = document.getElementById('meld-scene-section');
+    if (meldSection) {
+      meldSection.classList.remove('hidden');
+      meldSection.style.display = '';
+    }
+    const meldSelect = document.getElementById('meld-scene-select');
+    if (meldSelect && btn.sceneId) {
+      if (!meldSelect.querySelector(`option[value="${btn.sceneId}"]`)) {
+        const opt = document.createElement('option');
+        opt.value = btn.sceneId;
+        opt.textContent = btn.sceneName || btn.sceneId;
+        meldSelect.appendChild(opt);
+      }
+      meldSelect.value = btn.sceneId;
+    }
+    // Avoid "invalid form control not focusable" when saving (hidden file inputs must not be required)
+    if (fileInput) fileInput.required = false;
+    if (appFileInput) appFileInput.required = false;
+  }
   // Handle multi-media buttons differently
   if (btn.type === 'multi-media') {
     // Close the regular settings modal
@@ -5282,8 +5364,8 @@ function closeSettingsModal() {
   const settingsModal = document.getElementById('settings-modal');
   if (settingsModal) {
     settingsModal.classList.add('hidden');
-    // Clear any form data if needed
-    clearSettingsForm();
+    const form = document.getElementById('settings-form');
+    if (form) form.reset();
   }
 }
 
@@ -9127,6 +9209,7 @@ function setupAlertWidget() {
 
 // Global functions for inline event handlers
 window.updateAlertList = function() {
+  const alertListContainer = document.getElementById('alert-list-container');
   if (!alertListContainer) return;
   
   // Get the currently selected alert type
@@ -11491,6 +11574,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Button Type Selection Modal
   setupButtonTypeSelection();
+  setupMeldLoadScenesButton();
   
   // Expose helper functions globally for debugging
   window.findMultiMediaButtons = findMultiMediaButtons;
@@ -13788,6 +13872,15 @@ function setupButtonTypeSelection() {
     });
   }
 
+  // Meld Scene option clicked
+  const meldSceneOption = document.querySelector('[data-type="meld-scene"]');
+  if (meldSceneOption) {
+    meldSceneOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      openMeldSceneForm();
+    });
+  }
+
   // Cancel button clicked
   if (cancelBtn) {
     cancelBtn.addEventListener('click', () => {
@@ -13801,6 +13894,11 @@ function setupButtonTypeSelection() {
       selectionModal.classList.add('hidden');
     }
   });
+}
+
+function setupMeldLoadScenesButton() {
+  const btn = document.getElementById('meld-load-scenes');
+  if (btn) btn.addEventListener('click', () => loadMeldScenes());
 }
 
 function setupOverlayPreview() {
@@ -13828,6 +13926,8 @@ function setupOverlayPreview() {
 function openAudioForm() {
   const settingsForm = document.getElementById('settings-form');
   settingsForm.reset();
+  const saveBtn = document.getElementById('save-sound');
+  if (saveBtn) saveBtn.disabled = false;
   
   // Set the form type to 'audio'
   const typeInput = document.getElementById('type-input');
@@ -13877,11 +13977,86 @@ function openAudioForm() {
   
   document.getElementById('settings-modal-title').textContent = 'Add New Audio Button';
   
+  // Show audio section, hide app and meld
+  const meldSection = document.getElementById('meld-scene-section');
+  if (meldSection) { meldSection.classList.add('hidden'); meldSection.style.display = 'none'; }
+  
   // Show settings modal
   document.getElementById('settings-modal').classList.remove('hidden');
   if (window.electronAPI && window.electronAPI.disableHotkeys) {
     window.electronAPI.disableHotkeys();
   }
+}
+
+async function loadMeldScenes() {
+  const select = document.getElementById('meld-scene-select');
+  const status = document.getElementById('meld-scene-status');
+  if (!select || !window.meldClient) {
+    if (status) status.textContent = 'Meld client not loaded.';
+    return;
+  }
+  if (status) status.textContent = 'Loading…';
+  try {
+    const scenes = await window.meldClient.getScenes();
+    select.innerHTML = '<option value="">— Select a scene —</option>';
+    scenes.forEach(({ id, name }) => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = name || id;
+      select.appendChild(opt);
+    });
+    if (status) status.textContent = scenes.length ? `${scenes.length} scene(s)` : 'No scenes';
+  } catch (err) {
+    if (status) status.textContent = 'Failed';
+    select.innerHTML = '<option value="">— Is Meld Studio running? —</option>';
+    console.warn('Load Meld scenes failed:', err);
+  }
+}
+
+function openMeldSceneForm() {
+  window.__meldSceneSubmitInProgress = false; // allow new submit
+  const settingsForm = document.getElementById('settings-form');
+  settingsForm.reset();
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'meld-scene';
+  delete settingsForm.dataset.editingIndex;
+  delete settingsForm.dataset.editingId;
+  delete settingsForm.dataset.resolvedPath;
+  delete settingsForm.dataset.resolvedArgs;
+  delete settingsForm.dataset.existingFile;
+  if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
+  const hkIn = document.getElementById('hotkey-input');
+  if (hkIn) hkIn.value = '';
+  const hkStatus = document.getElementById('hotkey-status');
+  if (hkStatus) hkStatus.textContent = '';
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const redeemName = document.getElementById('redeem-name');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  if (chatCommandEnabled) chatCommandEnabled.checked = false;
+  if (chatCommandKeyword) chatCommandKeyword.value = '';
+  if (redeemName) redeemName.value = '';
+  if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  const meldSection = document.getElementById('meld-scene-section');
+  if (audioFileSection) audioFileSection.style.display = 'none';
+  if (appFileSection) appFileSection.style.display = 'none';
+  if (meldSection) {
+    meldSection.classList.remove('hidden');
+    meldSection.style.display = '';
+  }
+  // So browser validation doesn't block submit: file inputs are hidden for Meld
+  const fileInput = document.getElementById('file-input');
+  const appFileInput = document.getElementById('app-file-input');
+  if (fileInput) fileInput.required = false;
+  if (appFileInput) appFileInput.required = false;
+  document.getElementById('settings-modal-title').textContent = 'Add Meld Scene Button';
+  const saveBtn = document.getElementById('save-sound');
+  if (saveBtn) saveBtn.disabled = false;
+  document.getElementById('settings-modal').classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
+  loadMeldScenes();
 }
 
 // Preferences Modal Functions

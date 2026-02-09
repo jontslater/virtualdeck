@@ -302,6 +302,14 @@
             <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">🔊 Audio plays through overlay</div>
           </div>
         </button>
+        <button class="selection-option" data-type="meld-scene">
+          <div class="option-icon">📺</div>
+          <div class="option-content">
+            <div class="option-title">Meld Scene Button</div>
+            <div class="option-description">Switch to a Meld Studio scene</div>
+            <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">Requires Meld Studio running</div>
+          </div>
+        </button>
       </div>
       <button class="cancel-selection">Cancel</button>
     </div>
@@ -369,6 +377,16 @@
           <label>App File:
             <input type="file" name="app-file" id="app-file-input" accept=".exe,.bat,.cmd,.lnk,.app,.sh,.desktop" required />
           </label>
+        </div>
+        <div id="meld-scene-section" class="hidden">
+          <label>Meld Studio scene:
+            <select id="meld-scene-select">
+              <option value="">— Connect to Meld to load scenes —</option>
+            </select>
+            <span id="meld-scene-status" style="margin-left: 8px; font-size: 12px; color: var(--text-secondary);"></span>
+          </label>
+          <p style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;">Open Meld Studio and ensure your project has scenes, then click "Load scenes" below or reopen this form.</p>
+          <button type="button" id="meld-load-scenes" class="form-button" style="margin-top: 8px;">Load scenes from Meld</button>
         </div>
         <!-- Multi-Media Form Button -->
         <div id="multi-media-form-trigger" class="hidden">
@@ -2011,6 +2029,7 @@
   </div>
 
   <script src="AddEditButtonForm.js"></script>
+  <script src="meld-client.js"></script>
   <script src="script.js"></script>
   <script src="../TwitchConnected/tc.js"></script>
 </body>
