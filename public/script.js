@@ -2196,12 +2196,19 @@ async function loadButtons() {
     // Fetch icon for app buttons
     let iconImg = '';
     if (button.type === 'app') {
-      let iconData = await window.electronAPI.getAppIcon(button.src);
-      if (!iconData) {
-        // Use a default icon if extraction fails
-        iconData = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="%23bbb"/><text x="24" y="30" font-size="20" text-anchor="middle" fill="%23666">App</text></svg>';
+      try {
+        let iconData = await window.electronAPI.getAppIcon(button.src);
+        if (!iconData || iconData === 'null' || iconData === 'undefined') {
+          // Use a default icon if extraction fails
+          iconData = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="%23bbb"/><text x="24" y="30" font-size="20" text-anchor="middle" fill="%23666">App</text></svg>';
+        }
+        iconImg = `<img src="${iconData}" alt="App Icon" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;pointer-events:none;" />`;
+      } catch (err) {
+        console.error('Error loading app icon:', err);
+        // Use default icon on error
+        const defaultIcon = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="%23bbb"/><text x="24" y="30" font-size="20" text-anchor="middle" fill="%23666">App</text></svg>';
+        iconImg = `<img src="${defaultIcon}" alt="App Icon" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;pointer-events:none;" />`;
       }
-      iconImg = `<img src="${iconData}" alt="App Icon" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;" />`;
     }
     card.innerHTML = `
       <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
@@ -2212,21 +2219,23 @@ async function loadButtons() {
       <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
     `;
     card.addEventListener('click', (e) => {
-      if (!e.target.classList.contains('edit-button') && !e.target.classList.contains('delete-x-button')) {
-        // Suppress trigger if in drag mode or the card was just dragged
-        if (isDragMode) return;
-        if (card._vdJustDragged) return;
-        // Read fresh soundData from the DOM so edits/reorders take effect
-        try {
-          const sd = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
-          if (sd) {
-            console.log('🔍 Raw button data from storage:', sd);
-            console.log('🔍 Button overlay property from storage:', sd.overlay);
-            handleTrigger(sd);
-          }
-        } catch (err) {
-          console.error('Failed to parse soundData on click:', err);
+      // Allow clicks on edit/delete buttons to work normally
+      if (e.target.classList.contains('edit-button') || e.target.classList.contains('delete-x-button')) {
+        return;
+      }
+      // Suppress trigger if in drag mode or the card was just dragged
+      if (isDragMode) return;
+      if (card._vdJustDragged) return;
+      // Read fresh soundData from the DOM so edits/reorders take effect
+      try {
+        const sd = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
+        if (sd) {
+          console.log('🔍 Raw button data from storage:', sd);
+          console.log('🔍 Button overlay property from storage:', sd.overlay);
+          handleTrigger(sd);
         }
+      } catch (err) {
+        console.error('Failed to parse soundData on click:', err);
       }
     });
     soundGrid.appendChild(card);
@@ -5352,7 +5361,9 @@ window.electronAPI.onTriggerMedia(async (mediaId) => {
   const config = await window.electronAPI.getConfig();
   if (!config || !Array.isArray(config.buttons)) return;
   const button = config.buttons.find(btn => {
-    // Check both name and label for compatibility - use exact match for precision
+    // First try to match by ID (most reliable)
+    if (btn.id && btn.id === mediaId) return true;
+    // Fall back to name/label for backward compatibility
     const name = btn.name || btn.label || '';
     return name.toLowerCase() === mediaId.toLowerCase();
   });

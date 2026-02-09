@@ -3031,6 +3031,15 @@ ipcMain.handle('get-app-icon', async (event, filePath) => {
       // TODO: Optionally return a custom icon for known UWP apps
       return null;
     }
+    
+    // Check if extractIcon is available (it's disabled due to build issues)
+    // const extractIcon = require('extract-file-icon'); // Temporarily disabled
+    if (typeof extractIcon === 'undefined') {
+      // extractIcon is disabled, return null to use default icon
+      console.log('Icon extraction disabled, using default icon for:', filePath);
+      return null;
+    }
+    
     // For .exe or .lnk files, extract the icon
     const iconBuffer = extractIcon(filePath, 64); // 64x64 icon
     if (iconBuffer) {
@@ -4294,8 +4303,8 @@ function registerHotkeys() {
       // Register the full hotkey string, including modifiers
       try {
         const success = globalShortcut.register(btn.hotkey, () => {
-          // Use name for multi-media buttons, label for others
-          const identifier = btn.name || btn.label;
+          // Use button ID if available, otherwise fall back to name/label for backward compatibility
+          const identifier = btn.id || btn.name || btn.label;
           win.webContents.send('trigger-media', identifier);
         });
         if (!success) {
