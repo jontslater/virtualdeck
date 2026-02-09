@@ -2872,7 +2872,6 @@ setTimeout(() => {
 
 // Initialize component visibility dropdown
 initializeVisibilityDropdown();
->>>>>>> fix/drag-to-add-functionality
 
 // Load and display app version
 loadAppVersion();
