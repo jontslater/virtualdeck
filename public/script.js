@@ -5359,19 +5359,38 @@ document.addEventListener('keydown', (event) => {
 window.electronAPI.onTriggerMedia(async (mediaId) => {
   console.log(`🔍 onTriggerMedia called for: "${mediaId}"`);
   const config = await window.electronAPI.getConfig();
-  if (!config || !Array.isArray(config.buttons)) return;
-  const button = config.buttons.find(btn => {
-    // First try to match by ID (most reliable)
-    if (btn.id && btn.id === mediaId) return true;
-    // Fall back to name/label for backward compatibility
-    const name = btn.name || btn.label || '';
-    return name.toLowerCase() === mediaId.toLowerCase();
+  if (!config || !Array.isArray(config.buttons)) {
+    console.warn('⚠️ No config or buttons array found');
+    return;
+  }
+  
+  // Debug: Log all buttons for comparison
+  console.log(`🔍 Searching through ${config.buttons.length} buttons for identifier: "${mediaId}"`);
+  config.buttons.forEach((btn, idx) => {
+    console.log(`  Button ${idx}: id="${btn.id || 'none'}", name="${btn.name || 'none'}", label="${btn.label || 'none'}", type="${btn.type}", hotkey="${btn.hotkey || 'none'}"`);
   });
+  
+  const button = config.buttons.find(btn => {
+    // First try to match by ID (most reliable) - exact match
+    if (btn.id && btn.id === mediaId) {
+      console.log(`✅ Matched by ID: "${btn.id}"`);
+      return true;
+    }
+    // Fall back to name/label for backward compatibility - case insensitive
+    const name = btn.name || btn.label || '';
+    if (name.toLowerCase() === mediaId.toLowerCase()) {
+      console.log(`✅ Matched by name/label: "${name}" (case-insensitive)`);
+      return true;
+    }
+    return false;
+  });
+  
   if (button) {
-    console.log(`🎯 Triggering mapped button: "${button.name || button.label}" Type: ${button.type} Volume: ${button.volume}`);
+    console.log(`🎯 Triggering mapped button: "${button.name || button.label}" (ID: ${button.id || 'none'}) Type: ${button.type} Volume: ${button.volume}`);
     handleTrigger(button);
   } else {
-    console.warn('⚠️ No button found for mapping trigger:', mediaId);
+    console.warn(`⚠️ No button found for mapping trigger: "${mediaId}"`);
+    console.warn(`⚠️ Available identifiers: ${config.buttons.map(b => b.id || b.name || b.label).join(', ')}`);
   }
 });
 

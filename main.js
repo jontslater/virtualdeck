@@ -4305,6 +4305,7 @@ function registerHotkeys() {
         const success = globalShortcut.register(btn.hotkey, () => {
           // Use button ID if available, otherwise fall back to name/label for backward compatibility
           const identifier = btn.id || btn.name || btn.label;
+          console.log(`🔑 Hotkey "${btn.hotkey}" triggered - sending identifier: "${identifier}" (button: "${btn.name || btn.label}", type: ${btn.type}, id: ${btn.id || 'none'})`);
           win.webContents.send('trigger-media', identifier);
         });
         if (!success) {
