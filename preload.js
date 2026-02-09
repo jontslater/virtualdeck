@@ -172,4 +172,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Alert and effects system
   triggerAlert: (alertData) => ipcRenderer.send('trigger-alert', alertData),
   triggerConfetti: (confettiData) => ipcRenderer.send('trigger-confetti', confettiData),
+  // Twitch clip creation
+  createClip: async () => {
+    console.log('📹 createClip called from renderer');
+    const result = await ipcRenderer.invoke('create-clip');
+    console.log('📹 createClip result:', result);
+    return result;
+  },
+  onTwitchClipCreated: (callback) => ipcRenderer.on('twitch-clip-created', (event, result) => callback(result)),
 });

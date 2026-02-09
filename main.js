@@ -2235,6 +2235,24 @@ ipcMain.handle('is-stream-live', async () => {
   }
 });
 
+// IPC: create a Twitch clip
+ipcMain.handle('create-clip', async () => {
+  try {
+    const result = await createClip();
+    // Notify renderer with result
+    if (win && win.webContents) {
+      win.webContents.send('twitch-clip-created', result);
+    }
+    return result;
+  } catch (error) {
+    console.error('Error in create-clip IPC handler:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
 // IPC: get current viewer count for the channel
 ipcMain.handle('get-viewer-count', async () => {
   try {
@@ -2281,6 +2299,15 @@ ipcMain.handle('get-follower-count', async () => {
 // IPC: get total subscriber count and subscription points for the channel
 ipcMain.handle('get-subscriber-stats', async () => {
   try {
+    // Try to ensure token is loaded before getting user ID
+    if (!twitchToken) {
+      try {
+        const oauthToken = await ensureValidToken();
+        twitchToken = oauthToken;
+      } catch (err) {
+        console.log('Could not load token for subscriber stats:', err.message);
+      }
+    }
     if (!twitchUserId) await getUserId();
     if (!twitchClientId || !twitchToken) return { count: 0, points: 0 };
     
@@ -3219,6 +3246,53 @@ async function startTwitchChatConnection({ username, oauth, clientId }) {
     // Trigger buttons with chat commands enabled if message starts with '!'
     if (message.startsWith('!')) {
       const commandText = message.split(' ')[0].substring(1).toLowerCase();
+      console.log(`💬 Chat command detected: "${commandText}" from ${username}`);
+      
+      // Handle !clip command
+      if (commandText === 'clip') {
+        console.log(`📹 [Twitch Chat] ${username} requested clip creation via !clip command`);
+        console.log(`📹 Twitch client status:`, twitchClient ? 'exists' : 'null', twitchClient && twitchClient.readyState ? `readyState: ${twitchClient.readyState()}` : 'no readyState');
+        createClip().then((result) => {
+          console.log(`📹 Clip creation result:`, result);
+          if (result.success) {
+            const clipMessage = result.testMode
+              ? `🧪 TEST MODE: @${username} ${result.message}`
+              : (result.clipUrl 
+                ? `@${username} Clip created! ${result.clipUrl}`
+                : `@${username} Clip created! Processing... ${result.editUrl}`);
+            
+            if (twitchClient && twitchClient.readyState() === 'OPEN') {
+              const channels = twitchClient.getChannels();
+              if (channels && channels.length > 0) {
+                twitchClient.say(channels[0], clipMessage);
+              }
+            }
+            
+            // Notify renderer
+            if (win && win.webContents) {
+              win.webContents.send('twitch-clip-created', result);
+            }
+          } else {
+            const errorMessage = `@${username} Failed to create clip: ${result.error || 'Unknown error'}`;
+            if (twitchClient && twitchClient.readyState() === 'OPEN') {
+              const channels = twitchClient.getChannels();
+              if (channels && channels.length > 0) {
+                twitchClient.say(channels[0], errorMessage);
+              }
+            }
+            console.error('Clip creation failed:', result.error);
+          }
+        }).catch((error) => {
+          console.error('Error in clip creation:', error);
+          if (twitchClient && twitchClient.readyState() === 'OPEN') {
+            const channels = twitchClient.getChannels();
+            if (channels && channels.length > 0) {
+              twitchClient.say(channels[0], `@${username} Error creating clip. Please try again.`);
+            }
+          }
+        });
+        return; // Don't process as button trigger
+      }
       
       // Handle !checkin command specifically
       if (commandText === 'checkin') {
@@ -3422,6 +3496,47 @@ async function getUserId() {
   console.log('Fetching Twitch user ID for', twitchUserName);
   if (twitchUserId) return twitchUserId;
 
+  // If twitchToken is not set, try to load it from stored OAuth token
+  if (!twitchToken) {
+    try {
+      const oauthToken = await ensureValidToken();
+      twitchToken = oauthToken;
+      console.log('✅ Loaded OAuth token from storage');
+    } catch (oauthError) {
+      console.log('⚠️ Could not load OAuth token from storage:', oauthError.message);
+    }
+  }
+
+  // If still no token, try to get username from token to set twitchUserName
+  if (!twitchUserName && twitchToken) {
+    try {
+      const tc = loadTcConfig();
+      if (tc.oauth && tc.oauth.accessToken) {
+        // Try to get username from token
+        const username = await getUsernameFromToken(twitchToken);
+        if (username) {
+          twitchUserName = username;
+          console.log('✅ Loaded username from token:', twitchUserName);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not get username from token:', err);
+    }
+  }
+
+  // If still no clientId, try to load it from config
+  if (!twitchClientId) {
+    try {
+      const tc = loadTcConfig();
+      if (tc.oauth && tc.oauth.clientId) {
+        twitchClientId = tc.oauth.clientId;
+        console.log('✅ Loaded Client ID from config:', twitchClientId);
+      }
+    } catch (err) {
+      console.warn('Could not load Client ID from config:', err);
+    }
+  }
+
   console.log('Using token:', twitchToken ? twitchToken.substring(0, 20) + '...' : 'NO TOKEN');
   console.log('Using clientId:', twitchClientId);
   console.log('Using username:', twitchUserName);
@@ -3466,6 +3581,136 @@ async function getUserId() {
   } catch (error) {
     console.error('Error in getUserId:', error);
     throw error;
+  }
+}
+
+// Create a Twitch clip
+async function createClip() {
+  try {
+    // Check for test mode in preferences
+    const preferences = getStoredPreferences();
+    console.log('📋 Loaded preferences:', JSON.stringify(preferences));
+    console.log('🧪 clipTestMode value:', preferences.clipTestMode);
+    
+    if (preferences.clipTestMode) {
+      console.log('🧪 TEST MODE: Simulating clip creation');
+      // Simulate a successful clip creation
+      const mockClipId = 'test_clip_' + Date.now();
+      const mockClipUrl = `https://clips.twitch.tv/TestClip-${mockClipId}`;
+      const mockEditUrl = `https://clips.twitch.tv/edit/${mockClipId}`;
+      
+      console.log('🧪 TEST MODE: Returning mock clip result');
+      return {
+        success: true,
+        clipId: mockClipId,
+        editUrl: mockEditUrl,
+        clipUrl: mockClipUrl,
+        message: `🧪 TEST MODE: Clip created! ${mockClipUrl}`,
+        testMode: true
+      };
+    }
+    
+    if (!twitchUserId) {
+      await getUserId();
+    }
+    
+    if (!twitchUserId) {
+      throw new Error('Twitch user ID not available');
+    }
+    
+    if (!twitchToken) {
+      throw new Error('Twitch token not available');
+    }
+    
+    if (!twitchClientId) {
+      throw new Error('Twitch Client ID not available');
+    }
+    
+    console.log('Creating Twitch clip for broadcaster:', twitchUserId);
+    
+    // Ensure token doesn't have 'oauth:' prefix (Bearer tokens shouldn't)
+    let tokenToUse = twitchToken;
+    if (tokenToUse.startsWith('oauth:')) {
+      tokenToUse = tokenToUse.substring(6);
+    }
+    
+    // Create clip using Twitch Helix API
+    const endpointUrl = new URL('https://api.twitch.tv/helix/clips');
+    endpointUrl.searchParams.append('broadcaster_id', twitchUserId);
+    
+    const response = await fetch(endpointUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${tokenToUse}`,
+        'Client-Id': twitchClientId
+      }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Twitch API error creating clip:', response.status, errorText);
+      throw new Error(`Failed to create clip: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    if (!data.data || data.data.length === 0) {
+      throw new Error('No clip data returned from Twitch API');
+    }
+    
+    const clipId = data.data[0].id;
+    const editUrl = data.data[0].edit_url;
+    
+    console.log('✅ Clip created successfully! Clip ID:', clipId);
+    console.log('Edit URL:', editUrl);
+    
+    // Clip creation is asynchronous - poll for the clip URL
+    // Twitch recommends checking within 15 seconds
+    let clipUrl = null;
+    let attempts = 0;
+    const maxAttempts = 15; // Check for up to 15 seconds
+    
+    while (!clipUrl && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between checks
+      attempts++;
+      
+      try {
+        const getClipUrl = new URL('https://api.twitch.tv/helix/clips');
+        getClipUrl.searchParams.append('id', clipId);
+        
+        const clipResponse = await fetch(getClipUrl, {
+          headers: {
+            'Authorization': `Bearer ${tokenToUse}`,
+            'Client-Id': twitchClientId
+          }
+        });
+        
+        if (clipResponse.ok) {
+          const clipData = await clipResponse.json();
+          if (clipData.data && clipData.data.length > 0 && clipData.data[0].url) {
+            clipUrl = clipData.data[0].url;
+            console.log('✅ Clip URL retrieved:', clipUrl);
+            break;
+          }
+        }
+      } catch (err) {
+        console.warn('Error checking clip status:', err);
+      }
+    }
+    
+    return {
+      success: true,
+      clipId,
+      editUrl,
+      clipUrl: clipUrl || editUrl, // Fallback to edit_url if clipUrl not ready
+      message: clipUrl ? `Clip created! ${clipUrl}` : `Clip created! Processing... ${editUrl}`
+    };
+  } catch (error) {
+    console.error('Error creating clip:', error);
+    return {
+      success: false,
+      error: error.message
+    };
   }
 }
 
@@ -4376,15 +4621,61 @@ function registerHotkeys() {
       }
     }
   });
+  
+  // Register clip hotkey if configured in preferences
+  try {
+    const preferences = getStoredPreferences();
+    console.log('🔑 Checking for clip hotkey in preferences:', preferences.clipHotkey);
+    if (preferences.clipHotkey) {
+      const success = globalShortcut.register(preferences.clipHotkey, async () => {
+        console.log(`🔑 Clip hotkey "${preferences.clipHotkey}" triggered`);
+        const result = await createClip();
+        console.log(`📹 Clip creation result from hotkey:`, result);
+        if (win && win.webContents) {
+          win.webContents.send('twitch-clip-created', result);
+        }
+        if (result.success) {
+          // Post clip URL to chat
+          const clipMessage = result.testMode
+            ? `🧪 TEST MODE: ${result.message}`
+            : (result.clipUrl 
+              ? `Clip created! ${result.clipUrl}`
+              : `Clip created! Processing... ${result.editUrl}`);
+          
+          if (twitchClient && twitchClient.readyState() === 'OPEN') {
+            const channels = twitchClient.getChannels();
+            if (channels && channels.length > 0) {
+              twitchClient.say(channels[0], clipMessage);
+              console.log(`✅ Posted clip to chat: ${clipMessage}`);
+            }
+          }
+        } else {
+          console.error('Clip creation failed via hotkey:', result.error);
+        }
+      });
+      if (!success) {
+        console.warn('Failed to register clip hotkey:', preferences.clipHotkey);
+      } else {
+        console.log(`✅ Registered clip hotkey: ${preferences.clipHotkey}`);
+      }
+    }
+  } catch (error) {
+    console.error('Error registering clip hotkey:', error);
+  }
 }
 
 // Preferences management
 function getStoredPreferences() {
   try {
     const preferencesPath = path.join(app.getPath('userData'), 'preferences.json');
+    console.log('📋 Loading preferences from:', preferencesPath);
     if (fs.existsSync(preferencesPath)) {
       const data = fs.readFileSync(preferencesPath, 'utf8');
-      return JSON.parse(data);
+      const prefs = JSON.parse(data);
+      console.log('📋 Loaded preferences:', JSON.stringify(prefs, null, 2));
+      return prefs;
+    } else {
+      console.log('📋 Preferences file does not exist');
     }
   } catch (error) {
     console.error('Error reading preferences:', error);
@@ -4495,6 +4786,13 @@ function checkForUpdates() {
 
 app.whenReady().then(() => {
   ensureUserData();
+  
+  // Log preferences at startup
+  const prefs = getStoredPreferences();
+  console.log('📋 Startup preferences check:');
+  console.log('  - clipTestMode:', prefs.clipTestMode);
+  console.log('  - clipHotkey:', prefs.clipHotkey);
+  
   // Start OAuth server for Twitch authentication
   startOAuthServer();
   // Load progressions data
@@ -5297,7 +5595,7 @@ function startOAuthServer() {
           `client_id=${encodeURIComponent(clientId)}&` +
           `redirect_uri=${encodeURIComponent(redirectUri)}&` +
           `response_type=code&` +
-          `scope=${encodeURIComponent('chat:read user:read:follows moderator:read:followers')}&` +
+          `scope=${encodeURIComponent('chat:read user:read:follows moderator:read:followers clips:edit')}&` +
           `state=${encodeURIComponent(Math.random().toString(36).substring(7))}`;
 
         console.log('Redirecting to Twitch OAuth:', authUrl);
