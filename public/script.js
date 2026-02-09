@@ -4168,6 +4168,7 @@ async function handleTrigger(button) {
     audio.play().catch(error => {
     });
   } else if (button.type === "app") {
+    console.log(`🚀 Launching app: name="${button.name || button.label}", src="${button.src}", args="${button.args || 'none'}"`);
     // If the button has args, pass them along
     if (button.args) {
       window.electronAPI.launchApp({ path: button.src, args: button.args });
@@ -4681,7 +4682,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   }
 
   // If editing and no new file selected, use existing file
-  if (isEditing && !fileInput.files.length && !resolvedPath) {
+  // CRITICAL: Clear any stale resolvedPath when editing without new file
+  if (isEditing && !fileInput.files.length) {
+    // Clear stale resolvedPath to prevent using wrong file from previous drag-and-drop
+    delete form.dataset.resolvedPath;
+    delete form.dataset.resolvedArgs;
+    
     const existingFile = form.dataset.existingFile;
     if (!existingFile) return alert("No existing file found.");
 
@@ -4726,16 +4732,19 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     console.log('Form submission - resolvedPath:', resolvedPath);
     console.log('Form submission - fileInput:', fileInput);
     console.log('Form submission - fileInput.files.length:', fileInput ? fileInput.files.length : 0);
+    console.log('Form submission - isEditing:', isEditing);
+    console.log('Form submission - editingIndex:', form.dataset.editingIndex);
     
-    let filePath = resolvedPath;
+    let filePath = null;
     let fileName = null;
     
-    if (!filePath && fileInput && fileInput.files.length > 0) {
+    // CRITICAL: Priority must be fileInput > resolvedPath
+    // fileInput is user-initiated (Browse button), resolvedPath is from drag-and-drop
+    // If both exist, fileInput takes precedence as it's more recent/explicit
+    if (fileInput && fileInput.files.length > 0) {
       const file = fileInput.files[0];
       console.log('Form submission - fileInput.files[0]:', file);
       console.log('Form submission - fileInput.files[0].name:', file.name);
-      console.log('Form submission - fileInput.files[0].type:', file.type);
-      console.log('Form submission - fileInput.files[0].size:', file.size);
       
       // Use Electron's webUtils to get the file path
       if (window.electronAPI && window.electronAPI.getFilePathFromFile) {
@@ -4747,8 +4756,15 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       }
       
       fileName = file.name;
+      console.log('✅ Using fileInput file (priority):', filePath, fileName);
+      
+      // Clear resolvedPath when fileInput is used to prevent stale data
+      delete form.dataset.resolvedPath;
+      delete form.dataset.resolvedArgs;
     } else if (resolvedPath) {
+      filePath = resolvedPath;
       fileName = resolvedPath.split('\\').pop() || resolvedPath.split('/').pop();
+      console.log('✅ Using resolvedPath from drag-and-drop:', filePath, fileName);
     }
     
     // Validate that we have a valid file path
@@ -4773,6 +4789,11 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     let targetPath;
     if (type === 'app') {
       targetPath = filePath; // Use the actual file path for apps
+      console.log(`💾 Saving app button "${label}" with path: "${targetPath}"`);
+      // Validate that the file path matches the label (basic sanity check)
+      if (targetPath && label && !targetPath.toLowerCase().includes(label.toLowerCase()) && !label.toLowerCase().includes('postman')) {
+        console.warn(`⚠️ Warning: App path "${targetPath}" doesn't seem to match label "${label}"`);
+      }
     } else {
       const ext = fileName.split('.').pop();
       targetPath = `assets/sounds/${label}.${ext}`;
@@ -4780,6 +4801,10 @@ document.getElementById('settings-form').onsubmit = async (e) => {
 
     // Save args for app buttons
     const args = type === 'app' ? resolvedArgs : '';
+    
+    // Clear resolvedPath after using it to prevent stale data
+    delete form.dataset.resolvedPath;
+    delete form.dataset.resolvedArgs;
 
     console.log('Sending to addMedia:', {
       label,
@@ -5367,30 +5392,42 @@ window.electronAPI.onTriggerMedia(async (mediaId) => {
   // Debug: Log all buttons for comparison
   console.log(`🔍 Searching through ${config.buttons.length} buttons for identifier: "${mediaId}"`);
   config.buttons.forEach((btn, idx) => {
-    console.log(`  Button ${idx}: id="${btn.id || 'none'}", name="${btn.name || 'none'}", label="${btn.label || 'none'}", type="${btn.type}", hotkey="${btn.hotkey || 'none'}"`);
+    console.log(`  Button ${idx}: id="${btn.id || 'none'}", name="${btn.name || 'none'}", label="${btn.label || 'none'}", type="${btn.type}", hotkey="${btn.hotkey || 'none'}", src="${btn.src || 'none'}"`);
   });
   
-  const button = config.buttons.find(btn => {
-    // First try to match by ID (most reliable) - exact match
+  // Match by ID first (hotkeys always use IDs)
+  let button = config.buttons.find(btn => {
     if (btn.id && btn.id === mediaId) {
-      console.log(`✅ Matched by ID: "${btn.id}"`);
-      return true;
-    }
-    // Fall back to name/label for backward compatibility - case insensitive
-    const name = btn.name || btn.label || '';
-    if (name.toLowerCase() === mediaId.toLowerCase()) {
-      console.log(`✅ Matched by name/label: "${name}" (case-insensitive)`);
+      console.log(`✅ Found button by ID match: id="${btn.id}", name="${btn.name || btn.label}", src="${btn.src || 'none'}"`);
       return true;
     }
     return false;
   });
   
+  // Only fall back to name/label matching if ID match failed (for backward compatibility)
+  // This handles old hotkeys that might have been registered with name/label
+  if (!button) {
+    button = config.buttons.find(btn => {
+      const btnName = btn.name || btn.label || '';
+      if (btnName.toLowerCase() === mediaId.toLowerCase()) {
+        console.log(`⚠️ Found button by name/label (backward compat): name="${btnName}", id="${btn.id || 'none'}", src="${btn.src || 'none'}"`);
+        return true;
+      }
+      return false;
+    });
+    if (button) {
+      console.log(`⚠️ Matched by name/label (backward compat): "${button.name || button.label}" - hotkey should be re-registered with ID`);
+    }
+  }
+  
   if (button) {
-    console.log(`🎯 Triggering mapped button: "${button.name || button.label}" (ID: ${button.id || 'none'}) Type: ${button.type} Volume: ${button.volume}`);
+    console.log(`🎯 Triggering mapped button: "${button.name || button.label}" (ID: ${button.id || 'none'}) Type: ${button.type}`);
+    console.log(`🎯 Button src/path: "${button.src || button.path || 'none'}"`);
+    console.log(`🎯 Button args: ${button.args || 'none'}`);
     handleTrigger(button);
   } else {
     console.warn(`⚠️ No button found for mapping trigger: "${mediaId}"`);
-    console.warn(`⚠️ Available identifiers: ${config.buttons.map(b => b.id || b.name || b.label).join(', ')}`);
+    console.warn(`⚠️ Available identifiers: ${config.buttons.map(b => `${b.id || 'no-id'}:${b.name || b.label || 'unnamed'}`).join(', ')}`);
   }
 });
 
@@ -5464,6 +5501,9 @@ function handleFileDrop(file) {
   hotkeyStatus.textContent = '';
   delete settingsForm.dataset.editingIndex;
   delete settingsForm.dataset.editingId;
+  delete settingsForm.dataset.resolvedPath;
+  delete settingsForm.dataset.resolvedArgs;
+  delete settingsForm.dataset.existingFile;
   
   // Clear chat command fields
   const chatCommandEnabled = document.getElementById('chat-command-enabled');

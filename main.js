@@ -3026,27 +3026,63 @@ ipcMain.on('launch-app', async (event, appData) => {
 // IPC handler to get the app icon as a base64 PNG
 ipcMain.handle('get-app-icon', async (event, filePath) => {
   try {
-    // For UWP/Store apps, we can't extract the icon directly, so return null or a default
+    if (!filePath || filePath === 'undefined' || filePath === 'null') {
+      console.log('Invalid file path for icon extraction:', filePath);
+      return null;
+    }
+    
+    // For UWP/Store apps, we can't extract the icon directly
     if (filePath.startsWith('shell:AppsFolder')) {
-      // TODO: Optionally return a custom icon for known UWP apps
+      console.log('UWP app detected, cannot extract icon:', filePath);
       return null;
     }
     
-    // Check if extractIcon is available (it's disabled due to build issues)
-    // const extractIcon = require('extract-file-icon'); // Temporarily disabled
-    if (typeof extractIcon === 'undefined') {
-      // extractIcon is disabled, return null to use default icon
-      console.log('Icon extraction disabled, using default icon for:', filePath);
-      return null;
+    let iconPath = filePath;
+    
+    // If it's a .lnk file, resolve it first to get the target path
+    if (filePath.toLowerCase().endsWith('.lnk')) {
+      try {
+        console.log('Resolving shortcut for icon extraction:', filePath);
+        const shortcut = await new Promise((resolve, reject) => {
+          ws.query(filePath, (err, shortcut) => {
+            if (err) {
+              console.error('Error querying shortcut for icon:', err);
+              resolve(null);
+            } else {
+              resolve(shortcut);
+            }
+          });
+        });
+        
+        if (shortcut && shortcut.target) {
+          iconPath = shortcut.target;
+          console.log('Using resolved shortcut target for icon:', iconPath);
+        } else if (shortcut && shortcut.icon) {
+          // Some shortcuts have an icon path specified
+          iconPath = shortcut.icon;
+          console.log('Using shortcut icon path:', iconPath);
+        }
+      } catch (error) {
+        console.error('Error resolving shortcut for icon:', error);
+        // Fall back to using the .lnk file itself
+      }
     }
     
-    // For .exe or .lnk files, extract the icon
-    const iconBuffer = extractIcon(filePath, 64); // 64x64 icon
-    if (iconBuffer) {
-      const image = nativeImage.createFromBuffer(iconBuffer);
-      return image.toDataURL(); // Return as base64 PNG
+    // Use Electron's built-in getFileIcon API
+    try {
+      const icon = await app.getFileIcon(iconPath, { size: 'large' });
+      if (icon && !icon.isEmpty()) {
+        const dataURL = icon.toDataURL();
+        console.log('✅ Successfully extracted icon for:', filePath);
+        return dataURL;
+      } else {
+        console.log('Icon is empty for:', filePath);
+        return null;
+      }
+    } catch (iconError) {
+      console.error('Error using app.getFileIcon:', iconError);
+      return null;
     }
-    return null;
   } catch (error) {
     console.error('Error extracting icon for', filePath, error);
     return null;
@@ -4298,15 +4334,39 @@ function registerHotkeys() {
   // Load buttons from active profile
   const profile = loadProfile(currentActiveProfile);
   const buttons = profile.buttons || [];
+  
+  // Ensure all buttons have IDs before registering hotkeys
+  let profileChanged = false;
+  const existingIds = new Set(buttons.filter(b => b && b.id).map(b => b.id));
   buttons.forEach((btn) => {
-    if (btn.hotkey) {
+    if (btn && !btn.id) {
+      // Create a compact unique id
+      let newId;
+      do {
+        newId = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+      } while (existingIds.has(newId));
+      btn.id = newId;
+      existingIds.add(newId);
+      profileChanged = true;
+      console.log(`🔧 Backfilled missing ID for button "${btn.name || btn.label}": ${newId}`);
+    }
+  });
+  
+  // Save profile if IDs were added
+  if (profileChanged) {
+    saveProfile(currentActiveProfile, profile);
+    console.log('✅ Updated profile with backfilled button IDs');
+  }
+  
+  buttons.forEach((btn) => {
+    if (btn.hotkey && btn.id) {
       // Register the full hotkey string, including modifiers
+      // CRITICAL: Only register hotkeys for buttons with IDs to ensure reliable matching
       try {
         const success = globalShortcut.register(btn.hotkey, () => {
-          // Use button ID if available, otherwise fall back to name/label for backward compatibility
-          const identifier = btn.id || btn.name || btn.label;
-          console.log(`🔑 Hotkey "${btn.hotkey}" triggered - sending identifier: "${identifier}" (button: "${btn.name || btn.label}", type: ${btn.type}, id: ${btn.id || 'none'})`);
-          win.webContents.send('trigger-media', identifier);
+          // Always use ID - buttons without IDs should not have hotkeys registered
+          console.log(`🔑 Hotkey "${btn.hotkey}" triggered - sending ID: "${btn.id}" (button: "${btn.name || btn.label}", type: ${btn.type})`);
+          win.webContents.send('trigger-media', btn.id);
         });
         if (!success) {
           console.warn('Failed to register hotkey:', btn.hotkey);
