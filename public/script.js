@@ -2185,8 +2185,43 @@ async function loadButtons() {
     }
     if (ordered.length > 0) orderedButtons = ordered;
   }
-  
-  for (const [index, button] of orderedButtons.entries()) {
+
+  // Meld scene buttons go in the left sidebar; all others in the main grid
+  const meldButtons = orderedButtons.filter(b => b.type === 'meld-scene');
+  const otherButtons = orderedButtons.filter(b => b.type !== 'meld-scene');
+  const meldSidebar = document.getElementById('meld-buttons-sidebar');
+  if (meldSidebar) {
+    meldSidebar.innerHTML = '';
+    for (const button of meldButtons) {
+      const card = document.createElement('div');
+      card.className = 'sound-card';
+      card.dataset.soundData = JSON.stringify(button);
+      if (button.id) card.dataset.buttonId = button.id;
+      const meldSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#5c6bc0"/><text x="24" y="30" font-size="18" text-anchor="middle" fill="#fff">Meld</text></svg>';
+      const meldIcon = 'data:image/svg+xml,' + encodeURIComponent(meldSvg);
+      const iconImg = `<img src="${meldIcon}" alt="Meld Scene" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;pointer-events:none;" />`;
+      card.innerHTML = `
+        <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
+        <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
+        ${iconImg}
+        <div class="sound-type">Meld</div>
+        <div class="sound-name">${button.name || button.label || 'Unnamed'}</div>
+        <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
+      `;
+      card.addEventListener('click', (e) => {
+        if (e.target.classList.contains('edit-button') || e.target.classList.contains('delete-x-button')) return;
+        if (isDragMode) return;
+        if (card._vdJustDragged) return;
+        try {
+          const sd = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
+          if (sd) handleTrigger(sd);
+        } catch (err) { console.error('Failed to parse soundData on click:', err); }
+      });
+      meldSidebar.appendChild(card);
+    }
+  }
+
+  for (const [index, button] of otherButtons.entries()) {
     const card = document.createElement("div");
     card.className = "sound-card";
     card.dataset.index = index;

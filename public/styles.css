@@ -400,12 +400,43 @@ html[data-theme], body[data-theme] {
   overflow: visible; /* Allow hovered cards to lift without being clipped */
 }
 
+/* Meld scene buttons: vertical strip on the left */
+.meld-buttons-sidebar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--card-gap);
+  flex-shrink: 0;
+  width: var(--card-size);
+  min-width: var(--card-size);
+  padding: 4px 0;
+}
+.meld-buttons-sidebar:empty {
+  display: none;
+}
+.meld-buttons-sidebar .sound-card {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 /* Responsive behavior: stack secondary panes under the grid on narrow viewports */
 @media (max-width: 900px) {
   .main-content {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
+  }
+  /* Meld sidebar: horizontal strip when stacked */
+  .meld-buttons-sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+  }
+  .meld-buttons-sidebar .sound-card {
+    width: var(--card-size);
+    min-width: var(--card-size);
   }
   /* On narrow screens switch to a wrapping flex layout to avoid grid overlap */
   #sound-grid {
