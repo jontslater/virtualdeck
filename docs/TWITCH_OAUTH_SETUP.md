@@ -15,14 +15,9 @@ To enable Twitch login in VirtualDeck, you need to set up OAuth credentials. Thi
 
 ## Configure credentials (choose an option)
 
-**Option A: twitch-oauth-config.js**
-```javascript
-module.exports = {
-  clientId: 'your_client_id_here',
-  clientSecret: 'your_client_secret_here',
-  redirectUri: 'http://localhost:3000/oauth/callback'
-};
-```
+**Option A: twitch-oauth-config.js** (gitignored – never commit secrets)
+1. Copy `twitch-oauth-config.example.js` to `twitch-oauth-config.js`
+2. Replace the placeholder values with your Client ID and Client Secret
 
 **Option B: environment variables**
 ```bash
@@ -32,4 +27,6 @@ TWITCH_CLIENT_SECRET=your_client_secret_here
 
 ## Security Notes
 - Client Secret is used server-side; access tokens are refreshed and stored securely.
+- **Never commit** `twitch-oauth-config.js` – it is in `.gitignore`. Use the example file as a template.
+- If credentials were ever exposed in git history, **revoke and rotate** them in the Twitch Developer Console immediately.
 
