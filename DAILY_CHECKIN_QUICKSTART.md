@@ -1,8 +1,7 @@
-# Daily Check-In - Quick Start Guide
+# File moved
 
-## What is Daily Check-In?
-
-Daily Check-In is a viewer engagement feature that rewards your Twitch viewers for participating in your streams. Viewers redeem a Channel Point reward once per stream to "check in," and VirtualDeck tracks their participation over time.
+This document has been moved to `docs/DAILY_CHECKIN_QUICKSTART.md`.
+Please open that file for the quick start guide.
 
 ## Benefits
 

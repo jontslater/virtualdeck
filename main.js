@@ -2080,6 +2080,16 @@ ipcMain.handle('get-tc-config', async () => {
   }
 });
 
+// IPC: get the connected Twitch username (login) for defaulting battle overlay channel
+ipcMain.handle('get-twitch-username', async () => {
+  try {
+    if (!twitchUserName) await getUserId();
+    return twitchUserName || null;
+  } catch (err) {
+    return null;
+  }
+});
+
 
 // ===============================
 // Daily Check-In IPC Handlers
@@ -2163,11 +2173,13 @@ ipcMain.handle('list-eventsub-subscriptions', async () => {
   }
 });
 
-// IPC: fetch channel point rewards for the connected channel (requires clientId and token)
+// IPC: fetch channel point rewards for the connected channel (requires clientId and token + scope channel:read:redemptions)
 ipcMain.handle('get-channel-rewards', async () => {
   try {
     if (!twitchUserId) await getUserId();
-    if (!twitchClientId || !twitchToken) return [];
+    if (!twitchClientId || !twitchToken) {
+      throw new Error('Not connected to Twitch. Connect in the app first.');
+    }
     const url = `https://api.twitch.tv/helix/channel_points/custom_rewards?broadcaster_id=${encodeURIComponent(twitchUserId)}`;
     const resp = await fetch(url, {
       headers: {
@@ -2176,11 +2188,18 @@ ipcMain.handle('get-channel-rewards', async () => {
       }
     });
     const data = await resp.json();
+    if (!resp.ok) {
+      const msg = (data && data.message) ? data.message : `${resp.status} ${resp.statusText}`;
+      if (resp.status === 401 || resp.status === 403) {
+        throw new Error(`Twitch denied access: ${msg}. Reconnect Twitch (clear credentials and log in again) to grant "channel point rewards" permission.`);
+      }
+      throw new Error(`Twitch API: ${msg}`);
+    }
     if (data && Array.isArray(data.data)) return data.data;
     return [];
   } catch (err) {
     console.error('Error fetching channel rewards:', err);
-    return [];
+    throw err;
   }
 });
 
@@ -5649,7 +5668,7 @@ function startOAuthServer() {
           `client_id=${encodeURIComponent(clientId)}&` +
           `redirect_uri=${encodeURIComponent(redirectUri)}&` +
           `response_type=code&` +
-          `scope=${encodeURIComponent('chat:read user:read:follows moderator:read:followers clips:edit')}&` +
+          `scope=${encodeURIComponent('chat:read user:read:follows moderator:read:followers clips:edit channel:read:redemptions')}&` +
           `state=${encodeURIComponent(Math.random().toString(36).substring(7))}`;
 
         console.log('Redirecting to Twitch OAuth:', authUrl);

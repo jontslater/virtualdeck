@@ -17,8 +17,8 @@ VirtualDeck can switch scenes in **Meld Studio** via Meld's WebChannel API. User
 
 Meld's API is documented here:
 
-- **Docs**: [Meld Studio API](https://meldstudio.co/docs/api/)
-- **WebChannel API (GitHub)**: [WebChannelAPI.md](https://github.com/MeldStudio/streamdeck/blob/main/WebChannelAPI.md)
+- **Docs**: Meld Studio API
+- **WebChannel API (GitHub)**: WebChannelAPI reference
 
 Summary:
 
@@ -43,3 +43,4 @@ No file path or media is used.
 - **"No scenes" or empty list**: Ensure Meld Studio is open and the project has at least one scene. Restart Meld if the WebChannel port was changed.
 - **Button does nothing**: Confirm Meld is running and the scene still exists (IDs are stable for the session but can change if the project is edited).
 - **Connection errors**: Check that nothing else is using port 13376 and that your firewall allows localhost WebSocket connections.
+

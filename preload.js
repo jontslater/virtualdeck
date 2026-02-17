@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeOverlayConnections: async (overlayName) => ipcRenderer.invoke('close-overlay-connections', overlayName),
   // Return persisted Twitch Client config (tc_config.json in userData)
   getTwitchConfig: async () => ipcRenderer.invoke('get-tc-config'),
+  getTwitchUsername: async () => ipcRenderer.invoke('get-twitch-username'),
   getSoundPath: async (relativePath) => ipcRenderer.invoke('get-sound-path', relativePath),
   resolveShortcut: async (shortcutPath) => ipcRenderer.invoke('resolve-shortcut', shortcutPath),
   launchApp: (appData) => ipcRenderer.send('launch-app', appData),

@@ -238,6 +238,52 @@
       </div>
     </div>
 
+    <!-- Battle Modal (TikTok-style invites) -->
+    <div id="battle-modal" class="modal-overlay hidden">
+      <div class="modal-content" style="max-width: 520px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <h2 style="margin:0;">Twitch Battles</h2>
+          <button id="battle-modal-close" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-primary);">&times;</button>
+        </div>
+        <div style="margin-bottom:16px;display:flex;align-items:center;gap:12px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="battle-enabled-toggle" />
+            <span>Enable battles (appear online for invites)</span>
+          </label>
+        </div>
+        <div id="battle-status" style="margin-bottom:16px;padding:12px;background:var(--bg-secondary);border-radius:8px;font-size:14px;">
+          <div><strong>Status:</strong> <span id="battle-status-text">Ready to invite</span></div>
+          <div id="battle-hp-row" style="margin-top:8px;display:none;">
+            <strong>Battle active:</strong> Team A vs Team B
+          </div>
+        </div>
+        <div id="battle-pending-invites" style="margin-bottom:16px;display:none;">
+          <strong>Pending invites:</strong>
+          <div id="battle-invites-list" style="margin-top:8px;"></div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <strong>Invite to battle:</strong>
+          <div id="battle-online-list" style="margin-top:8px;max-height:120px;overflow-y:auto;padding:8px;background:var(--bg-secondary);border-radius:8px;font-size:14px;">
+            <span id="battle-online-empty" style="color:var(--text-tertiary);">No one online. Enable battles and ask others to do the same.</span>
+          </div>
+        </div>
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);">
+          <label style="font-size:12px;color:var(--text-tertiary);">Overlay URL (add to OBS Browser Source):</label>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+            <code id="battle-overlay-url" style="flex:1;font-size:12px;word-break:break-all;">http://localhost:5173?channel=</code>
+            <button id="battle-copy-overlay-url" class="copy-btn" title="Copy URL">📋</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="battle-invite-toast" class="hidden" style="position:fixed;bottom:24px;right:24px;z-index:100000;padding:16px 20px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);max-width:320px;">
+      <div style="font-weight:600;margin-bottom:8px;">Battle invite from <span id="battle-invite-from"></span></div>
+      <div style="display:flex;gap:8px;">
+        <button id="battle-invite-accept" style="padding:8px 16px;background:#22c55e;color:white;border:none;border-radius:6px;cursor:pointer;">Accept</button>
+        <button id="battle-invite-decline" style="padding:8px 16px;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:6px;cursor:pointer;">Decline</button>
+      </div>
+    </div>
+
     <div id="sound-controls" class="sound-controls">
       <button id="toggle-drag-mode" class="drag-toggle-btn" title="Toggle Drag Mode">
         🔒 Lock
@@ -245,6 +291,9 @@
       <span class="drag-status">Sound buttons are locked</span>
       <button id="open-profile-manager-btn" class="profile-manager-btn" title="Open Profile Manager">
         👤 Profile
+      </button>
+      <button id="open-battle-modal-btn" class="profile-manager-btn" title="Twitch Battles">
+        ⚔️ Battle
       </button>
     </div>
     
@@ -1201,6 +1250,27 @@
           <small style="color: var(--text-tertiary); display: block; margin-top: 8px;">Optional dedicated overlay. Or choose "Main Overlay" when creating progressions.</small>
         </div>
       </div>
+
+      <!-- Twitch Battles Overlay -->
+      <div class="overlay-section">
+        <h4>Twitch Battles</h4>
+        <div class="overlay-info">
+          <p>Run a TikTok-style battle between two streamers. Viewers cheer, sub, or gift to deal damage. Add the overlay as a Browser Source in OBS; run the battles backend and overlay app when using this feature.</p>
+        </div>
+        <div class="overlay-list" style="margin-bottom: 12px;">
+          <label for="battle-channel-input">Channel (defaults to your connected Twitch account):</label>
+          <input type="text" id="battle-channel-input" placeholder="Uses connected account" class="custom-input" style="max-width: 200px; margin-right: 8px;" />
+        </div>
+        <div class="overlay-url-display">
+          <label>Battle Overlay URL:</label>
+          <div class="url-display">
+            <code id="battle-overlay-url-display">http://localhost:5173?channel=</code>
+            <button id="copy-battle-overlay-url" class="copy-btn" title="Copy URL">📋</button>
+            <button id="open-battle-overlay" class="overlay-action-btn" style="margin-left: 8px;">Open in browser</button>
+          </div>
+          <small style="color: var(--text-tertiary); display: block; margin-top: 8px;">Use this URL in OBS Browser Source. Start the overlay app (e.g. <code>cd overlay &amp;&amp; npm run dev</code>) and battles backend separately.</small>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -2029,6 +2099,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script src="AddEditButtonForm.js"></script>
   <script src="meld-client.js"></script>
   <script src="script.js"></script>

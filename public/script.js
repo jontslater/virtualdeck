@@ -1058,7 +1058,8 @@ async function loadChannelRedemptions(selectElement, inputElement) {
     console.log('✅ Loaded Twitch redemptions:', rewards);
   } catch (error) {
     console.error('Error loading redemptions:', error);
-    showCustomAlert('Failed to load redemptions from Twitch', 'error');
+    const msg = (error && error.message) ? error.message : 'Failed to load redemptions from Twitch';
+    showCustomAlert(msg, 'error');
   }
 }
 
@@ -5489,6 +5490,13 @@ document.addEventListener('keydown', (event) => {
       closeTwitchAlertWidget();
       return;
     }
+
+    // Close Battle modal
+    const battleModal = document.getElementById('battle-modal');
+    if (battleModal && !battleModal.classList.contains('hidden')) {
+      if (typeof closeBattleModal === 'function') closeBattleModal();
+      return;
+    }
     
     // Close any other visible modals
     const visibleModals = document.querySelectorAll('.modal:not(.hidden), [class*="modal"]:not(.hidden)');
@@ -6462,6 +6470,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupOverlayWidget();
   setupHydrationSettings();
   setupAlertWidget();
+  setupBattleModal();
   initDailyCheckinSystem();
   // initialize left app menu
   if (typeof setupLeftAppMenu === 'function') {
@@ -6615,6 +6624,270 @@ function closeProfileModal() {
 if (window.electronAPI && window.electronAPI.onOpenProfileManager) {
   window.electronAPI.onOpenProfileManager(() => {
     openProfileModal();
+  });
+}
+
+// Battle modal - Twitch Battles (TikTok-style invites)
+const BATTLE_BACKEND_URL = 'http://localhost:4000';
+const BATTLE_OVERLAY_BASE = 'http://localhost:5173';
+const BATTLE_HEARTBEAT_INTERVAL = 25000;
+let battleCurrentRoomId = null;
+let battleTwitchLogin = '';
+let battleSocket = null;
+let battleHeartbeatTimer = null;
+let battlePendingInviteId = null;
+
+function getBattlesEnabled() {
+  try {
+    return localStorage.getItem('battles_enabled') !== 'false';
+  } catch (e) {
+    return true;
+  }
+}
+
+function setBattlesEnabled(enabled) {
+  try {
+    localStorage.setItem('battles_enabled', enabled ? 'true' : 'false');
+  } catch (e) {}
+}
+
+function openBattleModal() {
+  const modal = document.getElementById('battle-modal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) {
+    window.electronAPI.disableHotkeys();
+  }
+  const toggle = document.getElementById('battle-enabled-toggle');
+  if (toggle) toggle.checked = getBattlesEnabled();
+  const statusEl = document.getElementById('battle-status-text');
+  const hpRow = document.getElementById('battle-hp-row');
+  if (statusEl) statusEl.textContent = battleCurrentRoomId ? 'Battle in progress!' : 'Ready to invite';
+  if (hpRow) hpRow.style.display = battleCurrentRoomId ? 'block' : 'none';
+  battleConnect();
+  updateBattleOverlayUrl();
+}
+
+function closeBattleModal() {
+  const modal = document.getElementById('battle-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+  // Keep heartbeat running when modal closed so we stay online for invites
+}
+
+function updateBattleOverlayUrl() {
+  const urlEl = document.getElementById('battle-overlay-url');
+  if (!urlEl) return;
+  const channel = battleTwitchLogin || battleCurrentRoomId || '';
+  urlEl.textContent = channel ? `${BATTLE_OVERLAY_BASE}?channel=${encodeURIComponent(channel)}` : BATTLE_OVERLAY_BASE + '?channel=';
+}
+
+function battleConnect() {
+  window.electronAPI?.getTwitchUsername?.().then(function (login) {
+    battleTwitchLogin = (login || '').toLowerCase();
+    if (!battleTwitchLogin) return;
+    refreshBattleOnline();
+    refreshBattleInvites();
+    updateBattleOverlayUrl();
+    if (typeof io !== 'undefined') {
+      if (battleSocket) battleSocket.disconnect();
+      battleSocket = io(BATTLE_BACKEND_URL);
+      battleSocket.on('connect', function () {
+        battleSocket.emit('dashboard:hello', { twitch_login: battleTwitchLogin });
+      });
+      battleSocket.on('battle:invite', function (data) {
+        battlePendingInviteId = data.id;
+        document.getElementById('battle-invite-from').textContent = data.from_user || 'someone';
+        document.getElementById('battle-invite-toast').classList.remove('hidden');
+      });
+      battleSocket.on('battle:accepted', function (data) {
+        battleCurrentRoomId = data.roomId;
+        document.getElementById('battle-status-text').textContent = 'Battle in progress!';
+        document.getElementById('battle-hp-row').style.display = 'block';
+        updateBattleOverlayUrl();
+        showCustomAlert('Battle started!', 'success');
+      });
+    }
+    if (getBattlesEnabled()) {
+      fetch(`${BATTLE_BACKEND_URL}/battles/heartbeat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ twitch_login: battleTwitchLogin, battles_enabled: true })
+      }).catch(function () {});
+      if (battleHeartbeatTimer) clearInterval(battleHeartbeatTimer);
+      battleHeartbeatTimer = setInterval(function () {
+        if (!getBattlesEnabled()) return;
+        fetch(`${BATTLE_BACKEND_URL}/battles/heartbeat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ twitch_login: battleTwitchLogin, battles_enabled: true })
+        }).catch(function () {});
+      }, BATTLE_HEARTBEAT_INTERVAL);
+    }
+  });
+}
+
+async function refreshBattleOnline() {
+  const list = document.getElementById('battle-online-list');
+  const empty = document.getElementById('battle-online-empty');
+  if (!list) return;
+  try {
+    const res = await fetch(`${BATTLE_BACKEND_URL}/battles/online`);
+    const users = await res.json();
+    const me = battleTwitchLogin;
+    const others = (users || []).filter(function (u) {
+      return u.login && u.login.toLowerCase() !== me;
+    });
+    if (empty) empty.style.display = others.length ? 'none' : 'block';
+    list.innerHTML = '';
+    others.forEach(function (u) {
+      const btn = document.createElement('button');
+      btn.textContent = u.login + ' (Invite)';
+      btn.style.cssText = 'display:block;width:100%;padding:8px 12px;margin-bottom:4px;text-align:left;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;cursor:pointer;color:var(--text-primary);';
+      btn.onclick = function () {
+        battleSendInvite(u.login);
+      };
+      list.appendChild(btn);
+    });
+  } catch (e) {
+    if (empty) empty.textContent = 'Could not load online users. Is the battles backend running?';
+  }
+}
+
+function battleSendInvite(toLogin) {
+  if (!battleTwitchLogin) return;
+  fetch(`${BATTLE_BACKEND_URL}/battles/invite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: battleTwitchLogin, to: toLogin.toLowerCase() })
+  })
+    .then(function (r) {
+      return r.json().then(function (d) {
+        if (r.ok) showCustomAlert('Invite sent to ' + toLogin, 'success');
+        else showCustomAlert(d.error || 'Failed to send invite', 'error');
+      });
+    })
+    .catch(function () {
+      showCustomAlert('Could not send invite', 'error');
+    });
+}
+
+async function refreshBattleInvites() {
+  if (!battleTwitchLogin) return;
+  try {
+    const res = await fetch(`${BATTLE_BACKEND_URL}/battles/invites/pending?user=${encodeURIComponent(battleTwitchLogin)}`);
+    const invites = await res.json();
+    const container = document.getElementById('battle-pending-invites');
+    const list = document.getElementById('battle-invites-list');
+    if (!container || !list) return;
+    container.style.display = invites.length ? 'block' : 'none';
+    list.innerHTML = '';
+    (invites || []).forEach(function (inv) {
+      const div = document.createElement('div');
+      div.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px;margin-bottom:4px;background:var(--bg-tertiary);border-radius:6px;';
+      div.innerHTML = '<span>' + (inv.from_user || 'someone') + '</span><div><button class="battle-invite-accept-btn" data-id="' + inv.id + '" style="padding:4px 12px;margin-right:4px;background:#22c55e;color:white;border:none;border-radius:4px;cursor:pointer;">Accept</button><button class="battle-invite-decline-btn" data-id="' + inv.id + '" style="padding:4px 12px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;cursor:pointer;">Decline</button></div>';
+      list.appendChild(div);
+    });
+    list.querySelectorAll('.battle-invite-accept-btn').forEach(function (btn) {
+      btn.onclick = function () {
+        battleAcceptInvite(btn.getAttribute('data-id'));
+      };
+    });
+    list.querySelectorAll('.battle-invite-decline-btn').forEach(function (btn) {
+      btn.onclick = function () {
+        battleDeclineInvite(btn.getAttribute('data-id'));
+      };
+    });
+  } catch (e) {}
+}
+
+function battleAcceptInvite(inviteId) {
+  fetch(`${BATTLE_BACKEND_URL}/battles/invite/${inviteId}/accept`, { method: 'POST' })
+    .then(function (r) {
+      return r.json().then(function (d) {
+        if (r.ok) {
+          battleCurrentRoomId = d.room?.id;
+          document.getElementById('battle-status-text').textContent = 'Battle in progress!';
+          document.getElementById('battle-hp-row').style.display = 'block';
+          refreshBattleInvites();
+          document.getElementById('battle-invite-toast').classList.add('hidden');
+          battlePendingInviteId = null;
+          updateBattleOverlayUrl();
+          showCustomAlert('Battle started!', 'success');
+        } else {
+          showCustomAlert(d.error || 'Failed to accept', 'error');
+        }
+      });
+    })
+    .catch(function () {
+      showCustomAlert('Could not accept invite', 'error');
+    });
+}
+
+function battleDeclineInvite(inviteId) {
+  fetch(`${BATTLE_BACKEND_URL}/battles/invite/${inviteId}/decline`, { method: 'POST' })
+    .then(function (r) {
+      if (r.ok) {
+        refreshBattleInvites();
+        document.getElementById('battle-invite-toast').classList.add('hidden');
+        battlePendingInviteId = null;
+      }
+    })
+    .catch(function () {});
+}
+
+function setupBattleModal() {
+  const openBtn = document.getElementById('open-battle-modal-btn');
+  const closeBtn = document.getElementById('battle-modal-close');
+  const modal = document.getElementById('battle-modal');
+  if (openBtn) openBtn.addEventListener('click', openBattleModal);
+  if (closeBtn) closeBtn.addEventListener('click', closeBattleModal);
+  if (modal) {
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) closeBattleModal();
+    });
+  }
+
+  document.getElementById('battle-enabled-toggle')?.addEventListener('change', function () {
+    const enabled = this.checked;
+    setBattlesEnabled(enabled);
+    if (enabled && battleTwitchLogin) {
+      fetch(`${BATTLE_BACKEND_URL}/battles/heartbeat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ twitch_login: battleTwitchLogin, battles_enabled: true })
+      }).catch(function () {});
+      if (battleHeartbeatTimer) clearInterval(battleHeartbeatTimer);
+      battleHeartbeatTimer = setInterval(function () {
+        if (!getBattlesEnabled()) return;
+        fetch(`${BATTLE_BACKEND_URL}/battles/heartbeat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ twitch_login: battleTwitchLogin, battles_enabled: true })
+        }).catch(function () {});
+      }, BATTLE_HEARTBEAT_INTERVAL);
+    } else if (battleHeartbeatTimer) {
+      clearInterval(battleHeartbeatTimer);
+      battleHeartbeatTimer = null;
+    }
+  });
+
+  document.getElementById('battle-invite-accept')?.addEventListener('click', function () {
+    if (battlePendingInviteId) battleAcceptInvite(battlePendingInviteId);
+  });
+  document.getElementById('battle-invite-decline')?.addEventListener('click', function () {
+    if (battlePendingInviteId) battleDeclineInvite(battlePendingInviteId);
+  });
+
+  document.getElementById('battle-copy-overlay-url')?.addEventListener('click', function () {
+    const url = document.getElementById('battle-overlay-url')?.textContent;
+    if (url && navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(() => showCustomAlert('Overlay URL copied', 'success'));
+    }
   });
 }
 
@@ -7070,6 +7343,66 @@ function setupOverlayWidget() {
           console.error('Failed to copy:', err);
           showCustomAlert('Failed to copy URL to clipboard', 'error');
         });
+      }
+    });
+  }
+
+  // Twitch Battles overlay URL (overlay app runs e.g. on 5173; backend on 4000)
+  const battleChannelInput = document.getElementById('battle-channel-input');
+  const battleOverlayUrlDisplay = document.getElementById('battle-overlay-url-display');
+  const copyBattleOverlayUrlBtn = document.getElementById('copy-battle-overlay-url');
+  const openBattleOverlayBtn = document.getElementById('open-battle-overlay');
+  const BATTLE_OVERLAY_BASE = 'http://localhost:5173';
+
+  function getBattleOverlayUrl() {
+    const channel = (battleChannelInput && battleChannelInput.value.trim()) || '';
+    return channel ? `${BATTLE_OVERLAY_BASE}?channel=${encodeURIComponent(channel)}` : BATTLE_OVERLAY_BASE + '?channel=';
+  }
+
+  function updateBattleOverlayUrlDisplay() {
+    if (battleOverlayUrlDisplay) battleOverlayUrlDisplay.textContent = getBattleOverlayUrl();
+  }
+
+  if (battleChannelInput) {
+    battleChannelInput.addEventListener('input', updateBattleOverlayUrlDisplay);
+    battleChannelInput.addEventListener('change', updateBattleOverlayUrlDisplay);
+  }
+
+  // Default channel to the authenticated Twitch user
+  if (window.electronAPI && window.electronAPI.getTwitchUsername) {
+    window.electronAPI.getTwitchUsername().then(function (username) {
+      if (username && battleChannelInput && !battleChannelInput.value.trim()) {
+        battleChannelInput.value = username;
+        battleChannelInput.placeholder = username;
+        updateBattleOverlayUrlDisplay();
+      }
+    });
+  }
+  updateBattleOverlayUrlDisplay();
+
+  if (copyBattleOverlayUrlBtn) {
+    copyBattleOverlayUrlBtn.addEventListener('click', () => {
+      const url = getBattleOverlayUrl();
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => {
+          showCustomAlert('Battle overlay URL copied to clipboard!', 'success');
+        }).catch(err => {
+          console.error('Failed to copy:', err);
+          showCustomAlert('Failed to copy URL to clipboard', 'error');
+        });
+      } else {
+        showCustomAlert('Copy this URL: ' + url, 'info');
+      }
+    });
+  }
+
+  if (openBattleOverlayBtn) {
+    openBattleOverlayBtn.addEventListener('click', () => {
+      const url = getBattleOverlayUrl();
+      if (window.electronAPI && window.electronAPI.openExternal) {
+        window.electronAPI.openExternal(url);
+      } else {
+        window.open(url, '_blank');
       }
     });
   }
