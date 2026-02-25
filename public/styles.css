@@ -571,6 +571,170 @@ html[data-theme], body[data-theme] {
   line-height: 1;
 }
 
+/* Dashboard widgets column: Alert Queue + Profile + Battle stacked, flyout menu to the left */
+.dashboard-widgets-column {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: 0;
+  pointer-events: none;
+}
+.dashboard-widgets-column > .queue-control-widget,
+.dashboard-widgets-column > .profile-control-widget,
+.dashboard-widgets-column > .battle-control-widget {
+  pointer-events: auto;
+}
+
+/* Queue widget lives in column (no longer fixed on its own) */
+.dashboard-widgets-column .queue-control-widget {
+  position: relative;
+  bottom: auto;
+  right: auto;
+}
+.profile-control-widget .queue-widget-actions,
+.battle-control-widget .queue-widget-actions {
+  grid-template-columns: 1fr;
+}
+
+/* Flyout menu: appears to the left of the widget column when Profile or Battle Manage is open */
+.widget-flyout {
+  position: absolute;
+  right: 100%;
+  top: 0;
+  margin-right: 10px;
+  width: 280px;
+  max-height: 85vh;
+  pointer-events: none;
+}
+.widget-flyout.profile-open,
+.widget-flyout.battle-open {
+  pointer-events: auto;
+}
+.widget-flyout-panel {
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 10001;
+}
+.widget-flyout-panel.hidden {
+  display: none !important;
+}
+.widget-flyout.profile-open #profile-widget-body,
+.widget-flyout.battle-open #battle-widget-body {
+  display: flex !important;
+}
+#battle-widget-body.widget-flyout-panel {
+  max-height: 280px;
+}
+
+.widget-body-label {
+  display: block;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.widget-select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+.widget-btn-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.widget-btn {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.widget-btn:hover {
+  background: var(--hover-bg);
+}
+.widget-btn-primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+.widget-btn-danger {
+  background: #dc3545;
+  color: white;
+  border-color: #dc3545;
+}
+.widget-body-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+.widget-body-toggle input {
+  width: auto;
+}
+.widget-battle-status,
+.widget-section {
+  font-size: 12px;
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  color: var(--text-primary);
+}
+.widget-section strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.widget-online-list {
+  max-height: 100px;
+  overflow-y: auto;
+  margin-top: 6px;
+}
+.widget-muted {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+.widget-border-top {
+  border-top: 1px solid var(--border-color);
+  padding-top: 10px;
+  margin-top: 4px;
+}
+.widget-overlay-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.widget-overlay-row code {
+  flex: 1;
+  font-size: 11px;
+  word-break: break-all;
+  color: var(--text-secondary);
+}
+
 .queue-widget-btn .btn-label {
   font-size: 11px;
   font-weight: 500;

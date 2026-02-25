@@ -572,6 +572,7 @@ class ProfileManager {
     
     // Set current profile
     selector.value = this.currentProfile;
+    updateProfileWidgetLabel();
   }
 
   async loadProfileSettings() {
@@ -819,7 +820,9 @@ class ProfileManager {
       'recent-activity-container': document.getElementById('recent-activity-container'),
       'twitch-chat-container': document.getElementById('twitch-chat-container'),
       'sound-controls': document.getElementById('sound-controls'),
-      'queue-control-widget': document.getElementById('queue-control-widget')
+      'queue-control-widget': document.getElementById('queue-control-widget'),
+      'profile-control-widget': document.getElementById('profile-control-widget'),
+      'battle-control-widget': document.getElementById('battle-control-widget')
     };
     
     for (const [key, element] of Object.entries(components)) {
@@ -994,7 +997,7 @@ class ProfileManager {
       
       if (result.success) {
         this.currentProfile = profileId;
-        
+        updateProfileWidgetLabel();
         const profileName = this.profiles.find(p => p.id === profileId)?.name || 'profile';
         showCustomAlert(`Switched to "${profileName}"`, 'success');
         
@@ -2693,8 +2696,9 @@ function getVisibilityMap() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
-    'toggle-queue-control': 'queue-control-widget'
-    // move-bar removed
+    'toggle-queue-control': 'queue-control-widget',
+    'toggle-profile-widget': 'profile-control-widget',
+    'toggle-battle-widget': 'battle-control-widget'
   };
 }
 
@@ -3151,8 +3155,9 @@ function applyVisibilityPrefs() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
-    'toggle-queue-control': 'queue-control-widget'
-    // move-bar removed
+    'toggle-queue-control': 'queue-control-widget',
+    'toggle-profile-widget': 'profile-control-widget',
+    'toggle-battle-widget': 'battle-control-widget'
   };
 
   let prefs = {};
@@ -6596,27 +6601,52 @@ function setupProfilePanelEventHandlers() {
   }
 }
 
-// Open profile manager modal
+// Update the Profile dashboard widget label (current profile name)
+function updateProfileWidgetLabel() {
+  const el = document.getElementById('profile-widget-current');
+  if (!el) return;
+  const name = (typeof profileManager !== 'undefined' && profileManager && profileManager.profiles)
+    ? (profileManager.profiles.find(p => p.id === profileManager.currentProfile)?.name || 'Default')
+    : 'Default';
+  el.textContent = name;
+}
+
+// Profile/Battle: content shown in shared flyout menu to the left of the widget column
 function openProfileModal() {
-  const modal = document.getElementById('profile-modal');
-  if (modal) {
-    modal.classList.remove('hidden');
-    // Disable hotkeys when modal is open
+  const flyout = document.getElementById('widget-flyout');
+  const profileBody = document.getElementById('profile-widget-body');
+  const battleBody = document.getElementById('battle-widget-body');
+  if (flyout && profileBody) {
+    document.getElementById('profile-control-widget')?.classList.remove('hidden');
+    flyout.classList.remove('battle-open');
+    flyout.classList.add('profile-open');
+    profileBody.classList.remove('hidden');
+    if (battleBody) battleBody.classList.add('hidden');
     if (window.electronAPI && window.electronAPI.disableHotkeys) {
       window.electronAPI.disableHotkeys();
     }
   }
 }
 
-// Close profile manager modal
 function closeProfileModal() {
-  const modal = document.getElementById('profile-modal');
-  if (modal) {
-    modal.classList.add('hidden');
-    // Re-enable hotkeys when modal closes
+  const flyout = document.getElementById('widget-flyout');
+  const profileBody = document.getElementById('profile-widget-body');
+  if (flyout && profileBody) {
+    flyout.classList.remove('profile-open');
+    profileBody.classList.add('hidden');
     if (window.electronAPI && window.electronAPI.enableHotkeys) {
       window.electronAPI.enableHotkeys();
     }
+  }
+}
+
+function toggleProfileWidget() {
+  const flyout = document.getElementById('widget-flyout');
+  if (!flyout) return;
+  if (flyout.classList.contains('profile-open')) {
+    closeProfileModal();
+  } else {
+    openProfileModal();
   }
 }
 
@@ -6649,12 +6679,20 @@ function setBattlesEnabled(enabled) {
   try {
     localStorage.setItem('battles_enabled', enabled ? 'true' : 'false');
   } catch (e) {}
+  const widgetEl = document.getElementById('battle-widget-status');
+  if (widgetEl) widgetEl.textContent = enabled ? 'On' : 'Off';
 }
 
 function openBattleModal() {
-  const modal = document.getElementById('battle-modal');
-  if (!modal) return;
-  modal.classList.remove('hidden');
+  const flyout = document.getElementById('widget-flyout');
+  const battleBody = document.getElementById('battle-widget-body');
+  const profileBody = document.getElementById('profile-widget-body');
+  if (!flyout || !battleBody) return;
+  document.getElementById('battle-control-widget')?.classList.remove('hidden');
+  flyout.classList.remove('profile-open');
+  flyout.classList.add('battle-open');
+  battleBody.classList.remove('hidden');
+  if (profileBody) profileBody.classList.add('hidden');
   if (window.electronAPI && window.electronAPI.disableHotkeys) {
     window.electronAPI.disableHotkeys();
   }
@@ -6669,14 +6707,26 @@ function openBattleModal() {
 }
 
 function closeBattleModal() {
-  const modal = document.getElementById('battle-modal');
-  if (modal) {
-    modal.classList.add('hidden');
+  const flyout = document.getElementById('widget-flyout');
+  const battleBody = document.getElementById('battle-widget-body');
+  if (flyout && battleBody) {
+    flyout.classList.remove('battle-open');
+    battleBody.classList.add('hidden');
     if (window.electronAPI && window.electronAPI.enableHotkeys) {
       window.electronAPI.enableHotkeys();
     }
   }
-  // Keep heartbeat running when modal closed so we stay online for invites
+  // Keep heartbeat running when flyout closed so we stay online for invites
+}
+
+function toggleBattleWidget() {
+  const flyout = document.getElementById('widget-flyout');
+  if (!flyout) return;
+  if (flyout.classList.contains('battle-open')) {
+    closeBattleModal();
+  } else {
+    openBattleModal();
+  }
 }
 
 function updateBattleOverlayUrl() {
@@ -6844,6 +6894,8 @@ function setupBattleModal() {
   const openBtn = document.getElementById('open-battle-modal-btn');
   const closeBtn = document.getElementById('battle-modal-close');
   const modal = document.getElementById('battle-modal');
+  const widgetStatus = document.getElementById('battle-widget-status');
+  if (widgetStatus) widgetStatus.textContent = getBattlesEnabled() ? 'On' : 'Off';
   if (openBtn) openBtn.addEventListener('click', openBattleModal);
   if (closeBtn) closeBtn.addEventListener('click', closeBattleModal);
   if (modal) {
@@ -11322,12 +11374,15 @@ function setupLeftAppMenu() {
     });
   }
   
-  // Profile Manager button (on dashboard)
-  const openProfileManagerBtn = document.getElementById('open-profile-manager-btn');
-  if (openProfileManagerBtn) {
-    openProfileManagerBtn.addEventListener('click', () => {
-      openProfileModal();
-    });
+  // Profile widget Manage button – toggle expand/collapse (content in widget)
+  const profileWidgetOpen = document.getElementById('profile-widget-open');
+  if (profileWidgetOpen) {
+    profileWidgetOpen.addEventListener('click', () => toggleProfileWidget());
+  }
+  // Battle widget Manage button – toggle expand/collapse (content in widget)
+  const battleWidgetOpen = document.getElementById('battle-widget-open');
+  if (battleWidgetOpen) {
+    battleWidgetOpen.addEventListener('click', () => toggleBattleWidget());
   }
   
   // Tools menu wiring (new)
