@@ -192,7 +192,9 @@ app.post('/webhooks/eventsub', async (req, res) => {
       .digest('hex');
     const prefix = 'sha256=';
     const sig = signatureHeader.startsWith(prefix) ? signatureHeader.slice(prefix.length) : signatureHeader;
-    if (!sig || sig !== expected) {
+    const expectedBuf = Buffer.from(expected, 'hex');
+    const sigBuf = Buffer.from(sig, 'hex');
+    if (!sig || sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
       return res.status(401).json({ ok: false, error: 'invalid signature' });
     }
   }
@@ -285,10 +287,12 @@ io.on('connection', (socket) => {
 async function start() {
   const maxAttempts = 5;
   const delayMs = 2000;
+  let dbReady = false;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       await initDb();
       console.log('Database initialized');
+      dbReady = true;
       break;
     } catch (err) {
       console.error(`Database init failed (attempt ${attempt}/${maxAttempts}):`, err instanceof Error ? err.message : err);
@@ -297,6 +301,10 @@ async function start() {
         await new Promise((r) => setTimeout(r, delayMs));
       }
     }
+  }
+  if (!dbReady) {
+    console.error('Database initialization failed after all retries. Exiting.');
+    process.exit(1);
   }
   server.listen(port, () => {
     console.log(`Backend listening on ${port}`);
