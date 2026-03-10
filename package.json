@@ -75,7 +75,6 @@
     "electron-updater": "^6.6.2",
     "fs-extra": "^11.3.0",
     "tmi.js": "^1.8.5",
-    "virtualdeck": "file:",
     "windows-shortcuts": "^0.1.6"
   }
 }

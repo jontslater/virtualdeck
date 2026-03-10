@@ -4868,8 +4868,16 @@ function setupAutoUpdater() {
   });
 }
 
-// Manual update check function
+// Manual update check function (skipped when unpacked unless FORCE_DEV_UPDATE_CHECK=1)
 function checkForUpdates() {
+  const forceDevCheck = process.env.FORCE_DEV_UPDATE_CHECK === '1' || process.env.FORCE_DEV_UPDATE_CHECK === 'true';
+  if (!app.isPackaged && !forceDevCheck) {
+    console.log('Update check skipped (running unpacked). To test in dev: set FORCE_DEV_UPDATE_CHECK=1 and run again.');
+    return;
+  }
+  if (!app.isPackaged && forceDevCheck && typeof autoUpdater.forceDevUpdateConfig !== 'undefined') {
+    autoUpdater.forceDevUpdateConfig = true;
+  }
   setupAutoUpdater();
   autoUpdater.checkForUpdates();
 }

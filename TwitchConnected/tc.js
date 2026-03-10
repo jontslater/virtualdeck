@@ -853,7 +853,7 @@ if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
       try {
         const hydrationConfig = await window.electronAPI.getHydrationConfig();
         const keyword = (hydrationConfig.redemptionKeyword || 'hydrate').toLowerCase();
-        if (rewardTitle && String(rewardTitle).toLowerCase().includes(keyword)) {
+        if (rewardTitle && String(rewardTitle).toLowerCase().trim() === keyword) {
           console.log(`💧 Hydration redemption detected: "${rewardTitle}" - incrementing tracker`);
           await window.electronAPI.updateHydrationProgress();
         }
@@ -880,7 +880,7 @@ if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
       try {
         const hydrationConfig = await window.electronAPI.getHydrationConfig();
         const keyword = (hydrationConfig.redemptionKeyword || 'hydrate').toLowerCase();
-        if (rewardTitle && String(rewardTitle).toLowerCase().includes(keyword)) {
+        if (rewardTitle && String(rewardTitle).toLowerCase().trim() === keyword) {
           console.log(`💧 Hydration redemption detected: "${rewardTitle}" - incrementing tracker`);
           await window.electronAPI.updateHydrationProgress();
         }

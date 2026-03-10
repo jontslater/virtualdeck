@@ -27,13 +27,11 @@ jobs:
 
       - name: Build
         run: npm run build:win
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
+          name: VirtualDeck ${{ github.ref_name }}
           files: dist/*.exe dist/*.yml dist/*.blockmap
           draft: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
