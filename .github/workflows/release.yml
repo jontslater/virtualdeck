@@ -33,9 +33,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and publish to GitHub Releases
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build:win -- --publish always
-        # electron-builder creates the release, uploads .exe, latest.yml, and .blockmap
-        # (with --publish never those files are not generated/uploaded, so updater got 404)
+      - name: Build (no publish)
+        run: npm run build:win -- --publish never
+
+      - name: Generate latest.yml
+        run: node scripts/generate-latest-yml.js
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: VirtualDeck ${{ github.ref_name }}
+          files: |
+            dist/*.exe
+            dist/latest.yml
+            dist/*.blockmap
+          draft: false
