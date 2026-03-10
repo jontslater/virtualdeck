@@ -47,51 +47,61 @@ function showTwitchConfigModal() {
     modal.style.maxWidth = '420px';
     modal.style.width = '95%';
     modal.innerHTML = `
-      <h2 style="text-align:center; margin-bottom:18px;">Setup Required</h2>
-      <div style="margin-bottom:18px;">
-        <strong>Instructions:</strong>
-        <ul style="margin-bottom:12px;">
-          <li>Go to https://twitchtokengenerator.com</li>
-          <li><strong>Important:</strong> Choose <b>Custom Token</b> and scroll down to bottom of the 'Available Token Scopes' and select <b>all token permissions</b> when generating your token.</li>
-          <li>When you click <b>Generate Token!</b> you will be asked to log in with your Twitch account.</li>
-          <li>Generate and copy your <b>ACCESS TOKEN</b>, <b>CLIENT_ID</b>, and <b>TWITCH_USER_NAME</b> from the site.</li>
-          <li>Paste each value below.</li>
-        </ul>
-        After entering these values, click <b>Save</b>. You can reset them later in the app under Settings if needed.
+      <h2 style="text-align:center; margin-bottom:18px;">Twitch Login</h2>
+
+      <div id="oauth-status" style="margin-bottom:15px; padding:10px; background:#e8f5e8; border:1px solid #4caf50; border-radius:6px; display:none;">
+        <div style="color:#2e7d32; font-weight:bold;">✅ Connected as: <span id="connected-username"></span></div>
+        <button id="twitch-logout" style="margin-top:8px; background:#f44336; color:white; border:none; padding:6px 12px; border-radius:4px; font-size:12px; cursor:pointer;">Logout</button>
       </div>
-      <label for="twitch-oauth" style="font-weight:bold;">ACCESS_TOKEN:</label><br>
-      <div style="position:relative;margin-bottom:14px;">
-  <input id="twitch-oauth" type="password" style="width:100%;box-sizing:border-box;padding:8px;padding-right:40px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" />
-        <button id="twitch-oauth-toggle" aria-label="Show token" title="Show/Hide" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#fff;cursor:pointer;font-size:16px;line-height:1;padding:4px">👁</button>
+
+      <!-- Always-visible logout/reset button -->
+      <div style="margin-bottom:15px; padding:8px; background:#fff3e0; border:1px solid #ff9800; border-radius:4px;">
+        <button id="twitch-logout-reset" style="background:#ff9800; color:white; border:none; padding:6px 12px; border-radius:4px; font-size:12px; cursor:pointer;">
+          🔄 Reset OAuth
+        </button>
+        <span style="margin-left:8px; font-size:11px; color:#666;">Clear stored tokens & reset authentication</span>
       </div>
-      <label for="twitch-clientid" style="font-weight:bold;">CLIENT_ID:</label><br>
-      <div style="position:relative;margin-bottom:14px;">
-  <input id="twitch-clientid" type="password" style="width:100%;box-sizing:border-box;padding:8px;padding-right:40px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" />
-        <button id="twitch-clientid-toggle" aria-label="Show client id" title="Show/Hide" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#fff;cursor:pointer;font-size:16px;line-height:1;padding:4px">👁</button>
+
+      <div style="text-align:center; margin-bottom:20px;">
+        <button id="twitch-oauth-login" style="background:#9147ff;color:white;font-weight:bold;padding:15px 30px;border:none;border-radius:8px;font-size:1.2em;cursor:pointer;min-width:200px;">
+          🔵 Login with Twitch
+        </button>
+        <p style="margin-top:10px; font-size:12px; color:#666;">
+          Connect your Twitch account to enable chat commands and alerts
+        </p>
       </div>
-      <label for="twitch-channel" style="font-weight:bold;">TWITCH_USER_NAME:</label><br>
-  <input id="twitch-channel" type="text" style="width:100%;box-sizing:border-box;margin-bottom:18px;padding:8px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" /><br>
-      <button id="twitch-save" style="width:100%;background:#a6f34a;color:#222;font-weight:bold;padding:10px 0;border:none;border-radius:6px;font-size:1.1em;cursor:pointer;">Save</button>
-      <button id="twitch-cancel" style="width:100%;margin-top:8px;background:#eee;color:#222;padding:8px 0;border:none;border-radius:6px;font-size:1em;cursor:pointer;">Cancel</button>
+
+      <div style="border-top:1px solid #ccc; padding-top:15px; margin-top:15px;">
+        <button id="toggle-advanced" style="background:none;border:none;color:#666;text-decoration:underline;cursor:pointer;font-size:12px;">
+          ⚙️ Advanced Settings
+        </button>
+
+        <div id="advanced-settings" style="display:none; margin-top:10px; padding:10px; background:#f5f5f5; border-radius:6px;">
+          <p style="font-size:11px; color:#666; margin-bottom:10px;">
+            Only change these if you want to use your own Twitch application instead of the default VirtualDeck app.
+          </p>
+
+          <label for="twitch-clientid" style="font-weight:bold; font-size:12px;">CLIENT ID:</label><br>
+          <div style="position:relative;margin-bottom:10px;">
+            <input id="twitch-clientid" type="password" style="width:100%;box-sizing:border-box;padding:6px;padding-right:30px;font-size:12px;background:#222;color:#fff;border-radius:4px;border:1px solid #ccc;" />
+            <button id="twitch-clientid-toggle" aria-label="Show client id" title="Show/Hide" style="position:absolute;right:5px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#fff;cursor:pointer;font-size:12px;line-height:1;padding:2px">👁</button>
+          </div>
+
+          <label for="twitch-clientsecret" style="font-weight:bold; font-size:12px;">CLIENT SECRET:</label><br>
+          <div style="position:relative;margin-bottom:10px;">
+            <input id="twitch-clientsecret" type="password" style="width:100%;box-sizing:border-box;padding:6px;padding-right:30px;font-size:12px;background:#222;color:#fff;border-radius:4px;border:1px solid #ccc;" />
+            <button id="twitch-clientsecret-toggle" aria-label="Show client secret" title="Show/Hide" style="position:absolute;right:5px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#fff;cursor:pointer;font-size:12px;line-height:1;padding:2px">👁</button>
+          </div>
+
+          <button id="twitch-save-config" style="width:100%;background:#2196f3;color:white;font-weight:bold;padding:8px 0;border:none;border-radius:4px;font-size:12px;cursor:pointer;">Save Custom Settings</button>
+        </div>
+      </div>
+
+      <button id="twitch-cancel" style="width:100%;margin-top:15px;background:#eee;color:#222;padding:8px 0;border:none;border-radius:6px;font-size:1em;cursor:pointer;">Cancel</button>
     `;
     document.body.appendChild(modal);
     // Wire up show/hide toggles for sensitive fields
     try {
-      const oauthInput = document.getElementById('twitch-oauth');
-      const oauthToggle = document.getElementById('twitch-oauth-toggle');
-      if (oauthInput && oauthToggle) {
-        oauthToggle.addEventListener('click', () => {
-          if (oauthInput.type === 'password') {
-            oauthInput.type = 'text';
-            oauthToggle.textContent = '😑';
-            oauthToggle.setAttribute('aria-label', 'Hide token');
-          } else {
-            oauthInput.type = 'password';
-            oauthToggle.textContent = '👁';
-            oauthToggle.setAttribute('aria-label', 'Show token');
-          }
-        });
-      }
       const clientInput = document.getElementById('twitch-clientid');
       const clientToggle = document.getElementById('twitch-clientid-toggle');
       if (clientInput && clientToggle) {
@@ -107,42 +117,213 @@ function showTwitchConfigModal() {
           }
         });
       }
-  } catch (e) { console.warn('Could not wire toggles:', e); }
 
-  // Load values from localStorage if they exist
-    document.getElementById('twitch-oauth').value = localStorage.getItem('twitch_oauth') || '';
-    document.getElementById('twitch-clientid').value = localStorage.getItem('twitch_clientid') || '';
-    document.getElementById('twitch-channel').value = localStorage.getItem('twitch_channel') || '';
-    document.getElementById('twitch-save').onclick = () => {
-      window.twitchConfig.oauth = document.getElementById('twitch-oauth').value.trim();
-      window.twitchConfig.clientId = document.getElementById('twitch-clientid').value.trim();
-      window.twitchConfig.channel = document.getElementById('twitch-channel').value.trim();
-      // Save to localStorage
-      localStorage.setItem('twitch_oauth', window.twitchConfig.oauth);
-      localStorage.setItem('twitch_clientid', window.twitchConfig.clientId);
-      localStorage.setItem('twitch_channel', window.twitchConfig.channel);
-      modal.remove();
-      // Send credentials to main process to start Twitch chat connection
-      console.log('Sending Twitch connect IPC');
-      if (window.electronAPI && window.electronAPI.sendTwitchConnect) {
-        console.log('Sending via electronAPI');
-        window.electronAPI.sendTwitchConnect({
-          username: window.twitchConfig.channel,
-          oauth: window.twitchConfig.oauth,
-          clientId: window.twitchConfig.clientId
-        });
-      } else if (window.ipcRenderer) {
-        console.log('Sending via ipcRenderer');
-        window.ipcRenderer.send('twitch-connect', {
-          username: window.twitchConfig.channel,
-          oauth: window.twitchConfig.oauth,
-          clientId: window.twitchConfig.clientId
+      const secretInput = document.getElementById('twitch-clientsecret');
+      const secretToggle = document.getElementById('twitch-clientsecret-toggle');
+      if (secretInput && secretToggle) {
+        secretToggle.addEventListener('click', () => {
+          if (secretInput.type === 'password') {
+            secretInput.type = 'text';
+            secretToggle.textContent = '😑';
+            secretToggle.setAttribute('aria-label', 'Hide client secret');
+          } else {
+            secretInput.type = 'password';
+            secretToggle.textContent = '👁';
+            secretToggle.setAttribute('aria-label', 'Show client secret');
+          }
         });
       }
-      console.log('adding connecting to twitch chat...');
-      connectToTwitch();
-    };
-    document.getElementById('twitch-cancel').onclick = () => modal.remove();
+  } catch (e) { console.warn('Could not wire toggles:', e); }
+
+  // Load OAuth configuration
+  loadOAuthConfig();
+
+  // Toggle advanced settings
+  document.getElementById('toggle-advanced').onclick = () => {
+    const advanced = document.getElementById('advanced-settings');
+    const button = document.getElementById('toggle-advanced');
+    if (advanced.style.display === 'none') {
+      advanced.style.display = 'block';
+      button.textContent = '⚙️ Hide Advanced Settings';
+    } else {
+      advanced.style.display = 'none';
+      button.textContent = '⚙️ Advanced Settings';
+    }
+  };
+
+  // Save custom configuration button (only in advanced settings)
+  document.getElementById('twitch-save-config').onclick = async () => {
+    const clientId = document.getElementById('twitch-clientid').value.trim();
+    const clientSecret = document.getElementById('twitch-clientsecret').value.trim();
+
+    if (!clientId || !clientSecret) {
+      alert('Please enter both Client ID and Client Secret');
+      return;
+    }
+
+    // Save to main process with custom flag
+    if (window.electronAPI && window.electronAPI.setOAuthConfig) {
+      window.electronAPI.setOAuthConfig({
+        clientId: clientId,
+        clientSecret: clientSecret,
+        useCustomCredentials: true
+      });
+
+      alert('Custom configuration saved! You can now login with Twitch using your credentials.');
+    }
+  };
+
+  // OAuth login button - works immediately with default or custom credentials
+  document.getElementById('twitch-oauth-login').onclick = () => {
+    console.log('Login button clicked!');
+    console.log('electronAPI available:', !!window.electronAPI);
+
+    if (window.electronAPI && window.electronAPI.startOAuthLogin) {
+      console.log('Sending OAuth login request...');
+      document.getElementById('twitch-oauth-login').textContent = '🔄 Connecting...';
+      document.getElementById('twitch-oauth-login').disabled = true;
+
+      window.electronAPI.startOAuthLogin();
+    } else {
+      console.error('Electron OAuth API not available!');
+      alert('OAuth functionality not available. Make sure you\'re running the latest version of VirtualDeck.');
+    }
+  };
+
+  // Logout button (when connected)
+  document.getElementById('twitch-logout').onclick = () => {
+    if (window.electronAPI && window.electronAPI.logoutOAuth) {
+      if (confirm('Are you sure you want to logout from Twitch? This will disconnect chat and stop alerts.')) {
+        document.getElementById('twitch-logout').textContent = 'Logging out...';
+        document.getElementById('twitch-logout').disabled = true;
+
+        window.electronAPI.logoutOAuth();
+      }
+    }
+  };
+
+  // Reset OAuth button (always visible)
+  document.getElementById('twitch-logout-reset').onclick = () => {
+    if (window.electronAPI && window.electronAPI.logoutOAuth) {
+      if (confirm('This will clear all stored OAuth tokens and reset authentication. Continue?')) {
+        document.getElementById('twitch-logout-reset').textContent = '🔄 Resetting...';
+        document.getElementById('twitch-logout-reset').disabled = true;
+
+        window.electronAPI.logoutOAuth();
+      }
+    }
+  };
+
+  // Listen for OAuth success
+  if (window.electronAPI && window.electronAPI.onOAuthSuccess) {
+    window.electronAPI.onOAuthSuccess((data) => {
+      console.log('OAuth success:', data);
+      document.getElementById('connected-username').textContent = data.username;
+      document.getElementById('oauth-status').style.display = 'block';
+      document.getElementById('twitch-oauth-login').textContent = 'Connected!';
+      document.getElementById('twitch-oauth-login').disabled = true;
+
+      // Store username for connection
+      localStorage.setItem('twitch_channel', data.username);
+
+      // Close modal after a delay
+      setTimeout(async () => {
+        modal.remove();
+
+        // First, clear any existing Twitch connections to prevent duplicates
+        console.log('Clearing existing Twitch connections...');
+        if (window.electronAPI && window.electronAPI.clearTwitchCreds) {
+          await new Promise((resolve) => {
+            let resolved = false;
+            // Listen for clear completion
+            if (window.electronAPI.onTwitchCleared) {
+              window.electronAPI.onTwitchCleared(() => {
+                if (!resolved) {
+                  resolved = true;
+                  resolve();
+                }
+              });
+            }
+            // Clear credentials (don't purge topics)
+            window.electronAPI.clearTwitchCreds({ purgeTopics: false });
+            // Fallback timeout in case event doesn't fire
+            setTimeout(() => {
+              if (!resolved) {
+                resolved = true;
+                resolve();
+              }
+            }, 1500);
+          });
+        }
+
+        // Send credentials to main process to start Twitch chat connection
+        console.log('Sending Twitch connect IPC after OAuth');
+        if (window.electronAPI && window.electronAPI.sendTwitchConnect) {
+          console.log('Sending via electronAPI');
+          window.electronAPI.sendTwitchConnect({
+            username: data.username,
+            oauth: data.accessToken,
+            clientId: document.getElementById('twitch-clientid').value.trim()
+          });
+        }
+        console.log('adding connecting to twitch chat...');
+        connectToTwitch();
+      }, 2000);
+    });
+
+    window.electronAPI.onOAuthError((error) => {
+      console.error('OAuth error:', error);
+      alert('OAuth Error: ' + error);
+      document.getElementById('twitch-oauth-login').textContent = '🔵 Login with Twitch';
+      document.getElementById('twitch-oauth-login').disabled = false;
+      // Reset buttons on error
+      document.getElementById('twitch-logout-reset').textContent = '🔄 Reset OAuth';
+      document.getElementById('twitch-logout-reset').disabled = false;
+    });
+
+    window.electronAPI.onOAuthLogoutSuccess(() => {
+      console.log('Logout successful');
+      document.getElementById('oauth-status').style.display = 'none';
+      document.getElementById('connected-username').textContent = '';
+      document.getElementById('twitch-oauth-login').textContent = '🔵 Login with Twitch';
+      document.getElementById('twitch-oauth-login').disabled = false;
+      // Reset the reset button
+      document.getElementById('twitch-logout-reset').textContent = '🔄 Reset OAuth';
+      document.getElementById('twitch-logout-reset').disabled = false;
+    });
+  }
+
+  async function loadOAuthConfig() {
+    if (window.electronAPI && window.electronAPI.getOAuthConfig) {
+      try {
+        const config = await window.electronAPI.getOAuthConfig();
+
+        // Only populate advanced fields if using custom credentials
+        if (config.useCustomCredentials) {
+          document.getElementById('twitch-clientid').value = config.clientId || '';
+          document.getElementById('twitch-clientsecret').value = config.clientSecret || '';
+        }
+
+        // Login button is always enabled since we have default credentials
+        document.getElementById('twitch-oauth-login').disabled = false;
+
+        // Show connected status if we have tokens
+        if (config.accessToken) {
+          document.getElementById('oauth-status').style.display = 'block';
+          // We could fetch username here if needed
+        }
+      } catch (error) {
+        console.error('Failed to load OAuth config:', error);
+        // Fallback if config loading fails - still enable login
+        document.getElementById('twitch-oauth-login').disabled = false;
+      }
+    } else {
+      // Fallback if electron API not available - still enable login
+      document.getElementById('twitch-oauth-login').disabled = false;
+    }
+  }
+
+  document.getElementById('twitch-cancel').onclick = () => modal.remove();
   }
 }
 
@@ -288,6 +469,7 @@ function pushTwitchEvent(evt) {
         else if (rt.includes('subscription.gift') || rt.includes('channel.subscription.gift')) displayType = 'subgift';
         else if (rt.includes('channel.cheer') || rt.includes('bits')) displayType = 'bits';
         else if (rt.includes('channel.raid')) displayType = 'raid';
+        else if (rt.includes('channel.ban')) displayType = 'ban';
       }
       if (e.event && e.event.type && typeof e.event.type === 'string') {
         const et = e.event.type.toLowerCase();
@@ -297,6 +479,7 @@ function pushTwitchEvent(evt) {
         else if (et.includes('subscription.gift') || et.includes('channel.subscription.gift')) displayType = 'subgift';
         else if (et.includes('channel.cheer') || et.includes('bits')) displayType = 'bits';
         else if (et.includes('channel.raid')) displayType = 'raid';
+        else if (et.includes('channel.ban')) displayType = 'ban';
       }
       const shouldShow = (f === 'all') || (displayType === f) || (f === 'command' && e.type === 'chat' && e.message && e.message.startsWith('!'));
       if (shouldShow) {
@@ -337,11 +520,152 @@ function triggerMapping(mapping) {
     // pick random
     const idx = Math.floor(Math.random() * choices.length);
     const label = choices[idx];
-    if (window.electronAPI && window.electronAPI.sendTrigger) window.electronAPI.sendTrigger(label);
+    
+    // Use the main.js debouncing mechanism by sending through the trigger system
+    if (window.electronAPI && window.electronAPI.sendTrigger) {
+      console.log(`🚀 Triggering button "${label}" from redemption keyword matching`);
+      window.electronAPI.sendTrigger(label);
+    }
   } catch (e) {
     console.error('Error in triggerMapping:', e);
   }
 }
+
+// Helper to check if a redemption title matches any button's chat command keyword
+window.checkRedemptionAgainstButtonKeywords = async function checkRedemptionAgainstButtonKeywords(evt) {
+  try {
+    if (!evt || evt.type !== 'redeem') return null;
+    
+    // Get reward title from redemption event - use event.reward.title directly
+    const title = evt.event?.reward?.title || evt.event?.reward?.name || evt.event?.reward_title || evt.event?.reward || '';
+    
+    if (!title) return null;
+    
+    console.log(`🔍 checkRedemptionAgainstButtonKeywords: Checking redemption "${title}"`);
+    
+    // Get all buttons from config
+    const config = await window.electronAPI.getConfig();
+    const buttons = config.buttons || [];
+    
+    console.log(`🔍 Found ${buttons.length} buttons in config`);
+    
+    // Debug: Check for Donut button specifically
+    const donutButton = buttons.find(btn => btn.name === 'Donut' || btn.label === 'Donut');
+    if (donutButton) {
+      console.log('🔍 Found Donut button in tc.js:', donutButton);
+      console.log('🔍 Donut button chatCommand:', donutButton.chatCommand);
+    } else {
+      console.log('🔍 Donut button not found in tc.js config');
+    }
+    
+    // Look for buttons with chat command keywords or redeem names that match the redemption title
+    for (const button of buttons) {
+      console.log(`🔍 Checking button "${button.label || button.name}":`, {
+        hasChatCommand: !!button.chatCommand,
+        enabled: button.chatCommand?.enabled,
+        keyword: button.chatCommand?.keyword,
+        redeemName: button.chatCommand?.redeemName,
+        triggerMethod: button.chatCommand?.triggerMethod
+      });
+      
+      if (button.chatCommand && 
+          button.chatCommand.enabled && 
+          (button.chatCommand.keyword || button.chatCommand.redeemName) && 
+          (button.label || button.name)) {
+        
+        const keyword = String(button.chatCommand.keyword || '').toLowerCase();
+        const redeemName = String(button.chatCommand.redeemName || '').toLowerCase();
+        const rewardTitle = String(title).toLowerCase();
+        const triggerMethod = button.chatCommand.triggerMethod || 'command';
+        
+        console.log(`🔍 Comparing "${keyword}" (keyword), "${redeemName}" (redeem name) with "${rewardTitle}" (reward title)`);
+        console.log(`🔍 Trigger method: "${triggerMethod}"`);
+        
+        // Check if redemption title matches either keyword or redeem name
+        const keywordMatch = keyword && keyword === rewardTitle;
+        const redeemNameMatch = redeemName && redeemName === rewardTitle;
+        
+        console.log(`🔍 Match check: keywordMatch=${keywordMatch}, redeemNameMatch=${redeemNameMatch}`);
+        console.log(`🔍 triggerMethod value: "${triggerMethod}" (type: ${typeof triggerMethod})`);
+        console.log(`🔍 triggerMethod === 'redeem': ${triggerMethod === 'redeem'}`);
+        console.log(`🔍 triggerMethod === 'both': ${triggerMethod === 'both'}`);
+        
+        if (keywordMatch || redeemNameMatch) {
+          console.log(`✅ Match found! Keyword match: ${keywordMatch}, Redeem name match: ${redeemNameMatch}`);
+          // Only trigger if the button is configured to accept redemptions
+          if (triggerMethod === 'redeem' || triggerMethod === 'both') {
+            console.log(`🚀 tc.js triggering button "${button.label || button.name}" (triggerMethod: ${triggerMethod} allows redemptions)`);
+            return button.label || button.name;
+          } else {
+            console.log(`⏭️ tc.js skipping redemption "${title}" for button "${button.label || button.name}" (triggerMethod: ${triggerMethod} - command only)`);
+          }
+        } else {
+          console.log(`❌ No match found`);
+        }
+      }
+    }
+    
+    return null;
+  } catch (e) {
+    console.error('Error checking redemption against button keywords:', e);
+    return null;
+  }
+}
+
+// Helper to check if a redemption matches any progression and increment it
+window.checkRedemptionAgainstProgressions = async function checkRedemptionAgainstProgressions(evt) {
+  try {
+    if (!evt || evt.type !== 'redeem') return false;
+    
+    // Get reward title from redemption event
+    const title = evt.event?.reward?.title || evt.event?.reward?.name || evt.event?.reward_title || evt.event?.reward || '';
+    const username = evt.event?.user_name || evt.event?.user || evt.event?.user_login || evt.user_name || evt.user || 'unknown';
+    
+    if (!title) return false;
+    
+    console.log(`🔍 checkRedemptionAgainstProgressions: Checking redemption "${title}" by ${username}`);
+    
+    // Get all progressions
+    const result = await window.electronAPI.getProgressions();
+    if (!result.success || !result.progressions || result.progressions.length === 0) {
+      console.log('🔍 No progressions configured');
+      return false;
+    }
+    
+    const progressions = result.progressions;
+    console.log(`🔍 Found ${progressions.length} progressions`);
+    
+    // Look for progression with matching redeem keyword
+    const lowerTitle = title.toLowerCase().trim();
+    const matchingProgression = progressions.find(prog => 
+      prog.redeemKeyword && prog.redeemKeyword.toLowerCase().trim() === lowerTitle
+    );
+    
+    if (!matchingProgression) {
+      console.log(`🔍 No progression matched redemption "${title}"`);
+      return false;
+    }
+    
+    console.log(`✅ Found matching progression: "${matchingProgression.name}"`);
+    
+    // Send increment request to main process
+    if (window.electronAPI && window.electronAPI.incrementProgression) {
+      console.log('📤 Sending progression increment to main process');
+      window.electronAPI.incrementProgression({
+        progressionId: matchingProgression.id,
+        username: username,
+        redeemTitle: title
+      });
+    } else {
+      console.error('❌ electronAPI.incrementProgression not available!');
+    }
+    
+    return true;
+  } catch (e) {
+    console.error('Error checking redemption against progressions:', e);
+    return false;
+  }
+};
 
 function parseEmotes(message, emotes) {
   // TODO: implement real emote parsing. For now, escape HTML and return.
@@ -491,33 +815,80 @@ function renderEventRow(ev) {
 }
 
 // IPC listeners to receive events from main
+// Note: Chat messages are now handled by script.js to avoid duplication
+// This listener is kept for potential future use or other event types
 if (window.electronAPI && window.electronAPI.onTwitchChatEvent) {
   window.electronAPI.onTwitchChatEvent((e) => {
-    pushTwitchEvent({ type: 'chat', user: e.user, message: e.message });
+    // Only handle non-chat events or special chat events to avoid duplication
+    // Regular chat messages are handled by script.js
+    if (e.type !== 'chat') {
+      pushTwitchEvent({ type: e.type, user: e.user, message: e.message });
+    }
   });
 } else if (window.ipcRenderer) {
   window.ipcRenderer.on('twitch-chat-event', (event, e) => {
-  console.debug('renderer received twitch-chat-event:', e);
-  pushTwitchEvent({ type: 'chat', user: e.user, message: e.message });
+    console.debug('renderer received twitch-chat-event:', e);
+    // Only handle non-chat events or special chat events to avoid duplication
+    if (e.type !== 'chat') {
+      pushTwitchEvent({ type: e.type, user: e.user, message: e.message });
+    }
   });
 }
 
 if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
-  window.electronAPI.onTwitchEventSub((e) => {
+  window.electronAPI.onTwitchEventSub(async (e) => {
   // Normalize eventsub redemption topics to 'redeem' for cleaner rendering
   let t = e.type || 'eventsub';
   if (typeof t === 'string' && t.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
+  if (typeof t === 'string' && t.includes('channel.ban')) t = 'ban';
   // Some payloads nest the topic under event.type
   if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
+  if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.ban')) t = 'ban';
   pushTwitchEvent({ type: t, event: e.event });
+  
+  // Check for hydration redemption
+  if (t === 'redeem' && e.event) {
+    const rewardTitle = (e.event.reward && (e.event.reward.title || e.event.reward.name)) || e.event.reward_title || e.event.reward || '';
+    if (window.electronAPI && window.electronAPI.getHydrationConfig && window.electronAPI.updateHydrationProgress) {
+      try {
+        const hydrationConfig = await window.electronAPI.getHydrationConfig();
+        const keyword = (hydrationConfig.redemptionKeyword || 'hydrate').toLowerCase();
+        if (rewardTitle && String(rewardTitle).toLowerCase().includes(keyword)) {
+          console.log(`💧 Hydration redemption detected: "${rewardTitle}" - incrementing tracker`);
+          await window.electronAPI.updateHydrationProgress();
+        }
+      } catch (error) {
+        console.error('Error checking hydration redemption:', error);
+      }
+    }
+  }
   });
 } else if (window.ipcRenderer) {
-  window.ipcRenderer.on('twitch-eventsub', (event, e) => {
+  window.ipcRenderer.on('twitch-eventsub', async (event, e) => {
     console.debug('renderer received twitch-eventsub:', e);
   let t = e.type || 'eventsub';
   if (typeof t === 'string' && t.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
+  if (typeof t === 'string' && t.includes('channel.ban')) t = 'ban';
   if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
+  if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.ban')) t = 'ban';
   pushTwitchEvent({ type: t, event: e.event });
+  
+  // Check for hydration redemption
+  if (t === 'redeem' && e.event) {
+    const rewardTitle = (e.event.reward && (e.event.reward.title || e.event.reward.name)) || e.event.reward_title || e.event.reward || '';
+    if (window.electronAPI && window.electronAPI.getHydrationConfig && window.electronAPI.updateHydrationProgress) {
+      try {
+        const hydrationConfig = await window.electronAPI.getHydrationConfig();
+        const keyword = (hydrationConfig.redemptionKeyword || 'hydrate').toLowerCase();
+        if (rewardTitle && String(rewardTitle).toLowerCase().includes(keyword)) {
+          console.log(`💧 Hydration redemption detected: "${rewardTitle}" - incrementing tracker`);
+          await window.electronAPI.updateHydrationProgress();
+        }
+      } catch (error) {
+        console.error('Error checking hydration redemption:', error);
+      }
+    }
+  }
   });
 }
 
@@ -558,10 +929,15 @@ function matchMappingForEvent(evt) {
   // Chat command mapping
   if ((rawType === 'chat' || rawType === 'command') && evt.message && evt.message.startsWith('!')) {
     const cmd = evt.message.split(' ')[0].substring(1).toLowerCase(); // without '!'
+    console.log(`🔍 tc.js processing chat command: !${cmd}`);
     for (const m of (window.twitchMappings || [])) {
       if (!m) continue;
-      if (m.type === 'command' && m.command && m.command.toLowerCase() === cmd) return m;
+      if (m.type === 'command' && m.command && m.command.toLowerCase() === cmd) {
+        console.log(`🎯 tc.js found command mapping for !${cmd}:`, m);
+        return m;
+      }
     }
+    console.log(`❌ tc.js no command mapping found for !${cmd}`);
   }
   // EventSub / other mappings
   for (const m of (window.twitchMappings || [])) {
@@ -589,6 +965,7 @@ function matchMappingForEvent(evt) {
       continue;
     }
     if (t === 'raid' && rawType && rawType.includes('raid')) return m;
+    if (t === 'ban' && rawType && rawType.includes('ban')) return m;
     if (t === 'bits' && rawType && (rawType.includes('cheer') || rawType.includes('bits'))) {
   // Collect candidate bit mappings elsewhere (see below). Here, skip; we'll handle after loop
   // (keep placeholder)
@@ -692,10 +1069,27 @@ function normalizeSubTier(evt) {
 
 // Wrap pushTwitchEvent to also evaluate mappings
 const _origPush = pushTwitchEvent;
-pushTwitchEvent = function(evt) {
+pushTwitchEvent = async function(evt) {
   _origPush(evt);
   try {
-    // First try standard matching
+    // ONLY for redemptions, check if any button has a matching chat command keyword
+    if (evt && evt.type === 'redeem') {
+      // First check if this redemption matches a progression
+      const progressionMatched = await checkRedemptionAgainstProgressions(evt);
+      if (progressionMatched) {
+        console.log('✅ Progression matched and incremented');
+        // Don't return - still allow buttons to trigger too if they match
+      }
+      
+      const matchingButtonLabel = await checkRedemptionAgainstButtonKeywords(evt);
+      if (matchingButtonLabel && window.electronAPI && window.electronAPI.sendTrigger) {
+        console.log(`🚀 Triggering button "${matchingButtonLabel}" from channel point redemption`);
+        triggerMapping({ cardLabel: matchingButtonLabel });
+        return; // Don't continue to mapping system if we found a keyword match
+      }
+    }
+    
+    // First try standard matching (includes chat commands)
     let m = matchMappingForEvent(evt);
     // If bits event, try best-match algorithm
     if (!m && evt && ((evt.type && evt.type.includes('bits')) || (evt.event && (evt.event.bits || evt.event.amount)))) {
@@ -910,6 +1304,7 @@ function showTwitchActivityModal() {
         <option value="subgift">Test Sub Gift</option>
         <option value="bits">Test Bits/Cheer</option>
         <option value="raid">Test Raid</option>
+        <option value="ban">Test Ban</option>
       </select>
       <select id="twitch-test-req" style="padding:6px;border-radius:6px;border:1px solid #333;background:#222;color:#fff;">
         <option value="none">No Requirement</option>
@@ -1021,6 +1416,24 @@ function showTwitchActivityModal() {
       // msg = viewer count
       const v = parseInt(msg, 10) || 5;
   pushTwitchEvent({ type: 'raid', user: user, user_name: user, event: { from_broadcaster_user_name: user, viewers: v }, _testRequirement: req });
+    } else if (t === 'ban') {
+      // msg = optional reason
+      const bannedUser = msg || 'TestBannedUser';
+      const moderator = userInput || 'TestModerator';
+      const reason = 'Spam and harassment';
+      pushTwitchEvent({ 
+        type: 'ban', 
+        event: { 
+          user_name: bannedUser, 
+          user_login: bannedUser.toLowerCase(),
+          moderator_user_name: moderator,
+          moderator_user_login: moderator.toLowerCase(),
+          reason: reason,
+          expires_at: null,
+          created_at: new Date().toISOString()
+        }, 
+        _testRequirement: req 
+      });
     }
     renderList();
   };
@@ -1039,6 +1452,7 @@ function showTwitchActivityModal() {
       case 'subgift': testInput.placeholder = 'Recipient username'; break;
       case 'bits': testInput.placeholder = 'Amount (e.g. 100)'; break;
       case 'raid': testInput.placeholder = 'Viewer count (e.g. 10)'; break;
+      case 'ban': testInput.placeholder = 'Banned username'; break;
       default: testInput.placeholder = 'Optional message or value';
     }
   };
@@ -1263,6 +1677,7 @@ function showTwitchConnectedMenu() {
           <option value="sub_tier3" title="Subscribe Tier 3">Subscribe — Tier 3</option>
           <option value="sub_prime" title="Subscribe Prime">Subscribe — Prime</option>
           <option value="raid">Raid</option>
+          <option value="ban">User Ban</option>
         </select>
         <div id="map-event-context" style="margin-top:10px"></div>
   <!-- subscribe tier selector removed; tiers are separate event types now -->
@@ -2248,3 +2663,20 @@ if (window.electronAPI && window.electronAPI.onTwitchClearResult) {
     setTimeout(() => { try { if (toast && toast.parentNode) toast.parentNode.removeChild(toast); } catch(e){} }, 3500);
   });
 }
+
+// Test function specifically for testing redemption keyword matching
+window.testRedemptionKeyword = function(rewardTitle = 'bob') {
+  console.log(`🧪 Testing redemption keyword matching for: "${rewardTitle}"`);
+  const testEvent = {
+    type: 'redeem',
+    user: 'TestUser',
+    user_name: 'TestUser',
+    event: {
+      user_name: 'TestUser',
+      reward: { title: rewardTitle },
+      user_input: ''
+    },
+    _testRequirement: 'none'
+  };
+  pushTwitchEvent(testEvent);
+};

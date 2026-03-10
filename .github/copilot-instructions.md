@@ -1,6 +1,7 @@
-# VirtualDeck AI Coding Agent Instructions
+# File moved
 
-This document provides guidance for AI coding agents working on the VirtualDeck codebase.
+This document has been moved to `docs/copilot-instructions.md`.
+Please open that file for the full AI agent instructions.
 
 ## Project Overview
 

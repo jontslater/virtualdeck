@@ -59,6 +59,9 @@ jspm_packages/
 # dotenv environment variables file
 .env
 
+# Twitch OAuth credentials (copy from twitch-oauth-config.example.js)
+twitch-oauth-config.js
+
 # Electron build artifacts
 dist_electron/
 

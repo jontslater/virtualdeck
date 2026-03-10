@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { app, BrowserWindow, globalShortcut, Menu, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -5,22 +6,126 @@ const fse = require('fs-extra'); // helpful for file copying
 const { ipcMain } = require('electron');
 const ws = require('windows-shortcuts'); // Import windows-shortcuts
 const { execFile } = require('child_process');
-const extractIcon = require('extract-file-icon');
+// const extractIcon = require('extract-file-icon'); // Temporarily disabled due to build issues
 const { nativeImage } = require('electron');
 const tmi = require('tmi.js'); // Import tmi.js for Twitch chat
 const WebSocket = require('ws');
 const fetch = require('node-fetch');
 const http = require('http');
+const https = require('https');
+const url = require('url');
+const querystring = require('querystring');
+const { autoUpdater } = require('electron-updater');
+let twitchConfig = {};
+try {
+  // Try to load project-provided twitch-oauth-config.js (used in development / custom builds)
+  twitchConfig = require('./twitch-oauth-config.js');
+} catch (e) {
+  // If the file is not present (packaged installer may omit it), fall back to environment variables.
+  console.warn('⚠️ twitch-oauth-config.js not found - falling back to environment variables if present');
+  twitchConfig = {
+    clientId: process.env.TWITCH_CLIENT_ID || '',
+    clientSecret: process.env.TWITCH_CLIENT_SECRET || '',
+    redirectUri: process.env.TWITCH_REDIRECT_URI || 'http://localhost:3000/oauth/callback'
+  };
+}
+
+// Configure auto-updater
+autoUpdater.autoDownload = false; // Don't auto-download, ask user first
+autoUpdater.autoInstallOnAppQuit = true;
+
+// Global debouncing mechanism to prevent duplicate button triggers
+const recentButtonTriggers = new Map();
+const BUTTON_TRIGGER_DEBOUNCE_MS = 500; // 500ms debounce window
+
+function isRecentButtonTrigger(label) {
+  const now = Date.now();
+  const lastTrigger = recentButtonTriggers.get(label);
+  if (lastTrigger && (now - lastTrigger) < BUTTON_TRIGGER_DEBOUNCE_MS) {
+    return true;
+  }
+  recentButtonTriggers.set(label, now);
+  return false;
+}
+
+function triggerButtonWithDebounce(label, source = 'unknown') {
+  console.log(`🔍 triggerButtonWithDebounce called for "${label}" from ${source}`);
+  if (isRecentButtonTrigger(label)) {
+    console.log(`🚫 Skipping duplicate trigger for "${label}" from ${source} (within ${BUTTON_TRIGGER_DEBOUNCE_MS}ms)`);
+    return false;
+  }
+  
+  if (win && win.webContents) {
+    console.log(`🚀 Sending trigger-media event for "${label}" from ${source}`);
+    win.webContents.send('trigger-media', label);
+    return true;
+  }
+  console.log(`❌ No window available to trigger button "${label}" from ${source}`);
+  return false;
+}
 
 // Use Electron's userData directory for config and user files
 const userDataPath = app.getPath('userData');
 const configPath = path.join(userDataPath, 'config.json');
+const profilesMetaPath = path.join(userDataPath, 'profiles-meta.json');
 const userSoundsDir = path.join(userDataPath, 'sounds');
 const userSkinsDir = path.join(userDataPath, 'skins');
 const defaultConfigPath = path.join(__dirname, 'config.json');
 const defaultSoundsDir = path.join(__dirname, 'public', 'assets', 'sounds');
 const defaultSkinsDir = path.join(__dirname, 'skins');
 const tcConfigPath = path.join(userDataPath, 'tc_config.json');
+const dailyCheckinsPath = path.join(userDataPath, 'checkins.json');
+const hydrationConfigPath = path.join(userDataPath, 'hydration-config.json');
+const progressionsPath = path.join(userDataPath, 'progressions.json');
+const progressionsMediaPath = path.join(userDataPath, 'media', 'progressions');
+
+// Profile management globals
+let currentActiveProfile = 'default';
+
+// Cooldown tracking for !checkin command (username -> timestamp)
+const checkinCommandCooldown = new Map();
+const CHECKIN_COMMAND_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+
+// Progression system globals
+let progressionsData = { progressions: [] };
+const progressionCommandCooldown = new Map();
+const PROGRESSION_COMMAND_COOLDOWN_MS = 30 * 1000; // 30 seconds
+
+// Helper function to get check-in leaderboard
+function getCheckinLeaderboard(showStreak = false, limit = 5) {
+  try {
+    if (!fs.existsSync(dailyCheckinsPath)) {
+      return null;
+    }
+    const data = JSON.parse(fs.readFileSync(dailyCheckinsPath, 'utf-8'));
+    const viewers = data.viewers || {};
+    
+    // Convert to array and filter out users with no check-ins
+    const viewerArray = Object.values(viewers)
+      .filter(v => v && v.total_checkins > 0)
+      .map(v => ({
+        username: v.username || v.display_name || 'unknown',
+        display_name: v.display_name || v.username || 'unknown',
+        total_checkins: v.total_checkins || 0,
+        streak: v.streak || 0
+      }));
+    
+    // Sort by streak if enabled, otherwise by total check-ins
+    if (showStreak) {
+      viewerArray.sort((a, b) => {
+        if (b.streak !== a.streak) return b.streak - a.streak;
+        return b.total_checkins - a.total_checkins;
+      });
+    } else {
+      viewerArray.sort((a, b) => b.total_checkins - a.total_checkins);
+    }
+    
+    return viewerArray.slice(0, limit);
+  } catch (err) {
+    console.error('Error getting check-in leaderboard:', err);
+    return null;
+  }
+}
 
 // Ensure config and sounds exist in userData on first run
 function ensureUserData() {
@@ -50,7 +155,8 @@ function ensureUserData() {
         'channel.subscription.message',
         'channel.follow',
         'channel.raid',
-        'channel.cheer'
+        'channel.cheer',
+        'channel.ban'
       ]
       ,
       // ISO string for last time we polled followers; used to detect new followers since last run
@@ -62,6 +168,8 @@ function ensureUserData() {
   }
   // Run migration to backfill button ids if missing
   ensureButtonIds();
+  // Initialize profile system
+  ensureProfiles();
 }
 
 // Ensure each button in config has a stable unique id (migration/backfill)
@@ -94,6 +202,141 @@ function ensureButtonIds() {
   }
 }
 
+// ============================================================
+// PROFILE MANAGEMENT SYSTEM
+// ============================================================
+
+// Helper: Get path for a specific profile
+function getProfilePath(profileId) {
+  return path.join(userDataPath, `profile-${profileId}.json`);
+}
+
+// Helper: Load profiles metadata
+function loadProfilesMeta() {
+  try {
+    if (fs.existsSync(profilesMetaPath)) {
+      return JSON.parse(fs.readFileSync(profilesMetaPath, 'utf-8'));
+    }
+  } catch (err) {
+    console.error('Error loading profiles-meta.json:', err);
+  }
+  // Default structure
+  return {
+    activeProfile: 'default',
+    profiles: [
+      { id: 'default', name: 'Default Profile', created: new Date().toISOString() }
+    ]
+  };
+}
+
+// Helper: Save profiles metadata
+function saveProfilesMeta(meta) {
+  fs.writeFileSync(profilesMetaPath, JSON.stringify(meta, null, 2));
+}
+
+// Helper: Load a specific profile
+function loadProfile(profileId) {
+  try {
+    const profilePath = getProfilePath(profileId);
+    if (fs.existsSync(profilePath)) {
+      return JSON.parse(fs.readFileSync(profilePath, 'utf-8'));
+    }
+  } catch (err) {
+    console.error(`Error loading profile ${profileId}:`, err);
+  }
+  // Default profile structure
+  return {
+    buttons: [],
+    uiSettings: {
+      theme: null,
+      componentVisibility: {},
+      chatWidth: null,
+      soundButtonOrder: []
+    }
+  };
+}
+
+// Helper: Save a specific profile
+function saveProfile(profileId, profileData) {
+  const profilePath = getProfilePath(profileId);
+  fs.writeFileSync(profilePath, JSON.stringify(profileData, null, 2));
+  console.log(`Profile ${profileId} saved successfully`);
+}
+
+// Migration: Convert old config.json to profile system
+function migrateToProfiles() {
+  try {
+    // Check if migration is needed
+    if (fs.existsSync(profilesMetaPath)) {
+      console.log('Profiles system already exists, skipping migration');
+      return;
+    }
+
+    console.log('Migrating to profiles system...');
+
+    // Load old config
+    let oldConfig = { buttons: [] };
+    if (fs.existsSync(configPath)) {
+      try {
+        oldConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      } catch (err) {
+        console.error('Error reading old config:', err);
+      }
+    }
+
+    // Create default profile with old data
+    const defaultProfile = {
+      buttons: oldConfig.buttons || [],
+      uiSettings: {
+        theme: null,
+        componentVisibility: {},
+        chatWidth: null,
+        soundButtonOrder: []
+      }
+    };
+
+    // Save default profile
+    saveProfile('default', defaultProfile);
+
+    // Create profiles metadata
+    const profilesMeta = {
+      activeProfile: 'default',
+      profiles: [
+        { id: 'default', name: 'Default Profile', created: new Date().toISOString() }
+      ]
+    };
+    saveProfilesMeta(profilesMeta);
+
+    console.log('Migration to profiles system complete');
+  } catch (err) {
+    console.error('Error during profile migration:', err);
+  }
+}
+
+// Ensure profiles system is initialized
+function ensureProfiles() {
+  migrateToProfiles();
+  
+  // Load active profile
+  const meta = loadProfilesMeta();
+  currentActiveProfile = meta.activeProfile || 'default';
+  
+  // Ensure active profile exists
+  const profilePath = getProfilePath(currentActiveProfile);
+  if (!fs.existsSync(profilePath)) {
+    console.log(`Active profile ${currentActiveProfile} not found, creating it`);
+    saveProfile(currentActiveProfile, {
+      buttons: [],
+      uiSettings: {
+        theme: null,
+        componentVisibility: {},
+        chatWidth: null,
+        soundButtonOrder: []
+      }
+    });
+  }
+}
+
 function loadTcConfig() {
   try {
   const raw = JSON.parse(fs.readFileSync(tcConfigPath, 'utf-8'));
@@ -101,9 +344,31 @@ function loadTcConfig() {
   if (!raw.topics) raw.topics = [];
   if (!raw.hasOwnProperty('lastFollowerPoll')) raw.lastFollowerPoll = null;
   if (!Array.isArray(raw.createdSubscriptions)) raw.createdSubscriptions = [];
+  // OAuth configuration - use defaults if not set
+  if (!raw.oauth) raw.oauth = {};
+  if (!raw.oauth.clientId) raw.oauth.clientId = twitchConfig.clientId;
+  if (!raw.oauth.clientSecret) raw.oauth.clientSecret = twitchConfig.clientSecret;
+  if (!raw.oauth.redirectUri) raw.oauth.redirectUri = twitchConfig.redirectUri;
+  if (!raw.oauth.accessToken) raw.oauth.accessToken = '';
+  if (!raw.oauth.refreshToken) raw.oauth.refreshToken = '';
+  if (!raw.oauth.tokenExpiry) raw.oauth.tokenExpiry = null;
+  if (!raw.oauth.useCustomCredentials) raw.oauth.useCustomCredentials = false;
   return raw;
   } catch (e) {
-  return { topics: [], lastFollowerPoll: null, createdSubscriptions: [] };
+  return {
+    topics: [],
+    lastFollowerPoll: null,
+    createdSubscriptions: [],
+    oauth: {
+      clientId: twitchConfig.clientId,
+      clientSecret: twitchConfig.clientSecret,
+      redirectUri: twitchConfig.redirectUri,
+      accessToken: '',
+      refreshToken: '',
+      tokenExpiry: null,
+      useCustomCredentials: false
+    }
+  };
   }
 }
 
@@ -111,11 +376,238 @@ function saveTcConfig(cfg) {
   fs.writeFileSync(tcConfigPath, JSON.stringify(cfg, null, 2));
 }
 
+// Hydration config management
+function loadHydrationConfig() {
+  try {
+    if (fs.existsSync(hydrationConfigPath)) {
+      return JSON.parse(fs.readFileSync(hydrationConfigPath, 'utf-8'));
+    }
+  } catch (e) {
+    console.error('Error loading hydration config:', e);
+  }
+  // Default config
+  return {
+    streamGoal: 64,
+    incrementAmount: 8,
+    redemptionKeyword: "hydrate",
+    currentProgress: 0,
+    gaugeStyle: "circular",
+    waterColor: "#4fc3f7",
+    backgroundColor: "transparent",
+    textColor: "#ffffff",
+    gaugeSize: 200,
+    positionX: 50,
+    positionY: 50,
+    borderWidth: 0,
+    borderColor: "#ffffff",
+    borderRadius: 10,
+    resetOnLive: true
+  };
+}
+
+function saveHydrationConfig(cfg) {
+  try {
+    fs.writeFileSync(hydrationConfigPath, JSON.stringify(cfg, null, 2));
+    console.log('Hydration config saved');
+  } catch (e) {
+    console.error('Error saving hydration config:', e);
+  }
+}
+
+// Progression system management
+function loadProgressions() {
+  try {
+    if (fs.existsSync(progressionsPath)) {
+      const data = JSON.parse(fs.readFileSync(progressionsPath, 'utf-8'));
+      // Ensure proper structure
+      if (!data.progressions) {
+        data.progressions = [];
+      }
+      // Initialize runtime state for session-only progressions
+      data.progressions.forEach(prog => {
+        if (prog.persistenceMode === 'session') {
+          prog.currentStageIndex = 0;
+          prog.currentCount = 0;
+        }
+        // Ensure required fields exist
+        if (!prog.topRedeemers) prog.topRedeemers = [];
+        if (typeof prog.totalRedeems !== 'number') prog.totalRedeems = 0;
+        if (typeof prog.currentStageIndex !== 'number') prog.currentStageIndex = 0;
+        if (typeof prog.currentCount !== 'number') prog.currentCount = 0;
+      });
+      return data;
+    }
+  } catch (e) {
+    console.error('Error loading progressions:', e);
+  }
+  // Default empty structure
+  return { progressions: [] };
+}
+
+function saveProgressions(data) {
+  try {
+    // Ensure progressions media directory exists
+    if (!fs.existsSync(progressionsMediaPath)) {
+      fs.mkdirSync(progressionsMediaPath, { recursive: true });
+    }
+    fs.writeFileSync(progressionsPath, JSON.stringify(data, null, 2));
+    console.log('Progressions saved');
+  } catch (e) {
+    console.error('Error saving progressions:', e);
+  }
+}
+
+function getProgressionByRedeemKeyword(keyword) {
+  if (!keyword || !progressionsData || !progressionsData.progressions) {
+    return null;
+  }
+  const lowerKeyword = keyword.toLowerCase().trim();
+  return progressionsData.progressions.find(prog => 
+    prog.redeemKeyword && prog.redeemKeyword.toLowerCase().trim() === lowerKeyword
+  );
+}
+
+function incrementProgression(progressionId, username) {
+  const progression = progressionsData.progressions.find(p => p.id === progressionId);
+  if (!progression) {
+    console.error('Progression not found:', progressionId);
+    return null;
+  }
+
+  // Update leaderboard first
+  if (!progression.topRedeemers) {
+    progression.topRedeemers = [];
+  }
+  const redeemer = progression.topRedeemers.find(r => r.username === username);
+  if (redeemer) {
+    redeemer.count++;
+  } else {
+    progression.topRedeemers.push({ username, count: 1 });
+  }
+  // Sort and keep top 10
+  progression.topRedeemers.sort((a, b) => b.count - a.count);
+  progression.topRedeemers = progression.topRedeemers.slice(0, 10);
+
+  // Increment total redeems
+  progression.totalRedeems++;
+  
+  // Check if previous redeem completed a stage (currentCount equals requiredCount)
+  const currentStage = progression.stages[progression.currentStageIndex];
+  let stageAdvanced = false;
+  
+  if (currentStage && progression.currentCount >= currentStage.requiredCount) {
+    // Stage was completed - advance to next stage if available
+    if (progression.currentStageIndex < progression.stages.length - 1) {
+      progression.currentStageIndex++;
+      progression.currentCount = 1; // This redeem is the first toward new stage
+      stageAdvanced = true;
+      console.log(`Progression "${progression.name}" advanced to stage ${progression.currentStageIndex + 1}`);
+    } else {
+      // At final stage - just increment count
+      progression.currentCount++;
+      console.log(`Progression "${progression.name}" is at final stage`);
+    }
+  } else {
+    // Normal increment
+    progression.currentCount++;
+  }
+
+  // Save if permanent mode
+  if (progression.persistenceMode === 'permanent') {
+    saveProgressions(progressionsData);
+  }
+
+  return {
+    progression,
+    stageAdvanced,
+    currentStage: progression.stages[progression.currentStageIndex],
+    currentStageIndex: progression.currentStageIndex
+  };
+}
+
+function broadcastHydrationUpdate(config) {
+  const percentage = config.streamGoal > 0 ? (config.currentProgress / config.streamGoal) * 100 : 0;
+  const payload = {
+    type: 'hydrationUpdate',
+    data: {
+      current: config.currentProgress,
+      goal: config.streamGoal,
+      percentage: percentage,
+      config: config
+    }
+  };
+  
+  // Broadcast to all connected overlay clients
+  overlayClients.forEach(client => {
+    if (client.readyState === 1) { // WebSocket.OPEN
+      try {
+        client.send(JSON.stringify(payload));
+      } catch (error) {
+        console.error('Error broadcasting hydration update:', error);
+      }
+    }
+  });
+}
+
+// Progression broadcast functions (removed - now handled inline in increment handler)
+
+// Stream monitor for auto-reset hydration
+let lastStreamLiveState = false;
+let streamMonitorInterval = null;
+
+async function checkStreamAndResetHydration() {
+  try {
+    const config = loadHydrationConfig();
+    if (!config.resetOnLive) return;
+    
+    // Check if stream is live
+    if (!twitchClientId || !twitchToken || !twitchUserId) return;
+    
+    const resp = await fetch(`https://api.twitch.tv/helix/streams?user_id=${encodeURIComponent(twitchUserId)}`, {
+      headers: {
+        'Client-ID': twitchClientId,
+        'Authorization': `Bearer ${twitchToken}`
+      }
+    });
+    const data = await resp.json();
+    const isLive = data.data && data.data.length > 0;
+    
+    // If stream just went live (transition from offline to live), reset hydration
+    if (isLive && !lastStreamLiveState) {
+      console.log('Stream went live - resetting hydration tracker');
+      config.currentProgress = 0;
+      saveHydrationConfig(config);
+      broadcastHydrationUpdate(config);
+    }
+    
+    lastStreamLiveState = isLive;
+  } catch (error) {
+    console.error('Error in stream monitor:', error);
+  }
+}
+
+function startStreamMonitor() {
+  if (streamMonitorInterval) return;
+  // Check every 2 minutes
+  streamMonitorInterval = setInterval(checkStreamAndResetHydration, 120000);
+  // Also check immediately on start
+  checkStreamAndResetHydration();
+}
+
+function stopStreamMonitor() {
+  if (streamMonitorInterval) {
+    clearInterval(streamMonitorInterval);
+    streamMonitorInterval = null;
+  }
+}
+
 let win;
 let overlayWindow;
 let overlayServer;
 let overlayWSS;
 let overlayClients = new Set();
+let overlayRegistry = new Map(); // overlayName -> Set of WebSocket connections
+let overlayServerPort;
 
 function createWindow() {
   win = new BrowserWindow({
@@ -127,6 +619,7 @@ function createWindow() {
     frame: false,
     movable: true,
     resizable: true,
+    title: 'VirtualDeck BETA',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -149,6 +642,8 @@ function createWindow() {
         if (win.isMaximized && win.isMaximized()) win.webContents.send('window-maximized');
         else win.webContents.send('window-unmaximized');
       } catch (e) {}
+      // Restore Twitch chat if we have stored OAuth credentials (so user stays "logged in")
+      setTimeout(() => tryRestoreTwitchConnection(), 800);
     } catch (e) { console.warn('Failed to send renderer-ready:', e); }
   });
   // Create context menu
@@ -181,24 +676,135 @@ function startOverlayServer() {
   
   // Create HTTP server to serve overlay HTML and media files
   overlayServer = http.createServer((req, res) => {
+    // Handle CORS preflight requests
+    if (req.method === 'OPTIONS') {
+      res.writeHead(200, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      });
+      res.end();
+      return;
+    }
+    
     if (req.url === '/overlay' || req.url === '/') {
-      // Serve the overlay HTML file
-      const overlayPath = path.join(__dirname, 'public/overlay.html');
-      fs.readFile(overlayPath, (err, data) => {
+      // Serve the default base overlay
+      generateOverlayHTML('default', (err, html) => {
         if (err) {
           res.writeHead(500);
-          res.end('Error loading overlay');
+          res.end('Error generating overlay');
           return;
         }
-        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.writeHead(200, { 
+          'Content-Type': 'text/html',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        });
+        res.end(html);
+      });
+    } else if (req.url === '/hydration') {
+      // Serve the hydration tracker overlay
+      const hydrationPath = path.join(__dirname, 'overlays', 'hydrationOverlay', 'index.html');
+      fs.readFile(hydrationPath, (err, data) => {
+        if (err) {
+          res.writeHead(500);
+          res.end('Error loading hydration overlay');
+          return;
+        }
+        res.writeHead(200, { 
+          'Content-Type': 'text/html',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        });
         res.end(data);
       });
+    } else if (req.url === '/progression') {
+      // Serve the progression system overlay
+      const progressionPath = path.join(__dirname, 'overlays', 'progressionOverlay', 'index.html');
+      fs.readFile(progressionPath, (err, data) => {
+        if (err) {
+          res.writeHead(500);
+          res.end('Error loading progression overlay');
+          return;
+        }
+        res.writeHead(200, { 
+          'Content-Type': 'text/html',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        });
+        res.end(data);
+      });
+    } else if (req.url.startsWith('/overlay/') || req.url.startsWith('/overlay?')) {
+      // Handle custom overlays - /overlay/name or /overlay?name=name
+      let overlayName = 'default';
+      
+      // Parse overlay name from URL
+      if (req.url.includes('?')) {
+        const url = new URL(req.url, `http://localhost:${port}`);
+        overlayName = url.searchParams.get('name') || 'default';
+      } else {
+        // Extract from path like /overlay/custom-name
+        overlayName = req.url.substring(9); // Remove '/overlay/'
+      }
+      
+      console.log(`🎯 Serving overlay: ${overlayName}`);
+      
+      // Check if it's a predefined overlay
+      const predefinedOverlays = ['hudOverlay', 'cameraFrameOverlay', 'chatOverlay', 'alertOverlay', 'confettiOverlay'];
+      if (predefinedOverlays.includes(overlayName)) {
+        // Serve predefined overlay
+        const overlayPath = path.join(__dirname, 'overlays', overlayName, 'index.html');
+        fs.readFile(overlayPath, (err, data) => {
+          if (err) {
+            res.writeHead(500);
+            res.end('Error loading overlay');
+            return;
+          }
+          res.writeHead(200, { 
+            'Content-Type': 'text/html',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          });
+          res.end(data);
+        });
+      } else {
+        // Generate custom overlay from base template
+        generateOverlayHTML(overlayName, (err, html) => {
+          if (err) {
+            res.writeHead(500);
+            res.end('Error generating overlay');
+            return;
+          }
+          res.writeHead(200, { 
+            'Content-Type': 'text/html',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          });
+          res.end(html);
+        });
+      }
     } else if (req.url.startsWith('/media/')) {
-      // Serve media files from file paths
-      const filePath = decodeURIComponent(req.url.substring(7)); // Remove '/media/' prefix
+      // Serve media files from relative paths
+      let urlPath = req.url.substring(7); // Remove '/media/' prefix
+      
+      // Strip query parameters (e.g., ?t=timestamp for cache-busting)
+      const queryIndex = urlPath.indexOf('?');
+      if (queryIndex !== -1) {
+        urlPath = urlPath.substring(0, queryIndex);
+      }
+      
+      const relativePath = decodeURIComponent(urlPath);
+      
+      // Construct full path from relative path
+      const fullPath = path.join(userDataPath, relativePath);
+      const normalizedPath = path.normalize(fullPath);
       
       // Security check - ensure the file path is within allowed directories
-      const normalizedPath = path.normalize(filePath);
       const isAllowed = normalizedPath.startsWith(userDataPath) || 
                        normalizedPath.startsWith(__dirname) ||
                        normalizedPath.startsWith(path.join(__dirname, 'public'));
@@ -242,7 +848,66 @@ function startOverlayServer() {
             res.end('Error reading file');
             return;
           }
-          res.writeHead(200, { 'Content-Type': contentType });
+          res.writeHead(200, { 
+            'Content-Type': contentType,
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          });
+          res.end(data);
+        });
+      });
+    } else if (req.url.startsWith('/public/')) {
+      // Serve static files from public directory
+      const publicPath = req.url.substring(1); // Remove leading '/'
+      const fullPath = path.join(__dirname, publicPath);
+      
+      // Security check - ensure the file path is within public directory
+      if (!fullPath.startsWith(path.join(__dirname, 'public'))) {
+        res.writeHead(403);
+        res.end('Access denied');
+        return;
+      }
+      
+      fs.access(fullPath, fs.constants.F_OK, (err) => {
+        if (err) {
+          res.writeHead(404);
+          res.end('File not found');
+          return;
+        }
+        
+        // Get file extension for content type
+        const ext = path.extname(fullPath).toLowerCase();
+        const contentTypes = {
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.gif': 'image/gif',
+          '.webp': 'image/webp',
+          '.svg': 'image/svg+xml',
+          '.mp4': 'video/mp4',
+          '.webm': 'video/webm',
+          '.ogg': 'video/ogg',
+          '.mp3': 'audio/mpeg',
+          '.wav': 'audio/wav'
+        };
+        
+        const contentType = contentTypes[ext] || 'application/octet-stream';
+        
+        // Serve the file
+        fs.readFile(fullPath, (err, data) => {
+          if (err) {
+            res.writeHead(500);
+            res.end('Error reading file');
+            return;
+          }
+          res.writeHead(200, { 
+            'Content-Type': contentType,
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Cache-Control': 'public, max-age=3600'
+          });
           res.end(data);
         });
       });
@@ -255,40 +920,226 @@ function startOverlayServer() {
   // Create WebSocket server for real-time communication
   overlayWSS = new WebSocket.Server({ server: overlayServer });
   
-  overlayWSS.on('connection', (ws) => {
-    console.log('Overlay client connected');
+  overlayWSS.on('connection', (ws, req) => {
+    console.log('Overlay client connected - URL:', req.url);
+    
+    // Extract overlay name from URL query parameters
+    const url = new URL(req.url || '/', `http://localhost:${port}`);
+    const overlayName = url.searchParams.get('overlay') || 'main';
+    ws.overlayName = overlayName; // Store overlay name on the WebSocket connection
+    
+    // Add to global clients set
     overlayClients.add(ws);
     
+    // Register in overlay registry
+    if (!overlayRegistry.has(overlayName)) {
+      overlayRegistry.set(overlayName, new Set());
+    }
+    overlayRegistry.get(overlayName).add(ws);
+    
+    console.log(`✅ WebSocket connected for overlay: "${overlayName}"`);
+    console.log(`📊 Registry status:`, Array.from(overlayRegistry.entries()).map(([name, clients]) => `${name}:${clients.size}`));
+    
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message);
+        console.log(`📨 Message from overlay ${overlayName}:`, data);
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
+    });
+    
     ws.on('close', () => {
-      console.log('Overlay client disconnected');
+      console.log(`Overlay client disconnected: ${overlayName}`);
       overlayClients.delete(ws);
+      
+      // Remove from overlay registry
+      if (overlayRegistry.has(overlayName)) {
+        overlayRegistry.get(overlayName).delete(ws);
+        if (overlayRegistry.get(overlayName).size === 0) {
+          overlayRegistry.delete(overlayName);
+        }
+      }
+      
+      console.log(`📊 Registry status after disconnect:`, Array.from(overlayRegistry.entries()).map(([name, clients]) => `${name}:${clients.size}`));
     });
     
     ws.on('error', (error) => {
       console.log('Overlay WebSocket error:', error);
       overlayClients.delete(ws);
+      
+      // Remove from overlay registry
+      if (overlayRegistry.has(overlayName)) {
+        overlayRegistry.get(overlayName).delete(ws);
+        if (overlayRegistry.get(overlayName).size === 0) {
+          overlayRegistry.delete(overlayName);
+        }
+      }
     });
   });
 
-  overlayServer.listen(port, () => {
-    console.log(`Overlay server running at http://localhost:${port}/overlay`);
-    console.log(`Use this URL in OBS Browser Source: http://localhost:${port}/overlay`);
-  });
+  // Try to start server with automatic port fallback
+  function tryStartServer(port, attempt = 1) {
+    overlayServer.listen(port, (err) => {
+      if (err) {
+        if (err.code === 'EADDRINUSE') {
+          console.log(`Port ${port} is already in use, trying next port...`);
+          if (attempt < 10) { // Try up to 10 different ports
+            // Try next port
+            tryStartServer(port + 1, attempt + 1);
+          } else {
+            console.error(`Failed to start overlay server after trying ${attempt} ports`);
+            console.error('Please check if another VirtualDeck instance is running or free up some ports');
+          }
+        } else {
+          console.error('Failed to start overlay server:', err);
+        }
+      } else {
+        console.log(`✅ Overlay server running at http://localhost:${port}/overlay`);
+        console.log(`📺 Use this URL in OBS Browser Source: http://localhost:${port}/overlay`);
+        console.log(`📺 Default overlay URL: http://localhost:${port}/overlay`);
+        console.log(`📺 Custom overlays: http://localhost:${port}/overlay?name=overlayName`);
+        
+        // Store the actual port used for reference
+        overlayServerPort = port;
+      }
+    });
+  }
+
+  tryStartServer(port);
 }
 
-// Function to broadcast messages to all overlay clients
-function broadcastToOverlay(message) {
+// Generate overlay HTML based on overlay name and template
+function generateOverlayHTML(overlayName, callback) {
+  try {
+    // Use the base overlay template for custom overlays
+    const templatePath = path.join(__dirname, 'overlays/baseOverlay/index.html');
+    
+    fs.readFile(templatePath, 'utf8', (err, template) => {
+      if (err) {
+        callback(err, null);
+        return;
+      }
+      
+      // Replace template variables
+      let html = template.replace(/\{\{OVERLAY_NAME\}\}/g, overlayName);
+      html = html.replace(/\{\{BACKGROUND_MODE\}\}/g, 'transparent');
+      html = html.replace(/\{\{CHROMA_COLOR\}\}/g, '#00ff00');
+      html = html.replace(/\{\{LAYOUT_CLASS\}\}/g, 'layout-center');
+      
+      callback(null, html);
+    });
+  } catch (error) {
+    callback(error, null);
+  }
+}
+
+// Get layout class based on overlay name
+function getLayoutClass(overlayName) {
+  // Simple mapping for now - could be enhanced with stored configurations
+  if (overlayName.includes('fullscreen') || overlayName.includes('full-screen')) {
+    return 'fullscreen-media';
+  } else if (overlayName.includes('text-only')) {
+    return 'text-only';
+  } else {
+    return 'center-media'; // Default layout
+  }
+}
+
+// Function to broadcast messages to overlay clients
+// If targetOverlay is specified, only send to that overlay
+// If targetOverlay is null/undefined, send to all overlays (backward compatibility)
+function broadcastToOverlay(message, targetOverlay = null) {
   const messageStr = JSON.stringify(message);
-  overlayClients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(messageStr);
+  let sentCount = 0;
+  
+  if (targetOverlay) {
+    // Use registry for targeted messaging
+    const overlayClients = overlayRegistry.get(targetOverlay);
+    
+    if (overlayClients && overlayClients.size > 0) {
+      overlayClients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(messageStr);
+          sentCount++;
+        }
+      });
+      console.log(`📤 Message sent to ${sentCount} client(s) on overlay: "${targetOverlay}"`);
+    } else {
+      console.warn(`⚠️ WARNING: No clients found for overlay "${targetOverlay}"! Is the overlay open in OBS?`);
+      console.log(`📊 Available overlays:`, Array.from(overlayRegistry.keys()));
     }
-  });
+  } else {
+    // No target specified - send to all overlays (broadcast mode)
+    overlayClients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(messageStr);
+        sentCount++;
+      }
+    });
+    console.log(`📤 Broadcast message sent to ${sentCount} client(s) across all overlays`);
+  }
+  
+  // Log registry status for debugging
+  console.log(`📊 Registry status:`, Array.from(overlayRegistry.entries()).map(([name, clients]) => `${name}:${clients.size}`));
+}
+
+// Function to get the current overlay server URL
+function getOverlayServerUrl() {
+  return `http://localhost:${overlayServerPort || 8080}/overlay`;
+}
+
+// Generate a button id that is unique among current config.buttons (avoids duplicate id when add-media runs twice)
+function nextUniqueButtonId(buttons) {
+  const existingIds = new Set((buttons || []).map(b => b && b.id).filter(Boolean));
+  let id;
+  do {
+    id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+  } while (existingIds.has(id));
+  return id;
 }
 
 ipcMain.on('add-media', (event, data) => {
-  console.log('add-media received:', data);
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  try {
+    console.log('add-media received:', data);
+    console.log('Chat command data:', data.chatCommand);
+    // Load from active profile instead of old config.json
+    const profile = loadProfile(currentActiveProfile);
+    const config = profile; // Keep variable name for compatibility
+
+    // Meld-scene buttons: no file required
+    if (data.type === 'meld-scene') {
+      const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
+      const newButton = {
+        id: (existing && existing.id) || nextUniqueButtonId(config.buttons),
+        label: data.label,
+        type: 'meld-scene',
+        sceneId: data.sceneId,
+        sceneName: data.sceneName || data.label,
+        src: '',
+        hotkey: data.hotkey || undefined,
+        chatCommand: data.chatCommand || undefined
+      };
+      if (typeof data.editingIndex === 'number') {
+        config.buttons[data.editingIndex] = newButton;
+        console.log('✏️ Edited Meld scene button at index', data.editingIndex, ':', newButton.label);
+      } else {
+        config.buttons.push(newButton);
+        console.log('➕ Added Meld scene button:', newButton.label);
+      }
+      saveProfile(currentActiveProfile, config);
+      if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
+      return;
+    }
+
+    // Validate required data (file path) for audio/app
+    if (!data.originalPath) {
+      console.error('Error: originalPath is missing from add-media data:', data);
+      if (win && !win.isDestroyed()) {
+        dialog.showErrorBox('Save Error', 'Failed to save button: File path is missing. Please select a file and try again.');
+      }
+      return;
+    }
 
   // Handle app files differently than audio files
   if (data.type === 'app') {
@@ -330,13 +1181,52 @@ ipcMain.on('add-media', (event, data) => {
       const newFileName = `${data.label}${ext}`;
       const newFilePath = path.join(path.dirname(oldFilePath), newFileName);
       const newTargetPath = path.relative(userDataPath, newFilePath).replace(/\\/g, '/');
+      
       // If label changed and file exists and file name doesn't match new label
       if (data.label !== oldLabel && fs.existsSync(oldFilePath) && !oldSrc.endsWith(newFileName)) {
+        // Check if any other button in ANY profile uses this same file
+        let fileInUseByOther = false;
+        
         try {
-          fs.renameSync(oldFilePath, newFilePath);
-          data.targetPath = newTargetPath;
+          const meta = loadProfilesMeta();
+          for (const profileInfo of meta.profiles) {
+            const otherProfile = loadProfile(profileInfo.id);
+            if (otherProfile.buttons && Array.isArray(otherProfile.buttons)) {
+              // Check all buttons in this profile
+              for (let i = 0; i < otherProfile.buttons.length; i++) {
+                const btn = otherProfile.buttons[i];
+                // Skip the button we're currently editing
+                if (profileInfo.id === currentActiveProfile && i === data.editingIndex) {
+                  continue;
+                }
+                // If another button uses the same file, don't rename it
+                if (btn.src === oldSrc) {
+                  fileInUseByOther = true;
+                  console.log(`⚠️ File ${oldSrc} is used by button "${btn.label}" in profile ${profileInfo.id}, skipping rename`);
+                  break;
+                }
+              }
+              if (fileInUseByOther) break;
+            }
+          }
         } catch (err) {
-          data.targetPath = oldSrc; // fallback
+          console.warn('Error checking if file is used by other buttons:', err);
+        }
+        
+        // Only rename if no other button uses this file
+        if (!fileInUseByOther) {
+          try {
+            fs.renameSync(oldFilePath, newFilePath);
+            data.targetPath = newTargetPath;
+            console.log(`✅ Renamed ${oldFilePath} to ${newFilePath}`);
+          } catch (err) {
+            console.warn('Failed to rename file:', err);
+            data.targetPath = oldSrc; // fallback
+          }
+        } else {
+          // Keep using the old file path since other buttons need it
+          data.targetPath = oldSrc;
+          console.log(`⏭️ Keeping original file path ${oldSrc} (shared with other buttons)`);
         }
       }
     }
@@ -351,7 +1241,9 @@ ipcMain.on('add-media', (event, data) => {
     // Persist volume if provided (expected 0.0 - 1.0). This value is only
     // meaningful for `type: 'audio'` buttons; the renderer will set the
     // Audio element's `volume` property when a button is triggered.
-    volume: (typeof data.volume === 'number') ? data.volume : (data.volume ? parseFloat(data.volume) : undefined)
+    volume: (typeof data.volume === 'number') ? data.volume : (data.volume ? parseFloat(data.volume) : undefined),
+    // Include chat command data if provided
+    chatCommand: data.chatCommand || undefined
   };
 
   // Ensure each button has a stable unique id
@@ -359,35 +1251,70 @@ ipcMain.on('add-media', (event, data) => {
     // Preserve existing id if present
     const existing = config.buttons[data.editingIndex];
     if (existing && existing.id) newButton.id = existing.id;
-    else newButton.id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+    else newButton.id = nextUniqueButtonId(config.buttons);
     config.buttons[data.editingIndex] = newButton;
+    console.log('✏️ Edited button at index', data.editingIndex, ':', newButton.label);
   } else {
-    newButton.id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+    newButton.id = nextUniqueButtonId(config.buttons);
     config.buttons.push(newButton);
+    console.log('➕ Added new button:', newButton.label);
   }
 
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-  //checking if data is still here after write
-  //console.log('Data still here?',data);
+  // Save back to active profile (preserves uiSettings)
+  saveProfile(currentActiveProfile, profile);
+  console.log('✅ Button saved to profile:', currentActiveProfile);
+  } catch (error) {
+    console.error('Error in add-media handler:', error);
+    if (win && !win.isDestroyed()) {
+      dialog.showErrorBox('Save Error', `Failed to save button: ${error.message}`);
+    }
+  }
 });
 
 ipcMain.on('delete-button', (event, index) => {
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-  const removed = config.buttons.splice(index, 1);
+  // Load from active profile instead of old config.json
+  const profile = loadProfile(currentActiveProfile);
+  const removed = profile.buttons.splice(index, 1);
   
-  // Delete the audio file from disk
+  // Only delete the audio file from disk if no other profile is using it
   if (removed[0] && removed[0].src) {
     const filePath = path.join(userDataPath, removed[0].src);
+    const srcToDelete = removed[0].src;
+    
     try {
-      if (fs.existsSync(filePath)) {
+      // Check if any other profile uses this same file
+      const meta = loadProfilesMeta();
+      let fileStillInUse = false;
+      
+      for (const profileInfo of meta.profiles) {
+        // Skip the current profile (we already removed the button from it)
+        if (profileInfo.id === currentActiveProfile) continue;
+        
+        const otherProfile = loadProfile(profileInfo.id);
+        if (otherProfile.buttons && Array.isArray(otherProfile.buttons)) {
+          // Check if any button in this profile uses the same file
+          const stillUsed = otherProfile.buttons.some(btn => btn.src === srcToDelete);
+          if (stillUsed) {
+            fileStillInUse = true;
+            console.log(`File ${srcToDelete} is still used by profile ${profileInfo.id}, not deleting`);
+            break;
+          }
+        }
+      }
+      
+      // Only delete the file if no other profile uses it
+      if (!fileStillInUse && fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
+        console.log(`Deleted file ${filePath} (not used by any other profile)`);
       }
     } catch (err) {
       // File might not exist or be locked, continue anyway
+      console.warn('Error checking/deleting file:', err);
     }
   }
   
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  // Save back to active profile
+  saveProfile(currentActiveProfile, profile);
   
   // Notify renderer to refresh the UI
   if (win && !win.isDestroyed()) {
@@ -415,24 +1342,452 @@ ipcMain.on('enable-hotkeys', () => {
   registerHotkeys();
 });
 
-// IPC handler to get config
+// IPC handler to get config (now loads from active profile)
 ipcMain.handle('get-config', async () => {
   try {
-    return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const profile = loadProfile(currentActiveProfile);
+    // Include userDataPath for constructing absolute paths in renderer
+    profile.userDataPath = userDataPath;
+    return profile;
   } catch (e) {
-    return { buttons: [] };
+    return { buttons: [], uiSettings: {}, userDataPath: userDataPath };
   }
 });
 
-// IPC handler to save config (complete replacement)
+// IPC handler to save config (now saves to active profile)
 ipcMain.handle('save-config', async (event, config) => {
   try {
-    // Write the complete config to file
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    console.log('Config saved successfully');
+    // Load current profile to preserve uiSettings
+    const currentProfile = loadProfile(currentActiveProfile);
+    
+    // Merge: keep existing uiSettings, update buttons and other data
+    const mergedConfig = {
+      ...config,
+      uiSettings: config.uiSettings || currentProfile.uiSettings || {
+        theme: null,
+        componentVisibility: {},
+        chatWidth: null,
+        soundButtonOrder: []
+      }
+    };
+    
+    // Save to active profile
+    saveProfile(currentActiveProfile, mergedConfig);
     return { success: true };
   } catch (error) {
     console.error('Error saving config:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================================
+// PROFILE IPC HANDLERS
+// ============================================================
+
+// Get all profiles metadata
+ipcMain.handle('get-profiles', async () => {
+  try {
+    return loadProfilesMeta();
+  } catch (error) {
+    console.error('Error getting profiles:', error);
+    return { activeProfile: 'default', profiles: [] };
+  }
+});
+
+// Get a specific profile
+ipcMain.handle('get-profile', async (event, profileId) => {
+  try {
+    const profile = loadProfile(profileId);
+    profile.userDataPath = userDataPath;
+    return profile;
+  } catch (error) {
+    console.error(`Error getting profile ${profileId}:`, error);
+    return { buttons: [], uiSettings: {}, userDataPath: userDataPath };
+  }
+});
+
+// Save a specific profile
+ipcMain.handle('save-profile', async (event, { profileId, profileData }) => {
+  try {
+    saveProfile(profileId, profileData);
+    return { success: true };
+  } catch (error) {
+    console.error(`Error saving profile ${profileId}:`, error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Create a new profile
+ipcMain.handle('create-profile', async (event, profileName) => {
+  try {
+    const meta = loadProfilesMeta();
+    
+    // Generate unique ID
+    const profileId = 'profile_' + Date.now();
+    
+    // Create new profile with empty data
+    const newProfile = {
+      buttons: [],
+      uiSettings: {
+        theme: null,
+        componentVisibility: {},
+        chatWidth: null,
+        soundButtonOrder: []
+      }
+    };
+    
+    saveProfile(profileId, newProfile);
+    
+    // Add to metadata
+    meta.profiles.push({
+      id: profileId,
+      name: profileName,
+      created: new Date().toISOString()
+    });
+    saveProfilesMeta(meta);
+    
+    console.log(`Created new profile: ${profileName} (${profileId})`);
+    return { success: true, profileId };
+  } catch (error) {
+    console.error('Error creating profile:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Duplicate an existing profile
+ipcMain.handle('duplicate-profile', async (event, { sourceProfileId, newProfileName }) => {
+  try {
+    const meta = loadProfilesMeta();
+    
+    // Load source profile
+    const sourceProfile = loadProfile(sourceProfileId);
+    
+    // Generate unique ID for new profile
+    const newProfileId = 'profile_' + Date.now();
+    
+    // Deep copy the source profile data
+    const newProfile = JSON.parse(JSON.stringify(sourceProfile));
+    
+    // Save the duplicated profile
+    saveProfile(newProfileId, newProfile);
+    
+    // Add to metadata
+    meta.profiles.push({
+      id: newProfileId,
+      name: newProfileName,
+      created: new Date().toISOString()
+    });
+    saveProfilesMeta(meta);
+    
+    console.log(`Duplicated profile ${sourceProfileId} to ${newProfileName} (${newProfileId})`);
+    return { success: true, profileId: newProfileId };
+  } catch (error) {
+    console.error('Error duplicating profile:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Rename a profile
+ipcMain.handle('rename-profile', async (event, { profileId, newName }) => {
+  try {
+    const meta = loadProfilesMeta();
+    
+    // Find and update the profile name
+    const profile = meta.profiles.find(p => p.id === profileId);
+    if (profile) {
+      profile.name = newName;
+      saveProfilesMeta(meta);
+      console.log(`Renamed profile ${profileId} to ${newName}`);
+      return { success: true };
+    } else {
+      return { success: false, error: 'Profile not found' };
+    }
+  } catch (error) {
+    console.error('Error renaming profile:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Delete a profile
+ipcMain.handle('delete-profile', async (event, profileId) => {
+  try {
+    const meta = loadProfilesMeta();
+    
+    // Prevent deleting the last profile
+    if (meta.profiles.length <= 1) {
+      return { success: false, error: 'Cannot delete the last profile' };
+    }
+    
+    // Can now delete any profile, frontend handles showing only non-active ones
+    
+    // Remove from metadata
+    meta.profiles = meta.profiles.filter(p => p.id !== profileId);
+    saveProfilesMeta(meta);
+    
+    // Delete the profile file
+    const profilePath = getProfilePath(profileId);
+    if (fs.existsSync(profilePath)) {
+      fs.unlinkSync(profilePath);
+    }
+    
+    console.log(`Deleted profile ${profileId}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting profile:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Switch to a different profile
+ipcMain.handle('switch-profile', async (event, profileId) => {
+  try {
+    const meta = loadProfilesMeta();
+    
+    // Verify profile exists
+    const profile = meta.profiles.find(p => p.id === profileId);
+    if (!profile) {
+      return { success: false, error: 'Profile not found' };
+    }
+    
+    // Update active profile
+    meta.activeProfile = profileId;
+    currentActiveProfile = profileId;
+    saveProfilesMeta(meta);
+    
+    // Re-register hotkeys for the new profile
+    registerHotkeys();
+    
+    console.log(`Switched to profile ${profileId}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error switching profile:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================================
+// HYDRATION TRACKER IPC HANDLERS
+// ============================================================
+
+// Get hydration config
+ipcMain.handle('get-hydration-config', async () => {
+  try {
+    return loadHydrationConfig();
+  } catch (error) {
+    console.error('Error getting hydration config:', error);
+    return loadHydrationConfig(); // Return default
+  }
+});
+
+// Save hydration config
+ipcMain.handle('save-hydration-config', async (event, config) => {
+  try {
+    saveHydrationConfig(config);
+    broadcastHydrationUpdate(config);
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving hydration config:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Update hydration progress (increment)
+ipcMain.handle('update-hydration-progress', async () => {
+  try {
+    const config = loadHydrationConfig();
+    // Allow currentProgress to exceed streamGoal (for numerical display)
+    config.currentProgress = config.currentProgress + config.incrementAmount;
+    saveHydrationConfig(config);
+    broadcastHydrationUpdate(config);
+    console.log(`Hydration updated: ${config.currentProgress}/${config.streamGoal} oz`);
+    return { success: true, config };
+  } catch (error) {
+    console.error('Error updating hydration progress:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Reset hydration progress
+ipcMain.handle('reset-hydration', async () => {
+  try {
+    const config = loadHydrationConfig();
+    config.currentProgress = 0;
+    saveHydrationConfig(config);
+    broadcastHydrationUpdate(config);
+    console.log('Hydration progress reset to 0');
+    return { success: true, config };
+  } catch (error) {
+    console.error('Error resetting hydration:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Test hydration (for preview)
+ipcMain.handle('test-hydration', async () => {
+  try {
+    const config = loadHydrationConfig();
+    broadcastHydrationUpdate(config);
+    return { success: true };
+  } catch (error) {
+    console.error('Error testing hydration:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ========== Progression System IPC Handlers ==========
+
+// Get all progressions
+ipcMain.handle('get-progressions', async () => {
+  try {
+    return { success: true, progressions: progressionsData.progressions };
+  } catch (error) {
+    console.error('Error getting progressions:', error);
+    return { success: false, error: error.message, progressions: [] };
+  }
+});
+
+// Save progression (create or update)
+ipcMain.handle('save-progression', async (event, progression) => {
+  try {
+    console.log('Saving progression:', progression.name);
+    
+    // Generate ID if new
+    if (!progression.id) {
+      progression.id = `prog_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+    
+    // Ensure required fields
+    if (!progression.topRedeemers) progression.topRedeemers = [];
+    if (typeof progression.totalRedeems !== 'number') progression.totalRedeems = 0;
+    if (typeof progression.currentStageIndex !== 'number') progression.currentStageIndex = 0;
+    if (typeof progression.currentCount !== 'number') progression.currentCount = 0;
+    if (!progression.stages) progression.stages = [];
+    
+    // Find existing or add new
+    const existingIndex = progressionsData.progressions.findIndex(p => p.id === progression.id);
+    if (existingIndex >= 0) {
+      progressionsData.progressions[existingIndex] = progression;
+    } else {
+      progressionsData.progressions.push(progression);
+    }
+    
+    saveProgressions(progressionsData);
+    return { success: true, progression };
+  } catch (error) {
+    console.error('Error saving progression:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Delete progression
+ipcMain.handle('delete-progression', async (event, progressionId) => {
+  try {
+    console.log('Deleting progression:', progressionId);
+    progressionsData.progressions = progressionsData.progressions.filter(p => p.id !== progressionId);
+    saveProgressions(progressionsData);
+    
+    // Also delete media files
+    const progressionMediaDir = path.join(progressionsMediaPath, progressionId);
+    if (fs.existsSync(progressionMediaDir)) {
+      fse.removeSync(progressionMediaDir);
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting progression:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Reset progression state
+ipcMain.handle('reset-progression', async (event, progressionId) => {
+  try {
+    console.log('Resetting progression:', progressionId);
+    const progression = progressionsData.progressions.find(p => p.id === progressionId);
+    if (!progression) {
+      return { success: false, error: 'Progression not found' };
+    }
+    
+    progression.currentStageIndex = 0;
+    progression.currentCount = 0;
+    progression.totalRedeems = 0;
+    progression.topRedeemers = [];
+    
+    if (progression.persistenceMode === 'permanent') {
+      saveProgressions(progressionsData);
+    }
+    
+    return { success: true, progression };
+  } catch (error) {
+    console.error('Error resetting progression:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get progression state
+ipcMain.handle('get-progression-state', async (event, progressionId) => {
+  try {
+    const progression = progressionsData.progressions.find(p => p.id === progressionId);
+    if (!progression) {
+      return { success: false, error: 'Progression not found' };
+    }
+    
+    return {
+      success: true,
+      state: {
+        currentStageIndex: progression.currentStageIndex,
+        currentCount: progression.currentCount,
+        totalRedeems: progression.totalRedeems,
+        currentStage: progression.stages[progression.currentStageIndex]
+      }
+    };
+  } catch (error) {
+    console.error('Error getting progression state:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get progression leaderboard
+ipcMain.handle('get-progression-leaderboard', async (event, progressionId) => {
+  try {
+    const progression = progressionsData.progressions.find(p => p.id === progressionId);
+    if (!progression) {
+      return { success: false, error: 'Progression not found' };
+    }
+    
+    return {
+      success: true,
+      leaderboard: progression.topRedeemers || []
+    };
+  } catch (error) {
+    console.error('Error getting progression leaderboard:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Save progression media file
+ipcMain.handle('save-progression-media', async (event, { sourcePath, progressionId, stageId, mediaType, originalName }) => {
+  try {
+    console.log('Saving progression media:', { progressionId, stageId, mediaType });
+    
+    // Create progression-specific directory
+    const progressionMediaDir = path.join(progressionsMediaPath, progressionId);
+    if (!fs.existsSync(progressionMediaDir)) {
+      fs.mkdirSync(progressionMediaDir, { recursive: true });
+    }
+    
+    const extension = path.extname(originalName || sourcePath);
+    const timestamp = Date.now();
+    const filename = `${stageId}_${mediaType}_${timestamp}${extension}`;
+    const destPath = path.join(progressionMediaDir, filename);
+    
+    fse.copySync(sourcePath, destPath);
+    console.log('Progression media saved:', destPath);
+    
+    const relativePath = path.relative(userDataPath, destPath);
+    return { success: true, filePath: relativePath };
+  } catch (error) {
+    console.error('Error saving progression media:', error);
     return { success: false, error: error.message };
   }
 });
@@ -443,7 +1798,40 @@ if (!fs.existsSync(mediaStoragePath)) {
   fs.mkdirSync(mediaStoragePath, { recursive: true });
 }
 
-// IPC handler to save media file from base64 data
+// IPC handler to save media file by copying directly from source path (efficient for large files)
+ipcMain.handle('save-media-file-by-path', async (event, { sourcePath, buttonId, mediaType, originalName }) => {
+  try {
+    console.log('Saving media file by path:', { sourcePath, buttonId, mediaType, originalName });
+    
+    // Create button-specific directory
+    const buttonMediaDir = path.join(mediaStoragePath, buttonId);
+    if (!fs.existsSync(buttonMediaDir)) {
+      fs.mkdirSync(buttonMediaDir, { recursive: true });
+    }
+
+    // Extract extension from original name
+    const extension = path.extname(originalName || sourcePath);
+
+    // Generate unique filename
+    const timestamp = Date.now();
+    const filename = `${mediaType}_${timestamp}${extension}`;
+    const destPath = path.join(buttonMediaDir, filename);
+
+    // Copy file directly (much faster for large video files)
+    fse.copySync(sourcePath, destPath);
+    
+    console.log('Media file copied successfully:', destPath);
+    
+    // Return relative path from userDataPath for storage in config
+    const relativePath = path.relative(userDataPath, destPath);
+    return { success: true, filePath: relativePath };
+  } catch (error) {
+    console.error('Error copying media file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC handler to save media file from base64 data (for backwards compatibility and small files)
 ipcMain.handle('save-media-file', async (event, { base64Data, buttonId, mediaType, originalName }) => {
   try {
     // Create button-specific directory
@@ -500,7 +1888,24 @@ ipcMain.handle('save-media-file', async (event, { base64Data, buttonId, mediaTyp
   }
 });
 
-// IPC handler to get media file as base64 (for serving to overlay)
+// IPC handler to get absolute path for media file (for HTTP serving)
+ipcMain.handle('get-media-file-path', async (event, relativePath) => {
+  try {
+    const fullPath = path.join(userDataPath, relativePath);
+    if (!fs.existsSync(fullPath)) {
+      return { success: false, error: 'File not found' };
+    }
+    return { 
+      success: true, 
+      absolutePath: fullPath
+    };
+  } catch (error) {
+    console.error('Error getting media file path:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC handler to get media file as base64 (for serving to overlay) - DEPRECATED, use HTTP serving instead
 ipcMain.handle('get-media-file', async (event, relativePath) => {
   try {
     const fullPath = path.join(userDataPath, relativePath);
@@ -542,18 +1947,24 @@ ipcMain.handle('get-media-file', async (event, relativePath) => {
 // IPC handler to update config
 ipcMain.handle('update-config', async (event, configUpdate) => {
   try {
-    // Read current config
-    let config = { buttons: [] };
-    if (fs.existsSync(configPath)) {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    // Load current profile instead of old config
+    const profile = loadProfile(currentActiveProfile);
+    
+    // If updating theme, save it in uiSettings
+    if (configUpdate.theme) {
+      if (!profile.uiSettings) {
+        profile.uiSettings = {};
+      }
+      profile.uiSettings.theme = configUpdate.theme;
+      delete configUpdate.theme; // Remove from top level
     }
     
-    // Merge the update with existing config
-    config = { ...config, ...configUpdate };
+    // Merge other updates with existing profile
+    const updatedProfile = { ...profile, ...configUpdate };
     
-    // Write back to file
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    console.log('Config updated successfully:', configUpdate);
+    // Save to active profile
+    saveProfile(currentActiveProfile, updatedProfile);
+    console.log('Profile updated successfully:', configUpdate);
     return true;
   } catch (e) {
     console.error('Error updating config:', e);
@@ -561,33 +1972,33 @@ ipcMain.handle('update-config', async (event, configUpdate) => {
   }
 });
 
-// Persist button order sent from renderer to config.json
+// Persist button order sent from renderer to active profile
 ipcMain.on('save-button-order', (event, orderedIds) => {
   try {
     if (!Array.isArray(orderedIds)) return;
-    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    if (!Array.isArray(cfg.buttons)) cfg.buttons = [];
-    const byId = new Map(cfg.buttons.map(b => [b.id, b]));
+    const profile = loadProfile(currentActiveProfile);
+    if (!Array.isArray(profile.buttons)) profile.buttons = [];
+    const byId = new Map(profile.buttons.map(b => [b.id, b]));
     const newButtons = [];
     for (const id of orderedIds) {
       if (byId.has(id)) newButtons.push(byId.get(id));
     }
     // append any missing buttons that weren't included in orderedIds
-    for (const b of cfg.buttons) if (!newButtons.includes(b)) newButtons.push(b);
-    cfg.buttons = newButtons;
-    fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2), 'utf-8');
+    for (const b of profile.buttons) if (!newButtons.includes(b)) newButtons.push(b);
+    profile.buttons = newButtons;
+    saveProfile(currentActiveProfile, profile);
     if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
   } catch (err) {
     console.error('Failed to save button order:', err);
   }
 });
 
-// Event->Sound mappings helpers stored inside config.json under 'mappings'
+// Event->Sound mappings helpers stored inside active profile under 'mappings'
 function loadMappings() {
   try {
-    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    if (!Array.isArray(cfg.mappings)) cfg.mappings = [];
-    return cfg.mappings;
+    const profile = loadProfile(currentActiveProfile);
+    if (!Array.isArray(profile.mappings)) profile.mappings = [];
+    return profile.mappings;
   } catch (e) {
     return [];
   }
@@ -595,9 +2006,9 @@ function loadMappings() {
 
 function saveMappings(maps) {
   try {
-    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    cfg.mappings = maps;
-    fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2));
+    const profile = loadProfile(currentActiveProfile);
+    profile.mappings = maps;
+    saveProfile(currentActiveProfile, profile);
     return true;
   } catch (e) {
     console.error('Error saving mappings:', e);
@@ -670,6 +2081,88 @@ ipcMain.handle('get-tc-config', async () => {
   }
 });
 
+// IPC: get the connected Twitch username (login) for defaulting battle overlay channel
+ipcMain.handle('get-twitch-username', async () => {
+  try {
+    if (!twitchUserName) await getUserId();
+    return twitchUserName || null;
+  } catch (err) {
+    return null;
+  }
+});
+
+
+// ===============================
+// Daily Check-In IPC Handlers
+// ===============================
+
+// IPC: load daily check-ins data
+ipcMain.handle('loadDailyCheckins', async () => {
+  try {
+    if (fs.existsSync(dailyCheckinsPath)) {
+      const data = fs.readFileSync(dailyCheckinsPath, 'utf-8');
+      return JSON.parse(data);
+    }
+    // Return default structure if file doesn't exist
+    return {
+      viewers: {},
+      liveDays: [], // Array of date strings (YYYY-MM-DD) when stream was live
+      config: {
+        enabled: true,
+        rewardName: 'Daily Check-In',
+        chatResponse: 'Welcome back {username}! You\'ve checked in {total_checkins} times!',
+        alreadyCheckedMessage: 'You\'ve already checked in today, {username}! Come back tomorrow!',
+        showStreak: false,
+        sendToChat: true,
+        testMode: false
+      }
+    };
+  } catch (err) {
+    console.error('Error loading daily check-ins:', err);
+    return null;
+  }
+});
+
+// IPC: save daily check-ins data
+ipcMain.handle('saveDailyCheckins', async (event, data) => {
+  try {
+    fs.writeFileSync(dailyCheckinsPath, JSON.stringify(data, null, 2));
+    console.log('💾 Saved daily check-ins data');
+    return true;
+  } catch (err) {
+    console.error('Error saving daily check-ins:', err);
+    return false;
+  }
+});
+
+// IPC: send Twitch chat message
+ipcMain.handle('sendTwitchChatMessage', async (event, message) => {
+  try {
+    // Send message through TMI client if connected
+    if (twitchClient && twitchClient.readyState() === 'OPEN') {
+      const channels = twitchClient.getChannels();
+      if (channels && channels.length > 0) {
+        const channel = channels[0];
+        await twitchClient.say(channel, message);
+        console.log('💬 Sent chat message to', channel, ':', message);
+        return true;
+      } else {
+        console.warn('⚠️ Twitch chat client connected but no channels joined');
+        return false;
+      }
+    }
+    console.warn('⚠️ Twitch chat client not connected');
+    return false;
+  } catch (err) {
+    console.error('❌ Error sending Twitch chat message:', err);
+    return false;
+  }
+});
+
+// ===============================
+// End Daily Check-In IPC Handlers
+// ===============================
+
 // IPC: list current EventSub subscriptions (aggregated)
 ipcMain.handle('list-eventsub-subscriptions', async () => {
   try {
@@ -681,11 +2174,13 @@ ipcMain.handle('list-eventsub-subscriptions', async () => {
   }
 });
 
-// IPC: fetch channel point rewards for the connected channel (requires clientId and token)
+// IPC: fetch channel point rewards for the connected channel (requires clientId and token + scope channel:read:redemptions)
 ipcMain.handle('get-channel-rewards', async () => {
   try {
     if (!twitchUserId) await getUserId();
-    if (!twitchClientId || !twitchToken) return [];
+    if (!twitchClientId || !twitchToken) {
+      throw new Error('Not connected to Twitch. Connect in the app first.');
+    }
     const url = `https://api.twitch.tv/helix/channel_points/custom_rewards?broadcaster_id=${encodeURIComponent(twitchUserId)}`;
     const resp = await fetch(url, {
       headers: {
@@ -694,11 +2189,18 @@ ipcMain.handle('get-channel-rewards', async () => {
       }
     });
     const data = await resp.json();
+    if (!resp.ok) {
+      const msg = (data && data.message) ? data.message : `${resp.status} ${resp.statusText}`;
+      if (resp.status === 401 || resp.status === 403) {
+        throw new Error(`Twitch denied access: ${msg}. Reconnect Twitch (clear credentials and log in again) to grant "channel point rewards" permission.`);
+      }
+      throw new Error(`Twitch API: ${msg}`);
+    }
     if (data && Array.isArray(data.data)) return data.data;
     return [];
   } catch (err) {
     console.error('Error fetching channel rewards:', err);
-    return [];
+    throw err;
   }
 });
 
@@ -781,6 +2283,45 @@ ipcMain.handle('check-user-subscriber', async (event, username) => {
   }
 });
 
+// IPC: check if stream is currently live
+ipcMain.handle('is-stream-live', async () => {
+  try {
+    if (!twitchUserId) await getUserId();
+    if (!twitchClientId || !twitchToken) return false;
+    
+    const resp = await fetch(`https://api.twitch.tv/helix/streams?user_id=${encodeURIComponent(twitchUserId)}`, {
+      headers: {
+        'Client-ID': twitchClientId,
+        'Authorization': `Bearer ${twitchToken}`
+      }
+    });
+    const data = await resp.json();
+    // Stream is live if data.data is not empty
+    return data.data && data.data.length > 0;
+  } catch (err) {
+    console.error('Error checking stream status:', err);
+    return false;
+  }
+});
+
+// IPC: create a Twitch clip
+ipcMain.handle('create-clip', async () => {
+  try {
+    const result = await createClip();
+    // Notify renderer with result
+    if (win && win.webContents) {
+      win.webContents.send('twitch-clip-created', result);
+    }
+    return result;
+  } catch (error) {
+    console.error('Error in create-clip IPC handler:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
 // IPC: get current viewer count for the channel
 ipcMain.handle('get-viewer-count', async () => {
   try {
@@ -827,6 +2368,15 @@ ipcMain.handle('get-follower-count', async () => {
 // IPC: get total subscriber count and subscription points for the channel
 ipcMain.handle('get-subscriber-stats', async () => {
   try {
+    // Try to ensure token is loaded before getting user ID
+    if (!twitchToken) {
+      try {
+        const oauthToken = await ensureValidToken();
+        twitchToken = oauthToken;
+      } catch (err) {
+        console.log('Could not load token for subscriber stats:', err.message);
+      }
+    }
     if (!twitchUserId) await getUserId();
     if (!twitchClientId || !twitchToken) return { count: 0, points: 0 };
     
@@ -955,6 +2505,125 @@ ipcMain.handle('get-recent-subscribers', async () => {
   }
 });
 
+// IPC: Get followers with full user data (user_id -> username/display_name)
+ipcMain.handle('get-followers-with-users', async () => {
+  try {
+    if (!twitchUserId) await getUserId();
+    if (!twitchClientId || !twitchToken) return [];
+    
+    // Fetch ALL followers using pagination
+    const allFollowers = [];
+    let cursor = null;
+    let pageCount = 0;
+    const maxPages = 100; // Safety limit to prevent infinite loops
+    
+    console.log('[Followers] Starting to fetch all followers...');
+    
+    do {
+      let url = `https://api.twitch.tv/helix/channels/followers?broadcaster_id=${encodeURIComponent(twitchUserId)}&first=100`;
+      if (cursor) {
+        url += `&after=${encodeURIComponent(cursor)}`;
+      }
+      
+      const resp = await fetch(url, {
+        headers: {
+          'Client-ID': twitchClientId,
+          'Authorization': `Bearer ${twitchToken}`
+        }
+      });
+      
+      const followerData = await resp.json();
+      
+      if (followerData.data && followerData.data.length > 0) {
+        allFollowers.push(...followerData.data);
+        console.log(`[Followers] Fetched page ${pageCount + 1}: ${followerData.data.length} followers (total so far: ${allFollowers.length})`);
+      }
+      
+      cursor = followerData.pagination?.cursor || null;
+      pageCount++;
+      
+      // Safety check
+      if (pageCount >= maxPages) {
+        console.warn(`[Followers] Reached safety limit of ${maxPages} pages. Stopping pagination.`);
+        break;
+      }
+      
+      // Small delay to avoid rate limiting
+      if (cursor) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    } while (cursor);
+    
+    console.log(`[Followers] Total followers fetched: ${allFollowers.length}`);
+    
+    if (allFollowers.length === 0) {
+      console.log('[Followers] No followers found');
+      return [];
+    }
+    
+    // Get user IDs from all followers
+    const userIds = allFollowers.map(f => f.user_id);
+    
+    // Batch fetch user data (Twitch allows up to 100 users per request)
+    // Split into chunks of 100
+    const chunks = [];
+    for (let i = 0; i < userIds.length; i += 100) {
+      chunks.push(userIds.slice(i, i + 100));
+    }
+    
+    console.log(`[Followers] Fetching user data for ${userIds.length} users in ${chunks.length} batches...`);
+    
+    const allUsers = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const userIdsParam = chunk.join('&id=');
+      const userResp = await fetch(`https://api.twitch.tv/helix/users?id=${userIdsParam}`, {
+        headers: {
+          'Client-ID': twitchClientId,
+          'Authorization': `Bearer ${twitchToken}`
+        }
+      });
+      const userData = await userResp.json();
+      if (userData.data) {
+        allUsers.push(...userData.data);
+        console.log(`[Followers] Fetched user data batch ${i + 1}/${chunks.length}: ${userData.data.length} users`);
+      }
+      
+      // Small delay between batches to avoid rate limiting
+      if (i < chunks.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    
+    console.log(`[Followers] Total user data fetched: ${allUsers.length}`);
+    
+    // Combine follower data with user data
+    const followersWithUsers = allFollowers.map(follower => {
+      const user = allUsers.find(u => u.id === follower.user_id);
+      return {
+        user_id: follower.user_id,
+        followed_at: follower.followed_at,
+        username: user ? user.login : null,
+        display_name: user ? user.display_name : null,
+        profile_image_url: user ? user.profile_image_url : null
+      };
+    }).filter(f => f.username) // Only return followers with username data
+      .sort((a, b) => {
+        // Sort alphabetically by display_name (fallback to username)
+        const nameA = (a.display_name || a.username || '').toLowerCase();
+        const nameB = (b.display_name || b.username || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+    
+    console.log(`[Followers] Returning ${followersWithUsers.length} followers with user data (sorted alphabetically)`);
+    
+    return followersWithUsers;
+  } catch (err) {
+    console.error('Error fetching followers with user data:', err);
+    return [];
+  }
+});
+
 // Expose whether Twitch credentials are present for UI warnings
 ipcMain.handle('has-twitch-creds', async () => {
   try {
@@ -980,7 +2649,89 @@ ipcMain.handle('get-app-version', async () => {
   }
 });
 
+// IPC handler to open bug report form
+ipcMain.handle('report-bug', async () => {
+  try {
+    const { shell } = require('electron');
+    const bugReportUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSdHUauA7LI_bJtfKRKrbD81lZ8Xs6R3egGOEalqAF2KHUNDdg/viewform';
+    await shell.openExternal(bugReportUrl);
+    console.log('Opened bug report form in browser');
+    return { success: true };
+  } catch (error) {
+    console.error('Error opening bug report form:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get connected overlays
+ipcMain.handle('get-connected-overlays', async () => {
+  try {
+    const connections = [];
+    // Convert overlayRegistry Map to array of connection objects
+    for (const [overlayName, clientSet] of overlayRegistry.entries()) {
+      if (clientSet.size > 0) {
+        connections.push({
+          name: overlayName,
+          count: clientSet.size
+        });
+      }
+    }
+    console.log('📊 Connected overlays:', connections);
+    return connections;
+  } catch (error) {
+    console.error('Error getting connected overlays:', error);
+    return [];
+  }
+});
+
+// Close all WebSocket connections for a specific overlay
+ipcMain.handle('close-overlay-connections', async (event, overlayName) => {
+  try {
+    console.log(`🔌 Closing connections for overlay: ${overlayName}`);
+    
+    if (overlayRegistry.has(overlayName)) {
+      const clientSet = overlayRegistry.get(overlayName);
+      const clientCount = clientSet.size;
+      
+      // Close all WebSocket connections for this overlay
+      for (const ws of clientSet) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close(1000, `Overlay "${overlayName}" deleted`);
+        }
+      }
+      
+      // Clear the registry entry
+      overlayRegistry.delete(overlayName);
+      
+      console.log(`✅ Closed ${clientCount} connection(s) for overlay: ${overlayName}`);
+      return { success: true, closedCount: clientCount };
+    } else {
+      console.log(`ℹ️ No connections found for overlay: ${overlayName}`);
+      return { success: true, closedCount: 0 };
+    }
+  } catch (error) {
+    console.error('Error closing overlay connections:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Skin System IPC Handlers
+
+// Helper function to recursively search for JSON files in directory
+function findSkinFiles(dir, baseDir = dir, files = []) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      findSkinFiles(fullPath, baseDir, files);
+    } else if (entry.isFile() && entry.name.endsWith('.json')) {
+      files.push(fullPath);
+    }
+  }
+  
+  return files;
+}
 
 // Get available skins from the skins directory
 ipcMain.handle('get-available-skins', async () => {
@@ -990,25 +2741,29 @@ ipcMain.handle('get-available-skins', async () => {
       return skins;
     }
     
-    const files = fs.readdirSync(userSkinsDir);
-    for (const file of files) {
-      if (file.endsWith('.json')) {
-        const skinPath = path.join(userSkinsDir, file);
-        try {
-          const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
-          if (skinData.name && skinData.version) {
-            skins.push({
-              id: path.basename(file, '.json'),
-              name: skinData.name,
-              description: skinData.description || '',
-              version: skinData.version,
-              author: skinData.author || '',
-              filename: file
-            });
-          }
-        } catch (err) {
-          console.warn(`Failed to parse skin file ${file}:`, err);
+    // Find all JSON files recursively
+    const skinFiles = findSkinFiles(userSkinsDir);
+    
+    for (const skinPath of skinFiles) {
+      try {
+        const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
+        if (skinData.name && skinData.version) {
+          // Get relative path from userSkinsDir for id generation
+          const relativePath = path.relative(userSkinsDir, skinPath);
+          const id = relativePath.replace(/\\/g, '/').replace(/\.json$/, '');
+          
+          skins.push({
+            id: id,
+            name: skinData.name,
+            description: skinData.description || '',
+            version: skinData.version,
+            author: skinData.author || '',
+            filename: path.basename(skinPath),
+            fullPath: relativePath
+          });
         }
+      } catch (err) {
+        console.warn(`Failed to parse skin file ${skinPath}:`, err);
       }
     }
     
@@ -1022,6 +2777,8 @@ ipcMain.handle('get-available-skins', async () => {
 // Load a specific skin by name
 ipcMain.handle('load-skin', async (event, skinId) => {
   try {
+    // Convert the skinId to a path (handles subdirectories)
+    // e.g., "HalloweenByTati/halloween" -> "HalloweenByTati/halloween.json"
     const skinPath = path.join(userSkinsDir, `${skinId}.json`);
     if (!fs.existsSync(skinPath)) {
       throw new Error(`Skin file not found: ${skinId}`);
@@ -1074,28 +2831,30 @@ ipcMain.handle('show-import-skin-dialog', async () => {
 // Handle delete skin dialog
 ipcMain.handle('show-delete-skin-dialog', async () => {
   try {
-    // Get available skins
+    // Get available skins using the same recursive function
     const skins = [];
     if (fs.existsSync(userSkinsDir)) {
-      const files = fs.readdirSync(userSkinsDir);
-      for (const file of files) {
-        if (file.endsWith('.json')) {
-          const skinPath = path.join(userSkinsDir, file);
-          try {
-            const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
-            if (skinData.name && skinData.version) {
-              skins.push({
-                id: path.basename(file, '.json'),
-                name: skinData.name,
-                description: skinData.description || '',
-                version: skinData.version,
-                author: skinData.author || '',
-                filename: file
-              });
-            }
-          } catch (err) {
-            console.warn(`Failed to parse skin file ${file}:`, err);
+      const skinFiles = findSkinFiles(userSkinsDir);
+      
+      for (const skinPath of skinFiles) {
+        try {
+          const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
+          if (skinData.name && skinData.version) {
+            const relativePath = path.relative(userSkinsDir, skinPath);
+            const id = relativePath.replace(/\\/g, '/').replace(/\.json$/, '');
+            
+            skins.push({
+              id: id,
+              name: skinData.name,
+              description: skinData.description || '',
+              version: skinData.version,
+              author: skinData.author || '',
+              filename: path.basename(skinPath),
+              fullPath: relativePath
+            });
           }
+        } catch (err) {
+          console.warn(`Failed to parse skin file ${skinPath}:`, err);
         }
       }
     }
@@ -1109,7 +2868,8 @@ ipcMain.handle('show-delete-skin-dialog', async () => {
       label: skin.name,
       detail: skin.description || `Version ${skin.version}`,
       id: skin.id,
-      filename: skin.filename
+      filename: skin.filename,
+      fullPath: skin.fullPath
     }));
     
     const result = await dialog.showMessageBox(win, {
@@ -1127,7 +2887,7 @@ ipcMain.handle('show-delete-skin-dialog', async () => {
     }
     
     const selectedSkin = skinOptions[result.response - 1];
-    const skinPath = path.join(userSkinsDir, selectedSkin.filename);
+    const skinPath = path.join(userSkinsDir, selectedSkin.fullPath);
     
     // Confirm deletion
     const confirmResult = await dialog.showMessageBox(win, {
@@ -1362,18 +3122,63 @@ ipcMain.on('launch-app', async (event, appData) => {
 // IPC handler to get the app icon as a base64 PNG
 ipcMain.handle('get-app-icon', async (event, filePath) => {
   try {
-    // For UWP/Store apps, we can't extract the icon directly, so return null or a default
-    if (filePath.startsWith('shell:AppsFolder')) {
-      // TODO: Optionally return a custom icon for known UWP apps
+    if (!filePath || filePath === 'undefined' || filePath === 'null') {
+      console.log('Invalid file path for icon extraction:', filePath);
       return null;
     }
-    // For .exe or .lnk files, extract the icon
-    const iconBuffer = extractIcon(filePath, 64); // 64x64 icon
-    if (iconBuffer) {
-      const image = nativeImage.createFromBuffer(iconBuffer);
-      return image.toDataURL(); // Return as base64 PNG
+    
+    // For UWP/Store apps, we can't extract the icon directly
+    if (filePath.startsWith('shell:AppsFolder')) {
+      console.log('UWP app detected, cannot extract icon:', filePath);
+      return null;
     }
-    return null;
+    
+    let iconPath = filePath;
+    
+    // If it's a .lnk file, resolve it first to get the target path
+    if (filePath.toLowerCase().endsWith('.lnk')) {
+      try {
+        console.log('Resolving shortcut for icon extraction:', filePath);
+        const shortcut = await new Promise((resolve, reject) => {
+          ws.query(filePath, (err, shortcut) => {
+            if (err) {
+              console.error('Error querying shortcut for icon:', err);
+              resolve(null);
+            } else {
+              resolve(shortcut);
+            }
+          });
+        });
+        
+        if (shortcut && shortcut.target) {
+          iconPath = shortcut.target;
+          console.log('Using resolved shortcut target for icon:', iconPath);
+        } else if (shortcut && shortcut.icon) {
+          // Some shortcuts have an icon path specified
+          iconPath = shortcut.icon;
+          console.log('Using shortcut icon path:', iconPath);
+        }
+      } catch (error) {
+        console.error('Error resolving shortcut for icon:', error);
+        // Fall back to using the .lnk file itself
+      }
+    }
+    
+    // Use Electron's built-in getFileIcon API
+    try {
+      const icon = await app.getFileIcon(iconPath, { size: 'large' });
+      if (icon && !icon.isEmpty()) {
+        const dataURL = icon.toDataURL();
+        console.log('✅ Successfully extracted icon for:', filePath);
+        return dataURL;
+      } else {
+        console.log('Icon is empty for:', filePath);
+        return null;
+      }
+    } catch (iconError) {
+      console.error('Error using app.getFileIcon:', iconError);
+      return null;
+    }
   } catch (error) {
     console.error('Error extracting icon for', filePath, error);
     return null;
@@ -1383,13 +3188,48 @@ ipcMain.handle('get-app-icon', async (event, filePath) => {
 let twitchClient = null;
 // In-memory cache of recent chat user state (badges, mod flag) to enable simple VIP/mod checks
 const recentChatUserState = new Map();
+// Track users who have chatted this session (for walk-on alerts)
+const firstTimeChatters = new Set();
 
-function startTwitchChatConnection({ username, oauth, clientId }) {
+// Function to reset first-time chatters (useful when restarting stream)
+function resetFirstTimeChatters() {
+  firstTimeChatters.clear();
+  console.log('[Walk On] First-time chatters list cleared');
+}
+
+// IPC handler to reset first-time chatters for testing
+ipcMain.handle('reset-first-time-chatters', async () => {
+  try {
+    resetFirstTimeChatters();
+    return { success: true, message: 'First-time chatters list reset' };
+  } catch (error) {
+    console.error('Error resetting first-time chatters:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+async function startTwitchChatConnection({ username, oauth, clientId }) {
   console.log('Starting Twitch chat connection for user:', username);
   if (!username || !oauth) {
     console.error('Missing Twitch credentials');
     return;
   }
+
+  // Disconnect any existing client to prevent duplicates
+  if (twitchClient && typeof twitchClient.disconnect === 'function') {
+    try {
+      console.log('Disconnecting existing Twitch client...');
+      await twitchClient.disconnect();
+      twitchClient = null;
+      console.log('Existing client disconnected');
+    } catch (e) {
+      console.warn('Error disconnecting existing client:', e);
+    }
+  }
+
+  // Small delay to ensure disconnect completes
+  await new Promise(resolve => setTimeout(resolve, 500));
+
   const opts = {
     identity: {
       username: username,
@@ -1402,6 +3242,8 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
   twitchClient = new tmi.Client(opts);
   twitchClient.connect().then(() => {
     console.log('Connected to Twitch chat as', username);
+    // Reset first-time chatters when connecting (new stream session)
+    resetFirstTimeChatters();
     // Notify renderer to update button state
     if (win && win.webContents) {
       win.webContents.send('twitch-connected');
@@ -1410,13 +3252,39 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
     if (username && oauth && twitchClientId) {
       startTwitchEventSub({ username, oauth, clientId: twitchClientId });
     }
+    // Start stream monitor for hydration auto-reset
+    startStreamMonitor();
   });
   twitchClient.on('message', (channel, tags, message, self) => {
     if (self) return;
+    
+    const username = tags.username;
+    const userId = tags['user-id'];
+    const displayName = tags['display-name'] || username;
+    const uname = String(username).toLowerCase();
+    
+    // Check if this is first chat this session
+    const isFirstTime = !firstTimeChatters.has(uname);
+    
+    if (isFirstTime) {
+      firstTimeChatters.add(uname);
+      // Send first-chat walk-on event
+      if (win && win.webContents) {
+        win.webContents.send('twitch-eventsub', {
+          type: 'first-chat-walkon',
+          event: {
+            user_id: userId,
+            user_name: username,
+            display_name: displayName
+          }
+        });
+        console.log(`[Walk On] First-time chatter detected: ${username}`);
+      }
+    }
+    
     // Cache recent user state for quick VIP/mod checks later
     try {
       if (tags && tags.username) {
-        const uname = String(tags.username).toLowerCase();
         recentChatUserState.set(uname, {
           badges: tags.badges || {},
           mod: !!tags.mod
@@ -1440,18 +3308,230 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
         type: 'chat',
         user: tags.username,
         message,
-        badges: tags.badges || {}
+        badges: tags.badges || {},
+        source: 'real-twitch' // Debug: identify event source
       });
     }
-    // Trigger command type buttons if message starts with '!'
+    // Trigger buttons with chat commands enabled if message starts with '!'
     if (message.startsWith('!')) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       const commandText = message.split(' ')[0].substring(1).toLowerCase();
-      config.buttons.forEach((btn) => {
-        if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
-          if (win && win.webContents) {
-            win.webContents.send('trigger-media', btn.label);
+      console.log(`💬 Chat command detected: "${commandText}" from ${username}`);
+      
+      // Handle !clip command
+      if (commandText === 'clip') {
+        console.log(`📹 [Twitch Chat] ${username} requested clip creation via !clip command`);
+        console.log(`📹 Twitch client status:`, twitchClient ? 'exists' : 'null', twitchClient && twitchClient.readyState ? `readyState: ${twitchClient.readyState()}` : 'no readyState');
+        createClip().then((result) => {
+          console.log(`📹 Clip creation result:`, result);
+          if (result.success) {
+            const clipMessage = result.testMode
+              ? `🧪 TEST MODE: @${username} ${result.message}`
+              : (result.clipUrl 
+                ? `@${username} Clip created! ${result.clipUrl}`
+                : `@${username} Clip created! Processing... ${result.editUrl}`);
+            
+            if (twitchClient && twitchClient.readyState() === 'OPEN') {
+              const channels = twitchClient.getChannels();
+              if (channels && channels.length > 0) {
+                twitchClient.say(channels[0], clipMessage);
+              }
+            }
+            
+            // Notify renderer
+            if (win && win.webContents) {
+              win.webContents.send('twitch-clip-created', result);
+            }
+          } else {
+            const errorMessage = `@${username} Failed to create clip: ${result.error || 'Unknown error'}`;
+            if (twitchClient && twitchClient.readyState() === 'OPEN') {
+              const channels = twitchClient.getChannels();
+              if (channels && channels.length > 0) {
+                twitchClient.say(channels[0], errorMessage);
+              }
+            }
+            console.error('Clip creation failed:', result.error);
           }
+        }).catch((error) => {
+          console.error('Error in clip creation:', error);
+          if (twitchClient && twitchClient.readyState() === 'OPEN') {
+            const channels = twitchClient.getChannels();
+            if (channels && channels.length > 0) {
+              twitchClient.say(channels[0], `@${username} Error creating clip. Please try again.`);
+            }
+          }
+        });
+        return; // Don't process as button trigger
+      }
+      
+      // Handle !checkin command specifically
+      if (commandText === 'checkin') {
+        const uname = String(username).toLowerCase();
+        const now = Date.now();
+        
+        // Check cooldown
+        const lastUsed = checkinCommandCooldown.get(uname);
+        if (lastUsed && (now - lastUsed) < CHECKIN_COMMAND_COOLDOWN_MS) {
+          const remainingSeconds = Math.ceil((CHECKIN_COMMAND_COOLDOWN_MS - (now - lastUsed)) / 1000);
+          const remainingMinutes = Math.floor(remainingSeconds / 60);
+          const remainingSecs = remainingSeconds % 60;
+          const timeLeft = remainingMinutes > 0 
+            ? `${remainingMinutes}m ${remainingSecs}s`
+            : `${remainingSecs}s`;
+          
+          if (twitchClient && twitchClient.readyState() === 'OPEN') {
+            const channels = twitchClient.getChannels();
+            if (channels && channels.length > 0) {
+              twitchClient.say(channels[0], `@${username}, the check-in leaderboard was recently shown. Please wait ${timeLeft} before using !checkin again.`);
+            }
+          }
+          return;
+        }
+        
+        // Update cooldown
+        checkinCommandCooldown.set(uname, now);
+        
+        // Get check-in config to see if streaks are enabled
+        let showStreak = false;
+        try {
+          if (fs.existsSync(dailyCheckinsPath)) {
+            const data = JSON.parse(fs.readFileSync(dailyCheckinsPath, 'utf-8'));
+            showStreak = data.config?.showStreak || false;
+          }
+        } catch (err) {
+          console.error('Error reading check-in config:', err);
+        }
+        
+        // Get leaderboard
+        const leaderboard = getCheckinLeaderboard(showStreak, 5);
+        
+        if (!leaderboard || leaderboard.length === 0) {
+          if (twitchClient && twitchClient.readyState() === 'OPEN') {
+            const channels = twitchClient.getChannels();
+            if (channels && channels.length > 0) {
+              twitchClient.say(channels[0], '📊 No check-in data available yet. Be the first to check in!');
+            }
+          }
+          return;
+        }
+        
+        // Format leaderboard message
+        let leaderboardMsg = '📊 Top Check-Ins: ';
+        const entries = [];
+        leaderboard.forEach((viewer, index) => {
+          let entry = `${index + 1}. ${viewer.display_name} (${viewer.total_checkins}`;
+          if (showStreak && viewer.streak > 0) {
+            entry += ` | ${viewer.streak}-day streak`;
+          }
+          entry += ')';
+          entries.push(entry);
+        });
+        
+        leaderboardMsg += entries.join(' • ');
+        
+        // Twitch chat message limit is 500 characters, truncate if needed
+        if (leaderboardMsg.length > 500) {
+          leaderboardMsg = leaderboardMsg.substring(0, 497) + '...';
+        }
+        
+        // Send to chat
+        if (twitchClient && twitchClient.readyState() === 'OPEN') {
+          const channels = twitchClient.getChannels();
+          if (channels && channels.length > 0) {
+            twitchClient.say(channels[0], leaderboardMsg);
+            console.log(`📊 Sent check-in leaderboard to chat for ${username}`);
+          }
+        }
+        
+        return;
+      }
+      
+      // Handle progression commands
+      // Check if command matches any progression's chat command
+      const matchingProgression = progressionsData.progressions.find(prog => 
+        prog.chatCommand && prog.chatCommand.toLowerCase().replace('!', '') === commandText
+      );
+      
+      if (matchingProgression) {
+        const uname = String(username).toLowerCase();
+        const now = Date.now();
+        
+        // Check cooldown
+        const lastUsed = progressionCommandCooldown.get(uname + '_' + matchingProgression.id);
+        if (lastUsed && (now - lastUsed) < PROGRESSION_COMMAND_COOLDOWN_MS) {
+          const remainingSeconds = Math.ceil((PROGRESSION_COMMAND_COOLDOWN_MS - (now - lastUsed)) / 1000);
+          
+          if (twitchClient && twitchClient.readyState() === 'OPEN') {
+            const channels = twitchClient.getChannels();
+            if (channels && channels.length > 0) {
+              twitchClient.say(channels[0], `@${username}, please wait ${remainingSeconds}s before using ${matchingProgression.chatCommand} again.`);
+            }
+          }
+          return;
+        }
+        
+        // Update cooldown
+        progressionCommandCooldown.set(uname + '_' + matchingProgression.id, now);
+        
+        // Get leaderboard
+        const leaderboard = matchingProgression.topRedeemers || [];
+        
+        if (leaderboard.length === 0) {
+          if (twitchClient && twitchClient.readyState() === 'OPEN') {
+            const channels = twitchClient.getChannels();
+            if (channels && channels.length > 0) {
+              twitchClient.say(channels[0], `🏆 No contributions to "${matchingProgression.name}" yet. Be the first!`);
+            }
+          }
+          return;
+        }
+        
+        // Format leaderboard message
+        const currentStage = matchingProgression.stages[matchingProgression.currentStageIndex];
+        let leaderboardMsg = `🏆 ${matchingProgression.name} - Stage ${matchingProgression.currentStageIndex + 1}/${matchingProgression.stages.length} (${matchingProgression.currentCount}/${currentStage.requiredCount}) | Top Contributors: `;
+        
+        const entries = [];
+        leaderboard.slice(0, 5).forEach((contrib, index) => {
+          entries.push(`${index + 1}. ${contrib.username} (${contrib.count})`);
+        });
+        
+        leaderboardMsg += entries.join(' • ');
+        
+        // Truncate if needed
+        if (leaderboardMsg.length > 500) {
+          leaderboardMsg = leaderboardMsg.substring(0, 497) + '...';
+        }
+        
+        // Send to chat
+        if (twitchClient && twitchClient.readyState() === 'OPEN') {
+          const channels = twitchClient.getChannels();
+          if (channels && channels.length > 0) {
+            twitchClient.say(channels[0], leaderboardMsg);
+            console.log(`🏆 Sent progression leaderboard to chat for ${username}: ${matchingProgression.name}`);
+          }
+        }
+        return;
+      }
+      
+      // Regular button command handling
+      const profile = loadProfile(currentActiveProfile);
+      profile.buttons.forEach((btn) => {
+        // Check if button has chat command enabled and keyword matches
+        if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword && btn.chatCommand.keyword.toLowerCase() === commandText) {
+          const triggerMethod = btn.chatCommand.triggerMethod || 'command';
+          console.log(`🔍 main.js checking button "${btn.label || btn.name}" with chatCommand:`, btn.chatCommand);
+          console.log(`🔍 main.js checking button "${btn.label || btn.name}" with triggerMethod: "${triggerMethod}" for command: "${commandText}"`);
+          
+          // Only trigger if the button is configured to accept chat commands
+          if (triggerMethod === 'command' || triggerMethod === 'both') {
+            console.log(`🚀 main.js triggering button "${btn.label || btn.name}" (triggerMethod: ${triggerMethod} allows chat commands)`);
+            triggerButtonWithDebounce(btn.label || btn.name, `chat command !${commandText}`);
+          } else {
+            console.log(`⏭️ main.js skipping chat command "${commandText}" for button "${btn.label || btn.name}" (triggerMethod: ${triggerMethod} - redeem only)`);
+          }
+        }
+        // Legacy support: Only check old 'command' type buttons if no modern chatCommand exists
+        else if (!btn.chatCommand && btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+          triggerButtonWithDebounce(btn.label, `legacy chat command !${commandText}`);
         }
       });
     }
@@ -1464,6 +3544,27 @@ ipcMain.on('twitch-connect', (event, creds) => {
   console.log('Creds:', creds);
   startTwitchChatConnection(creds);
 });
+
+// Restore Twitch chat connection on app startup when we have valid stored OAuth
+async function tryRestoreTwitchConnection() {
+  try {
+    const tc = loadTcConfig();
+    if (!tc.oauth || (!tc.oauth.accessToken && !tc.oauth.refreshToken)) return;
+    if (!tc.oauth.clientId) return;
+    const token = await ensureValidToken();
+    if (!token) return;
+    const username = await getUsernameFromToken(token);
+    if (!username) return;
+    twitchToken = token;
+    twitchUserName = username;
+    twitchClientId = tc.oauth.clientId;
+    console.log('Restoring Twitch chat connection on startup for', username);
+    await startTwitchChatConnection({ username, oauth: token, clientId: tc.oauth.clientId });
+    console.log('Twitch chat connection restored on startup');
+  } catch (e) {
+    console.warn('Could not restore Twitch connection on startup:', e.message);
+  }
+}
 
 let lastFollowerIds = [];
 let lastPollTime = null;
@@ -1484,22 +3585,222 @@ let twitchUserName = null;
 async function getUserId() {
   console.log('Fetching Twitch user ID for', twitchUserName);
   if (twitchUserId) return twitchUserId;
-  console.log('Using token:', twitchToken);
+
+  // If twitchToken is not set, try to load it from stored OAuth token
+  if (!twitchToken) {
+    try {
+      const oauthToken = await ensureValidToken();
+      twitchToken = oauthToken;
+      console.log('✅ Loaded OAuth token from storage');
+    } catch (oauthError) {
+      console.log('⚠️ Could not load OAuth token from storage:', oauthError.message);
+    }
+  }
+
+  // If still no token, try to get username from token to set twitchUserName
+  if (!twitchUserName && twitchToken) {
+    try {
+      const tc = loadTcConfig();
+      if (tc.oauth && tc.oauth.accessToken) {
+        // Try to get username from token
+        const username = await getUsernameFromToken(twitchToken);
+        if (username) {
+          twitchUserName = username;
+          console.log('✅ Loaded username from token:', twitchUserName);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not get username from token:', err);
+    }
+  }
+
+  // If still no clientId, try to load it from config
+  if (!twitchClientId) {
+    try {
+      const tc = loadTcConfig();
+      if (tc.oauth && tc.oauth.clientId) {
+        twitchClientId = tc.oauth.clientId;
+        console.log('✅ Loaded Client ID from config:', twitchClientId);
+      }
+    } catch (err) {
+      console.warn('Could not load Client ID from config:', err);
+    }
+  }
+
+  console.log('Using token:', twitchToken ? twitchToken.substring(0, 20) + '...' : 'NO TOKEN');
   console.log('Using clientId:', twitchClientId);
   console.log('Using username:', twitchUserName);
+
+  if (!twitchToken) {
+    throw new Error('No OAuth token available');
+  }
+
+  if (!twitchClientId) {
+    throw new Error('No Client ID available');
+  }
+
   console.log('Requesting user ID from Twitch API');
-  const response = await fetch(`https://api.twitch.tv/helix/users?login=${twitchUserName}`, {
-    headers: {
-      'Client-ID': twitchClientId,
-      'Authorization': `Bearer ${twitchToken}`
+
+  try {
+    const response = await fetch(`https://api.twitch.tv/helix/users?login=${twitchUserName}`, {
+      headers: {
+        'Client-ID': twitchClientId,
+        'Authorization': `Bearer ${twitchToken}`
+      }
+    });
+
+    console.log('API Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error response:', errorText);
+      throw new Error(`Twitch API error: ${response.status} ${response.statusText}`);
     }
-  });
-  const data = await response.json();
-  if (data.data && data.data.length > 0) {
-    twitchUserId = data.data[0].id;
-    return twitchUserId;
-  } else {
-    throw new Error('Could not fetch Twitch user ID.');
+
+    const data = await response.json();
+    console.log('API Response data:', data);
+
+    if (data.data && data.data.length > 0) {
+      twitchUserId = data.data[0].id;
+      console.log('Successfully got user ID:', twitchUserId);
+      return twitchUserId;
+    } else {
+      console.error('No user data in response:', data);
+      throw new Error('User not found or invalid response from Twitch API');
+    }
+  } catch (error) {
+    console.error('Error in getUserId:', error);
+    throw error;
+  }
+}
+
+// Create a Twitch clip
+async function createClip() {
+  try {
+    // Check for test mode in preferences
+    const preferences = getStoredPreferences();
+    console.log('📋 Loaded preferences:', JSON.stringify(preferences));
+    console.log('🧪 clipTestMode value:', preferences.clipTestMode);
+    
+    if (preferences.clipTestMode) {
+      console.log('🧪 TEST MODE: Simulating clip creation');
+      // Simulate a successful clip creation
+      const mockClipId = 'test_clip_' + Date.now();
+      const mockClipUrl = `https://clips.twitch.tv/TestClip-${mockClipId}`;
+      const mockEditUrl = `https://clips.twitch.tv/edit/${mockClipId}`;
+      
+      console.log('🧪 TEST MODE: Returning mock clip result');
+      return {
+        success: true,
+        clipId: mockClipId,
+        editUrl: mockEditUrl,
+        clipUrl: mockClipUrl,
+        message: `🧪 TEST MODE: Clip created! ${mockClipUrl}`,
+        testMode: true
+      };
+    }
+    
+    if (!twitchUserId) {
+      await getUserId();
+    }
+    
+    if (!twitchUserId) {
+      throw new Error('Twitch user ID not available');
+    }
+    
+    if (!twitchToken) {
+      throw new Error('Twitch token not available');
+    }
+    
+    if (!twitchClientId) {
+      throw new Error('Twitch Client ID not available');
+    }
+    
+    console.log('Creating Twitch clip for broadcaster:', twitchUserId);
+    
+    // Ensure token doesn't have 'oauth:' prefix (Bearer tokens shouldn't)
+    let tokenToUse = twitchToken;
+    if (tokenToUse.startsWith('oauth:')) {
+      tokenToUse = tokenToUse.substring(6);
+    }
+    
+    // Create clip using Twitch Helix API
+    const endpointUrl = new URL('https://api.twitch.tv/helix/clips');
+    endpointUrl.searchParams.append('broadcaster_id', twitchUserId);
+    
+    const response = await fetch(endpointUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${tokenToUse}`,
+        'Client-Id': twitchClientId
+      }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Twitch API error creating clip:', response.status, errorText);
+      throw new Error(`Failed to create clip: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    if (!data.data || data.data.length === 0) {
+      throw new Error('No clip data returned from Twitch API');
+    }
+    
+    const clipId = data.data[0].id;
+    const editUrl = data.data[0].edit_url;
+    
+    console.log('✅ Clip created successfully! Clip ID:', clipId);
+    console.log('Edit URL:', editUrl);
+    
+    // Clip creation is asynchronous - poll for the clip URL
+    // Twitch recommends checking within 15 seconds
+    let clipUrl = null;
+    let attempts = 0;
+    const maxAttempts = 15; // Check for up to 15 seconds
+    
+    while (!clipUrl && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between checks
+      attempts++;
+      
+      try {
+        const getClipUrl = new URL('https://api.twitch.tv/helix/clips');
+        getClipUrl.searchParams.append('id', clipId);
+        
+        const clipResponse = await fetch(getClipUrl, {
+          headers: {
+            'Authorization': `Bearer ${tokenToUse}`,
+            'Client-Id': twitchClientId
+          }
+        });
+        
+        if (clipResponse.ok) {
+          const clipData = await clipResponse.json();
+          if (clipData.data && clipData.data.length > 0 && clipData.data[0].url) {
+            clipUrl = clipData.data[0].url;
+            console.log('✅ Clip URL retrieved:', clipUrl);
+            break;
+          }
+        }
+      } catch (err) {
+        console.warn('Error checking clip status:', err);
+      }
+    }
+    
+    return {
+      success: true,
+      clipId,
+      editUrl,
+      clipUrl: clipUrl || editUrl, // Fallback to edit_url if clipUrl not ready
+      message: clipUrl ? `Clip created! ${clipUrl}` : `Clip created! Processing... ${editUrl}`
+    };
+  } catch (error) {
+    console.error('Error creating clip:', error);
+    return {
+      success: false,
+      error: error.message
+    };
   }
 }
 
@@ -1912,6 +4213,8 @@ function buildSubscriptionFromKey(key, userId) {
     case 'channel.cheer':
     case 'channel.bits':
       return { type: 'channel.cheer', condition: { broadcaster_user_id: userId } };
+    case 'channel.ban':
+      return { type: 'channel.ban', condition: { broadcaster_user_id: userId } };
     default:
       return null;
   }
@@ -2020,10 +4323,22 @@ async function applyEventSubSubscriptions(sessionId) {
   applyingEventSub = false;
 }
 
-function startTwitchEventSub({ username, oauth, clientId}) {
+async function startTwitchEventSub({ username, oauth, clientId}) {
   console.log('Starting Twitch EventSub for user:', username);
   twitchUserName = username;
-  twitchToken = oauth.replace('oauth:', '');
+
+  // Try to use OAuth token if available, otherwise fall back to provided oauth token
+  let tokenToUse = oauth;
+  try {
+    const oauthToken = await ensureValidToken();
+    tokenToUse = oauthToken;
+    console.log('Using OAuth access token for EventSub');
+  } catch (oauthError) {
+    console.log('OAuth token not available, using provided token:', oauthError.message);
+    tokenToUse = oauth.replace('oauth:', '');
+  }
+
+  twitchToken = tokenToUse;
   // Ensure global clientId is set for subsequent API calls
   if (clientId) twitchClientId = clientId;
 
@@ -2108,15 +4423,24 @@ ipcMain.on('twitch-fake-event', (event, evt) => {
         type: 'chat', 
         user: evt.user, 
         message: evt.message,
-        badges: evt.badges || {}
+        badges: evt.badges || {},
+        source: 'fake-event-ipc' // Debug: identify event source
       });
       // also run command matching logic to trigger media
       if (evt.message && evt.message.startsWith('!')) {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        const profile = loadProfile(currentActiveProfile);
         const commandText = evt.message.split(' ')[0].substring(1).toLowerCase();
-        config.buttons.forEach((btn) => {
-          if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
-            win.webContents.send('trigger-media', btn.label);
+        profile.buttons.forEach((btn) => {
+          // Check if button has chat command enabled and keyword matches
+          if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword && btn.chatCommand.keyword.toLowerCase() === commandText) {
+            const triggerMethod = btn.chatCommand.triggerMethod || 'command';
+            if (triggerMethod === 'command' || triggerMethod === 'both') {
+              triggerButtonWithDebounce(btn.label || btn.name, `fake chat command !${commandText}`);
+            }
+          }
+          // Legacy support: Only check old 'command' type buttons if no modern chatCommand exists
+          else if (!btn.chatCommand && btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+            triggerButtonWithDebounce(btn.label, `fake legacy chat command !${commandText}`);
           }
         });
       }
@@ -2136,15 +4460,24 @@ ipcMain.handle('send-fake-twitch-event', async (event, evt) => {
         type: 'chat', 
         user: evt.user, 
         message: evt.message,
-        badges: evt.badges || {}
+        badges: evt.badges || {},
+        source: 'fake-event-handle' // Debug: identify event source
       });
       // also run command matching logic to trigger media
       if (evt.message && evt.message.startsWith('!')) {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        const profile = loadProfile(currentActiveProfile);
         const commandText = evt.message.split(' ')[0].substring(1).toLowerCase();
-        config.buttons.forEach((btn) => {
-          if (btn.type === 'command' && btn.label.toLowerCase() === commandText) {
-            win.webContents.send('trigger-media', btn.label);
+        profile.buttons.forEach((btn) => {
+          // Check if button has chat command enabled and keyword matches
+          if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword && btn.chatCommand.keyword.toLowerCase() === commandText) {
+            const triggerMethod = btn.chatCommand.triggerMethod || 'command';
+            if (triggerMethod === 'command' || triggerMethod === 'both') {
+              triggerButtonWithDebounce(btn.label || btn.name, `fake event handle chat command !${commandText}`);
+            }
+          }
+          // Legacy support: Only check old 'command' type buttons if no modern chatCommand exists
+          else if (!btn.chatCommand && btn.type === 'command' && btn.label.toLowerCase() === commandText) {
+            triggerButtonWithDebounce(btn.label, `fake event handle legacy chat command !${commandText}`);
           }
         });
       }
@@ -2158,26 +4491,217 @@ ipcMain.handle('send-fake-twitch-event', async (event, evt) => {
 // Allow renderer to request a media trigger by label (used by event->sound mappings)
 ipcMain.on('trigger-media-to-main', (event, label) => {
   try {
-    if (win && !win.isDestroyed()) {
-      console.log('Triggering media from renderer mapping:', label);
-      win.webContents.send('trigger-media', label);
-    }
+    triggerButtonWithDebounce(label, 'renderer mapping');
   } catch (e) {
     console.error('Error handling trigger-media-to-main:', e);
   }
 });
 
+// Handle progression increment from Twitch redemptions
+ipcMain.on('progression-increment', (event, data) => {
+  try {
+    const { progressionId, username, redeemTitle } = data;
+    console.log(`🎯🎯🎯 PROGRESSION INCREMENT HANDLER CALLED!`);
+    console.log(`🎯 Progression ID: ${progressionId}`);
+    console.log(`🎯 Username: ${username}`);
+    console.log(`🎯 Redeem Title: ${redeemTitle}`);
+    
+    const result = incrementProgression(progressionId, username);
+    if (!result) {
+      console.error('❌ Failed to increment progression:', progressionId);
+      return;
+    }
+    
+    const { progression, stageAdvanced, currentStage } = result;
+    
+    console.log(`✅ Increment successful!`);
+    console.log(`✅ Stage advanced: ${stageAdvanced}`);
+    console.log(`✅ Current stage:`, currentStage);
+    
+    // Send current stage media to overlay (exactly like hydration)
+    console.log(`📡 Sending progression media to overlay...`);
+    console.log(`📡 Target overlay: ${progression.targetOverlay || 'main'}`);
+    
+    if (currentStage && currentStage.mediaPath) {
+      const targetOverlay = progression.targetOverlay || 'main';
+      const mediaUrl = `http://localhost:${overlayServerPort}/media/${currentStage.mediaPath}`;
+      
+      // If using dedicated progression overlay, send progression-specific update
+      if (targetOverlay === 'progressionOverlay') {
+        console.log('📡 Sending to dedicated progression overlay');
+        // Build overlay text if configured
+        console.log('📝 Progression overlay text template:', progression.overlayText);
+        let overlayTextToShow = '';
+        if (progression.overlayText && progression.overlayText.trim() !== '') {
+          const actionWord = progression.actionWord || 'contributed';
+          overlayTextToShow = progression.overlayText
+            .replace(/{username}/gi, username)
+            .replace(/{action}/gi, actionWord)
+            .replace(/{object}/gi, progression.name)
+            .replace(/{stage}/gi, (progression.currentStageIndex + 1).toString())
+            .replace(/{count}/gi, progression.currentCount.toString())
+            .replace(/{required}/gi, currentStage.requiredCount.toString())
+            .replace(/{total_stages}/gi, progression.stages.length.toString());
+          console.log('📝 Overlay text after replacement:', overlayTextToShow);
+        } else {
+          console.log('📝 No overlay text configured for this progression');
+        }
+        
+        const progressionPayload = {
+          type: stageAdvanced ? 'progressionStageAdvance' : 'progressionUpdate',
+          data: {
+            progressionId: progression.id,
+            name: progression.name,
+            currentStageIndex: progression.currentStageIndex,
+            currentCount: progression.currentCount,
+            totalRedeems: progression.totalRedeems,
+            currentStage: currentStage,
+            displayMode: progression.displayMode,
+            duration: progression.duration,
+            showCounter: true,
+            overlayText: overlayTextToShow
+          }
+        };
+        
+        // Use the existing broadcastToOverlay function with targetOverlay parameter
+        broadcastToOverlay(progressionPayload, 'progressionOverlay');
+      } else {
+        // Send to main overlay using button trigger format (like alerts)
+        console.log('📡 Sending to main/all overlays (button trigger format)');
+        const mediaPayload = {
+          type: 'buttonTrigger',
+          options: {
+            clearPrevious: true,
+            duration: progression.displayMode === 'duration' ? progression.duration : null,
+            name: `${progression.name} - Stage ${progression.currentStageIndex + 1}`
+          },
+          centerMedia: []
+        };
+        
+        // Add the stage media
+        if (currentStage.mediaType === 'image') {
+          mediaPayload.centerMedia.push({
+            type: 'image',
+            src: mediaUrl
+          });
+        } else if (currentStage.mediaType === 'video') {
+          mediaPayload.centerMedia.push({
+            type: 'video',
+            src: mediaUrl,
+            loop: false,
+            muted: false,
+            volume: 1.0
+          });
+        }
+        
+        // Add audio if present
+        if (currentStage.audioPath) {
+          const audioUrl = `http://localhost:${overlayServerPort}/media/${currentStage.audioPath}`;
+          mediaPayload.centerMedia.push({
+            type: 'audio',
+            src: audioUrl,
+            volume: 1.0
+          });
+        }
+        
+        // Broadcast to main overlay (or null for all overlays if not specified)
+        console.log('📡 Broadcasting to main overlay:', mediaPayload);
+        broadcastToOverlay(mediaPayload, targetOverlay === 'main' ? 'main' : null);
+      }
+    } else {
+      console.log('⚠️ No media path for current stage');
+    }
+    
+    // Send chat message if configured
+    if (progression.chatMessage) {
+      console.log(`💬 Sending chat message`);
+      sendProgressionChatMessage(progression, username, redeemTitle, stageAdvanced);
+    }
+    
+    console.log(`✅ Progression "${progression.name}" incremented: ${progression.currentCount}/${currentStage.requiredCount} (Stage ${progression.currentStageIndex + 1}/${progression.stages.length})`);
+  } catch (e) {
+    console.error('❌ Error handling progression increment:', e);
+    console.error('❌ Stack:', e.stack);
+  }
+});
+
+// Helper to send progression chat message
+function sendProgressionChatMessage(progression, username, redeemTitle, stageAdvanced) {
+  if (!twitchClient || !twitchClient.readyState || twitchClient.readyState() !== 'OPEN') {
+    console.log('Twitch client not connected, skipping chat message');
+    return;
+  }
+  
+  const channels = twitchClient.getChannels();
+  if (!channels || channels.length === 0) {
+    console.log('No Twitch channels available');
+    return;
+  }
+  
+  // Replace template variables
+  let message = progression.chatMessage;
+  const currentStage = progression.stages[progression.currentStageIndex];
+  const actionWord = progression.actionWord || 'contributed';
+  
+  message = message.replace(/{username}/gi, username);
+  // Use action word as-is, don't modify it when stage advances
+  message = message.replace(/{action}/gi, actionWord);
+  message = message.replace(/{object}/gi, progression.name);
+  message = message.replace(/{count}/gi, progression.totalRedeems.toString());
+  message = message.replace(/{stage}/gi, (progression.currentStageIndex + 1).toString());
+  message = message.replace(/{total_stages}/gi, progression.stages.length.toString());
+  
+  // Truncate if too long (Twitch limit is 500 characters)
+  if (message.length > 500) {
+    message = message.substring(0, 497) + '...';
+  }
+  
+  try {
+    twitchClient.say(channels[0], message);
+    console.log(`💬 Sent progression chat message: ${message}`);
+  } catch (error) {
+    console.error('Error sending progression chat message:', error);
+  }
+}
+
 function registerHotkeys() {
   globalShortcut.unregisterAll();
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-  config.buttons.forEach((btn) => {
-    if (btn.hotkey) {
+  // Load buttons from active profile
+  const profile = loadProfile(currentActiveProfile);
+  const buttons = profile.buttons || [];
+  
+  // Ensure all buttons have IDs before registering hotkeys
+  let profileChanged = false;
+  const existingIds = new Set(buttons.filter(b => b && b.id).map(b => b.id));
+  buttons.forEach((btn) => {
+    if (btn && !btn.id) {
+      // Create a compact unique id
+      let newId;
+      do {
+        newId = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+      } while (existingIds.has(newId));
+      btn.id = newId;
+      existingIds.add(newId);
+      profileChanged = true;
+      console.log(`🔧 Backfilled missing ID for button "${btn.name || btn.label}": ${newId}`);
+    }
+  });
+  
+  // Save profile if IDs were added
+  if (profileChanged) {
+    saveProfile(currentActiveProfile, profile);
+    console.log('✅ Updated profile with backfilled button IDs');
+  }
+  
+  buttons.forEach((btn) => {
+    if (btn.hotkey && btn.id) {
       // Register the full hotkey string, including modifiers
+      // CRITICAL: Only register hotkeys for buttons with IDs to ensure reliable matching
       try {
         const success = globalShortcut.register(btn.hotkey, () => {
-          // Use name for multi-media buttons, label for others
-          const identifier = btn.name || btn.label;
-          win.webContents.send('trigger-media', identifier);
+          // Always use ID - buttons without IDs should not have hotkeys registered
+          console.log(`🔑 Hotkey "${btn.hotkey}" triggered - sending ID: "${btn.id}" (button: "${btn.name || btn.label}", type: ${btn.type})`);
+          win.webContents.send('trigger-media', btn.id);
         });
         if (!success) {
           console.warn('Failed to register hotkey:', btn.hotkey);
@@ -2187,13 +4711,251 @@ function registerHotkeys() {
       }
     }
   });
+  
+  // Register clip hotkey if configured in preferences
+  try {
+    const preferences = getStoredPreferences();
+    console.log('🔑 Checking for clip hotkey in preferences:', preferences.clipHotkey);
+    if (preferences.clipHotkey) {
+      const success = globalShortcut.register(preferences.clipHotkey, async () => {
+        console.log(`🔑 Clip hotkey "${preferences.clipHotkey}" triggered`);
+        const result = await createClip();
+        console.log(`📹 Clip creation result from hotkey:`, result);
+        if (win && win.webContents) {
+          win.webContents.send('twitch-clip-created', result);
+        }
+        if (result.success) {
+          // Post clip URL to chat
+          const clipMessage = result.testMode
+            ? `🧪 TEST MODE: ${result.message}`
+            : (result.clipUrl 
+              ? `Clip created! ${result.clipUrl}`
+              : `Clip created! Processing... ${result.editUrl}`);
+          
+          if (twitchClient && twitchClient.readyState() === 'OPEN') {
+            const channels = twitchClient.getChannels();
+            if (channels && channels.length > 0) {
+              twitchClient.say(channels[0], clipMessage);
+              console.log(`✅ Posted clip to chat: ${clipMessage}`);
+            }
+          }
+        } else {
+          console.error('Clip creation failed via hotkey:', result.error);
+        }
+      });
+      if (!success) {
+        console.warn('Failed to register clip hotkey:', preferences.clipHotkey);
+      } else {
+        console.log(`✅ Registered clip hotkey: ${preferences.clipHotkey}`);
+      }
+    }
+  } catch (error) {
+    console.error('Error registering clip hotkey:', error);
+  }
+}
+
+// Preferences management
+function getStoredPreferences() {
+  try {
+    const preferencesPath = path.join(app.getPath('userData'), 'preferences.json');
+    console.log('📋 Loading preferences from:', preferencesPath);
+    if (fs.existsSync(preferencesPath)) {
+      const data = fs.readFileSync(preferencesPath, 'utf8');
+      const prefs = JSON.parse(data);
+      console.log('📋 Loaded preferences:', JSON.stringify(prefs, null, 2));
+      return prefs;
+    } else {
+      console.log('📋 Preferences file does not exist');
+    }
+  } catch (error) {
+    console.error('Error reading preferences:', error);
+  }
+  return {}; // Return empty object if no preferences file exists
+}
+
+function saveStoredPreferences(preferences) {
+  try {
+    const preferencesPath = path.join(app.getPath('userData'), 'preferences.json');
+    fs.writeFileSync(preferencesPath, JSON.stringify(preferences, null, 2));
+    console.log('Preferences saved to:', preferencesPath);
+  } catch (error) {
+    console.error('Error saving preferences:', error);
+  }
+}
+
+// Auto-updater event handlers
+function setupAutoUpdater() {
+  // Detect platform
+  const isMac = process.platform === 'darwin';
+  const isWindows = process.platform === 'win32';
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('Checking for updates...');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version);
+    
+    if (isMac) {
+      // macOS: unsigned builds can't auto-update, show download link
+      dialog.showMessageBox(win, {
+        type: 'info',
+        title: 'Update Available',
+        message: `A new version (${info.version}) is available!`,
+        detail: 'Please visit the GitHub releases page to download the latest version.',
+        buttons: ['Open GitHub Releases', 'Later'],
+        defaultId: 0
+      }).then(result => {
+        if (result.response === 0) {
+          require('electron').shell.openExternal('https://github.com/jontslater/VirtualDeck/releases/latest');
+        }
+      });
+    } else if (isWindows) {
+      // Windows: can auto-update even unsigned
+      dialog.showMessageBox(win, {
+        type: 'info',
+        title: 'Update Available',
+        message: `A new version (${info.version}) is available!`,
+        detail: 'Would you like to download it now?',
+        buttons: ['Download', 'Later'],
+        defaultId: 0
+      }).then(result => {
+        if (result.response === 0) {
+          autoUpdater.downloadUpdate();
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('update-downloading');
+          }
+        }
+      });
+    }
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('Update not available. Current version is latest:', info.version);
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    const msg = `Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`;
+    console.log(msg);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded:', info.version);
+    
+    dialog.showMessageBox(win, {
+      type: 'info',
+      title: 'Update Ready',
+      message: 'Update downloaded successfully!',
+      detail: 'The application will restart to apply the update.',
+      buttons: ['Restart Now', 'Later'],
+      defaultId: 0
+    }).then(result => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('Update error:', err);
+    dialog.showMessageBox(win, {
+      type: 'error',
+      title: 'Update Error',
+      message: 'Failed to check for updates',
+      detail: err.message || 'Please try again later.',
+      buttons: ['OK']
+    });
+  });
+}
+
+// Manual update check function
+function checkForUpdates() {
+  setupAutoUpdater();
+  autoUpdater.checkForUpdates();
 }
 
 app.whenReady().then(() => {
   ensureUserData();
+  
+  // Log preferences at startup
+  const prefs = getStoredPreferences();
+  console.log('📋 Startup preferences check:');
+  console.log('  - clipTestMode:', prefs.clipTestMode);
+  console.log('  - clipHotkey:', prefs.clipHotkey);
+  
+  // Start OAuth server for Twitch authentication
+  startOAuthServer();
+  // Load progressions data
+  progressionsData = loadProgressions();
+  console.log('Loaded progressions:', progressionsData.progressions.length);
+  
+  // Broadcast initial progression state for "always visible" progressions
+  setTimeout(() => {
+    progressionsData.progressions.forEach(prog => {
+      if (prog.displayMode === 'always' && prog.stages && prog.stages.length > 0) {
+        console.log('Broadcasting initial state for always-visible progression:', prog.name);
+        const currentStage = prog.stages[prog.currentStageIndex];
+        const targetOverlay = prog.targetOverlay || 'main';
+        
+        if (currentStage && currentStage.mediaPath) {
+          const mediaUrl = `http://localhost:${overlayServerPort}/media/${currentStage.mediaPath}`;
+          
+          if (targetOverlay === 'progressionOverlay') {
+            const progressionPayload = {
+              type: 'progressionUpdate',
+              data: {
+                progressionId: prog.id,
+                name: prog.name,
+                currentStageIndex: prog.currentStageIndex,
+                currentCount: prog.currentCount,
+                totalRedeems: prog.totalRedeems,
+                currentStage: currentStage,
+                displayMode: prog.displayMode,
+                duration: prog.duration,
+                showCounter: true
+              }
+            };
+            broadcastToOverlay(progressionPayload, 'progressionOverlay');
+          } else {
+            const mediaPayload = {
+              type: 'buttonTrigger',
+              options: {
+                clearPrevious: true,
+                duration: null,
+                name: `${prog.name} - Stage ${prog.currentStageIndex + 1}`
+              },
+              centerMedia: [{
+                type: currentStage.mediaType,
+                src: mediaUrl
+              }]
+            };
+            broadcastToOverlay(mediaPayload, 'main');
+          }
+        }
+      }
+    });
+  }, 2000); // Wait for overlay server to start
+  
   createWindow();
   registerHotkeys();
   startOverlayServer();
+  
+  // Setup and check for updates on startup (delay by 3 seconds to let app initialize)
+  setTimeout(() => {
+    setupAutoUpdater();
+    
+    // Check if auto-update is enabled in preferences
+    const preferences = getStoredPreferences();
+    if (preferences.autoUpdate !== false) { // default to true if not set
+      // Disabled auto-update check for private repository
+      console.log('Auto-update check disabled (private repository)');
+      // autoUpdater.checkForUpdates().catch(err => {
+      //   console.log('Auto-update check failed (expected if not installed from installer):', err.message);
+      // });
+    } else {
+      console.log('Auto-update disabled in preferences');
+    }
+  }, 3000);
   
   // Build application menu: Edit contains Preferences, View & Window removed, Tools added
   const menuTemplate = [
@@ -2213,7 +4975,12 @@ app.whenReady().then(() => {
   { id: 'view_twitch_chat', label: 'Twitch Chat', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'twitch-chat-container', checked: menuItem.checked }); } },
   { id: 'view_sound_controls', label: 'Sound Controls', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-controls', checked: menuItem.checked }); } }
     ] },
+    { label: 'Profile', submenu: [
+      { label: 'Profile Manager...', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-profile-manager'); } }
+    ] },
     { label: 'Tools', submenu: [
+      { label: 'Check for Updates...', click: () => { checkForUpdates(); } },
+      { type: 'separator' },
       { label: 'Developer Tools', accelerator: 'F12', click: () => { if (win && !win.isDestroyed()) win.webContents.toggleDevTools(); } },
       { label: 'Twitch Setup', submenu: [
           { label: 'View Twitch Events / Test Events', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-twitch-activity'); } },
@@ -2226,37 +4993,50 @@ app.whenReady().then(() => {
       { label: 'Themes', submenu: [] }, // Will be populated dynamically with themes and skins
       { role: 'reload' }
     ] },
-    { label: 'Help', submenu: [ { label: 'About', click: () => {
+    { label: 'Help', submenu: [ 
+      { label: 'Report Bug', click: async () => {
+        try {
+          const { shell } = require('electron');
+          const bugReportUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSdHUauA7LI_bJtfKRKrbD81lZ8Xs6R3egGOEalqAF2KHUNDdg/viewform';
+          await shell.openExternal(bugReportUrl);
+        } catch (error) {
+          console.error('Error opening bug report form:', error);
+        }
+      } },
+      { type: 'separator' },
+      { label: 'About', click: () => {
         if (win && !win.isDestroyed()) win.webContents.send('show-about');
-      } } ] }
+      } } 
+    ] }
   ];
   // Function to rebuild menu with integrated themes and skins
   async function rebuildMenu() {
     try {
       console.log('Rebuilding menu with themes and skins...');
-      // Get available skins
+      // Get available skins using recursive search
       const skins = [];
       if (fs.existsSync(userSkinsDir)) {
-        const files = fs.readdirSync(userSkinsDir);
-        console.log(`Found ${files.length} files in skins directory:`, files);
-        for (const file of files) {
-          if (file.endsWith('.json')) {
-            const skinPath = path.join(userSkinsDir, file);
-            try {
-              const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
-              if (skinData.name && skinData.version) {
-                skins.push({
-                  id: path.basename(file, '.json'),
-                  name: skinData.name,
-                  description: skinData.description || '',
-                  version: skinData.version,
-                  author: skinData.author || '',
-                  filename: file
-                });
-              }
-            } catch (err) {
-              console.warn(`Failed to parse skin file ${file}:`, err);
+        const skinFiles = findSkinFiles(userSkinsDir);
+        console.log(`Found ${skinFiles.length} skin files in skins directory (including subdirectories)`);
+        
+        for (const skinPath of skinFiles) {
+          try {
+            const skinData = JSON.parse(fs.readFileSync(skinPath, 'utf-8'));
+            if (skinData.name && skinData.version) {
+              const relativePath = path.relative(userSkinsDir, skinPath);
+              const id = relativePath.replace(/\\/g, '/').replace(/\.json$/, '');
+              
+              skins.push({
+                id: id,
+                name: skinData.name,
+                description: skinData.description || '',
+                version: skinData.version,
+                author: skinData.author || '',
+                filename: path.basename(skinPath)
+              });
             }
+          } catch (err) {
+            console.warn(`Failed to parse skin file ${skinPath}:`, err);
           }
         }
       }
@@ -2302,11 +5082,35 @@ app.whenReady().then(() => {
       // Find and replace the themes submenu in menuTemplate
       const toolsMenu = menuTemplate.find(item => item.label === 'Tools');
       if (toolsMenu && toolsMenu.submenu) {
+        console.log('Tools menu found, current submenu items:', toolsMenu.submenu.map(item => item.label || item.type));
+        
         const themesMenuIndex = toolsMenu.submenu.findIndex(item => item.label === 'Themes');
         if (themesMenuIndex !== -1) {
           toolsMenu.submenu[themesMenuIndex].submenu = themesSubmenu;
         }
+        
+        // Ensure "Check for Updates" is preserved at the top of Tools menu
+        const checkUpdatesIndex = toolsMenu.submenu.findIndex(item => item.label === 'Check for Updates...');
+        console.log('Check for Updates index:', checkUpdatesIndex);
+        
+        if (checkUpdatesIndex === -1) {
+          console.log('Adding Check for Updates to Tools menu');
+          // Add "Check for Updates" at the beginning if it's missing
+          toolsMenu.submenu.unshift(
+            { label: 'Check for Updates...', click: () => { checkForUpdates(); } },
+            { type: 'separator' }
+          );
+        } else {
+          console.log('Check for Updates already exists at index:', checkUpdatesIndex);
+        }
+        
+        console.log('Final Tools submenu items:', toolsMenu.submenu.map(item => item.label || item.type));
+      } else {
+        console.log('Tools menu not found or has no submenu');
       }
+      
+      // Preserve the Help menu with "Check for Updates" from original template
+      const originalHelpMenu = menuTemplate.find(item => item.label === 'Help');
       
       const appMenu = Menu.buildFromTemplate(menuTemplate);
       Menu.setApplicationMenu(appMenu);
@@ -2442,11 +5246,40 @@ app.whenReady().then(() => {
     try { if (win && !win.isDestroyed()) win.webContents.send('open-preferences'); } catch (e) { console.warn('open-preferences failed', e); }
   });
 
+  // Allow renderer to get the current overlay server URL
+  ipcMain.handle('get-overlay-url', async () => {
+    return getOverlayServerUrl();
+  });
+
+  // Handle preferences save from renderer
+  ipcMain.on('save-preferences', (event, preferences) => {
+    try {
+      console.log('Saving preferences:', preferences);
+      saveStoredPreferences(preferences);
+    } catch (e) { console.warn('save-preferences failed', e); }
+  });
+
+  // Handle manual check for updates from renderer
+  ipcMain.on('check-for-updates', () => {
+    try {
+      console.log('Manual update check requested from preferences');
+      checkForUpdates();
+    } catch (e) { console.warn('check-for-updates failed', e); }
+  });
+
   // Overlay communication handlers - now using WebSocket broadcast
   ipcMain.on('overlay-message', (event, message) => {
     try {
-      console.log('Overlay message received:', message);
-      broadcastToOverlay(message);
+      console.log('📨 Overlay message received:', message);
+      console.log('🎯 Message type:', message.type);
+      console.log('🎯 Target overlay:', message.targetOverlay);
+      console.log('🎯 Available overlays in registry:', Array.from(overlayRegistry.keys()));
+      
+      // Extract target overlay from message (if specified)
+      const targetOverlay = message.targetOverlay || null;
+      console.log('🎯 Broadcasting to overlay:', targetOverlay);
+      
+      broadcastToOverlay(message, targetOverlay);
     } catch (e) { 
       console.warn('overlay-message failed', e); 
     }
@@ -2522,6 +5355,184 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  // Stop OAuth server
+  stopOAuthServer();
+});
+
+// IPC: Start OAuth server
+ipcMain.on('twitch-start-oauth-server', (event) => {
+  startOAuthServer();
+  event.reply('twitch-oauth-server-started');
+});
+
+// IPC: Stop OAuth server
+ipcMain.on('twitch-stop-oauth-server', (event) => {
+  stopOAuthServer();
+  event.reply('twitch-oauth-server-stopped');
+});
+
+// IPC: Get OAuth configuration
+ipcMain.handle('twitch-get-oauth-config', () => {
+  const tc = loadTcConfig();
+  return tc.oauth;
+});
+
+// IPC: Set OAuth configuration
+ipcMain.on('twitch-set-oauth-config', (event, config) => {
+  try {
+    const tc = loadTcConfig();
+    tc.oauth = { ...tc.oauth, ...config };
+    saveTcConfig(tc);
+    event.reply('twitch-oauth-config-updated', tc.oauth);
+  } catch (error) {
+    console.error('Error saving OAuth config:', error);
+    event.reply('twitch-oauth-error', `Failed to save configuration: ${error.message}`);
+  }
+});
+
+// IPC: Start OAuth login flow
+ipcMain.on('twitch-start-oauth-login', async (event) => {
+  try {
+    console.log('Starting OAuth login process...');
+    const tc = loadTcConfig();
+
+    console.log('Loaded config:', {
+      hasClientId: !!tc.oauth.clientId,
+      hasClientSecret: !!tc.oauth.clientSecret,
+      clientId: tc.oauth.clientId ? tc.oauth.clientId.substring(0, 10) + '...' : 'none'
+    });
+
+    if (!tc.oauth.clientId || !tc.oauth.clientSecret) {
+      console.error('Missing OAuth credentials');
+      event.reply('twitch-oauth-error', 'Client ID and Client Secret must be configured first');
+      return;
+    }
+
+    console.log('Starting OAuth server...');
+    startOAuthServer();
+
+    // Check if server is actually running
+    setTimeout(() => {
+      console.log('Opening OAuth URL in browser...');
+      const { shell } = require('electron');
+      const authUrl = `http://localhost:${OAUTH_PORT}/oauth/authorize`;
+      console.log('Auth URL:', authUrl);
+
+      const success = shell.openExternal(authUrl);
+      console.log('Browser open result:', success);
+
+      if (!success) {
+        console.error('Failed to open browser');
+        event.reply('twitch-oauth-error', 'Failed to open browser for OAuth login');
+      }
+    }, 1000); // Give server time to start
+
+  } catch (error) {
+    console.error('Error starting OAuth login:', error);
+    event.reply('twitch-oauth-error', `Failed to start OAuth login: ${error.message}`);
+  }
+});
+
+// IPC: Trigger alert overlay
+ipcMain.on('trigger-alert', (event, alertData) => {
+  console.log('🚨 Triggering alert overlay:', alertData);
+
+  // Send to alert overlay specifically
+  broadcastToOverlay({
+    type: 'alert',
+    alertType: alertData.type || 'follower',
+    user: alertData.user || alertData.username,
+    message: alertData.message,
+    amount: alertData.amount,
+    bits: alertData.bits,
+    duration: alertData.duration || 5000,
+    media: alertData.media,
+    audio: alertData.audio
+  }, 'alert');
+});
+
+// IPC: Trigger confetti overlay
+ipcMain.on('trigger-confetti', (event, confettiData) => {
+  console.log('🎊 Triggering confetti overlay:', confettiData);
+
+  // Send to confetti overlay specifically
+  broadcastToOverlay({
+    type: 'confetti',
+    count: confettiData.count || 100,
+    duration: confettiData.duration || 3000
+  }, 'confetti');
+});
+
+// IPC: Logout from Twitch OAuth
+ipcMain.on('twitch-logout', async (event) => {
+  try {
+    console.log('Processing Twitch OAuth logout');
+
+    // Clear OAuth tokens from config
+    const tc = loadTcConfig();
+    tc.oauth.accessToken = '';
+    tc.oauth.refreshToken = '';
+    tc.oauth.tokenExpiry = null;
+    saveTcConfig(tc);
+
+    // Send IPC to clear credentials (this will disconnect chat, EventSub, etc.)
+    const mockEvent = {
+      reply: (channel, data) => {
+        console.log('Clear creds completed, sending logout success');
+        event.reply('twitch-logout-success');
+      }
+    };
+
+    // Execute the clear credentials logic inline
+    console.log('Shutting down Twitch connections for logout');
+
+    // Stop follower polling
+    if (pollIntervalId) {
+      clearInterval(pollIntervalId);
+      pollIntervalId = null;
+      console.log('Stopped follower polling');
+    }
+
+    // Stop stream monitor for hydration
+    stopStreamMonitor();
+
+    // Close EventSub websocket if present
+    try {
+      if (eventSubWs) {
+        try { eventSubWs.close(); } catch (e) { console.warn('Error closing EventSub websocket:', e); }
+        eventSubWs = null;
+      }
+    } catch (e) { console.warn('Error while closing EventSub websocket', e); }
+
+    // Clear created subscriptions
+    try {
+      const tcConfig = loadTcConfig();
+      tcConfig.createdSubscriptions = [];
+      saveTcConfig(tcConfig);
+    } catch (e) { console.warn('Error clearing subscriptions:', e); }
+
+    // Clear global variables
+    twitchUserName = null;
+    twitchUserId = null;
+    twitchToken = null;
+    twitchClientId = null;
+    eventSubSessionId = null;
+    eventSubRegistered = false;
+    lastPollTime = null;
+    lastFollowerIds = [];
+
+    // Clear chat-related state
+    recentChatUserState.clear();
+    firstTimeChatters.clear();
+
+    console.log('Twitch connections cleared successfully');
+
+    event.reply('twitch-logout-success');
+
+  } catch (error) {
+    console.error('Error during logout:', error);
+    event.reply('twitch-logout-error', error.message);
+  }
 });
 
 // IPC: Clear stored Twitch credentials, close EventSub and chat connections, and remove created subscriptions
@@ -2537,6 +5548,8 @@ ipcMain.on('twitch-clear-creds', async (event) => {
       pollIntervalId = null;
       console.log('Stopped follower polling');
     }
+    // Stop stream monitor for hydration
+    stopStreamMonitor();
     // Close EventSub websocket if present
     try {
       if (eventSubWs) {
@@ -2589,7 +5602,8 @@ ipcMain.on('twitch-clear-creds', async (event) => {
     twitchUserName = null;
     lastFollowerIds = [];
     lastPollTime = null;
-    recentChatUserState.clear();
+      recentChatUserState.clear();
+      firstTimeChatters.clear();
 
     // Notify renderer with detailed result
     if (win && !win.isDestroyed()) {
@@ -2606,3 +5620,350 @@ ipcMain.on('twitch-clear-creds', async (event) => {
     console.error('Error handling twitch-clear-creds:', err);
   }
 });
+
+// ========================================================
+// Twitch OAuth 2.0 Server Setup
+// ========================================================
+
+let oauthServer = null;
+const OAUTH_PORT = 3000;
+
+// Start OAuth server for handling Twitch OAuth callbacks
+function startOAuthServer() {
+  if (oauthServer) {
+    console.log('OAuth server already running');
+    return;
+  }
+
+  console.log('Creating OAuth HTTP server...');
+  oauthServer = http.createServer(async (req, res) => {
+    const parsedUrl = url.parse(req.url, true);
+    const pathname = parsedUrl.pathname;
+
+    // Set CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+
+    console.log(`OAuth server: ${req.method} ${pathname}`);
+
+    try {
+      if (pathname === '/oauth/authorize' && req.method === 'GET') {
+        // Redirect to Twitch OAuth authorization
+        const tc = loadTcConfig();
+        const { clientId, redirectUri } = tc.oauth;
+
+        if (!clientId) {
+          res.writeHead(400, { 'Content-Type': 'text/html' });
+          res.end('<h1>Error: Twitch Client ID not configured</h1><p>Please set your Twitch Client ID in the app settings.</p>');
+          return;
+        }
+
+        const authUrl = `https://id.twitch.tv/oauth2/authorize?` +
+          `client_id=${encodeURIComponent(clientId)}&` +
+          `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+          `response_type=code&` +
+          `scope=${encodeURIComponent('chat:read user:read:follows moderator:read:followers clips:edit channel:read:redemptions')}&` +
+          `state=${encodeURIComponent(Math.random().toString(36).substring(7))}`;
+
+        console.log('Redirecting to Twitch OAuth:', authUrl);
+        res.writeHead(302, { 'Location': authUrl });
+        res.end();
+        return;
+
+      } else if (pathname === '/oauth/callback' && req.method === 'GET') {
+        // Handle OAuth callback
+        const { code, state, error, error_description } = parsedUrl.query;
+
+        if (error) {
+          console.error('OAuth error:', error, error_description);
+          res.writeHead(400, { 'Content-Type': 'text/html' });
+          res.end(`<h1>OAuth Error</h1><p>${error}: ${error_description}</p><p>You can close this window.</p>`);
+          return;
+        }
+
+        if (!code) {
+          res.writeHead(400, { 'Content-Type': 'text/html' });
+          res.end('<h1>Error: No authorization code received</h1><p>You can close this window.</p>');
+          return;
+        }
+
+        try {
+          // Exchange code for tokens
+          const tc = loadTcConfig();
+          const { clientId, clientSecret, redirectUri } = tc.oauth;
+
+          const tokenResponse = await exchangeCodeForTokens(code, clientId, clientSecret, redirectUri);
+
+          // Save tokens
+          tc.oauth.accessToken = tokenResponse.access_token;
+          tc.oauth.refreshToken = tokenResponse.refresh_token || '';
+          tc.oauth.tokenExpiry = tokenResponse.expires_in ?
+            Date.now() + (tokenResponse.expires_in * 1000) : null;
+
+          saveTcConfig(tc);
+
+          console.log('OAuth tokens saved successfully');
+
+          // Notify main window of successful authentication
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('twitch-oauth-success', {
+              accessToken: tokenResponse.access_token,
+              username: await getUsernameFromToken(tokenResponse.access_token)
+            });
+          }
+
+          // Show success page
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(`
+            <html>
+              <head>
+                <title>Twitch Authentication Successful</title>
+                <style>
+                  body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #1a1a1a; color: white; }
+                  .success { color: #00ff88; font-size: 24px; margin: 20px 0; }
+                  .message { font-size: 16px; margin: 20px 0; }
+                </style>
+              </head>
+              <body>
+                <h1 class="success">✅ Authentication Successful!</h1>
+                <p class="message">You can now close this window and return to VirtualDeck.</p>
+                <script>
+                  // Auto-close after 3 seconds
+                  setTimeout(() => {
+                    window.close();
+                  }, 3000);
+                </script>
+              </body>
+            </html>
+          `);
+
+        } catch (tokenError) {
+          console.error('Token exchange error:', tokenError);
+          res.writeHead(500, { 'Content-Type': 'text/html' });
+          res.end(`<h1>Error exchanging code for tokens</h1><p>${tokenError.message}</p><p>You can close this window.</p>`);
+        }
+
+      } else {
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        res.end('<h1>404 Not Found</h1>');
+      }
+
+    } catch (err) {
+      console.error('OAuth server error:', err);
+      res.writeHead(500, { 'Content-Type': 'text/html' });
+      res.end('<h1>Internal Server Error</h1>');
+    }
+  });
+
+  oauthServer.listen(OAUTH_PORT, 'localhost', (err) => {
+    if (err) {
+      console.error('Failed to start OAuth server:', err);
+      oauthServer = null;
+      return;
+    }
+    console.log(`✅ OAuth server successfully listening on http://localhost:${OAUTH_PORT}`);
+  });
+
+  oauthServer.on('error', (err) => {
+    console.error('OAuth server error:', err);
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${OAUTH_PORT} is already in use. OAuth authentication may not work.`);
+    }
+  });
+}
+
+// Stop OAuth server
+function stopOAuthServer() {
+  if (oauthServer) {
+    oauthServer.close();
+    oauthServer = null;
+    console.log('OAuth server stopped');
+  }
+}
+
+// Exchange authorization code for access tokens
+async function exchangeCodeForTokens(code, clientId, clientSecret, redirectUri) {
+  return new Promise((resolve, reject) => {
+    const postData = querystring.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code: code,
+      grant_type: 'authorization_code',
+      redirect_uri: redirectUri
+    });
+
+    const options = {
+      hostname: 'id.twitch.tv',
+      port: 443,
+      path: '/oauth2/token',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          if (res.statusCode === 200) {
+            const tokenData = JSON.parse(data);
+            resolve(tokenData);
+          } else {
+            reject(new Error(`Token exchange failed: ${res.statusCode} ${data}`));
+          }
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    req.write(postData);
+    req.end();
+  });
+}
+
+// Get username from access token
+async function getUsernameFromToken(accessToken) {
+  return new Promise((resolve, reject) => {
+    const tc = loadTcConfig();
+    const options = {
+      hostname: 'api.twitch.tv',
+      port: 443,
+      path: '/helix/users',
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Client-Id': tc.oauth.clientId
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          if (res.statusCode === 200) {
+            const userData = JSON.parse(data);
+            if (userData.data && userData.data.length > 0) {
+              resolve(userData.data[0].login);
+            } else {
+              reject(new Error('No user data received'));
+            }
+          } else {
+            reject(new Error(`User lookup failed: ${res.statusCode}`));
+          }
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    req.end();
+  });
+}
+
+// Check if access token is expired and refresh if needed
+async function ensureValidToken() {
+  const tc = loadTcConfig();
+  const now = Date.now();
+
+  // Check if token exists and is not expired (with 5 minute buffer)
+  if (!tc.oauth.accessToken || (tc.oauth.tokenExpiry && now >= (tc.oauth.tokenExpiry - 300000))) {
+    if (tc.oauth.refreshToken) {
+      console.log('Access token expired, refreshing...');
+      try {
+        const newTokens = await refreshAccessToken(tc.oauth.refreshToken, tc.oauth.clientId, tc.oauth.clientSecret);
+        tc.oauth.accessToken = newTokens.access_token;
+        tc.oauth.refreshToken = newTokens.refresh_token || tc.oauth.refreshToken;
+        tc.oauth.tokenExpiry = newTokens.expires_in ?
+          Date.now() + (newTokens.expires_in * 1000) : null;
+        saveTcConfig(tc);
+        console.log('Access token refreshed successfully');
+      } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError);
+        throw refreshError;
+      }
+    } else {
+      throw new Error('No refresh token available');
+    }
+  }
+
+  return tc.oauth.accessToken;
+}
+
+// Refresh access token
+async function refreshAccessToken(refreshToken, clientId, clientSecret) {
+  return new Promise((resolve, reject) => {
+    const postData = querystring.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token'
+    });
+
+    const options = {
+      hostname: 'id.twitch.tv',
+      port: 443,
+      path: '/oauth2/token',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          if (res.statusCode === 200) {
+            const tokenData = JSON.parse(data);
+            resolve(tokenData);
+          } else {
+            reject(new Error(`Token refresh failed: ${res.statusCode} ${data}`));
+          }
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    req.write(postData);
+    req.end();
+  });
+}

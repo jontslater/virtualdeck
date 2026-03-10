@@ -1,7 +1,16 @@
 //const twitchConnected = require('./TwitchConnected/tc.js');
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  // Get file path from File object (Electron-specific)
+  getFilePathFromFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch (error) {
+      console.error('Error getting file path:', error);
+      return null;
+    }
+  },
   addMedia: (data) => ipcRenderer.send('add-media', data),
   deleteButton: (index) => ipcRenderer.send('delete-button', index),
   refreshHotkeys: () => ipcRenderer.send('refresh-hotkeys'),
@@ -14,9 +23,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateConfig: async (configUpdate) => ipcRenderer.invoke('update-config', configUpdate),
   // Media file storage for multi-media buttons
   saveMediaFile: async (mediaData) => ipcRenderer.invoke('save-media-file', mediaData),
+  saveMediaFileByPath: async (mediaData) => ipcRenderer.invoke('save-media-file-by-path', mediaData),
   getMediaFile: async (relativePath) => ipcRenderer.invoke('get-media-file', relativePath),
+  getMediaFilePath: async (relativePath) => ipcRenderer.invoke('get-media-file-path', relativePath),
+  getConnectedOverlays: async () => ipcRenderer.invoke('get-connected-overlays'),
+  closeOverlayConnections: async (overlayName) => ipcRenderer.invoke('close-overlay-connections', overlayName),
   // Return persisted Twitch Client config (tc_config.json in userData)
   getTwitchConfig: async () => ipcRenderer.invoke('get-tc-config'),
+  getTwitchUsername: async () => ipcRenderer.invoke('get-twitch-username'),
   getSoundPath: async (relativePath) => ipcRenderer.invoke('get-sound-path', relativePath),
   resolveShortcut: async (shortcutPath) => ipcRenderer.invoke('resolve-shortcut', shortcutPath),
   launchApp: (appData) => ipcRenderer.send('launch-app', appData),
@@ -44,12 +58,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkUserMod: async (username) => ipcRenderer.invoke('check-user-mod', username),
   checkUserSubTier: async (username) => ipcRenderer.invoke('check-user-sub-tier', username),
   // Get channel statistics
+  isStreamLive: async () => ipcRenderer.invoke('is-stream-live'),
   getViewerCount: async () => ipcRenderer.invoke('get-viewer-count'),
   getFollowerCount: async () => ipcRenderer.invoke('get-follower-count'),
   getSubscriberStats: async () => ipcRenderer.invoke('get-subscriber-stats'),
   // Get recent activity
   getRecentFollowers: async () => ipcRenderer.invoke('get-recent-followers'),
   getRecentSubscribers: async () => ipcRenderer.invoke('get-recent-subscribers'),
+  getFollowersWithUsers: async () => ipcRenderer.invoke('get-followers-with-users'),
+  resetFirstTimeChatters: async () => ipcRenderer.invoke('reset-first-time-chatters'),
   hasTwitchCreds: async () => ipcRenderer.invoke('has-twitch-creds'),
   // Clear stored Twitch credentials and shutdown connections
   clearTwitchCreds: (opts) => ipcRenderer.send('twitch-clear-creds', opts || {}),
@@ -66,6 +83,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onOpenEventSubSubscriptions: (callback) => ipcRenderer.on('open-eventsub-subscriptions', callback),
   onClearTwitchCreds: (callback) => ipcRenderer.on('clear-twitch-creds', callback),
   onOpenTwitchMapping: (callback) => ipcRenderer.on('open-twitch-mapping', callback),
+  onOpenProfileManager: (callback) => ipcRenderer.on('open-profile-manager', callback),
   onRendererReady: (callback) => ipcRenderer.on('renderer-ready', callback),
   // Allow renderer to request opening Preferences in main
   openPreferences: () => ipcRenderer.send('open-preferences'),
@@ -108,4 +126,59 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendOverlayText: (data) => ipcRenderer.send('overlay-text', data),
   sendOverlayImage: (data) => ipcRenderer.send('overlay-image', data),
   sendOverlayVideo: (data) => ipcRenderer.send('overlay-video', data),
+  getOverlayUrl: async () => ipcRenderer.invoke('get-overlay-url'),
+  // Preferences and updates
+  savePreferences: (preferences) => ipcRenderer.send('save-preferences', preferences),
+  checkForUpdates: () => ipcRenderer.send('check-for-updates'),
+  // Daily Check-In System
+  loadDailyCheckins: async () => ipcRenderer.invoke('loadDailyCheckins'),
+  saveDailyCheckins: async (data) => ipcRenderer.invoke('saveDailyCheckins', data),
+  sendTwitchChatMessage: async (message) => ipcRenderer.invoke('sendTwitchChatMessage', message),
+  // Bug Report
+  reportBug: async () => ipcRenderer.invoke('report-bug'),
+  // Profile Management
+  getProfiles: async () => ipcRenderer.invoke('get-profiles'),
+  getProfile: async (profileId) => ipcRenderer.invoke('get-profile', profileId),
+  saveProfile: async (profileId, profileData) => ipcRenderer.invoke('save-profile', { profileId, profileData }),
+  createProfile: async (profileName) => ipcRenderer.invoke('create-profile', profileName),
+  duplicateProfile: async (sourceProfileId, newProfileName) => ipcRenderer.invoke('duplicate-profile', { sourceProfileId, newProfileName }),
+  renameProfile: async (profileId, newName) => ipcRenderer.invoke('rename-profile', { profileId, newName }),
+  deleteProfile: async (profileId) => ipcRenderer.invoke('delete-profile', profileId),
+  switchProfile: async (profileId) => ipcRenderer.invoke('switch-profile', profileId),
+  // Hydration Tracker
+  getHydrationConfig: async () => ipcRenderer.invoke('get-hydration-config'),
+  saveHydrationConfig: async (config) => ipcRenderer.invoke('save-hydration-config', config),
+  updateHydrationProgress: async () => ipcRenderer.invoke('update-hydration-progress'),
+  resetHydration: async () => ipcRenderer.invoke('reset-hydration'),
+  testHydration: async () => ipcRenderer.invoke('test-hydration'),
+  // Progression System
+  getProgressions: async () => ipcRenderer.invoke('get-progressions'),
+  saveProgression: async (progression) => ipcRenderer.invoke('save-progression', progression),
+  deleteProgression: async (progressionId) => ipcRenderer.invoke('delete-progression', progressionId),
+  resetProgression: async (progressionId) => ipcRenderer.invoke('reset-progression', progressionId),
+  getProgressionState: async (progressionId) => ipcRenderer.invoke('get-progression-state', progressionId),
+  getProgressionLeaderboard: async (progressionId) => ipcRenderer.invoke('get-progression-leaderboard', progressionId),
+  saveProgressionMedia: async (mediaData) => ipcRenderer.invoke('save-progression-media', mediaData),
+  incrementProgression: (data) => ipcRenderer.send('progression-increment', data),
+  // OAuth functionality
+  startOAuthLogin: () => ipcRenderer.send('twitch-start-oauth-login'),
+  logoutOAuth: () => ipcRenderer.send('twitch-logout'),
+  getOAuthConfig: async () => ipcRenderer.invoke('twitch-get-oauth-config'),
+  setOAuthConfig: (config) => ipcRenderer.send('twitch-set-oauth-config', config),
+  startOAuthServer: () => ipcRenderer.send('twitch-start-oauth-server'),
+  stopOAuthServer: () => ipcRenderer.send('twitch-stop-oauth-server'),
+  onOAuthSuccess: (callback) => ipcRenderer.on('twitch-oauth-success', (event, data) => callback(data)),
+  onOAuthError: (callback) => ipcRenderer.on('twitch-oauth-error', (event, error) => callback(error)),
+  onOAuthLogoutSuccess: (callback) => ipcRenderer.on('twitch-logout-success', callback),
+  // Alert and effects system
+  triggerAlert: (alertData) => ipcRenderer.send('trigger-alert', alertData),
+  triggerConfetti: (confettiData) => ipcRenderer.send('trigger-confetti', confettiData),
+  // Twitch clip creation
+  createClip: async () => {
+    console.log('📹 createClip called from renderer');
+    const result = await ipcRenderer.invoke('create-clip');
+    console.log('📹 createClip result:', result);
+    return result;
+  },
+  onTwitchClipCreated: (callback) => ipcRenderer.on('twitch-clip-created', (event, result) => callback(result)),
 });

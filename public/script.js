@@ -1,14 +1,1269 @@
 // public/script.js
 
+/* ========================================================
+ * Custom Alert System (Non-blocking, preserves focus)
+ * ======================================================== */
+
+// Custom prompt dialog for Electron
+function showCustomPrompt(message, defaultValue = '') {
+  return new Promise((resolve) => {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+      background: var(--bg-primary, #1e1e1e);
+      color: var(--text-primary, #ffffff);
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      min-width: 400px;
+      max-width: 500px;
+    `;
+    
+    // Create message
+    const messageEl = document.createElement('div');
+    messageEl.textContent = message;
+    messageEl.style.cssText = `
+      margin-bottom: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+    `;
+    
+    // Create input
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = defaultValue;
+    input.style.cssText = `
+      width: 100%;
+      padding: 10px;
+      background: var(--bg-secondary, #2a2a2a);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      color: var(--text-primary, #ffffff);
+      font-size: 14px;
+      margin-bottom: 16px;
+      box-sizing: border-box;
+    `;
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.cssText = `
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    `;
+    
+    // Create OK button
+    const okButton = document.createElement('button');
+    okButton.textContent = 'OK';
+    okButton.style.cssText = `
+      padding: 10px 20px;
+      background: var(--accent, #6366f1);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    okButton.addEventListener('mouseenter', () => {
+      okButton.style.background = '#4f46e5';
+    });
+    okButton.addEventListener('mouseleave', () => {
+      okButton.style.background = 'var(--accent, #6366f1)';
+    });
+    
+    // Create Cancel button
+    const cancelButton = document.createElement('button');
+    cancelButton.textContent = 'Cancel';
+    cancelButton.style.cssText = `
+      padding: 10px 20px;
+      background: var(--bg-secondary, #2a2a2a);
+      color: var(--text-primary, #ffffff);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    cancelButton.addEventListener('mouseenter', () => {
+      cancelButton.style.background = '#3a3a3a';
+    });
+    cancelButton.addEventListener('mouseleave', () => {
+      cancelButton.style.background = 'var(--bg-secondary, #2a2a2a)';
+    });
+    
+    // Assemble dialog
+    buttonsContainer.appendChild(cancelButton);
+    buttonsContainer.appendChild(okButton);
+    dialog.appendChild(messageEl);
+    dialog.appendChild(input);
+    dialog.appendChild(buttonsContainer);
+    overlay.appendChild(dialog);
+    
+    // Event handlers
+    const cleanup = () => {
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    };
+    
+    okButton.addEventListener('click', () => {
+      resolve(input.value);
+      cleanup();
+    });
+    
+    cancelButton.addEventListener('click', () => {
+      resolve(null);
+      cleanup();
+    });
+    
+    // Close on Escape
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        resolve(null);
+        cleanup();
+        document.removeEventListener('keydown', handleKeydown);
+      } else if (e.key === 'Enter') {
+        resolve(input.value);
+        cleanup();
+        document.removeEventListener('keydown', handleKeydown);
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+    
+    // Show dialog
+    document.body.appendChild(overlay);
+    input.focus();
+    input.select();
+  });
+}
+
+// Custom profile delete dialog with dropdown
+function showProfileDeleteDialog(profiles) {
+  return new Promise((resolve) => {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+      background: var(--bg-primary, #1e1e1e);
+      color: var(--text-primary, #ffffff);
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      min-width: 400px;
+      max-width: 500px;
+    `;
+    
+    // Create message
+    const messageEl = document.createElement('div');
+    messageEl.textContent = 'Select profile to delete:';
+    messageEl.style.cssText = `
+      margin-bottom: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+    `;
+    
+    // Create select dropdown
+    const select = document.createElement('select');
+    select.style.cssText = `
+      width: 100%;
+      padding: 10px;
+      background: var(--bg-secondary, #2a2a2a);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      color: var(--text-primary, #ffffff);
+      font-size: 14px;
+      margin-bottom: 16px;
+      cursor: pointer;
+    `;
+    
+    profiles.forEach(profile => {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.name;
+      select.appendChild(option);
+    });
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.cssText = `
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    `;
+    
+    // Create Delete button
+    const deleteButton = document.createElement('button');
+    deleteButton.textContent = 'Delete';
+    deleteButton.style.cssText = `
+      padding: 10px 20px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    deleteButton.addEventListener('mouseenter', () => {
+      deleteButton.style.background = '#c82333';
+    });
+    deleteButton.addEventListener('mouseleave', () => {
+      deleteButton.style.background = '#dc3545';
+    });
+    
+    // Create Cancel button
+    const cancelButton = document.createElement('button');
+    cancelButton.textContent = 'Cancel';
+    cancelButton.style.cssText = `
+      padding: 10px 20px;
+      background: var(--bg-secondary, #2a2a2a);
+      color: var(--text-primary, #ffffff);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    cancelButton.addEventListener('mouseenter', () => {
+      cancelButton.style.background = '#3a3a3a';
+    });
+    cancelButton.addEventListener('mouseleave', () => {
+      cancelButton.style.background = 'var(--bg-secondary, #2a2a2a)';
+    });
+    
+    // Assemble dialog
+    buttonsContainer.appendChild(cancelButton);
+    buttonsContainer.appendChild(deleteButton);
+    dialog.appendChild(messageEl);
+    dialog.appendChild(select);
+    dialog.appendChild(buttonsContainer);
+    overlay.appendChild(dialog);
+    
+    // Event handlers
+    const cleanup = () => {
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    };
+    
+    deleteButton.addEventListener('click', () => {
+      const selectedProfile = profiles.find(p => p.id === select.value);
+      resolve(selectedProfile);
+      cleanup();
+    });
+    
+    cancelButton.addEventListener('click', () => {
+      resolve(null);
+      cleanup();
+    });
+    
+    // Close on Escape
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        resolve(null);
+        cleanup();
+        document.removeEventListener('keydown', handleKeydown);
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+    
+    // Show dialog
+    document.body.appendChild(overlay);
+    select.focus();
+  });
+}
+
+// Custom confirm dialog for Electron
+function showCustomConfirm(message) {
+  return new Promise((resolve) => {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+      background: var(--bg-primary, #1e1e1e);
+      color: var(--text-primary, #ffffff);
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      min-width: 400px;
+      max-width: 500px;
+    `;
+    
+    // Create message
+    const messageEl = document.createElement('div');
+    messageEl.textContent = message;
+    messageEl.style.cssText = `
+      margin-bottom: 20px;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-line;
+    `;
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.cssText = `
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    `;
+    
+    // Create Yes button
+    const yesButton = document.createElement('button');
+    yesButton.textContent = 'Yes';
+    yesButton.style.cssText = `
+      padding: 10px 20px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    yesButton.addEventListener('mouseenter', () => {
+      yesButton.style.background = '#c82333';
+    });
+    yesButton.addEventListener('mouseleave', () => {
+      yesButton.style.background = '#dc3545';
+    });
+    
+    // Create No button
+    const noButton = document.createElement('button');
+    noButton.textContent = 'No';
+    noButton.style.cssText = `
+      padding: 10px 20px;
+      background: var(--bg-secondary, #2a2a2a);
+      color: var(--text-primary, #ffffff);
+      border: 1px solid var(--border-color, #444);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    noButton.addEventListener('mouseenter', () => {
+      noButton.style.background = '#3a3a3a';
+    });
+    noButton.addEventListener('mouseleave', () => {
+      noButton.style.background = 'var(--bg-secondary, #2a2a2a)';
+    });
+    
+    // Assemble dialog
+    buttonsContainer.appendChild(noButton);
+    buttonsContainer.appendChild(yesButton);
+    dialog.appendChild(messageEl);
+    dialog.appendChild(buttonsContainer);
+    overlay.appendChild(dialog);
+    
+    // Event handlers
+    const cleanup = () => {
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    };
+    
+    yesButton.addEventListener('click', () => {
+      resolve(true);
+      cleanup();
+    });
+    
+    noButton.addEventListener('click', () => {
+      resolve(false);
+      cleanup();
+    });
+    
+    // Close on Escape
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        resolve(false);
+        cleanup();
+        document.removeEventListener('keydown', handleKeydown);
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+    
+    // Show dialog
+    document.body.appendChild(overlay);
+    yesButton.focus();
+  });
+}
+
+function showCustomAlert(message, type = 'info') {
+  // Create alert container if it doesn't exist
+  let alertContainer = document.getElementById('custom-alert-container');
+  if (!alertContainer) {
+    alertContainer = document.createElement('div');
+    alertContainer.id = 'custom-alert-container';
+    alertContainer.style.cssText = `
+      position: fixed;
+      top: 60px;
+      right: 20px;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    `;
+    document.body.appendChild(alertContainer);
+  }
+
+  // Create alert element
+  const alert = document.createElement('div');
+  alert.style.cssText = `
+    background: var(--bg-primary, #1e1e1e);
+    color: var(--text-primary, #ffffff);
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border-left: 4px solid ${type === 'error' ? '#f44336' : type === 'success' ? '#4CAF50' : '#2196F3'};
+    font-size: 14px;
+    max-width: 400px;
+    pointer-events: auto;
+    animation: slideIn 0.3s ease-out;
+  `;
+  alert.textContent = message;
+
+  // Add animation
+  const style = document.createElement('style');
+  if (!document.getElementById('custom-alert-styles')) {
+    style.id = 'custom-alert-styles';
+    style.textContent = `
+      @keyframes slideIn {
+        from {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      @keyframes slideOut {
+        from {
+          transform: translateX(0);
+          opacity: 1;
+        }
+        to {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  alertContainer.appendChild(alert);
+
+  // Auto-remove after 4 seconds
+  setTimeout(() => {
+    alert.style.animation = 'slideOut 0.3s ease-out';
+    setTimeout(() => {
+      if (alert.parentNode) {
+        alert.parentNode.removeChild(alert);
+      }
+    }, 300);
+  }, 4000);
+}
+
+/* ========================================================
+ * Profile Management System
+ * ======================================================== */
+class ProfileManager {
+  constructor() {
+    this.currentProfile = null;
+    this.profiles = [];
+  }
+
+  async initialize() {
+    try {
+      // Load profiles metadata
+      const meta = await window.electronAPI.getProfiles();
+      this.profiles = meta.profiles || [];
+      this.currentProfile = meta.activeProfile || 'default';
+      
+      // Populate profile selector
+      this.populateProfileSelector();
+      
+      // Load and apply current profile settings
+      await this.loadProfileSettings();
+      
+      // Start periodic autosave (every 30 seconds)
+      this.startPeriodicAutosave();
+      
+      console.log('ProfileManager initialized:', this.currentProfile);
+    } catch (error) {
+      console.error('Error initializing ProfileManager:', error);
+    }
+  }
+  
+  startPeriodicAutosave() {
+    // Clear any existing interval
+    if (this.autosaveInterval) {
+      clearInterval(this.autosaveInterval);
+    }
+    
+    // Save every 30 seconds
+    this.autosaveInterval = setInterval(() => {
+      this.saveCurrentSettings().catch(err => {
+        console.error('Periodic autosave failed:', err);
+      });
+    }, 30000);
+    
+    console.log('Periodic autosave started (every 30 seconds)');
+  }
+
+  populateProfileSelector() {
+    const selector = document.getElementById('profile-selector');
+    if (!selector) return;
+    
+    // Clear existing options
+    selector.innerHTML = '';
+    
+    // Add all profiles
+    this.profiles.forEach(profile => {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.name;
+      selector.appendChild(option);
+    });
+    
+    // Set current profile
+    selector.value = this.currentProfile;
+    updateProfileWidgetLabel();
+  }
+
+  async loadProfileSettings() {
+    try {
+      const profile = await window.electronAPI.getProfile(this.currentProfile);
+      
+      console.log('📋 Loading profile settings:', this.currentProfile);
+      console.log('📋 Profile data:', profile);
+      console.log('📋 UI Settings:', profile.uiSettings);
+      
+      // Apply UI settings from profile
+      if (profile.uiSettings) {
+        // Apply theme - this is the authoritative source
+        const themeToApply = profile.uiSettings.theme || 'dark'; // Default to dark if not set
+        console.log('🎨 Theme from profile uiSettings.theme:', themeToApply);
+        
+        if (window.themeSystem) {
+          // Ensure skins are loaded before applying
+          await window.themeSystem.loadAvailableSkins();
+          console.log('🎨 Available skins loaded:', window.themeSystem.availableSkins.map(s => s.id));
+          console.log('🎨 Built-in themes:', window.themeSystem.builtInThemes);
+          
+          // Check if theme exists
+          const isBuiltIn = window.themeSystem.builtInThemes.includes(themeToApply);
+          const isSkin = window.themeSystem.availableSkins.some(skin => skin.id === themeToApply);
+          console.log(`🎨 Theme "${themeToApply}" - Built-in: ${isBuiltIn}, Custom skin: ${isSkin}`);
+          
+          // Set the current theme (bypass validation)
+          window.themeSystem.currentTheme = themeToApply;
+          
+          // Force apply the theme (even if it's not in the validation list yet)
+          console.log('🎨 Calling applyTheme with:', themeToApply);
+          await window.themeSystem.applyTheme(themeToApply);
+          
+          // Sync with menu
+          if (window.electronAPI?.syncTheme) {
+            window.electronAPI.syncTheme(themeToApply);
+          }
+          console.log('✅ Theme applied from profile:', themeToApply);
+        } else {
+          console.warn('⚠️ ThemeSystem not available yet');
+        }
+        
+        // Apply component visibility
+        if (profile.uiSettings.componentVisibility) {
+          this.applyComponentVisibility(profile.uiSettings.componentVisibility);
+        }
+        
+        // Apply chat width
+        if (profile.uiSettings.chatWidth) {
+          const chatContainer = document.getElementById('twitch-chat-container');
+          if (chatContainer) {
+            chatContainer.style.width = profile.uiSettings.chatWidth + 'px';
+          }
+        }
+        
+        // Apply sound button order after buttons are loaded
+        if (profile.uiSettings.soundButtonOrder && profile.uiSettings.soundButtonOrder.length > 0) {
+          // Wait a bit for buttons to be in DOM, then apply order
+          setTimeout(() => {
+            this.applyButtonOrder(profile.uiSettings.soundButtonOrder);
+          }, 500);
+        }
+      } else {
+        // No UI settings, apply default theme
+        console.log('ℹ️ No uiSettings in profile, applying default theme');
+        if (window.themeSystem) {
+          window.themeSystem.currentTheme = 'dark';
+          await window.themeSystem.applyTheme('dark');
+          console.log('✅ Default theme applied: dark');
+        }
+      }
+      
+      console.log('✅ Profile settings loaded for:', this.currentProfile);
+    } catch (error) {
+      console.error('❌ Error loading profile settings:', error);
+    }
+  }
+  
+  applyButtonOrder(buttonOrder) {
+    const soundGrid = document.getElementById('sound-grid');
+    if (!soundGrid || !buttonOrder || buttonOrder.length === 0) return;
+    
+    const soundCards = Array.from(soundGrid.querySelectorAll('.sound-card'));
+    
+    // Create a map of button ID to card element
+    const cardMap = new Map();
+    soundCards.forEach(card => {
+      if (card.dataset.soundData && card.id !== 'add-sound-card') {
+        try {
+          const soundData = JSON.parse(card.dataset.soundData);
+          if (soundData.id) {
+            cardMap.set(soundData.id, card);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    });
+    
+    // Keep the add-sound-card first
+    const addCard = soundCards.find(card => card.id === 'add-sound-card');
+    soundGrid.innerHTML = '';
+    if (addCard) {
+      soundGrid.appendChild(addCard);
+    }
+    
+    // Reorder cards based on saved order
+    buttonOrder.forEach(buttonId => {
+      const card = cardMap.get(buttonId);
+      if (card) {
+        soundGrid.appendChild(card);
+        cardMap.delete(buttonId); // Remove from map so we don't add it twice
+      }
+    });
+    
+    // Append any remaining cards that weren't in the saved order
+    cardMap.forEach(card => {
+      soundGrid.appendChild(card);
+    });
+    
+    console.log('Applied button order from profile');
+  }
+
+  async saveCurrentSettings() {
+    try {
+      // Show saving indicator
+      this.showSaveIndicator('Saving...');
+      
+      // Get current config
+      const config = await window.electronAPI.getConfig();
+      
+      // Gather current UI settings
+      const uiSettings = {
+        theme: window.themeSystem ? window.themeSystem.currentTheme : null,
+        componentVisibility: this.getCurrentComponentVisibility(),
+        chatWidth: this.getCurrentChatWidth(),
+        soundButtonOrder: this.getCurrentButtonOrder()
+      };
+      
+      console.log('💾 Saving profile settings...');
+      console.log('💾 Current theme:', uiSettings.theme);
+      console.log('💾 UI Settings:', uiSettings);
+      
+      // Update config with UI settings
+      config.uiSettings = uiSettings;
+      
+      // Save to current profile
+      await window.electronAPI.saveProfile(this.currentProfile, config);
+      
+      console.log('✅ Profile settings saved for:', this.currentProfile);
+      
+      // Show saved indicator
+      this.showSaveIndicator('Saved ✓', 'success');
+    } catch (error) {
+      console.error('❌ Error saving profile settings:', error);
+      this.showSaveIndicator('Save failed', 'error');
+    }
+  }
+  
+  showSaveIndicator(message, type = 'info') {
+    // Find or create save indicator in profile modal
+    const profileModal = document.getElementById('profile-modal');
+    if (!profileModal || profileModal.classList.contains('hidden')) {
+      // Modal is not open, just log it
+      console.log(`Profile: ${message}`);
+      return;
+    }
+    
+    let indicator = document.getElementById('profile-save-indicator');
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.id = 'profile-save-indicator';
+      indicator.style.cssText = `
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        margin-top: 8px;
+        text-align: center;
+        transition: opacity 0.3s ease;
+      `;
+      profileModal.querySelector('.modal-content').appendChild(indicator);
+    }
+    
+    // Set color based on type
+    if (type === 'success') {
+      indicator.style.background = 'rgba(76, 175, 80, 0.2)';
+      indicator.style.color = '#4CAF50';
+    } else if (type === 'error') {
+      indicator.style.background = 'rgba(244, 67, 54, 0.2)';
+      indicator.style.color = '#f44336';
+    } else {
+      indicator.style.background = 'rgba(33, 150, 243, 0.2)';
+      indicator.style.color = '#2196F3';
+    }
+    
+    indicator.textContent = message;
+    indicator.style.opacity = '1';
+    
+    // Hide after 2 seconds for success messages
+    if (type === 'success') {
+      setTimeout(() => {
+        indicator.style.opacity = '0';
+      }, 2000);
+    }
+  }
+  
+  // Save buttons while preserving UI settings
+  async saveButtonsToProfile(buttons) {
+    try {
+      // Get current profile data
+      const profile = await window.electronAPI.getProfile(this.currentProfile);
+      
+      // Update buttons
+      profile.buttons = buttons;
+      
+      // Save back to profile
+      await window.electronAPI.saveProfile(this.currentProfile, profile);
+      
+      console.log('Buttons saved to profile:', this.currentProfile);
+      return { success: true };
+    } catch (error) {
+      console.error('Error saving buttons to profile:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  // Debounced autosave - waits 1 second after last change before saving
+  scheduleAutoSave() {
+    if (this.autoSaveTimeout) {
+      clearTimeout(this.autoSaveTimeout);
+    }
+    this.autoSaveTimeout = setTimeout(() => {
+      this.saveCurrentSettings().catch(err => {
+        console.error('Auto-save failed:', err);
+      });
+    }, 1000);
+  }
+
+  getCurrentComponentVisibility() {
+    const prefs = {};
+    const components = {
+      'sound-grid': document.getElementById('sound-grid'),
+      'twitch-stats-container': document.getElementById('twitch-stats-container'),
+      'recent-activity-container': document.getElementById('recent-activity-container'),
+      'twitch-chat-container': document.getElementById('twitch-chat-container'),
+      'sound-controls': document.getElementById('sound-controls'),
+      'queue-control-widget': document.getElementById('queue-control-widget'),
+      'profile-control-widget': document.getElementById('profile-control-widget'),
+      'battle-control-widget': document.getElementById('battle-control-widget')
+    };
+    
+    for (const [key, element] of Object.entries(components)) {
+      if (element) {
+        prefs[key] = !element.classList.contains('hidden');
+      }
+    }
+    
+    return prefs;
+  }
+
+  applyComponentVisibility(prefs) {
+    for (const [key, visible] of Object.entries(prefs)) {
+      const element = document.getElementById(key);
+      if (element) {
+        if (visible) {
+          element.classList.remove('hidden');
+        } else {
+          element.classList.add('hidden');
+        }
+      }
+    }
+  }
+
+  getCurrentChatWidth() {
+    const chatContainer = document.getElementById('twitch-chat-container');
+    return chatContainer ? chatContainer.offsetWidth : null;
+  }
+
+  getCurrentButtonOrder() {
+    // Get button order from the DOM (sound cards)
+    const soundGrid = document.getElementById('sound-grid');
+    if (!soundGrid) return [];
+    
+    const soundCards = Array.from(soundGrid.querySelectorAll('.sound-card'));
+    return soundCards
+      .filter(card => card.dataset.soundData)
+      .map(card => {
+        try {
+          const soundData = JSON.parse(card.dataset.soundData);
+          return soundData.id;
+        } catch (e) {
+          return null;
+        }
+      })
+      .filter(id => id);
+  }
+
+  async createProfile(profileName) {
+    try {
+      if (!profileName || profileName.trim() === '') {
+        showCustomAlert('Profile name cannot be empty', 'error');
+        return false;
+      }
+      
+      // Save current settings before creating new profile
+      await this.saveCurrentSettings();
+      
+      // Create new profile
+      const result = await window.electronAPI.createProfile(profileName);
+      
+      if (result.success) {
+        showCustomAlert(`Profile "${profileName}" created`, 'success');
+        
+        // Refresh profiles list
+        await this.initialize();
+        
+        // Switch to new profile
+        await this.switchProfile(result.profileId);
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to create profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error creating profile:', error);
+      showCustomAlert('Error creating profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+
+  async duplicateProfile(newProfileName) {
+    try {
+      if (!newProfileName || newProfileName.trim() === '') {
+        showCustomAlert('Profile name cannot be empty', 'error');
+        return false;
+      }
+      
+      // Save current settings first
+      await this.saveCurrentSettings();
+      
+      // Duplicate current profile
+      const result = await window.electronAPI.duplicateProfile(this.currentProfile, newProfileName);
+      
+      if (result.success) {
+        showCustomAlert(`Profile "${newProfileName}" created from current profile`, 'success');
+        
+        // Refresh profiles list
+        await this.initialize();
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to duplicate profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error duplicating profile:', error);
+      showCustomAlert('Error duplicating profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+
+  async renameProfile(newName) {
+    try {
+      if (!newName || newName.trim() === '') {
+        showCustomAlert('Profile name cannot be empty', 'error');
+        return false;
+      }
+      
+      const result = await window.electronAPI.renameProfile(this.currentProfile, newName);
+      
+      if (result.success) {
+        showCustomAlert(`Profile renamed to "${newName}"`, 'success');
+        
+        // Refresh profiles list
+        await this.initialize();
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to rename profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error renaming profile:', error);
+      showCustomAlert('Error renaming profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+
+  async deleteProfile() {
+    try {
+      const currentProfileName = this.profiles.find(p => p.id === this.currentProfile)?.name || 'current profile';
+      
+      const result = await window.electronAPI.deleteProfile(this.currentProfile);
+      
+      if (result.success) {
+        showCustomAlert(`Profile "${currentProfileName}" deleted`, 'success');
+        
+        // Refresh and switch to first available profile
+        await this.initialize();
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to delete profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error deleting profile:', error);
+      showCustomAlert('Error deleting profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+
+  async switchProfile(profileId) {
+    try {
+      // Save current profile settings before switching
+      await this.saveCurrentSettings();
+      
+      // Switch to new profile
+      const result = await window.electronAPI.switchProfile(profileId);
+      
+      if (result.success) {
+        this.currentProfile = profileId;
+        updateProfileWidgetLabel();
+        const profileName = this.profiles.find(p => p.id === profileId)?.name || 'profile';
+        showCustomAlert(`Switched to "${profileName}"`, 'success');
+        
+        // Load new profile settings
+        await this.loadProfileSettings();
+        
+        // Reload buttons from new profile
+        if (typeof loadButtons === 'function') {
+          await loadButtons();
+        }
+        
+        return true;
+      } else {
+        showCustomAlert('Failed to switch profile: ' + (result.error || 'Unknown error'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error switching profile:', error);
+      showCustomAlert('Error switching profile: ' + error.message, 'error');
+      return false;
+    }
+  }
+}
+
+// Create global profile manager instance
+const profileManager = new ProfileManager();
+window.profileManager = profileManager;
+
 const soundGrid = document.getElementById("sound-grid");
 const visualContainer = document.getElementById("visual-container");
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
 
+// Helper function to load Twitch channel point redemptions
+async function loadChannelRedemptions(selectElement, inputElement) {
+  if (!window.electronAPI || !window.electronAPI.getChannelRewards) {
+    showCustomAlert('Twitch API not available', 'error');
+    return;
+  }
+  
+  try {
+    const rewards = await window.electronAPI.getChannelRewards();
+    
+    if (!rewards || rewards.length === 0) {
+      showCustomAlert('No channel point redemptions found. Make sure you\'re connected to Twitch.', 'error');
+      return;
+    }
+    
+    // Clear existing options except the first one
+    selectElement.innerHTML = '<option value="">-- Select or type manually --</option>';
+    
+    // Add redemptions to dropdown
+    rewards.forEach(reward => {
+      const option = document.createElement('option');
+      option.value = reward.title;
+      option.textContent = `${reward.title} (${reward.cost} pts)`;
+      selectElement.appendChild(option);
+    });
+    
+    showCustomAlert(`Loaded ${rewards.length} redemption(s) from Twitch`, 'success');
+    console.log('✅ Loaded Twitch redemptions:', rewards);
+  } catch (error) {
+    console.error('Error loading redemptions:', error);
+    const msg = (error && error.message) ? error.message : 'Failed to load redemptions from Twitch';
+    showCustomAlert(msg, 'error');
+  }
+}
+
+// Setup redemption dropdown sync with text input
+function setupRedemptionSync(selectElement, inputElement) {
+  if (!selectElement || !inputElement) return;
+  
+  // When dropdown changes, update text input
+  selectElement.addEventListener('change', () => {
+    if (selectElement.value) {
+      inputElement.value = selectElement.value;
+    }
+  });
+  
+  // When text input changes, try to match dropdown
+  inputElement.addEventListener('input', () => {
+    const matchingOption = Array.from(selectElement.options).find(
+      opt => opt.value.toLowerCase() === inputElement.value.toLowerCase()
+    );
+    if (matchingOption) {
+      selectElement.value = matchingOption.value;
+    } else {
+      selectElement.value = '';
+    }
+  });
+}
+
 // Add refresh UI listener
 window.electronAPI.onRefreshUI(() => {
   loadButtons();
 });
+
+// Mute overlay iframe in dashboard to prevent double audio
+// Audio should only play in OBS browser source
+function muteOverlayIframeAudio() {
+  const overlayIframe = document.getElementById('overlay-iframe');
+  if (!overlayIframe) {
+    console.warn('🔇 Overlay iframe not found, retrying in 1 second...');
+    setTimeout(muteOverlayIframeAudio, 1000);
+    return;
+  }
+  
+  try {
+    // Mute all existing audio and video elements in the iframe
+      const muteElements = () => {
+      try {
+        const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow?.document;
+        if (!iframeDoc) return;
+        
+        const audios = iframeDoc.querySelectorAll('audio');
+        const videos = iframeDoc.querySelectorAll('video');
+        
+        let mutedCount = 0;
+        audios.forEach(audio => {
+          // Immediately pause and mute
+          if (!audio.paused) {
+            audio.pause();
+          }
+          audio.muted = true;
+          audio.volume = 0;
+          // Prevent future playback
+          audio.removeAttribute('autoplay');
+          audio.src = ''; // Clear source to prevent any playback
+          mutedCount++;
+        });
+        
+        videos.forEach(video => {
+          // Immediately pause and mute
+          if (!video.paused) {
+            video.pause();
+          }
+          video.muted = true;
+          video.volume = 0;
+          // Prevent future playback
+          video.removeAttribute('autoplay');
+          // Don't clear video source as it might be needed for visual preview
+          mutedCount++;
+        });
+        
+        if (mutedCount > 0) {
+          console.log(`🔇 Muted and paused ${mutedCount} media element(s) in dashboard overlay`);
+        }
+      } catch (error) {
+        // Silently ignore CORS errors when iframe is from different origin
+        if (!error.message?.includes('cross-origin')) {
+          console.warn('Error in muteElements:', error);
+        }
+      }
+    };
+    
+    // Set up muting when iframe loads
+    overlayIframe.addEventListener('load', () => {
+      const iframeDoc = overlayIframe.contentDocument || overlayIframe.contentWindow?.document;
+      if (!iframeDoc) return;
+      
+      // Mute immediately
+      muteElements();
+      
+      // Set up mutation observer to mute any new audio/video elements IMMEDIATELY when added
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach(mutation => {
+          mutation.addedNodes.forEach(node => {
+            if (node.tagName === 'AUDIO') {
+              console.log('🔇 New audio detected in dashboard iframe - muting immediately');
+              node.pause();
+              node.muted = true;
+              node.volume = 0;
+              node.removeAttribute('autoplay');
+              node.src = '';
+            } else if (node.tagName === 'VIDEO') {
+              console.log('🔇 New video detected in dashboard iframe - muting immediately');
+              node.pause();
+              node.muted = true;
+              node.volume = 0;
+              node.removeAttribute('autoplay');
+            }
+            // Check children as well
+            if (node.querySelectorAll) {
+              const audios = node.querySelectorAll('audio');
+              const videos = node.querySelectorAll('video');
+              audios.forEach(audio => {
+                audio.pause();
+                audio.muted = true;
+                audio.volume = 0;
+                audio.removeAttribute('autoplay');
+                audio.src = '';
+              });
+              videos.forEach(video => {
+                video.pause();
+                video.muted = true;
+                video.volume = 0;
+                video.removeAttribute('autoplay');
+              });
+            }
+          });
+        });
+        // Also run full mute as backup
+        muteElements();
+      });
+      
+      observer.observe(iframeDoc.body, {
+        childList: true,
+        subtree: true
+      });
+      
+      console.log('✅ Dashboard overlay preview muted (audio plays in OBS only)');
+    });
+    
+    // Also try to mute immediately if iframe is already loaded
+    if (overlayIframe.contentDocument) {
+      muteElements();
+    }
+    
+    // Aggressively check and mute every 100ms to catch any race conditions
+    setInterval(() => {
+      muteElements();
+    }, 100); // Check every 100ms (more frequent) to ensure dashboard overlay stays muted
+    
+  } catch (error) {
+    console.warn('Could not mute overlay iframe:', error);
+  }
+}
+
+// Initialize muting when page loads
+muteOverlayIframeAudio();
+
+// Additional safety: Ensure dashboard iframe never plays audio
+// This is a failsafe in case the dashboard iframe somehow receives WebSocket messages
+function preventDashboardAudio() {
+  const overlayIframe = document.getElementById('overlay-iframe');
+  if (overlayIframe && overlayIframe.contentWindow) {
+    try {
+      // Send a message to the iframe to disable all audio
+      overlayIframe.contentWindow.postMessage({
+        type: 'disableAudio',
+        source: 'dashboard'
+      }, '*');
+      console.log('🔇 Sent disableAudio message to dashboard iframe');
+    } catch (error) {
+      // Ignore cross-origin errors
+    }
+  }
+}
+
+// Send disable audio message periodically to ensure dashboard iframe stays silent
+// Only send if iframe is visible/active to reduce console spam
+let lastDisableAudioTime = 0;
+setInterval(() => {
+  const overlayIframe = document.getElementById('overlay-iframe');
+  const overlayPreview = document.getElementById('overlay-preview');
+  
+  // Only send disable message if overlay preview is visible and not hidden
+  if (overlayIframe && overlayPreview && !overlayPreview.classList.contains('hidden')) {
+    const now = Date.now();
+    // Only send every 5 seconds to reduce spam
+    if (now - lastDisableAudioTime > 5000) {
+      preventDashboardAudio();
+      lastDisableAudioTime = now;
+    }
+  }
+}, 2000); // Check every 2 seconds instead of sending every second
 
 // Chat display variables
 let chatMessages = [];
@@ -464,42 +1719,17 @@ function reorderButtons(fromIndex, toIndex) {
 }
 
 function saveButtonOrder() {
-  const soundGrid = document.getElementById('sound-grid');
-  const soundCards = Array.from(soundGrid.querySelectorAll('.sound-card'));
-  
-  const newOrder = soundCards
-    .filter(card => card.dataset.soundData) // Only include cards with sound data
-    .map(card => {
-      const soundData = JSON.parse(card.dataset.soundData);
-      return soundData;
-    });
-  
-  // Save to localStorage
-  localStorage.setItem('soundButtonOrder', JSON.stringify(newOrder));
-
-  // Also persist order to main config.json by sending ordered ids
-  try {
-    const orderedIds = newOrder.map(b => b.id).filter(Boolean);
-    if (window.electronAPI && typeof window.electronAPI.saveButtonOrder === 'function') {
-      window.electronAPI.saveButtonOrder(orderedIds);
-    } else if (window.electronAPI && window.electronAPI.send) {
-      // fallback if older API exposure
-      window.electronAPI.send('save-button-order', orderedIds);
-    }
-  } catch (e) {
-    console.warn('Failed to persist button order to main process:', e);
+  // Button order is now stored per-profile in uiSettings
+  // Just trigger profile autosave which will capture the current button order
+  if (profileManager && profileManager.scheduleAutoSave) {
+    profileManager.scheduleAutoSave();
   }
 }
 
 function loadButtonOrder() {
-  const savedOrder = localStorage.getItem('soundButtonOrder');
-  if (savedOrder) {
-    try {
-      return JSON.parse(savedOrder);
-    } catch (e) {
-      console.error('Error loading button order:', e);
-    }
-  }
+  // Button order is now stored in the profile's uiSettings
+  // This function is kept for backward compatibility but returns null
+  // The actual button order is applied when loading profile settings
   return null;
 }
 
@@ -667,6 +1897,11 @@ function initializeChatResize(resizeHandle, chatContainer) {
     const currentWidth = chatContainer.offsetWidth;
     localStorage.setItem('twitchChatWidth', currentWidth.toString());
     
+    // Trigger profile autosave
+    if (profileManager && profileManager.scheduleAutoSave) {
+      profileManager.scheduleAutoSave();
+    }
+    
     // Trigger final layout update
     triggerLayoutUpdate();
     
@@ -772,6 +2007,30 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Initialize visibility dropdown
   initializeVisibilityDropdown();
+  
+  // Setup Twitch redemption loaders for Audio Button form
+  const audioRedeemSelect = document.getElementById('redeem-name-select');
+  const audioRedeemInput = document.getElementById('redeem-name');
+  const audioLoadBtn = document.getElementById('load-audio-redemptions');
+  
+  if (audioLoadBtn && audioRedeemSelect && audioRedeemInput) {
+    setupRedemptionSync(audioRedeemSelect, audioRedeemInput);
+    audioLoadBtn.addEventListener('click', () => {
+      loadChannelRedemptions(audioRedeemSelect, audioRedeemInput);
+    });
+  }
+  
+  // Setup Twitch redemption loaders for Multi-Media Button form
+  const mmRedeemSelect = document.getElementById('multi-media-redeem-name-select');
+  const mmRedeemInput = document.getElementById('multi-media-redeem-name');
+  const mmLoadBtn = document.getElementById('load-multimedia-redemptions');
+  
+  if (mmLoadBtn && mmRedeemSelect && mmRedeemInput) {
+    setupRedemptionSync(mmRedeemSelect, mmRedeemInput);
+    mmLoadBtn.addEventListener('click', () => {
+      loadChannelRedemptions(mmRedeemSelect, mmRedeemInput);
+    });
+  }
 });
 
 // Adjust container bottom padding so fixed pagination doesn't overlap the grid
@@ -880,7 +2139,7 @@ async function loadButtons() {
   addCard.id = 'add-sound-card';
   addCard.innerHTML = `
     <div class="add-icon">+</div>
-    <div class="add-text">Add Sound</div>
+    <div class="add-text">Add New</div>
   `;
   addCard.onclick = () => {
     // Show selection modal
@@ -891,6 +2150,21 @@ async function loadButtons() {
 
   // Load buttons from config
   const data = await window.electronAPI.getConfig();
+  console.log('🔍 Loaded config data:', data);
+  console.log('🔍 Number of buttons:', data.buttons?.length || 0);
+  
+  // Debug: Check for Donut button specifically
+  const donutButton = data.buttons?.find(btn => btn.name === 'Donut' || btn.label === 'Donut');
+  if (donutButton) {
+    console.log('🔍 Found Donut button:', donutButton);
+    console.log('🔍 Donut button audio:', donutButton.audio);
+    if (donutButton.audio && donutButton.audio.length > 0) {
+      console.log('🔍 Donut button audio[0]:', donutButton.audio[0]);
+      console.log('🔍 Donut button audio[0].src:', donutButton.audio[0].src);
+    }
+  } else {
+    console.log('🔍 Donut button not found in config');
+  }
   
   // Check for saved order
   const savedOrder = loadButtonOrder();
@@ -915,44 +2189,96 @@ async function loadButtons() {
     }
     if (ordered.length > 0) orderedButtons = ordered;
   }
-  
-  for (const [index, button] of orderedButtons.entries()) {
+
+  // Meld scene buttons go in the left sidebar; all others in the main grid
+  const meldButtons = orderedButtons.filter(b => b.type === 'meld-scene');
+  const otherButtons = orderedButtons.filter(b => b.type !== 'meld-scene');
+  const meldSidebar = document.getElementById('meld-buttons-sidebar');
+  if (meldSidebar) {
+    meldSidebar.innerHTML = '';
+    for (const button of meldButtons) {
+      const card = document.createElement('div');
+      card.className = 'sound-card';
+      card.dataset.soundData = JSON.stringify(button);
+      if (button.id) card.dataset.buttonId = button.id;
+      const meldSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#5c6bc0"/><text x="24" y="30" font-size="18" text-anchor="middle" fill="#fff">Meld</text></svg>';
+      const meldIcon = 'data:image/svg+xml,' + encodeURIComponent(meldSvg);
+      const iconImg = `<img src="${meldIcon}" alt="Meld Scene" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;pointer-events:none;" />`;
+      card.innerHTML = `
+        <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
+        <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
+        ${iconImg}
+        <div class="sound-type">Meld</div>
+        <div class="sound-name">${button.name || button.label || 'Unnamed'}</div>
+        <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
+      `;
+      card.addEventListener('click', (e) => {
+        if (e.target.classList.contains('edit-button') || e.target.classList.contains('delete-x-button')) return;
+        if (isDragMode) return;
+        if (card._vdJustDragged) return;
+        try {
+          const sd = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
+          if (sd) handleTrigger(sd);
+        } catch (err) { console.error('Failed to parse soundData on click:', err); }
+      });
+      meldSidebar.appendChild(card);
+    }
+  }
+
+  for (const [index, button] of otherButtons.entries()) {
     const card = document.createElement("div");
     card.className = "sound-card";
     card.dataset.index = index;
     card.dataset.soundData = JSON.stringify(button);
   if (button.id) card.dataset.buttonId = button.id;
     
-    // Fetch icon for app buttons
+    // Fetch icon for app buttons; use scene icon for meld-scene
     let iconImg = '';
-    if (button.type === 'app') {
-      let iconData = await window.electronAPI.getAppIcon(button.src);
-      if (!iconData) {
-        // Use a default icon if extraction fails
-        iconData = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="%23bbb"/><text x="24" y="30" font-size="20" text-anchor="middle" fill="%23666">App</text></svg>';
+    if (button.type === 'meld-scene') {
+      const meldSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#5c6bc0"/><text x="24" y="30" font-size="18" text-anchor="middle" fill="#fff">Meld</text></svg>';
+      const meldIcon = 'data:image/svg+xml,' + encodeURIComponent(meldSvg);
+      iconImg = `<img src="${meldIcon}" alt="Meld Scene" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;pointer-events:none;" />`;
+    } else if (button.type === 'app') {
+      try {
+        let iconData = await window.electronAPI.getAppIcon(button.src);
+        if (!iconData || iconData === 'null' || iconData === 'undefined') {
+          // Use a default icon if extraction fails
+          iconData = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="%23bbb"/><text x="24" y="30" font-size="20" text-anchor="middle" fill="%23666">App</text></svg>';
+        }
+        iconImg = `<img src="${iconData}" alt="App Icon" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;pointer-events:none;" />`;
+      } catch (err) {
+        console.error('Error loading app icon:', err);
+        // Use default icon on error
+        const defaultIcon = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="%23bbb"/><text x="24" y="30" font-size="20" text-anchor="middle" fill="%23666">App</text></svg>';
+        iconImg = `<img src="${defaultIcon}" alt="App Icon" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;pointer-events:none;" />`;
       }
-      iconImg = `<img src="${iconData}" alt="App Icon" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;" />`;
     }
     card.innerHTML = `
       <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
       <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
       ${iconImg}
-      <div class="sound-type">${button.type}</div>
+      <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type}</div>
       <div class="sound-name">${button.name || button.label || 'Unnamed'}</div>
       <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
     `;
     card.addEventListener('click', (e) => {
-      if (!e.target.classList.contains('edit-button') && !e.target.classList.contains('delete-x-button')) {
-        // Suppress trigger if in drag mode or the card was just dragged
-        if (isDragMode) return;
-        if (card._vdJustDragged) return;
-        // Read fresh soundData from the DOM so edits/reorders take effect
-        try {
-          const sd = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
-          if (sd) handleTrigger(sd);
-        } catch (err) {
-          console.error('Failed to parse soundData on click:', err);
+      // Allow clicks on edit/delete buttons to work normally
+      if (e.target.classList.contains('edit-button') || e.target.classList.contains('delete-x-button')) {
+        return;
+      }
+      // Suppress trigger if in drag mode or the card was just dragged
+      if (isDragMode) return;
+      if (card._vdJustDragged) return;
+      // Read fresh soundData from the DOM so edits/reorders take effect
+      try {
+        const sd = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
+        if (sd) {
+          console.log('🔍 Raw button data from storage:', sd);
+          console.log('🔍 Button overlay property from storage:', sd.overlay);
+          handleTrigger(sd);
         }
+      } catch (err) {
+        console.error('Failed to parse soundData on click:', err);
       }
     });
     soundGrid.appendChild(card);
@@ -1370,7 +2696,9 @@ function getVisibilityMap() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
-    // move-bar removed
+    'toggle-queue-control': 'queue-control-widget',
+    'toggle-profile-widget': 'profile-control-widget',
+    'toggle-battle-widget': 'battle-control-widget'
   };
 }
 
@@ -1436,6 +2764,168 @@ if (window.electronAPI && typeof window.electronAPI.onViewToggle === 'function')
   });
 }
 
+// Reset drop zone state
+function resetDropZone() {
+  const dropZone = document.getElementById('add-item-drop-zone');
+  if (dropZone) {
+    dropZone.classList.remove('drag-over');
+  }
+}
+
+// Initialize add item drop zone - minimal working example
+function initializeAddItemDropZone() {
+  console.log('=== INITIALIZING DROP ZONE ===');
+  const dropZone = document.getElementById('add-item-drop-zone');
+  console.log('Drop zone element found:', !!dropZone);
+  console.log('Drop zone element:', dropZone);
+  
+  if (!dropZone) {
+    console.error('Add item drop zone not found!');
+    return;
+  }
+  
+  // Check if already initialized to prevent duplicate listeners
+  if (dropZone.dataset.initialized === 'true') {
+    console.log('Drop zone already initialized, skipping...');
+    return;
+  }
+  
+  // Mark as initialized
+  dropZone.dataset.initialized = 'true';
+  
+  console.log('Add item drop zone initialized:', dropZone);
+  console.log('Drop zone visible:', dropZone.offsetWidth > 0 && dropZone.offsetHeight > 0);
+  
+  // Add click handler to open file dialog
+  console.log('Adding click handler...');
+  dropZone.addEventListener('click', () => {
+    console.log('Drop zone clicked');
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.mp3,.wav,.ogg,.exe,.lnk,.bat,.cmd,.app,.sh,.desktop';
+    fileInput.multiple = false;
+    
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handleFileDrop(e.target.files[0]);
+      }
+    });
+    
+    fileInput.click();
+  });
+  
+  // Minimal working drag and drop handlers (based on your example)
+  console.log('Adding dragover handler...');
+  dropZone.addEventListener('dragover', (e) => {
+    console.log('=== DROP ZONE DRAGOVER ===');
+    console.log('Event target:', e.target);
+    console.log('Current target:', e.currentTarget);
+    console.log('Modal exists?', !!document.getElementById('settings-modal'));
+    console.log('Modal hidden?', document.getElementById('settings-modal')?.classList.contains('hidden'));
+    console.log('Modal display:', document.getElementById('settings-modal')?.style.display);
+    console.log('Modal pointer-events:', document.getElementById('settings-modal')?.style.pointerEvents);
+    console.log('Is drag mode?', isDragMode);
+    e.preventDefault(); // VERY IMPORTANT: enables dropping
+    e.stopPropagation();
+    dropZone.classList.add('drag-over');
+  });
+
+  console.log('Adding dragenter handler...');
+  dropZone.addEventListener('dragenter', (e) => {
+    console.log('dragenter event fired');
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.add('drag-over');
+  });
+
+  console.log('Adding dragleave handler...');
+  dropZone.addEventListener('dragleave', (e) => {
+    console.log('dragleave event fired');
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('drag-over');
+  });
+
+  console.log('Adding drop handler...');
+  dropZone.addEventListener('drop', (e) => {
+    console.log('=== DROP ZONE DROP ===');
+    console.log('Event target:', e.target);
+    console.log('Current target:', e.currentTarget);
+    console.log('Files count:', e.dataTransfer.files.length);
+    console.log('Modal exists?', !!document.getElementById('settings-modal'));
+    console.log('Modal hidden?', document.getElementById('settings-modal')?.classList.contains('hidden'));
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Always reset drop zone styling
+    dropZone.classList.remove('drag-over');
+
+    // Handle the dropped file(s)
+    for (const file of e.dataTransfer.files) {
+      console.log('Dropped file:', file.path);
+      handleFileDrop(file);
+      break; // Only handle first file
+    }
+
+    // Don't set drag-drop-ready state - let user interact with modal
+    const modal = document.getElementById('settings-modal');
+    if (modal) {
+      // Remove any existing drag-drop-ready class
+      modal.classList.remove('drag-drop-ready');
+      console.log('Modal ready for user interaction');
+    }
+
+    // Schedule re-initialization after a delay to ensure everything is ready
+    setTimeout(() => {
+      console.log('Drop zone ready for next drag - re-initializing...');
+      dropZone.classList.remove('drag-over');
+      // Re-initialize the drop zone to ensure it's ready for the next drag
+      initializeAddItemDropZone();
+    }, 100);
+  });
+  
+  console.log('=== DROP ZONE INITIALIZATION COMPLETE ===');
+}
+
+// Re-initialization function removed - no longer needed
+
+// Initialize add item drop zone with a delay to ensure DOM is ready
+setTimeout(() => {
+  console.log('About to initialize drop zone...');
+  const dropZone = document.getElementById('add-item-drop-zone');
+  console.log('Drop zone found during init:', !!dropZone);
+  if (dropZone) {
+    console.log('Drop zone element:', dropZone);
+    console.log('Drop zone visible:', dropZone.offsetWidth > 0 && dropZone.offsetHeight > 0);
+  }
+  initializeAddItemDropZone();
+  console.log('Drop zone initialization completed');
+}, 100);
+
+// Add modal focus handler to re-enable interactions when user focuses
+const modal = document.getElementById('settings-modal');
+if (modal) {
+  modal.addEventListener('focusin', () => {
+    console.log('Modal focused - re-enabling interactions');
+    modal.classList.remove('drag-drop-ready'); // accept interactions
+  });
+} else {
+  console.error('Modal not found during initialization!');
+}
+
+// Debug: Check if drop zone exists after initialization
+setTimeout(() => {
+  const dropZone = document.getElementById('add-item-drop-zone');
+  console.log('Drop zone check after init:', !!dropZone);
+  console.log('Drop zone visible:', dropZone?.offsetWidth > 0 && dropZone?.offsetHeight > 0);
+  console.log('Drop zone classes:', dropZone?.className);
+  console.log('Drop zone style:', dropZone?.style.cssText);
+}, 1000);
+
+// Initialize component visibility dropdown
+initializeVisibilityDropdown();
+
 // Load and display app version
 loadAppVersion();
 
@@ -1470,7 +2960,7 @@ function initializeVisibilityDropdown() {
 
   // Close dropdown when clicking outside
   document.addEventListener('click', (e) => {
-    if (menu && !menu.contains(e.target) && !toggleBtn.contains(e.target)) {
+    if (menu && !menu.contains(e.target) && toggleBtn && !toggleBtn.contains(e.target)) {
       menu.classList.add('hidden');
     }
   });
@@ -1487,6 +2977,8 @@ function initializeVisibilityDropdown() {
   Object.keys(checkboxes).forEach(checkboxId => {
     const checkbox = document.getElementById(checkboxId);
     const componentId = checkboxes[checkboxId];
+    
+    console.log(`Setting up visibility for: ${checkboxId} → ${componentId}`, checkbox ? '✓' : '✗');
     
     if (checkbox && componentId) {
       // Handle direct checkbox clicks
@@ -1519,6 +3011,10 @@ function initializeVisibilityDropdown() {
             const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
             prefs[componentId] = checkbox.checked;
             localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+            // Trigger profile autosave
+            if (profileManager && profileManager.scheduleAutoSave) {
+              profileManager.scheduleAutoSave();
+            }
             // Notify main process so menu checkbox states can be synced
             if (window.electronAPI && typeof window.electronAPI.syncViewPrefs === 'function') {
               try { window.electronAPI.syncViewPrefs(prefs); } catch (err) { console.warn('Failed to send view prefs to main', err); }
@@ -1581,6 +3077,10 @@ function initializeVisibilityDropdown() {
             prefs[checkboxes[id]] = false;
           });
           localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+          // Trigger profile autosave
+          if (profileManager && profileManager.scheduleAutoSave) {
+            profileManager.scheduleAutoSave();
+          }
           if (window.electronAPI && typeof window.electronAPI.syncViewPrefs === 'function') {
             try { window.electronAPI.syncViewPrefs(prefs); } catch (err) { console.warn('Failed to send view prefs to main', err); }
           }
@@ -1619,6 +3119,10 @@ function initializeVisibilityDropdown() {
             prefs[checkboxes[id]] = true;
           });
           localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+          // Trigger profile autosave
+          if (profileManager && profileManager.scheduleAutoSave) {
+            profileManager.scheduleAutoSave();
+          }
           if (window.electronAPI && typeof window.electronAPI.syncViewPrefs === 'function') {
             try { window.electronAPI.syncViewPrefs(prefs); } catch (err) { console.warn('Failed to send view prefs to main', err); }
           }
@@ -1651,7 +3155,9 @@ function applyVisibilityPrefs() {
     'toggle-recent-activity': 'recent-activity-container',
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
-    // move-bar removed
+    'toggle-queue-control': 'queue-control-widget',
+    'toggle-profile-widget': 'profile-control-widget',
+    'toggle-battle-widget': 'battle-control-widget'
   };
 
   let prefs = {};
@@ -1744,6 +3250,189 @@ if (window.electronAPI && window.electronAPI.onShowAbout) {
   window.electronAPI.onShowAbout(() => {
     openAboutModal();
   });
+}
+
+// Placeholders Guide Modal
+// Chat commands data structure (extensible for future commands)
+const chatCommands = [
+  {
+    command: '!checkin',
+    description: 'View the top 5 check-in leaderboard',
+    details: 'Shows the top 5 users with the most check-ins. If streaks are enabled, displays streak information. Each user has a 10-minute cooldown between uses.',
+    example: 'Type !checkin in chat to see the leaderboard.'
+  }
+  // Add more commands here in the future
+];
+
+function renderCommandsGuide() {
+  const commandsList = document.getElementById('commands-list');
+  if (!commandsList) return;
+  
+  if (chatCommands.length === 0) {
+    commandsList.innerHTML = '<p style="color: var(--text-secondary); padding: 20px; text-align: center;">No commands available yet.</p>';
+    return;
+  }
+  
+  let html = '';
+  chatCommands.forEach((cmd, index) => {
+    html += `
+      <div style="margin-bottom: ${index < chatCommands.length - 1 ? '30px' : '0'};">
+        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">
+          <code style="background: var(--bg-secondary); padding: 4px 8px; border-radius: 4px; color: var(--accent); font-size: 16px;">${cmd.command}</code>
+        </h3>
+        <table class="placeholders-table">
+          <tbody>
+            <tr>
+              <td style="width: 120px;"><strong>Description</strong></td>
+              <td>${cmd.description}</td>
+            </tr>
+            ${cmd.details ? `<tr>
+              <td><strong>Details</strong></td>
+              <td>${cmd.details}</td>
+            </tr>` : ''}
+            ${cmd.example ? `<tr>
+              <td><strong>Example</strong></td>
+              <td><code style="background: var(--bg-secondary); padding: 2px 6px; border-radius: 3px;">${cmd.example}</code></td>
+            </tr>` : ''}
+          </tbody>
+        </table>
+      </div>
+    `;
+  });
+  
+  commandsList.innerHTML = html;
+}
+
+function openCommandsGuide() {
+  const modal = document.getElementById('commands-guide-modal');
+  if (modal) {
+    renderCommandsGuide();
+    modal.classList.remove('hidden');
+    
+    // Disable hotkeys when modal is open
+    if (window.electronAPI && window.electronAPI.disableHotkeys) {
+      window.electronAPI.disableHotkeys();
+    }
+  }
+}
+
+function closeCommandsGuide() {
+  const modal = document.getElementById('commands-guide-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    
+    // Re-enable hotkeys when modal is closed
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+}
+
+function openPlaceholdersGuide() {
+  const modal = document.getElementById('placeholders-guide-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    
+    // Disable hotkeys when modal is open
+    if (window.electronAPI && window.electronAPI.disableHotkeys) {
+      window.electronAPI.disableHotkeys();
+    }
+  }
+}
+
+function closePlaceholdersGuide() {
+  const modal = document.getElementById('placeholders-guide-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    
+    // Re-enable hotkeys when modal is closed
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+}
+
+// Close button for placeholders guide
+const placeholdersGuideCloseBtn = document.getElementById('placeholders-guide-close');
+if (placeholdersGuideCloseBtn) {
+  placeholdersGuideCloseBtn.onclick = () => {
+    closePlaceholdersGuide();
+  };
+}
+
+// Close on backdrop click
+const placeholdersGuideModal = document.getElementById('placeholders-guide-modal');
+if (placeholdersGuideModal) {
+  placeholdersGuideModal.addEventListener('click', (e) => {
+    if (e.target === placeholdersGuideModal) {
+      closePlaceholdersGuide();
+    }
+  });
+}
+
+// Close button for commands guide
+const commandsGuideCloseBtn = document.getElementById('commands-guide-close');
+if (commandsGuideCloseBtn) {
+  commandsGuideCloseBtn.onclick = () => {
+    closeCommandsGuide();
+  };
+}
+
+// Close on backdrop click
+const commandsGuideModal = document.getElementById('commands-guide-modal');
+if (commandsGuideModal) {
+  commandsGuideModal.addEventListener('click', (e) => {
+    if (e.target === commandsGuideModal) {
+      closeCommandsGuide();
+    }
+  });
+}
+
+// Help button in Alert Widget
+const alertPlaceholdersHelp = document.getElementById('alert-placeholders-help');
+if (alertPlaceholdersHelp) {
+  alertPlaceholdersHelp.addEventListener('click', () => {
+    openPlaceholdersGuide();
+  });
+}
+
+// Check-In Stats Modal Handlers
+const checkinStatsCloseBtn = document.getElementById('checkin-stats-close');
+if (checkinStatsCloseBtn) {
+  checkinStatsCloseBtn.onclick = () => {
+    const modal = document.getElementById('checkin-stats-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      // Re-enable hotkeys
+      if (window.electronAPI && window.electronAPI.enableHotkeys) {
+        window.electronAPI.enableHotkeys();
+      }
+    }
+  };
+}
+
+// Close on backdrop click
+const checkinStatsModal = document.getElementById('checkin-stats-modal');
+if (checkinStatsModal) {
+  checkinStatsModal.addEventListener('click', (e) => {
+    if (e.target === checkinStatsModal) {
+      checkinStatsModal.classList.add('hidden');
+      // Re-enable hotkeys
+      if (window.electronAPI && window.electronAPI.enableHotkeys) {
+        window.electronAPI.enableHotkeys();
+      }
+    }
+  });
+}
+
+// Stats filter and sort listeners
+const statsSort = document.getElementById('stats-sort');
+const statsFilter = document.getElementById('stats-filter');
+if (statsSort) {
+  statsSort.addEventListener('change', renderCheckinStats);
+}
+if (statsFilter) {
+  statsFilter.addEventListener('change', renderCheckinStats);
 }
 
 // Open settings modal when Preferences menu item is clicked
@@ -2092,9 +3781,40 @@ function addRecentSubscriber(subscriber) {
   updateRecentSubscribersDisplay();
 }
 
+// Deduplication for chat messages (similar to overlay)
+const processedChatMessages = new Set();
+const CHAT_DEDUP_WINDOW = 5000; // 5 seconds
+
+// Generate hash for chat message deduplication
+function getChatMessageHash(user, message, timestamp) {
+  // Group messages within 100ms for deduplication
+  const timeGroup = Math.floor(timestamp / 100);
+  return `${user}:${message}:${timeGroup}`;
+}
+
 // Listen for Twitch chat events
 window.electronAPI.onTwitchChatEvent((eventData) => {
+  console.log('📨 Twitch chat event received:', eventData);
+  console.log('📨 Event source:', eventData.source || 'unknown');
+  
   if (eventData.type === 'chat') {
+    // Generate hash for deduplication
+    const messageHash = getChatMessageHash(eventData.user, eventData.message, Date.now());
+    
+    // Check for duplicates
+    if (processedChatMessages.has(messageHash)) {
+      console.log('🚫 Duplicate chat message detected, skipping');
+      return;
+    }
+    
+    // Add to processed set
+    processedChatMessages.add(messageHash);
+    
+    // Remove after deduplication window
+    setTimeout(() => {
+      processedChatMessages.delete(messageHash);
+    }, CHAT_DEDUP_WINDOW);
+    
     // Check if it's a command (starts with !)
     if (eventData.message && eventData.message.startsWith('!')) {
       addTwitchEvent('command', {
@@ -2111,22 +3831,135 @@ window.electronAPI.onTwitchChatEvent((eventData) => {
 });
 
 // Listen for Twitch EventSub events (follows, subs, raids, etc.)
-window.electronAPI.onTwitchEventSub((eventData) => {
+window.electronAPI.onTwitchEventSub(async (eventData) => {
   console.log('📡 Twitch EventSub received:', eventData);
+  
+  // Handle daily check-in redemptions first
+  if (eventData.type === 'channel.channel_points_custom_reward_redemption.add') {
+    const rewardTitle = eventData.event.reward?.title || eventData.event.reward?.name || eventData.event.reward_title || '';
+    const configuredRewardName = dailyCheckinData.config.rewardName || 'Daily Check-In';
+    
+    // Check if this matches our daily check-in reward
+    if (rewardTitle.toLowerCase() === configuredRewardName.toLowerCase()) {
+      console.log('✅ Daily Check-In redemption detected!');
+      
+      // Process the daily check-in
+      const checkinResult = await processDailyCheckin({
+        user_id: eventData.event.user_id,
+        user_name: eventData.event.user_name || eventData.event.user_login,
+        display_name: eventData.event.user_login || eventData.event.user_name
+      });
+      
+      // If check-in was successful, trigger any configured daily-checkin alerts
+      if (checkinResult) {
+        // Get the updated viewer data
+        const viewer = dailyCheckinData.viewers[eventData.event.user_id];
+        
+        // Create user data with actual check-in counts
+        const userData = {
+          username: viewer.username,
+          display_name: viewer.display_name,
+          user_id: viewer.user_id,
+          total_checkins: viewer.total_checkins,
+          streak: viewer.streak || 0,
+          reward: rewardTitle,
+          ...eventData.event
+        };
+        
+        console.log('👤 Daily check-in user data:', userData);
+        
+        // Trigger daily-checkin alert with actual data
+        alertSystem.triggerAlertForEvent('daily-checkin', userData);
+      }
+      
+      // Don't process this as a regular channel-points alert
+      return;
+    }
+  }
+  
+  // Handle first-chat walk-on events
+  if (eventData.type === 'first-chat-walkon') {
+    const username = eventData.event?.user_name || eventData.event?.display_name || 'Someone';
+    const userData = {
+      username: eventData.event.user_name || username,
+      display_name: eventData.event.display_name || username,
+      user_id: eventData.event.user_id,
+      user_name: eventData.event.user_name || username,
+      ...eventData.event
+    };
+    
+    console.log('👤 First chat walk-on user data:', userData);
+    alertSystem.triggerAlertForEvent('first-chat-walkon', userData);
+    
+    // Don't process further
+    return;
+  }
+  
+  // For channel point redemptions (non-daily-checkin), let the TwitchConnected system handle button matching
+  if (eventData.type === 'channel.channel_points_custom_reward_redemption.add') {
+    // For non-daily-checkin redemptions, let the TwitchConnected system handle button matching
+    // The TwitchConnected system will check for buttons with matching keywords
+    console.log('🎁 Non-daily-checkin redemption, letting TwitchConnected system handle button matching');
+    
+    // Send the event to TwitchConnected system for button matching
+    // We need to send it as a 'redeem' type event for the TwitchConnected system to process it
+    if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
+      // The TwitchConnected system expects events with type 'redeem'
+      const redeemEvent = {
+        type: 'redeem',
+        event: eventData.event
+      };
+      console.log('📤 Sending redemption event to TwitchConnected system:', redeemEvent);
+      
+      // Trigger the TwitchConnected system directly
+      if (window.checkRedemptionAgainstButtonKeywords) {
+        window.checkRedemptionAgainstButtonKeywords(redeemEvent).then(matchingButtonLabel => {
+          if (matchingButtonLabel && window.electronAPI && window.electronAPI.sendTrigger) {
+            console.log(`🚀 Triggering button "${matchingButtonLabel}" from channel point redemption`);
+            window.electronAPI.sendTrigger(matchingButtonLabel);
+          }
+        });
+      }
+    }
+  }
   
   // Update alerts from storage in case they changed
   alertSystem.updateAlerts();
   
-  // Map Twitch event types to alert types
-  const eventTypeMap = {
-    'channel.follow': 'follower',
-    'channel.subscribe': 'subscriber', 
-    'channel.subscription.gift': 'gift-sub',
-    'channel.raid': 'raid',
-    'channel.cheer': 'bits'
-  };
+  // Determine alert type with special handling for subscriptions
+  let alertType = null;
   
-  const alertType = eventTypeMap[eventData.type];
+  if (eventData.type === 'channel.subscribe') {
+    // Handle different subscription types based on event data
+    if (eventData.event.is_gift === true) {
+      // Check if it's a gift received (someone received a gift) or gift given (someone gave a gift)
+      if (eventData.event.user_id === eventData.event.broadcaster_user_id) {
+        alertType = 'gift-sub-received';
+      } else {
+        alertType = 'gift-sub';
+      }
+    } else if (eventData.event.cumulative_months && eventData.event.cumulative_months > 1) {
+      alertType = 'resubscriber';
+    } else {
+      alertType = 'subscriber';
+    }
+  } else if (eventData.type === 'channel.subscription.message') {
+    // Subscription message (resub announcement)
+    alertType = 'resubscriber';
+  } else {
+    // Map other Twitch event types to alert types
+    const eventTypeMap = {
+      'channel.follow': 'follower',
+      'poll.follow': 'follower', // Polling-based follower detection (fallback)
+      'channel.subscription.gift': 'gift-sub',
+      'channel.raid': 'raid',
+      'channel.cheer': 'bits',
+      'channel.ban': 'ban'
+    };
+    
+    alertType = eventTypeMap[eventData.type];
+  }
+  
   if (alertType) {
     // Extract user data from the event
     const userData = {
@@ -2137,11 +3970,12 @@ window.electronAPI.onTwitchEventSub((eventData) => {
       bits: eventData.event.bits || eventData.event.bits_used || eventData.event.bits_amount || eventData.event.amount || '',
       months: eventData.event.cumulative_months || eventData.event.months || '',
       message: eventData.event.message || eventData.event.user_input || '',
-      reward: eventData.event.reward || eventData.event.reward_title || '',
+      reward: eventData.event.reward?.title || eventData.event.reward?.name || eventData.event.reward_title || eventData.event.reward || '',
       ...eventData.event // Include all event data
     };
     
     console.log('👤 Extracted user data:', userData);
+    console.log('🎯 Alert type determined:', alertType, 'from event type:', eventData.type);
     
     // Trigger the alert
     alertSystem.triggerAlertForEvent(alertType, userData);
@@ -2155,7 +3989,7 @@ window.electronAPI.onTwitchEventSub((eventData) => {
   // Update recent activity for follows and subscribers
   if (eventData.type === 'channel.follow' || eventData.type === 'poll.follow') {
     addRecentFollower(eventData.event);
-  } else if (eventData.type === 'channel.subscribe') {
+  } else if (eventData.type === 'channel.subscribe' || eventData.type === 'channel.subscription.message') {
     addRecentSubscriber(eventData.event);
   }
 });
@@ -2310,23 +4144,36 @@ window.electronAPI.onTwitchCleared(() => {
 });
 
 async function handleTrigger(button) {
+  console.log(`🔍 handleTrigger called for button: "${button.name || button.label}" Type: ${button.type} Volume: ${button.volume}`);
   // Prevent accidental plays while editing/reordering
   if (isDragMode) return;
   // If caller passed a DOM element instead of button object, normalize
   if (button && button._vdJustDragged) return;
+  
+  // Clear audio cache before triggering to ensure fresh audio files
+  audioCache.clear();
+  console.log('🧹 Audio cache cleared before button trigger');
 
   if (button.type === "audio") {
     const audioPath = await window.electronAPI.getSoundPath(button.src);
-    const audio = new Audio(audioPath);
+    // Add cache-busting parameter to ensure fresh audio files are loaded
+    const cacheBuster = `?t=${Date.now()}`;
+    const audioUrl = audioPath + (audioPath.includes('?') ? '&' : '?') + cacheBuster;
+    const audio = new Audio(audioUrl);
+    console.log(`🔊 Loading audio with cache-busting URL: ${audioUrl}`);
     // Apply saved volume if present (expect 0.0 - 1.0). Fallback to 1.0
     // Note: volume is stored per-button in `config.json` and only applied for
     // audio-type buttons. The renderer sends `volume` as a float (0.0-1.0)
     // when saving; the main process persists it into the button config.
     try {
       const vol = (typeof button.volume === 'number') ? button.volume : (button.volume ? parseFloat(button.volume) : 1.0);
-      if (!isNaN(vol)) audio.volume = Math.max(0, Math.min(1, vol));
+      // Set volume immediately to prevent loud burst
+      audio.volume = 0; // Start muted
+      audio.volume = Math.max(0, Math.min(1, !isNaN(vol) ? vol : 1.0)); // Then set to desired volume
     } catch (err) {
       // ignore and use default
+      audio.volume = 0;
+      audio.volume = 1.0;
     }
     
     // Set up overlay clearing when audio finishes
@@ -2366,11 +4213,18 @@ async function handleTrigger(button) {
     audio.play().catch(error => {
     });
   } else if (button.type === "app") {
+    console.log(`🚀 Launching app: name="${button.name || button.label}", src="${button.src}", args="${button.args || 'none'}"`);
     // If the button has args, pass them along
     if (button.args) {
       window.electronAPI.launchApp({ path: button.src, args: button.args });
     } else {
       window.electronAPI.launchApp({ path: button.src });
+    }
+  } else if (button.type === "meld-scene") {
+    if (button.sceneId && window.meldClient) {
+      window.meldClient.showScene(button.sceneId).catch(err => console.error('Meld showScene failed:', err));
+    } else {
+      console.warn('Meld scene button missing sceneId or meldClient not loaded');
     }
   } else if (button.type === "multi-media") {
     // Handle multi-media button trigger
@@ -2384,6 +4238,12 @@ const audioCache = new Map();
 
 async function handleMultiMediaTrigger(button) {
   console.log('Triggering multi-media button:', button);
+  console.log('🔍 Button overlay property:', button.overlay);
+  console.log('🔍 Button object keys:', Object.keys(button));
+  console.log('🔍 Button audio data:', button.audio);
+  console.log('🔍 Button ID:', button.id);
+  console.log('🔍 Button name:', button.name);
+  console.log('🔍 Full button config:', JSON.stringify(button, null, 2));
   
   // Use the new schema directly (no nested data object)
   const audioData = button.audio || [];
@@ -2391,66 +4251,63 @@ async function handleMultiMediaTrigger(button) {
   const centerMediaData = button.centerMedia || [];
   const optionsData = button.options || { clearPrevious: true };
   
-  // 1. Play audio(s) in dashboard - start immediately
-  const audioPromises = [];
-  if (Array.isArray(audioData)) {
-    for (const audioEntry of audioData) {
-      if (audioEntry.src) {
-        // Create async function to load and play audio
-        const playAudio = (async () => {
-          try {
-            let audioSrc = audioEntry.src;
-            
-            // Load audio from disk if it's a file path
-            if (typeof audioSrc === 'string' && 
-                !audioSrc.startsWith('data:') && 
-                !audioSrc.startsWith('blob:') && 
-                !audioSrc.startsWith('http')) {
-              console.log('🎵 Loading audio file from disk:', audioSrc);
-              try {
-                if (window.electronAPI && window.electronAPI.getMediaFile) {
-                  const result = await window.electronAPI.getMediaFile(audioSrc);
-                  if (result.success) {
-                    const sizeKB = (result.data.length / 1024).toFixed(2);
-                    console.log(`✅ Audio file loaded: ${audioSrc} (${sizeKB} KB)`);
-                    audioSrc = result.data; // Use base64 data URI
-                  } else {
-                    console.error('Failed to load audio file:', result.error);
-                  }
-                }
-              } catch (error) {
-                console.error('Error loading audio file:', error);
-              }
-            }
-            
-            // Use cached audio or create new one
-            let audio = audioCache.get(audioSrc);
-            if (!audio) {
-              audio = new Audio(audioSrc);
-              audioCache.set(audioSrc, audio);
-            }
-            
-            // Reset and configure audio
-            audio.currentTime = 0;
-            audio.volume = audioEntry.volume || 1.0; // Volume is already 0-1 in new schema
-            audio.loop = audioEntry.loop || false;
-            
-            // Start playing
-            return audio.play();
-          } catch (error) {
-            console.warn('Failed to play audio:', error);
-          }
-        })();
-        
-        audioPromises.push(playAudio);
-      }
-    }
+  console.log('🎬 === INITIAL BUTTON DATA DEBUG ===');
+  console.log('🎬 centerMediaData exists?', !!centerMediaData);
+  console.log('🎬 centerMediaData is array?', Array.isArray(centerMediaData));
+  console.log('🎬 centerMediaData length:', centerMediaData.length);
+  console.log('🎬 centerMediaData content:', centerMediaData);
+  if (centerMediaData.length > 0) {
+    centerMediaData.forEach((item, idx) => {
+      console.log(`🎬 centerMedia[${idx}]:`, {
+        type: item.type,
+        id: item.id,
+        hasSrc: !!item.src,
+        srcPreview: item.src ? item.src.substring(0, 100) : 'NO SRC',
+        loop: item.loop,
+        widthPct: item.widthPct
+      });
+    });
+  } else {
+    console.log('🎬 ⚠️ NO centerMediaData in button!');
   }
+  
+  // Debug: Log the button data to see what we're working with
+  console.log('🔍 Button.slots:', button.slots);
+  console.log('🔍 SlotsData:', slotsData);
+  if (slotsData && Object.keys(slotsData).length > 0) {
+    Object.keys(slotsData).forEach(key => {
+      console.log(`🔍 Slot ${key}:`, slotsData[key]);
+      console.log(`🔍 Slot ${key} text:`, slotsData[key]?.text);
+      console.log(`🔍 Slot ${key} style:`, slotsData[key]?.style);
+    });
+  } else {
+    console.log('⚠️ No slots data found in button!');
+  }
+  console.log('🔍 Button options:', button.options);
+  console.log('🔍 OptionsData:', optionsData);
+  console.log('🔍 DurationMs in options:', optionsData.durationMs);
+  
+  // 1. Audio handling for multi-media buttons
+  // NOTE: Audio plays ONLY in the overlay, not in the dashboard, to prevent double audio
+  console.log('🎵 Audio will play in overlay only (preventing double audio)');
+  const audioPromises = []; // Keep empty for overlay-only playback
 
   // 2. Send overlay payload - immediately after starting audio
+  // Check if we have separate audio files - if so, mute videos to avoid double audio
+  const hasSeparateAudio = audioData && audioData.length > 0;
+  
   // Process center media similar to alert system
   const processedCenterMedia = await Promise.all(centerMediaData.map(async (item) => {
     if (item.src) {
+      // Mute videos if there are separate audio files to prevent double audio
+      if (item.type === 'video' && hasSeparateAudio) {
+        console.log('🔇 Muting video because separate audio files are present');
+        item.muted = true;
+      } else if (item.type === 'video') {
+        // Video with embedded audio: explicitly unmute so overlay plays sound
+        item.muted = false;
+        if (item.volume === undefined) item.volume = 1.0;
+      }
       // Handle different image source types like alert system
       if (item.src instanceof File) {
         // Fresh file upload - create blob URL
@@ -2464,28 +4321,21 @@ async function handleMultiMediaTrigger(button) {
         console.log('🖼️ Using base64/blob data for multi-media');
         return item;
       } else if (typeof item.src === 'string' && !item.src.startsWith('http')) {
-        // File path (relative to userDataPath) - load from disk
-        console.log('🖼️ Loading media file from disk:', item.src);
+        // File path (relative to userDataPath) - serve via HTTP to avoid base64 conversion
+        console.log('🖼️ Converting file path to HTTP URL:', item.src);
         try {
-          if (window.electronAPI && window.electronAPI.getMediaFile) {
-            const result = await window.electronAPI.getMediaFile(item.src);
-            if (result.success) {
-              const sizeKB = (result.data.length / 1024).toFixed(2);
-              console.log(`✅ Media file loaded: ${item.src} (${sizeKB} KB)`);
-              return {
-                ...item,
-                src: result.data // Base64 data URI
-              };
-            } else {
-              console.error('Failed to load media file:', result.error);
-              return item; // Return as-is, might be URL
-            }
-          } else {
-            console.warn('getMediaFile API not available, using path directly');
-            return item;
-          }
+          // Use the original relative path in the URL
+          // The media server expects relative paths (from userDataPath) and will join them
+          const relativePath = item.src.replace(/\\/g, '/'); // Normalize path separators
+          const httpUrl = `http://localhost:8080/media/${encodeURIComponent(relativePath)}`;
+          console.log(`✅ Serving media via HTTP: ${httpUrl}`);
+          console.log(`🔍 Media relative path: ${relativePath}`);
+          return {
+            ...item,
+            src: httpUrl
+          };
         } catch (error) {
-          console.error('Error loading media file:', error);
+          console.error('Error constructing HTTP URL for media:', error);
           return item;
         }
       } else {
@@ -2496,73 +4346,120 @@ async function handleMultiMediaTrigger(button) {
     return item;
   }));
 
+  // Process audio files for overlay (convert paths to HTTP URLs)
+  const processedAudio = await Promise.all(audioData.map(async (audioItem) => {
+    if (audioItem.src) {
+      let audioSrc = audioItem.src;
+      console.log('🎵 Processing audio item:', audioItem);
+      
+      // Convert file paths to HTTP URLs
+      if (typeof audioSrc === 'string' && 
+          !audioSrc.startsWith('data:') && 
+          !audioSrc.startsWith('blob:') && 
+          !audioSrc.startsWith('http')) {
+        console.log('🎵 Converting audio file path to HTTP URL:', audioSrc);
+        try {
+          // Use the original relative path (audioSrc) in the URL
+          // The media server expects relative paths (from userDataPath) and will join them
+          const relativePath = audioSrc.replace(/\\/g, '/'); // Normalize path separators
+          audioSrc = `http://localhost:8080/media/${encodeURIComponent(relativePath)}?t=${Date.now()}`;
+          console.log(`✅ Serving audio via HTTP with cache-busting: ${audioSrc}`);
+          console.log(`🔍 Audio relative path: ${relativePath}`);
+        } catch (error) {
+          console.error('Error constructing HTTP URL for audio:', error);
+        }
+      }
+      
+      return {
+        ...audioItem,
+        src: audioSrc,
+        type: 'audio',
+        volume: audioItem.volume !== undefined ? audioItem.volume : 1.0,
+        loop: audioItem.loop || false
+      };
+    }
+    return audioItem;
+  }));
+
+  // Debug: Log chroma key data
+  console.log('🔍 Processed center media with chroma key data:', processedCenterMedia.map(item => ({
+    type: item.type,
+    src: item.src,
+    chromaKey: item.chromaKey
+  })));
+
   const overlayPayload = {
     type: 'buttonTrigger',
+    targetOverlay: button.overlay || getDefaultOverlay(), // Route to specific overlay
     options: optionsData,
     slots: slotsData,
-    centerMedia: processedCenterMedia
+    centerMedia: [...processedCenterMedia, ...processedAudio] // Include audio in centerMedia
   };
+
+  // Log slots with full style data for debugging
+  console.log('📤 Full slots data being sent:', slotsData);
+  if (slotsData && Object.keys(slotsData).length > 0) {
+    Object.keys(slotsData).forEach(slotKey => {
+      console.log(`📤 Slot ${slotKey}:`, slotsData[slotKey]);
+      if (slotsData[slotKey].style) {
+        console.log(`📤 Slot ${slotKey} style:`, slotsData[slotKey].style);
+        console.log(`📤 Slot ${slotKey} fontFamily:`, slotsData[slotKey].style.fontFamily);
+      }
+    });
+  }
 
   // Log payload summary without full base64 data
   console.log('📤 Sending overlay payload:', {
     type: overlayPayload.type,
+    targetOverlay: overlayPayload.targetOverlay,
     slots: Object.keys(overlayPayload.slots || {}),
-    centerMedia: centerMediaData.map(item => ({
+    centerMedia: overlayPayload.centerMedia.map(item => ({
       type: item.type,
-      src: item.src // Shows file path from config
+      src: item.src ? (item.src.substring(0, 100) + '...') : 'NO SRC',
+      volume: item.volume
     })),
+    audioCount: processedAudio.length,
+    videoCount: processedCenterMedia.filter(i => i.type === 'video').length,
+    imageCount: processedCenterMedia.filter(i => i.type === 'image').length,
     options: overlayPayload.options
   });
+  console.log('🎬 DETAILED VIDEO DEBUG:');
+  console.log('  - Total centerMedia items:', overlayPayload.centerMedia.length);
+  console.log('  - Videos in centerMedia:', overlayPayload.centerMedia.filter(i => i.type === 'video').length);
+  overlayPayload.centerMedia.filter(i => i.type === 'video').forEach((vid, idx) => {
+    console.log(`  - Video ${idx + 1}:`, {
+      type: vid.type,
+      src: vid.src,
+      loop: vid.loop,
+      muted: vid.muted,
+      volume: vid.volume
+    });
+  });
+  console.log(`🎯 Sending to overlay: ${overlayPayload.targetOverlay}`);
 
-  // Send to overlay iframe (if exists) - immediately
-  const overlayIframe = document.getElementById('overlay-iframe');
-  if (overlayIframe && overlayIframe.contentWindow) {
-    try {
-      overlayIframe.contentWindow.postMessage(overlayPayload, '*');
-      console.log('Message sent to overlay iframe');
-    } catch (error) {
-      console.warn('Failed to send message to overlay iframe:', error);
-    }
-  }
-
-  // Send to overlay widget (if exists) - immediately
-  const overlayWidget = document.getElementById('overlay-widget');
-  if (overlayWidget && !overlayWidget.classList.contains('hidden')) {
-    try {
-      // Trigger the overlay widget's test function
-      if (window.testMultiSource) {
-        window.testMultiSource(overlayPayload);
-      }
-      console.log('Message sent to overlay widget');
-    } catch (error) {
-      console.warn('Failed to send message to overlay widget:', error);
-    }
-  }
-
-  // Send via WebSocket (if available) - immediately
+  // Send via WebSocket (primary method for OBS overlay) - immediately
   if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
     try {
+    console.log(`🎯 SENDING TO OVERLAY: "${overlayPayload.targetOverlay}"`);
+    console.log(`📊 Button overlay setting: ${button.overlay || 'NOT SET (defaulting to default)'}`);
+    console.log(`🔍 Full button object:`, button);
       window.electronAPI.sendOverlayMessage(overlayPayload);
-      console.log('Message sent via WebSocket');
+    console.log(`✅ Message sent via WebSocket to overlay: "${overlayPayload.targetOverlay}"`);
     } catch (error) {
       console.warn('Failed to send message via WebSocket:', error);
     }
-  }
-
-  // Wait for audio to start (non-blocking - overlay message already sent)
-  if (audioPromises.length > 0) {
-    try {
-      await Promise.all(audioPromises);
-      console.log('All audio started successfully');
-    } catch (error) {
-      console.warn('Some audio failed to start:', error);
-    }
+  } else {
+    console.warn('⚠️ WebSocket not available, overlay message not sent');
   }
   
-  // Set up overlay clearing based on media duration
-  // Check if button has custom duration in options
-  const customDuration = button.options && button.options.durationMs ? button.options.durationMs / 1000 : null;
-  setupOverlayClearing(audioData, centerMediaData, customDuration);
+  // Note: Removed duplicate iframe and widget sending to prevent double-triggering
+  // The overlay receives messages via WebSocket only
+  
+  // Note: Audio plays in overlay only (not in dashboard) to prevent double audio
+  
+  // Note: Overlay handles its own reset timer based on payload.options.durationMs
+  // No need to call setupOverlayClearing from dashboard - it would conflict with overlay's timer
+  console.log('✅ Overlay will handle auto-clear based on duration:', optionsData.durationMs, 'ms');
 }
 
 // Function to clear overlay content
@@ -2600,11 +4497,11 @@ function clearOverlay() {
   const overlayWidget = document.getElementById('overlay-widget');
   if (overlayWidget && !overlayWidget.classList.contains('hidden')) {
     try {
-      if (window.testMultiSource) {
-        window.testMultiSource(clearPayload);
+      if (window.sendOverlayPayload) {
+        window.sendOverlayPayload(clearPayload);
         console.log(`✅ [${timestamp}] Clear message sent to overlay widget`);
       } else {
-        console.log(`ℹ️ [${timestamp}] Overlay widget found but testMultiSource function not available`);
+        console.log(`ℹ️ [${timestamp}] Overlay widget found but sendOverlayPayload function not available`);
       }
     } catch (error) {
       console.warn(`❌ [${timestamp}] Failed to send clear message to overlay widget:`, error);
@@ -2751,7 +4648,14 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   e.preventDefault();
   const form = e.target;
   const label = form.label.value.trim();
-  const type = form.type.value;
+  
+  // Determine type from hidden input (set when opening form for audio/app/meld-scene)
+  const typeInput = document.getElementById('type-input');
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  const meldSceneSection = document.getElementById('meld-scene-section');
+  const type = (typeInput && typeInput.value) || (meldSceneSection && meldSceneSection.style.display !== 'none' ? 'meld-scene' : (audioFileSection && audioFileSection.style.display !== 'none' ? 'audio' : 'app'));
+  
   // Ensure we reference the hotkey input element safely
   const hotkeyInput = document.getElementById('hotkey-input');
   const hotkey = hotkeyInput && hotkeyInput.value ? hotkeyInput.value.trim() : '';
@@ -2763,6 +4667,70 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   // Use the recorded hotkey directly (accumulative recorder populates hotkeyInput.value)
   const completeHotkey = (hotkeyInput && hotkeyInput.value && hotkeyInput.value.trim()) ? hotkeyInput.value.trim() : hotkey;
 
+  // Get chat command settings
+  const chatCommandCheckbox = document.getElementById('chat-command-enabled');
+  const chatCommandKeywordInput = document.getElementById('chat-command-keyword');
+  const redeemNameInput = document.getElementById('redeem-name');
+  
+  console.log('Chat command elements found:');
+  console.log('- Checkbox element:', chatCommandCheckbox);
+  console.log('- Keyword input element:', chatCommandKeywordInput);
+  console.log('- Redeem name input element:', redeemNameInput);
+  
+  const chatCommandEnabled = chatCommandCheckbox?.checked || false;
+  const chatCommandKeyword = chatCommandKeywordInput?.value?.trim() || '';
+  const redeemName = redeemNameInput?.value?.trim() || '';
+  
+  // Get trigger method selection
+  const triggerMethodRadio = document.querySelector('input[name="trigger-method"]:checked');
+  const triggerMethod = triggerMethodRadio?.value || 'command';
+  console.log(`🔍 Selected trigger method radio:`, triggerMethodRadio);
+  console.log(`🔍 Selected trigger method value:`, triggerMethod);
+  
+  const chatCommand = (chatCommandEnabled && (chatCommandKeyword || redeemName)) ? {
+    enabled: true,
+    keyword: chatCommandKeyword.toLowerCase(),
+    redeemName: redeemName,
+    triggerMethod: triggerMethod
+  } : undefined;
+  
+  console.log(`🔍 Saving button with chatCommand:`, chatCommand);
+  console.log(`🔍 Form values - enabled: ${chatCommandEnabled}, keyword: "${chatCommandKeyword}", redeemName: "${redeemName}", triggerMethod: "${triggerMethod}"`);
+
+  // Meld-scene: submit with sceneId/sceneName only (guard against double submit)
+  if (type === 'meld-scene') {
+    if (window.__meldSceneSubmitInProgress) return;
+    window.__meldSceneSubmitInProgress = true;
+    const saveBtn = document.getElementById('save-sound');
+    if (saveBtn) saveBtn.disabled = true; // Prevent double submission
+    const meldSelect = document.getElementById('meld-scene-select');
+    const sceneId = meldSelect && meldSelect.value ? meldSelect.value.trim() : '';
+    const sceneName = (meldSelect && meldSelect.selectedOptions && meldSelect.selectedOptions[0]) ? meldSelect.selectedOptions[0].text : '';
+    if (!sceneId) {
+      window.__meldSceneSubmitInProgress = false;
+      if (saveBtn) saveBtn.disabled = false;
+      return alert('Please select a Meld Studio scene.');
+    }
+    window.electronAPI.addMedia({
+      label,
+      type: 'meld-scene',
+      hotkey: completeHotkey,
+      sceneId,
+      sceneName,
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined,
+      chatCommand: chatCommand
+    });
+    window.electronAPI.refreshHotkeys();
+    document.getElementById('settings-modal').classList.add('hidden');
+    // Main sends refresh-ui after save, so onRefreshUI will call loadButtons() once — don't call it here (avoids double render)
+    setTimeout(() => {
+      const btn = document.getElementById('save-sound');
+      if (btn) btn.disabled = false;
+      window.__meldSceneSubmitInProgress = false;
+    }, 100);
+    return;
+  }
+
   // Get the appropriate file input based on type
   const fileInput = type === 'app' ? document.getElementById('app-file-input') : document.getElementById('file-input');
 
@@ -2772,6 +4740,19 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   
   // Debug logging
   console.log('Form submission debug:');
+  console.log('- Type:', type);
+  console.log('- FileInput element:', fileInput);
+  console.log('- FileInput exists:', !!fileInput);
+  if (fileInput) {
+    console.log('- FileInput.files:', fileInput.files);
+    console.log('- FileInput.files.length:', fileInput.files.length);
+    if (fileInput.files.length > 0) {
+      console.log('- FileInput.files[0]:', fileInput.files[0]);
+      console.log('- FileInput.files[0].path:', fileInput.files[0].path);
+      console.log('- FileInput.files[0].name:', fileInput.files[0].name);
+    }
+  }
+  console.log('- ResolvedPath:', resolvedPath);
   console.log('- Label:', label);
   console.log('- Type:', type);
   console.log('- Base hotkey:', hotkey);
@@ -2782,6 +4763,9 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   console.log('- File input files length:', fileInput.files.length);
   console.log('- Resolved path:', resolvedPath);
   console.log('- Resolved args:', resolvedArgs);
+  console.log('- Chat command enabled:', chatCommandEnabled);
+  console.log('- Chat command keyword:', chatCommandKeyword);
+  console.log('- Chat command object:', chatCommand);
 
   // Prevent dangerous system shortcuts like Alt+F4 from being saved
   if (completeHotkey && (completeHotkey.includes('Alt') && completeHotkey.includes('F4'))) {
@@ -2789,7 +4773,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   }
 
   // If editing and no new file selected, use existing file
-  if (isEditing && !fileInput.files.length && !resolvedPath) {
+  // CRITICAL: Clear any stale resolvedPath when editing without new file
+  if (isEditing && !fileInput.files.length) {
+    // Clear stale resolvedPath to prevent using wrong file from previous drag-and-drop
+    delete form.dataset.resolvedPath;
+    delete form.dataset.resolvedArgs;
+    
     const existingFile = form.dataset.existingFile;
     if (!existingFile) return alert("No existing file found.");
 
@@ -2801,47 +4790,101 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
       targetPath: existingFile,
       originalPath: existingFile,
-      editingIndex: parseInt(form.dataset.editingIndex)
+      editingIndex: parseInt(form.dataset.editingIndex),
+      chatCommand: chatCommand
     });
     window.electronAPI.refreshHotkeys();
-    // Update the displayed card in-place to avoid full re-render flash
-    try {
-      const editingId = form.dataset.editingId;
-      const updated = {
-        id: editingId,
-        label,
-        type,
-        src: existingFile,
-        hotkey: completeHotkey || undefined,
-        volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
-        args: form.dataset.resolvedArgs || undefined
-      };
-      if (editingId) {
-        const card = document.querySelector(`.sound-card[data-button-id="${editingId}"]`);
-        if (card) {
-          card.dataset.soundData = JSON.stringify(updated);
-          const nameEl = card.querySelector('.sound-name'); if (nameEl) nameEl.textContent = updated.label;
-          const hotkeyEl = card.querySelector('.sound-hotkey'); if (hotkeyEl) hotkeyEl.textContent = updated.hotkey || 'No hotkey';
-          const typeEl = card.querySelector('.sound-type'); if (typeEl) typeEl.textContent = updated.type;
-        }
-      }
-    } catch (err) { console.error('In-place update failed:', err); }
-    skipReload = true;
-  } else if (fileInput.files.length || resolvedPath) {
-    // New file selected or resolved path from drag-and-drop
-    console.log('Form submission - resolvedPath:', resolvedPath);
-    console.log('Form submission - fileInput.files.length:', fileInput.files.length);
-    if (fileInput.files.length > 0) {
-      console.log('Form submission - fileInput.files[0]:', fileInput.files[0]);
+    
+    // Clear audio cache to ensure new audio files are loaded
+    audioCache.clear();
+    console.log('🧹 Audio cache cleared after button edit');
+    
+    // Force immediate profile save after button edit
+    if (profileManager && profileManager.saveCurrentSettings) {
+      setTimeout(async () => {
+        await profileManager.saveCurrentSettings();
+        console.log('✅ Profile saved after button edit');
+        
+        // Then reload buttons
+        loadButtons();
+        console.log('🔄 Buttons reloaded after edit');
+      }, 150);
+    } else {
+      // Refresh the entire button list to show updated data
+      setTimeout(() => {
+        loadButtons();
+        console.log('🔄 Buttons reloaded after edit');
+      }, 100);
     }
     
-    const filePath = resolvedPath || fileInput.files[0].path;
-    const fileName = resolvedPath ? (resolvedPath.split('\\').pop() || resolvedPath.split('/').pop()) : fileInput.files[0].name;
+    skipReload = true;
+  } else if ((fileInput && fileInput.files.length) || resolvedPath) {
+    // New file selected or resolved path from drag-and-drop
+    console.log('Form submission - resolvedPath:', resolvedPath);
+    console.log('Form submission - fileInput:', fileInput);
+    console.log('Form submission - fileInput.files.length:', fileInput ? fileInput.files.length : 0);
+    console.log('Form submission - isEditing:', isEditing);
+    console.log('Form submission - editingIndex:', form.dataset.editingIndex);
+    
+    let filePath = null;
+    let fileName = null;
+    
+    // CRITICAL: Priority must be fileInput > resolvedPath
+    // fileInput is user-initiated (Browse button), resolvedPath is from drag-and-drop
+    // If both exist, fileInput takes precedence as it's more recent/explicit
+    if (fileInput && fileInput.files.length > 0) {
+      const file = fileInput.files[0];
+      console.log('Form submission - fileInput.files[0]:', file);
+      console.log('Form submission - fileInput.files[0].name:', file.name);
+      
+      // Use Electron's webUtils to get the file path
+      if (window.electronAPI && window.electronAPI.getFilePathFromFile) {
+        filePath = window.electronAPI.getFilePathFromFile(file);
+        console.log('Form submission - got file path from webUtils:', filePath);
+      } else {
+        console.warn('electronAPI.getFilePathFromFile not available, falling back to file.path');
+        filePath = file.path;
+      }
+      
+      fileName = file.name;
+      console.log('✅ Using fileInput file (priority):', filePath, fileName);
+      
+      // Clear resolvedPath when fileInput is used to prevent stale data
+      delete form.dataset.resolvedPath;
+      delete form.dataset.resolvedArgs;
+    } else if (resolvedPath) {
+      filePath = resolvedPath;
+      fileName = resolvedPath.split('\\').pop() || resolvedPath.split('/').pop();
+      console.log('✅ Using resolvedPath from drag-and-drop:', filePath, fileName);
+    }
+    
+    // Validate that we have a valid file path
+    if (!filePath) {
+      console.error('Error: No valid file path found');
+      console.error('- resolvedPath:', resolvedPath);
+      console.error('- fileInput:', fileInput);
+      console.error('- fileInput exists:', !!fileInput);
+      if (fileInput) {
+        console.error('- fileInput.files:', fileInput.files);
+        console.error('- fileInput.files.length:', fileInput.files.length);
+        console.error('- fileInput.files[0]:', fileInput.files[0]);
+        if (fileInput.files[0]) {
+          console.error('- fileInput.files[0].path:', fileInput.files[0].path);
+          console.error('- fileInput.files[0].name:', fileInput.files[0].name);
+        }
+      }
+      return alert('Error: Could not get file path. Please try selecting the file again.\n\nTip: Try clicking "Browse" and selecting your file from the file picker.');
+    }
     
     // For app files, use the resolved path directly; for audio files, create a target path
     let targetPath;
     if (type === 'app') {
       targetPath = filePath; // Use the actual file path for apps
+      console.log(`💾 Saving app button "${label}" with path: "${targetPath}"`);
+      // Validate that the file path matches the label (basic sanity check)
+      if (targetPath && label && !targetPath.toLowerCase().includes(label.toLowerCase()) && !label.toLowerCase().includes('postman')) {
+        console.warn(`⚠️ Warning: App path "${targetPath}" doesn't seem to match label "${label}"`);
+      }
     } else {
       const ext = fileName.split('.').pop();
       targetPath = `assets/sounds/${label}.${ext}`;
@@ -2849,6 +4892,10 @@ document.getElementById('settings-form').onsubmit = async (e) => {
 
     // Save args for app buttons
     const args = type === 'app' ? resolvedArgs : '';
+    
+    // Clear resolvedPath after using it to prevent stale data
+    delete form.dataset.resolvedPath;
+    delete form.dataset.resolvedArgs;
 
     console.log('Sending to addMedia:', {
       label,
@@ -2856,11 +4903,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       hotkey: completeHotkey,
       targetPath,
       originalPath: filePath,
-      args
+      args,
+      chatCommand: chatCommand
     });
 
     // Send file path and data to main
-    window.electronAPI.addMedia({
+    const addMediaData = {
       label,
       type,
       hotkey: completeHotkey,
@@ -2868,34 +4916,25 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       targetPath,
       originalPath: filePath,
       args,
-      editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined
-    });
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined,
+      chatCommand: chatCommand
+    };
+    
+    console.log('Final addMediaData object:', addMediaData);
+    window.electronAPI.addMedia(addMediaData);
     window.electronAPI.refreshHotkeys();
-    // If editing (with new file), update in-place using the computed targetPath
-    if (isEditing) {
-      try {
-        const editingId = form.dataset.editingId;
-        const updated = {
-          id: editingId,
-          label,
-          type,
-          src: targetPath,
-          hotkey: completeHotkey || undefined,
-          volume: parseFloat((document.getElementById('volume-input') && document.getElementById('volume-input').value) || 100) / 100,
-          args: args || undefined
-        };
-        if (editingId) {
-          const card = document.querySelector(`.sound-card[data-button-id="${editingId}"]`);
-          if (card) {
-            card.dataset.soundData = JSON.stringify(updated);
-            const nameEl = card.querySelector('.sound-name'); if (nameEl) nameEl.textContent = updated.label;
-            const hotkeyEl = card.querySelector('.sound-hotkey'); if (hotkeyEl) hotkeyEl.textContent = updated.hotkey || 'No hotkey';
-            const typeEl = card.querySelector('.sound-type'); if (typeEl) typeEl.textContent = updated.type;
-          }
-        }
-      } catch (err) { console.error('In-place update failed:', err); }
-      skipReload = true;
-    }
+    
+    // Clear audio cache to ensure new audio files are loaded
+    audioCache.clear();
+    console.log('🧹 Audio cache cleared after button add/edit with new file');
+    
+    // Refresh the entire button list to show updated data
+    setTimeout(() => {
+      loadButtons();
+      console.log('🔄 Buttons reloaded after add/edit with new file');
+    }, 100);
+    
+    skipReload = true;
   } else if (!isEditing) {
     // Only require file selection for new buttons, not when editing
     console.log('No file found and not editing - showing alert');
@@ -2925,7 +4964,11 @@ document.getElementById('settings-form').onsubmit = async (e) => {
 window.editButton = async (index) => {
   const config = await window.electronAPI.getConfig();
   const btn = config.buttons[index];
+  console.log(`🔍 editButton: Editing button at index ${index}:`, btn);
+  console.log(`🔍 editButton: Button chatCommand data:`, btn.chatCommand);
   const settingsForm = document.getElementById('settings-form');
+  const saveBtn = document.getElementById('save-sound');
+  if (saveBtn) saveBtn.disabled = false;
   // Always set editingIndex for edit, and clear resolvedPath/existingFile for safety
   settingsForm.dataset.editingIndex = index;
   // Store stable id for in-place updates
@@ -2955,24 +4998,30 @@ window.editButton = async (index) => {
   labelInput.value = btn.name || btn.label || ''; // Support both new and old schema
   labelInput.readOnly = false;
   labelInput.disabled = false;
-  // Set the type selection
-  const typeSelect = document.querySelector(`input[name="button-type"][value="${btn.type}"]`);
-  if (typeSelect) typeSelect.checked = true;
   // Toggle file input sections and required states based on type
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
   const fileInput = document.getElementById('file-input');
   const appFileInput = document.getElementById('app-file-input');
+  const meldSceneSectionEdit = document.getElementById('meld-scene-section');
   if (btn.type === 'audio') {
     audioFileSection.style.display = '';
     appFileSection.style.display = 'none';
-    fileInput.required = false; // Not required when editing
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
+    fileInput.required = false;
+    appFileInput.required = false;
+  } else if (btn.type === 'meld-scene') {
+    audioFileSection.style.display = 'none';
+    appFileSection.style.display = 'none';
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.remove('hidden'); meldSceneSectionEdit.style.display = ''; }
+    fileInput.required = false;
     appFileInput.required = false;
   } else {
     audioFileSection.style.display = 'none';
     appFileSection.style.display = '';
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
     fileInput.required = false;
-    appFileInput.required = false; // Not required when editing
+    appFileInput.required = false;
   }
   // Set hotkey and parse modifiers
   const hotkeyInput = document.getElementById('hotkey-input');
@@ -2982,6 +5031,50 @@ window.editButton = async (index) => {
   } else {
     hotkeyInput.value = '';
   }
+  
+  // Set chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const redeemName = document.getElementById('redeem-name');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  
+  if (chatCommandEnabled && chatCommandKeyword && chatCommandSettings) {
+    if (btn.chatCommand && btn.chatCommand.enabled) {
+      chatCommandEnabled.checked = true;
+      chatCommandKeyword.value = btn.chatCommand.keyword || '';
+      redeemName.value = btn.chatCommand.redeemName || '';
+      
+      // Sync dropdown if value exists
+      const redeemSelect = document.getElementById('redeem-name-select');
+      if (redeemSelect && btn.chatCommand.redeemName) {
+        const matchingOption = Array.from(redeemSelect.options).find(
+          opt => opt.value === btn.chatCommand.redeemName
+        );
+        redeemSelect.value = matchingOption ? matchingOption.value : '';
+      }
+      
+      chatCommandSettings.style.display = 'block';
+      
+      // Set trigger method selection
+      const triggerMethod = btn.chatCommand.triggerMethod || 'command';
+      const triggerMethodRadio = document.querySelector(`input[name="trigger-method"][value="${triggerMethod}"]`);
+      if (triggerMethodRadio) {
+        triggerMethodRadio.checked = true;
+      }
+    } else {
+      chatCommandEnabled.checked = false;
+      chatCommandKeyword.value = '';
+      redeemName.value = '';
+      chatCommandSettings.style.display = 'none';
+      
+      // Reset to default trigger method
+      const defaultRadio = document.querySelector('input[name="trigger-method"][value="command"]');
+      if (defaultRadio) {
+        defaultRadio.checked = true;
+      }
+    }
+  }
+  
   // Store the existing file path and args for editing
   settingsForm.dataset.existingFile = btn.src;
   if (btn.args) {
@@ -2998,7 +5091,32 @@ window.editButton = async (index) => {
   }
   // Update modal title
   const buttonName = btn.name || btn.label || 'Unknown';
-  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : btn.type === 'multi-media' ? 'Multi-Media' : 'App'}: ${buttonName}`;
+  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : btn.type === 'multi-media' ? 'Multi-Media' : btn.type === 'meld-scene' ? 'Meld Scene' : 'App'}: ${buttonName}`;
+  // Handle meld-scene: show meld section and set scene select
+  if (btn.type === 'meld-scene') {
+    const typeInputEl = document.getElementById('type-input');
+    if (typeInputEl) typeInputEl.value = 'meld-scene';
+    if (audioFileSection) audioFileSection.style.display = 'none';
+    if (appFileSection) appFileSection.style.display = 'none';
+    const meldSection = document.getElementById('meld-scene-section');
+    if (meldSection) {
+      meldSection.classList.remove('hidden');
+      meldSection.style.display = '';
+    }
+    const meldSelect = document.getElementById('meld-scene-select');
+    if (meldSelect && btn.sceneId) {
+      if (!meldSelect.querySelector(`option[value="${btn.sceneId}"]`)) {
+        const opt = document.createElement('option');
+        opt.value = btn.sceneId;
+        opt.textContent = btn.sceneName || btn.sceneId;
+        meldSelect.appendChild(opt);
+      }
+      meldSelect.value = btn.sceneId;
+    }
+    // Avoid "invalid form control not focusable" when saving (hidden file inputs must not be required)
+    if (fileInput) fileInput.required = false;
+    if (appFileInput) appFileInput.required = false;
+  }
   // Handle multi-media buttons differently
   if (btn.type === 'multi-media') {
     // Close the regular settings modal
@@ -3120,9 +5238,19 @@ window.deleteButtonByEl = async (btnEl) => {
     if (origIndex === -1) origIndex = parseInt(card.dataset.index || '-1');
     if (origIndex === -1) return;
     // Confirm and call existing delete flow
-    if (confirm("Delete this button?")) {
+    const confirmed = await showCustomConfirm("Delete this button?");
+    if (confirmed) {
       window.electronAPI.deleteButton(origIndex);
       window.electronAPI.refreshHotkeys();
+      
+      // Force immediate profile save after deletion
+      if (profileManager && profileManager.saveCurrentSettings) {
+        setTimeout(async () => {
+          await profileManager.saveCurrentSettings();
+          console.log('✅ Profile saved after button deletion');
+        }, 200);
+      }
+      
       // Refresh UI after deletion
       setTimeout(() => loadButtons(), 150);
     }
@@ -3179,6 +5307,20 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Make the hotkey input read-only to force use of the recorder button
   if (hotkeyInput) hotkeyInput.readOnly = true;
+
+  // Setup chat command checkbox toggle for regular form
+  const chatCommandCheckbox = document.getElementById('chat-command-enabled');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  
+  if (chatCommandCheckbox && chatCommandSettings) {
+    chatCommandCheckbox.addEventListener('change', () => {
+      if (chatCommandCheckbox.checked) {
+        chatCommandSettings.style.display = 'block';
+      } else {
+        chatCommandSettings.style.display = 'none';
+      }
+    });
+  }
 
   if (recordHotkeyBtn) {
     recordHotkeyBtn.addEventListener('click', () => {
@@ -3262,20 +5404,164 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // move-bar removed — menu bar is used instead for window controls
 
+// Close functions for modals
+function closeSettingsModal() {
+  const settingsModal = document.getElementById('settings-modal');
+  if (settingsModal) {
+    settingsModal.classList.add('hidden');
+    const form = document.getElementById('settings-form');
+    if (form) form.reset();
+  }
+}
+
+function closeMultiMediaModal() {
+  const multiMediaModal = document.getElementById('multi-media-modal');
+  if (multiMediaModal) {
+    multiMediaModal.classList.add('hidden');
+    // Clear any form data if needed
+    if (window.addEditButtonForm) {
+      window.addEditButtonForm.resetForm();
+    }
+  }
+}
+
+function closeTwitchAlertWidget() {
+  const twitchAlertWidget = document.getElementById('twitch-alert-widget');
+  if (twitchAlertWidget) {
+    twitchAlertWidget.classList.add('hidden');
+  }
+}
+
+// Add event listeners for close buttons
+document.addEventListener('DOMContentLoaded', () => {
+  // Settings modal close button
+  const settingsCloseBtn = document.getElementById('settings-modal-close');
+  if (settingsCloseBtn) {
+    settingsCloseBtn.addEventListener('click', closeSettingsModal);
+  }
+  
+  // Multi-media modal close button
+  const multiMediaCloseBtn = document.getElementById('multi-media-modal-close');
+  if (multiMediaCloseBtn) {
+    multiMediaCloseBtn.addEventListener('click', closeMultiMediaModal);
+  }
+  
+  // Twitch alert widget close button
+  const twitchAlertCloseBtn = document.getElementById('twitch-alert-widget-close');
+  if (twitchAlertCloseBtn) {
+    twitchAlertCloseBtn.addEventListener('click', closeTwitchAlertWidget);
+  }
+  
+  // Add click-outside-to-close functionality
+  const settingsModal = document.getElementById('settings-modal');
+  if (settingsModal) {
+    settingsModal.addEventListener('click', (e) => {
+      if (e.target === settingsModal) {
+        closeSettingsModal();
+      }
+    });
+  }
+  
+  const multiMediaModal = document.getElementById('multi-media-modal');
+  if (multiMediaModal) {
+    multiMediaModal.addEventListener('click', (e) => {
+      if (e.target === multiMediaModal) {
+        closeMultiMediaModal();
+      }
+    });
+  }
+});
+
+// ESC key handling for closing modals and forms
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    // Close settings modal
+    const settingsModal = document.getElementById('settings-modal');
+    if (settingsModal && !settingsModal.classList.contains('hidden')) {
+      closeSettingsModal();
+      return;
+    }
+    
+    // Close multi-media modal
+    const multiMediaModal = document.getElementById('multi-media-modal');
+    if (multiMediaModal && !multiMediaModal.classList.contains('hidden')) {
+      closeMultiMediaModal();
+      return;
+    }
+    
+    // Close Twitch Alert Widget
+    const twitchAlertWidget = document.getElementById('twitch-alert-widget');
+    if (twitchAlertWidget && !twitchAlertWidget.classList.contains('hidden')) {
+      closeTwitchAlertWidget();
+      return;
+    }
+
+    // Close Battle modal
+    const battleModal = document.getElementById('battle-modal');
+    if (battleModal && !battleModal.classList.contains('hidden')) {
+      if (typeof closeBattleModal === 'function') closeBattleModal();
+      return;
+    }
+    
+    // Close any other visible modals
+    const visibleModals = document.querySelectorAll('.modal:not(.hidden), [class*="modal"]:not(.hidden)');
+    visibleModals.forEach(modal => {
+      if (modal.style.display !== 'none' && modal.offsetParent !== null) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
+    });
+  }
+});
+
 // Listen for trigger-media events from the main process
 window.electronAPI.onTriggerMedia(async (mediaId) => {
+  console.log(`🔍 onTriggerMedia called for: "${mediaId}"`);
   const config = await window.electronAPI.getConfig();
-  if (!config || !Array.isArray(config.buttons)) return;
-  const button = config.buttons.find(btn => {
-    // Check both name and label for compatibility - use exact match for precision
-    const name = btn.name || btn.label || '';
-    return name.toLowerCase() === mediaId.toLowerCase();
+  if (!config || !Array.isArray(config.buttons)) {
+    console.warn('⚠️ No config or buttons array found');
+    return;
+  }
+  
+  // Debug: Log all buttons for comparison
+  console.log(`🔍 Searching through ${config.buttons.length} buttons for identifier: "${mediaId}"`);
+  config.buttons.forEach((btn, idx) => {
+    console.log(`  Button ${idx}: id="${btn.id || 'none'}", name="${btn.name || 'none'}", label="${btn.label || 'none'}", type="${btn.type}", hotkey="${btn.hotkey || 'none'}", src="${btn.src || 'none'}"`);
   });
+  
+  // Match by ID first (hotkeys always use IDs)
+  let button = config.buttons.find(btn => {
+    if (btn.id && btn.id === mediaId) {
+      console.log(`✅ Found button by ID match: id="${btn.id}", name="${btn.name || btn.label}", src="${btn.src || 'none'}"`);
+      return true;
+    }
+    return false;
+  });
+  
+  // Only fall back to name/label matching if ID match failed (for backward compatibility)
+  // This handles old hotkeys that might have been registered with name/label
+  if (!button) {
+    button = config.buttons.find(btn => {
+      const btnName = btn.name || btn.label || '';
+      if (btnName.toLowerCase() === mediaId.toLowerCase()) {
+        console.log(`⚠️ Found button by name/label (backward compat): name="${btnName}", id="${btn.id || 'none'}", src="${btn.src || 'none'}"`);
+        return true;
+      }
+      return false;
+    });
+    if (button) {
+      console.log(`⚠️ Matched by name/label (backward compat): "${button.name || button.label}" - hotkey should be re-registered with ID`);
+    }
+  }
+  
   if (button) {
-    console.log('🎯 Triggering mapped button:', button.name || button.label, 'Type:', button.type);
+    console.log(`🎯 Triggering mapped button: "${button.name || button.label}" (ID: ${button.id || 'none'}) Type: ${button.type}`);
+    console.log(`🎯 Button src/path: "${button.src || button.path || 'none'}"`);
+    console.log(`🎯 Button args: ${button.args || 'none'}`);
     handleTrigger(button);
   } else {
-    console.warn('⚠️ No button found for mapping trigger:', mediaId);
+    console.warn(`⚠️ No button found for mapping trigger: "${mediaId}"`);
+    console.warn(`⚠️ Available identifiers: ${config.buttons.map(b => `${b.id || 'no-id'}:${b.name || b.label || 'unnamed'}`).join(', ')}`);
   }
 });
 
@@ -3349,6 +5635,20 @@ function handleFileDrop(file) {
   hotkeyStatus.textContent = '';
   delete settingsForm.dataset.editingIndex;
   delete settingsForm.dataset.editingId;
+  delete settingsForm.dataset.resolvedPath;
+  delete settingsForm.dataset.resolvedArgs;
+  delete settingsForm.dataset.existingFile;
+  
+  // Clear chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const redeemName = document.getElementById('redeem-name');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  if (chatCommandEnabled) chatCommandEnabled.checked = false;
+  if (chatCommandKeyword) chatCommandKeyword.value = '';
+  if (redeemName) redeemName.value = '';
+  if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+  
   document.querySelector('#settings-modal h2').textContent = 'Add New ' + (type === 'audio' ? 'Sound' : 'App');
   
   // Since we're using the modal-based approach, we need to directly open the audio form
@@ -3459,6 +5759,66 @@ typeRadios.forEach(radio => {
   });
 });
 
+// Overlay Helper Functions
+function getDefaultOverlay() {
+  const savedOverlays = getSavedOverlays();
+  // Return the second overlay (index 1) if it exists, otherwise first overlay, otherwise 'default'
+  return savedOverlays.length >= 2 ? savedOverlays[1].name : (savedOverlays.length >= 1 ? savedOverlays[0].name : 'default');
+}
+
+// Overlay Migration System
+function migrateOverlayReferences() {
+  try {
+    console.log('🔄 Checking for overlay migration...');
+    let needsMigration = false;
+    
+    // Load current config
+    const config = window.electronAPI.getConfig();
+    if (!config) return;
+    
+    // Get the second overlay from saved overlays (index 1)
+    const targetOverlay = getDefaultOverlay();
+    const savedOverlays = getSavedOverlays();
+    
+    console.log(`🎯 Target overlay for migration: "${targetOverlay}"`);
+    console.log(`📋 Available overlays:`, savedOverlays.map(o => o.name));
+    
+    // Check buttons for 'main' or 'default' overlay references
+    if (config.buttons && Array.isArray(config.buttons)) {
+      config.buttons.forEach(button => {
+        if (button.overlay === 'main' || button.overlay === 'default') {
+          const oldOverlay = button.overlay;
+          button.overlay = targetOverlay;
+          needsMigration = true;
+          console.log(`🔄 Migrated button "${button.label || button.name}" overlay from '${oldOverlay}' to '${targetOverlay}'`);
+        }
+      });
+    }
+    
+    // Check alerts for 'main' or 'default' overlay references
+    if (config.alerts && Array.isArray(config.alerts)) {
+      config.alerts.forEach(alert => {
+        if (alert.overlay === 'main' || alert.overlay === 'default') {
+          const oldOverlay = alert.overlay;
+          alert.overlay = targetOverlay;
+          needsMigration = true;
+          console.log(`🔄 Migrated alert "${alert.name || 'unnamed'}" overlay from '${oldOverlay}' to '${targetOverlay}'`);
+        }
+      });
+    }
+    
+    // Save migrated config if changes were made
+    if (needsMigration) {
+      window.electronAPI.saveConfig(config);
+      console.log(`✅ Overlay migration completed successfully - migrated to '${targetOverlay}'`);
+    } else {
+      console.log('✅ No overlay migration needed');
+    }
+  } catch (error) {
+    console.error('❌ Error during overlay migration:', error);
+  }
+}
+
 // Theme System
 class ThemeManager {
   constructor() {
@@ -3474,24 +5834,12 @@ class ThemeManager {
     await this.loadAvailableSkins();
     await this.loadSavedTheme();
     this.setupEventListeners();
-    this.applyTheme(this.currentTheme);
     
-    // Ensure theme is applied after delays to handle any timing issues
-    setTimeout(() => {
-      this.applyTheme(this.currentTheme);
-    }, 100);
+    // DON'T apply theme here - let ProfileManager handle it
+    // This prevents the theme from being set before the profile loads
+    console.log('🎨 ThemeManager initialized, current theme:', this.currentTheme);
     
-    // Apply again after a longer delay to ensure it sticks
-    setTimeout(() => {
-      this.applyTheme(this.currentTheme);
-    }, 500);
-    
-    // Sync the menu state with the loaded theme
-    setTimeout(() => {
-      if (window.electronAPI?.syncTheme) {
-        window.electronAPI.syncTheme(this.currentTheme);
-      }
-    }, 600);
+    // Profile manager will apply the theme after loading profile settings
   }
 
   async loadAvailableSkins() {
@@ -3516,7 +5864,8 @@ class ThemeManager {
       if (window.electronAPI?.getConfig) {
         try {
           const config = await window.electronAPI.getConfig();
-          savedTheme = config?.theme;
+          // Theme is now stored in uiSettings.theme with the profile system
+          savedTheme = config?.uiSettings?.theme || config?.theme;
         } catch (error) {
           savedTheme = localStorage.getItem(this.storageKey);
         }
@@ -3591,22 +5940,31 @@ class ThemeManager {
 
 
   saveTheme(themeName) {
-    try {
-      // Try Electron API first (production)
-      if (window.electronAPI?.updateConfig) {
-        window.electronAPI.updateConfig({ theme: themeName });
-      } else {
-        // Fallback to localStorage (development)
-        localStorage.setItem(this.storageKey, themeName);
-      }
-    } catch (error) {
-      // Try localStorage as fallback
-      try {
-        localStorage.setItem(this.storageKey, themeName);
-      } catch (localError) {
-        // Silent fail if both methods fail
-      }
+    // Update current theme
+    this.currentTheme = themeName;
+    
+    // Save via updateConfig (which saves to profile's uiSettings.theme)
+    if (window.electronAPI?.updateConfig) {
+      window.electronAPI.updateConfig({ theme: themeName }).catch(err => {
+        console.error('Failed to save theme via updateConfig:', err);
+      });
     }
+    
+    // Also save to localStorage as fallback
+    try {
+      localStorage.setItem(this.storageKey, themeName);
+    } catch (e) {
+      console.warn('Failed to save theme to localStorage:', e);
+    }
+    
+    // Trigger immediate profile save to ensure theme is captured
+    if (window.profileManager && window.profileManager.saveCurrentSettings) {
+      window.profileManager.saveCurrentSettings().catch(err => {
+        console.error('Failed to save profile after theme change:', err);
+      });
+    }
+    
+    console.log('Theme saved:', themeName);
   }
 
   getCurrentTheme() {
@@ -4087,6 +6445,27 @@ function setupAppToolbar() {
 document.addEventListener('DOMContentLoaded', () => {
   console.log('🔧 DOMContentLoaded fired - initializing toolbar');
   
+  // CRITICAL: Initialize ThemeManager FIRST before ProfileManager needs it
+  if (typeof ThemeManager !== 'undefined') {
+    window.themeManager = new ThemeManager();
+    window.themeSystem = window.themeManager;
+    window.notificationManager = new NotificationManager();
+    console.log('🎨 ThemeManager and NotificationManager created early');
+    
+    // Add hotkey to cycle through themes (Ctrl+Shift+T)
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'T') {
+        e.preventDefault();
+        if (window.themeManager) {
+          window.themeManager.cycleTheme();
+        }
+      }
+    });
+  }
+  
+  // Run overlay migration on app load
+  migrateOverlayReferences();
+  
   // Clear overlay immediately on app startup
   console.log('🧹 Clearing overlay on DOM ready...');
   clearOverlay();
@@ -4094,7 +6473,10 @@ document.addEventListener('DOMContentLoaded', () => {
   setupAppToolbar();
   setupOverlayControls();
   setupOverlayWidget();
+  setupHydrationSettings();
   setupAlertWidget();
+  setupBattleModal();
+  initDailyCheckinSystem();
   // initialize left app menu
   if (typeof setupLeftAppMenu === 'function') {
     console.log('🔧 Setting up left app menu');
@@ -4102,7 +6484,464 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     console.log('🔧 setupLeftAppMenu function not found');
   }
+  
+  // initialize preferences modal
+  if (typeof initializePreferencesModal === 'function') {
+    console.log('🔧 Setting up preferences modal');
+    initializePreferencesModal();
+  } else {
+    console.log('🔧 initializePreferencesModal function not found');
+  }
+  
+  // Initialize profile management system (after ThemeManager is ready)
+  console.log('🔧 Initializing profile management system');
+  profileManager.initialize().catch(err => {
+    console.error('Failed to initialize profile manager:', err);
+  });
+  
+  // Setup profile panel event handlers
+  setupProfilePanelEventHandlers();
 });
+
+// Profile panel event handlers
+function setupProfilePanelEventHandlers() {
+  // Profile selector change
+  const profileSelector = document.getElementById('profile-selector');
+  if (profileSelector) {
+    profileSelector.addEventListener('change', async (e) => {
+      const newProfileId = e.target.value;
+      if (newProfileId !== profileManager.currentProfile) {
+        await profileManager.switchProfile(newProfileId);
+      }
+    });
+  }
+  
+  // Create new profile button
+  const createBtn = document.getElementById('profile-create');
+  if (createBtn) {
+    createBtn.addEventListener('click', async () => {
+      const profileName = await showCustomPrompt('Enter a name for the new profile:');
+      if (profileName) {
+        await profileManager.createProfile(profileName);
+      }
+    });
+  }
+  
+  // Duplicate profile button
+  const duplicateBtn = document.getElementById('profile-duplicate');
+  if (duplicateBtn) {
+    duplicateBtn.addEventListener('click', async () => {
+      const currentProfileName = profileManager.profiles.find(p => p.id === profileManager.currentProfile)?.name || '';
+      const defaultName = currentProfileName ? `${currentProfileName} (Copy)` : 'New Profile';
+      const profileName = await showCustomPrompt('Enter a name for the duplicated profile:', defaultName);
+      if (profileName) {
+        await profileManager.duplicateProfile(profileName);
+      }
+    });
+  }
+  
+  // Rename profile button
+  const renameBtn = document.getElementById('profile-rename');
+  if (renameBtn) {
+    renameBtn.addEventListener('click', async () => {
+      const currentProfileName = profileManager.profiles.find(p => p.id === profileManager.currentProfile)?.name || '';
+      const newName = await showCustomPrompt('Enter a new name for this profile:', currentProfileName);
+      if (newName && newName !== currentProfileName) {
+        await profileManager.renameProfile(newName);
+      }
+    });
+  }
+  
+  // Delete profile button
+  const deleteBtn = document.getElementById('profile-delete');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', async () => {
+      // Get list of profiles that can be deleted (not the current one)
+      const deletableProfiles = profileManager.profiles.filter(p => p.id !== profileManager.currentProfile);
+      
+      if (deletableProfiles.length === 0) {
+        showCustomAlert('Cannot delete the only profile. Create another profile first.', 'error');
+        return;
+      }
+      
+      // Create a custom prompt with dropdown
+      const profileToDelete = await showProfileDeleteDialog(deletableProfiles);
+      
+      if (profileToDelete) {
+        const result = await window.electronAPI.deleteProfile(profileToDelete.id);
+        if (result.success) {
+          showCustomAlert(`Profile "${profileToDelete.name}" deleted`, 'success');
+          // Refresh profile list
+          await profileManager.initialize();
+        } else {
+          showCustomAlert('Failed to delete profile: ' + (result.error || 'Unknown error'), 'error');
+        }
+      }
+    });
+  }
+  
+  console.log('✅ Profile panel event handlers setup complete');
+  
+  // Profile modal close button
+  const modalCloseBtn = document.getElementById('profile-modal-close');
+  if (modalCloseBtn) {
+    modalCloseBtn.addEventListener('click', () => {
+      closeProfileModal();
+    });
+  }
+  
+  // Close modal on backdrop click
+  const profileModal = document.getElementById('profile-modal');
+  if (profileModal) {
+    profileModal.addEventListener('click', (e) => {
+      if (e.target === profileModal) {
+        closeProfileModal();
+      }
+    });
+  }
+}
+
+// Update the Profile dashboard widget label (current profile name)
+function updateProfileWidgetLabel() {
+  const el = document.getElementById('profile-widget-current');
+  if (!el) return;
+  const name = (typeof profileManager !== 'undefined' && profileManager && profileManager.profiles)
+    ? (profileManager.profiles.find(p => p.id === profileManager.currentProfile)?.name || 'Default')
+    : 'Default';
+  el.textContent = name;
+}
+
+// Profile/Battle: content shown in shared flyout menu to the left of the widget column
+function openProfileModal() {
+  const flyout = document.getElementById('widget-flyout');
+  const profileBody = document.getElementById('profile-widget-body');
+  const battleBody = document.getElementById('battle-widget-body');
+  if (flyout && profileBody) {
+    document.getElementById('profile-control-widget')?.classList.remove('hidden');
+    flyout.classList.remove('battle-open');
+    flyout.classList.add('profile-open');
+    profileBody.classList.remove('hidden');
+    if (battleBody) battleBody.classList.add('hidden');
+    if (window.electronAPI && window.electronAPI.disableHotkeys) {
+      window.electronAPI.disableHotkeys();
+    }
+  }
+}
+
+function closeProfileModal() {
+  const flyout = document.getElementById('widget-flyout');
+  const profileBody = document.getElementById('profile-widget-body');
+  if (flyout && profileBody) {
+    flyout.classList.remove('profile-open');
+    profileBody.classList.add('hidden');
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+}
+
+function toggleProfileWidget() {
+  const flyout = document.getElementById('widget-flyout');
+  if (!flyout) return;
+  if (flyout.classList.contains('profile-open')) {
+    closeProfileModal();
+  } else {
+    openProfileModal();
+  }
+}
+
+// Listen for open-profile-manager from main process
+if (window.electronAPI && window.electronAPI.onOpenProfileManager) {
+  window.electronAPI.onOpenProfileManager(() => {
+    openProfileModal();
+  });
+}
+
+// Battle modal - Twitch Battles (TikTok-style invites)
+const BATTLE_BACKEND_URL = 'http://localhost:4000';
+const BATTLE_OVERLAY_BASE = 'http://localhost:5173';
+const BATTLE_HEARTBEAT_INTERVAL = 25000;
+let battleCurrentRoomId = null;
+let battleTwitchLogin = '';
+let battleSocket = null;
+let battleHeartbeatTimer = null;
+let battlePendingInviteId = null;
+
+function getBattlesEnabled() {
+  try {
+    return localStorage.getItem('battles_enabled') !== 'false';
+  } catch (e) {
+    return true;
+  }
+}
+
+function setBattlesEnabled(enabled) {
+  try {
+    localStorage.setItem('battles_enabled', enabled ? 'true' : 'false');
+  } catch (e) {}
+  const widgetEl = document.getElementById('battle-widget-status');
+  if (widgetEl) widgetEl.textContent = enabled ? 'On' : 'Off';
+}
+
+function openBattleModal() {
+  const flyout = document.getElementById('widget-flyout');
+  const battleBody = document.getElementById('battle-widget-body');
+  const profileBody = document.getElementById('profile-widget-body');
+  if (!flyout || !battleBody) return;
+  document.getElementById('battle-control-widget')?.classList.remove('hidden');
+  flyout.classList.remove('profile-open');
+  flyout.classList.add('battle-open');
+  battleBody.classList.remove('hidden');
+  if (profileBody) profileBody.classList.add('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) {
+    window.electronAPI.disableHotkeys();
+  }
+  const toggle = document.getElementById('battle-enabled-toggle');
+  if (toggle) toggle.checked = getBattlesEnabled();
+  const statusEl = document.getElementById('battle-status-text');
+  const hpRow = document.getElementById('battle-hp-row');
+  if (statusEl) statusEl.textContent = battleCurrentRoomId ? 'Battle in progress!' : 'Ready to invite';
+  if (hpRow) hpRow.style.display = battleCurrentRoomId ? 'block' : 'none';
+  battleConnect();
+  updateBattleOverlayUrl();
+}
+
+function closeBattleModal() {
+  const flyout = document.getElementById('widget-flyout');
+  const battleBody = document.getElementById('battle-widget-body');
+  if (flyout && battleBody) {
+    flyout.classList.remove('battle-open');
+    battleBody.classList.add('hidden');
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+  // Keep heartbeat running when flyout closed so we stay online for invites
+}
+
+function toggleBattleWidget() {
+  const flyout = document.getElementById('widget-flyout');
+  if (!flyout) return;
+  if (flyout.classList.contains('battle-open')) {
+    closeBattleModal();
+  } else {
+    openBattleModal();
+  }
+}
+
+function updateBattleOverlayUrl() {
+  const urlEl = document.getElementById('battle-overlay-url');
+  if (!urlEl) return;
+  const channel = battleTwitchLogin || battleCurrentRoomId || '';
+  urlEl.textContent = channel ? `${BATTLE_OVERLAY_BASE}?channel=${encodeURIComponent(channel)}` : BATTLE_OVERLAY_BASE + '?channel=';
+}
+
+function battleConnect() {
+  window.electronAPI?.getTwitchUsername?.().then(function (login) {
+    battleTwitchLogin = (login || '').toLowerCase();
+    if (!battleTwitchLogin) return;
+    refreshBattleOnline();
+    refreshBattleInvites();
+    updateBattleOverlayUrl();
+    if (typeof io !== 'undefined') {
+      if (battleSocket) battleSocket.disconnect();
+      battleSocket = io(BATTLE_BACKEND_URL);
+      battleSocket.on('connect', function () {
+        battleSocket.emit('dashboard:hello', { twitch_login: battleTwitchLogin });
+      });
+      battleSocket.on('battle:invite', function (data) {
+        battlePendingInviteId = data.id;
+        document.getElementById('battle-invite-from').textContent = data.from_user || 'someone';
+        document.getElementById('battle-invite-toast').classList.remove('hidden');
+      });
+      battleSocket.on('battle:accepted', function (data) {
+        battleCurrentRoomId = data.roomId;
+        document.getElementById('battle-status-text').textContent = 'Battle in progress!';
+        document.getElementById('battle-hp-row').style.display = 'block';
+        updateBattleOverlayUrl();
+        showCustomAlert('Battle started!', 'success');
+      });
+    }
+    if (getBattlesEnabled()) {
+      fetch(`${BATTLE_BACKEND_URL}/battles/heartbeat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ twitch_login: battleTwitchLogin, battles_enabled: true })
+      }).catch(function () {});
+      if (battleHeartbeatTimer) clearInterval(battleHeartbeatTimer);
+      battleHeartbeatTimer = setInterval(function () {
+        if (!getBattlesEnabled()) return;
+        fetch(`${BATTLE_BACKEND_URL}/battles/heartbeat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ twitch_login: battleTwitchLogin, battles_enabled: true })
+        }).catch(function () {});
+      }, BATTLE_HEARTBEAT_INTERVAL);
+    }
+  });
+}
+
+async function refreshBattleOnline() {
+  const list = document.getElementById('battle-online-list');
+  const empty = document.getElementById('battle-online-empty');
+  if (!list) return;
+  try {
+    const res = await fetch(`${BATTLE_BACKEND_URL}/battles/online`);
+    const users = await res.json();
+    const me = battleTwitchLogin;
+    const others = (users || []).filter(function (u) {
+      return u.login && u.login.toLowerCase() !== me;
+    });
+    if (empty) empty.style.display = others.length ? 'none' : 'block';
+    list.innerHTML = '';
+    others.forEach(function (u) {
+      const btn = document.createElement('button');
+      btn.textContent = u.login + ' (Invite)';
+      btn.style.cssText = 'display:block;width:100%;padding:8px 12px;margin-bottom:4px;text-align:left;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;cursor:pointer;color:var(--text-primary);';
+      btn.onclick = function () {
+        battleSendInvite(u.login);
+      };
+      list.appendChild(btn);
+    });
+  } catch (e) {
+    if (empty) empty.textContent = 'Could not load online users. Is the battles backend running?';
+  }
+}
+
+function battleSendInvite(toLogin) {
+  if (!battleTwitchLogin) return;
+  fetch(`${BATTLE_BACKEND_URL}/battles/invite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: battleTwitchLogin, to: toLogin.toLowerCase() })
+  })
+    .then(function (r) {
+      return r.json().then(function (d) {
+        if (r.ok) showCustomAlert('Invite sent to ' + toLogin, 'success');
+        else showCustomAlert(d.error || 'Failed to send invite', 'error');
+      });
+    })
+    .catch(function () {
+      showCustomAlert('Could not send invite', 'error');
+    });
+}
+
+async function refreshBattleInvites() {
+  if (!battleTwitchLogin) return;
+  try {
+    const res = await fetch(`${BATTLE_BACKEND_URL}/battles/invites/pending?user=${encodeURIComponent(battleTwitchLogin)}`);
+    const invites = await res.json();
+    const container = document.getElementById('battle-pending-invites');
+    const list = document.getElementById('battle-invites-list');
+    if (!container || !list) return;
+    container.style.display = invites.length ? 'block' : 'none';
+    list.innerHTML = '';
+    (invites || []).forEach(function (inv) {
+      const div = document.createElement('div');
+      div.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px;margin-bottom:4px;background:var(--bg-tertiary);border-radius:6px;';
+      div.innerHTML = '<span>' + (inv.from_user || 'someone') + '</span><div><button class="battle-invite-accept-btn" data-id="' + inv.id + '" style="padding:4px 12px;margin-right:4px;background:#22c55e;color:white;border:none;border-radius:4px;cursor:pointer;">Accept</button><button class="battle-invite-decline-btn" data-id="' + inv.id + '" style="padding:4px 12px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;cursor:pointer;">Decline</button></div>';
+      list.appendChild(div);
+    });
+    list.querySelectorAll('.battle-invite-accept-btn').forEach(function (btn) {
+      btn.onclick = function () {
+        battleAcceptInvite(btn.getAttribute('data-id'));
+      };
+    });
+    list.querySelectorAll('.battle-invite-decline-btn').forEach(function (btn) {
+      btn.onclick = function () {
+        battleDeclineInvite(btn.getAttribute('data-id'));
+      };
+    });
+  } catch (e) {}
+}
+
+function battleAcceptInvite(inviteId) {
+  fetch(`${BATTLE_BACKEND_URL}/battles/invite/${inviteId}/accept`, { method: 'POST' })
+    .then(function (r) {
+      return r.json().then(function (d) {
+        if (r.ok) {
+          battleCurrentRoomId = d.room?.id;
+          document.getElementById('battle-status-text').textContent = 'Battle in progress!';
+          document.getElementById('battle-hp-row').style.display = 'block';
+          refreshBattleInvites();
+          document.getElementById('battle-invite-toast').classList.add('hidden');
+          battlePendingInviteId = null;
+          updateBattleOverlayUrl();
+          showCustomAlert('Battle started!', 'success');
+        } else {
+          showCustomAlert(d.error || 'Failed to accept', 'error');
+        }
+      });
+    })
+    .catch(function () {
+      showCustomAlert('Could not accept invite', 'error');
+    });
+}
+
+function battleDeclineInvite(inviteId) {
+  fetch(`${BATTLE_BACKEND_URL}/battles/invite/${inviteId}/decline`, { method: 'POST' })
+    .then(function (r) {
+      if (r.ok) {
+        refreshBattleInvites();
+        document.getElementById('battle-invite-toast').classList.add('hidden');
+        battlePendingInviteId = null;
+      }
+    })
+    .catch(function () {});
+}
+
+function setupBattleModal() {
+  const openBtn = document.getElementById('open-battle-modal-btn');
+  const closeBtn = document.getElementById('battle-modal-close');
+  const modal = document.getElementById('battle-modal');
+  const widgetStatus = document.getElementById('battle-widget-status');
+  if (widgetStatus) widgetStatus.textContent = getBattlesEnabled() ? 'On' : 'Off';
+  if (openBtn) openBtn.addEventListener('click', openBattleModal);
+  if (closeBtn) closeBtn.addEventListener('click', closeBattleModal);
+  if (modal) {
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) closeBattleModal();
+    });
+  }
+
+  document.getElementById('battle-enabled-toggle')?.addEventListener('change', function () {
+    const enabled = this.checked;
+    setBattlesEnabled(enabled);
+    if (enabled && battleTwitchLogin) {
+      fetch(`${BATTLE_BACKEND_URL}/battles/heartbeat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ twitch_login: battleTwitchLogin, battles_enabled: true })
+      }).catch(function () {});
+      if (battleHeartbeatTimer) clearInterval(battleHeartbeatTimer);
+      battleHeartbeatTimer = setInterval(function () {
+        if (!getBattlesEnabled()) return;
+        fetch(`${BATTLE_BACKEND_URL}/battles/heartbeat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ twitch_login: battleTwitchLogin, battles_enabled: true })
+        }).catch(function () {});
+      }, BATTLE_HEARTBEAT_INTERVAL);
+    } else if (battleHeartbeatTimer) {
+      clearInterval(battleHeartbeatTimer);
+      battleHeartbeatTimer = null;
+    }
+  });
+
+  document.getElementById('battle-invite-accept')?.addEventListener('click', function () {
+    if (battlePendingInviteId) battleAcceptInvite(battlePendingInviteId);
+  });
+  document.getElementById('battle-invite-decline')?.addEventListener('click', function () {
+    if (battlePendingInviteId) battleDeclineInvite(battlePendingInviteId);
+  });
+
+  document.getElementById('battle-copy-overlay-url')?.addEventListener('click', function () {
+    const url = document.getElementById('battle-overlay-url')?.textContent;
+    if (url && navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(() => showCustomAlert('Overlay URL copied', 'success'));
+    }
+  });
+}
 
 // Overlay controls setup
 function setupOverlayControls() {
@@ -4125,22 +6964,26 @@ function setupOverlayWidget() {
   const closeBtn = document.getElementById('close-overlay-widget');
   const testBtns = document.querySelectorAll('.overlay-test-btn');
   const mediaBtns = document.querySelectorAll('.overlay-media-btn');
-  const customTextInput = document.getElementById('custom-text');
-  const customPositionSelect = document.getElementById('custom-position');
-  const sendCustomTextBtn = document.getElementById('send-custom-text');
   const copyUrlBtn = document.getElementById('copy-overlay-url');
   
-  // Position mapping for overlay IDs (old format for backward compatibility)
+  // Overlay management elements
+  const newOverlayNameInput = document.getElementById('new-overlay-name');
+  const createOverlayBtn = document.getElementById('create-overlay');
+  const overlaySelect = document.getElementById('overlay-select');
+  const deleteOverlayBtn = document.getElementById('delete-overlay');
+  const overlayUrlDisplay = document.getElementById('overlay-url-display');
+  
+  // Position mapping for overlay text slots (new schema format)
   const positionMap = {
-    1: 'text-top-left',
-    2: 'text-top-center', 
-    3: 'text-top-right',
-    4: 'text-mid-left',
-    5: 'center-media',
-    6: 'text-mid-right',
-    7: 'text-bottom-left',
-    8: 'text-bottom-center',
-    9: 'text-bottom-right'
+    1: 'topLeft',
+    2: 'topCenter', 
+    3: 'topRight',
+    4: 'midLeft',
+    5: 'center',
+    6: 'midRight',
+    7: 'bottomLeft',
+    8: 'bottomCenter',
+    9: 'bottomRight'
   };
   
   // Close widget
@@ -4170,11 +7013,13 @@ function setupOverlayWidget() {
                                 text: testText,
                                 style: {
                                     fontFamily: 'Arial, sans-serif',
-                                    fontSize: '18px',
-                                    color: '#00ff00',
+                                    fontSize: '48px',
+                                    color: '#ffffff',
                                     fontWeight: 'bold',
                                     textAlign: 'center',
-                                    zIndex: '1'
+                                    textShadow: '3px 3px 6px rgba(0, 0, 0, 0.9)',
+                                    webkitTextStroke: '2px #000',
+                                    zIndex: '15'
                                 }
                             }
                         }
@@ -4205,8 +7050,8 @@ function setupOverlayWidget() {
             },
             centerMedia: [{
               type: 'image',
-              src: 'https://via.placeholder.com/300x200/00ff00/000000?text=Test+Image+Connected',
-              alt: 'Test Image Connected'
+              src: 'http://localhost:8080/media/images/VirtualDeck2.png',
+              alt: 'VirtualDeck Logo'
             }]
           };
           window.electronAPI.sendOverlayMessage(payload);
@@ -4220,7 +7065,7 @@ function setupOverlayWidget() {
             },
             centerMedia: [{
               type: 'video',
-              src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+              src: 'http://localhost:8080/media/videos/generated-video.mp4',
               loop: true
             }]
           };
@@ -4240,173 +7085,36 @@ function setupOverlayWidget() {
     });
   });
   
-  // Custom text input
-  if (sendCustomTextBtn) {
-    sendCustomTextBtn.addEventListener('click', () => {
-      const text = customTextInput.value.trim();
-      const position = parseInt(customPositionSelect.value);
-      const targetId = positionMap[position];
-      
-      if (text) {
-        console.log(`Sending custom text to position ${position} (${targetId}): ${text}`);
-        
-        if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-          const payload = {
-            type: 'buttonTrigger',
-            options: {
-              clearPrevious: false
-            },
-            slots: {
-              [targetId]: {
-                text: text,
-                style: {
-                  fontFamily: 'Arial, sans-serif',
-                  fontSize: '16px',
-                  color: '#ffffff',
-                  fontWeight: 'normal',
-                  textAlign: 'center',
-                  zIndex: '1'
-                }
-              }
-            }
-          };
-          window.electronAPI.sendOverlayMessage(payload);
-          
-          // Clear the input
-          customTextInput.value = '';
-        }
-      }
-    });
-  }
-  
-  // Enter key support for custom text
-  if (customTextInput) {
-    customTextInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        sendCustomTextBtn.click();
-      }
-    });
-  }
-  
   // Copy URL button
   if (copyUrlBtn) {
     copyUrlBtn.addEventListener('click', () => {
-      const overlayUrl = 'http://localhost:8080/overlay';
+      // Get the URL from the display element instead of hardcoding
+      const overlayUrlDisplay = document.getElementById('overlay-url-display');
+      const overlayUrl = overlayUrlDisplay ? overlayUrlDisplay.textContent : 'http://localhost:8080/overlay';
       
       if (navigator.clipboard) {
         navigator.clipboard.writeText(overlayUrl).then(() => {
-          console.log('Overlay URL copied to clipboard');
+          console.log('Overlay URL copied to clipboard:', overlayUrl);
           // Show brief feedback
           const originalText = copyUrlBtn.textContent;
-          copyUrlBtn.textContent = '✓';
+          copyUrlBtn.textContent = '✓ Copied';
           setTimeout(() => {
             copyUrlBtn.textContent = originalText;
-          }, 1000);
+          }, 1500);
         }).catch(err => {
           console.log('Failed to copy to clipboard:', err);
+          // Fallback for older browsers
+          showCustomAlert(`Copy this URL: ${overlayUrl}`, 'info');
         });
+      } else {
+        // Fallback for browsers without clipboard API
+        showCustomAlert(`Copy this URL: ${overlayUrl}`, 'info');
       }
     });
   }
   
   // Multi-source test buttons
-  const testMultiSourceBtn = document.getElementById('test-multi-source');
   const testAllPositionsBtn = document.getElementById('test-all-positions');
-  
-  if (testMultiSourceBtn) {
-    testMultiSourceBtn.addEventListener('click', () => {
-      console.log('Testing multi-source capability...');
-      
-      const payload = {
-        type: 'buttonTrigger',
-        options: {
-          clearPrevious: true
-        },
-        slots: {
-          'topLeft': {
-            text: '🎮 GAME START',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 28,
-              color: '#00ff00',
-              bold: true,
-              italic: false,
-              align: 'center',
-              animation: 'pulse'
-            }
-          },
-          'topRight': {
-            text: 'SCORE: 9999',
-            style: {
-              fontFamily: 'Courier, monospace',
-              fontSize: 24,
-              color: '#ffff00',
-              bold: true,
-              italic: false,
-              align: 'right',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-              zIndex: '10'
-            }
-          },
-          'bottomCenter': {
-            text: 'PRESS SPACE TO CONTINUE',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 20,
-              color: '#ffffff',
-              bold: true,
-              italic: false,
-              align: 'center',
-              animation: 'pulse'
-            }
-          },
-          'midLeft': {
-            text: 'LIVES: 3',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 18,
-              color: '#ff6b6b',
-              bold: true,
-              textAlign: 'left',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-              zIndex: '10'
-            }
-          },
-          'midRight': {
-            text: 'LEVEL: 5',
-            style: {
-              fontFamily: 'Arial, sans-serif',
-              fontSize: 18,
-              color: '#4ecdc4',
-              bold: true,
-              italic: false,
-              align: 'right',
-              animation: null
-            }
-          }
-        },
-        centerMedia: [
-          {
-            type: 'image',
-            src: 'https://via.placeholder.com/600x400/000000/ffffff?text=GAME+SCREEN',
-            alt: 'Game Screen'
-          },
-          {
-            type: 'video',
-            src: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
-            loop: true
-          }
-        ]
-      };
-      
-      if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
-        window.electronAPI.sendOverlayMessage(payload);
-        console.log('Sent multi-source test payload');
-      } else {
-        console.log('sendOverlayMessage not available');
-      }
-    });
-  }
   
   if (testAllPositionsBtn) {
     testAllPositionsBtn.addEventListener('click', () => {
@@ -4437,12 +7145,13 @@ function setupOverlayWidget() {
           text: pos.text,
           style: {
             fontFamily: 'Arial, sans-serif',
-            fontSize: 18,
-            color: '#00ff00',
-            bold: true,
-            italic: false,
-            align: 'center',
-            animation: null
+            fontSize: '48px',
+            color: '#ffffff',
+            fontWeight: 'bold',
+            textAlign: 'center',
+            textShadow: '3px 3px 6px rgba(0, 0, 0, 0.9)',
+            webkitTextStroke: '2px #000',
+            zIndex: '15'
           }
         };
       });
@@ -4450,8 +7159,8 @@ function setupOverlayWidget() {
       // Add center media test
       payload.centerMedia = [{
         type: 'image',
-        src: 'https://via.placeholder.com/400x300/ff00ff/ffffff?text=Test+Center+Media',
-        alt: 'Test Center Media'
+        src: 'http://localhost:8080/media/images/VirtualDeck2.png',
+        alt: 'VirtualDeck Logo'
       }];
       
       if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
@@ -4463,45 +7172,682 @@ function setupOverlayWidget() {
     });
   }
   
-  // Resolution controls
-  const resolutionSelect = document.getElementById('overlay-resolution');
-  const applyResolutionBtn = document.getElementById('apply-resolution');
   
-  if (resolutionSelect && applyResolutionBtn) {
-    applyResolutionBtn.addEventListener('click', () => {
-      const selectedResolution = resolutionSelect.value;
-      const [width, height] = selectedResolution.split('x').map(Number);
-      
-      console.log(`Applying overlay resolution: ${width}x${height}`);
-      
-      // Send resolution change to overlay iframe
-      const overlayIframe = document.getElementById('overlay-iframe');
-      if (overlayIframe && overlayIframe.contentWindow) {
-        try {
-          overlayIframe.contentWindow.setOverlayResolution(width, height);
-          console.log(`✅ Resolution changed to ${width}x${height}`);
-          
-          // Show feedback
-          const originalText = applyResolutionBtn.textContent;
-          applyResolutionBtn.textContent = '✓ Applied';
-          applyResolutionBtn.style.background = '#4CAF50';
-          setTimeout(() => {
-            applyResolutionBtn.textContent = originalText;
-            applyResolutionBtn.style.background = '';
-          }, 2000);
-        } catch (error) {
-          console.error('Failed to change overlay resolution:', error);
-          applyResolutionBtn.textContent = '❌ Failed';
-          applyResolutionBtn.style.background = '#f44336';
-          setTimeout(() => {
-            applyResolutionBtn.textContent = 'Apply Resolution';
-            applyResolutionBtn.style.background = '';
-          }, 2000);
-        }
+  // Overlay Management Functionality
+  if (createOverlayBtn && newOverlayNameInput) {
+    createOverlayBtn.addEventListener('click', () => {
+      const overlayName = newOverlayNameInput.value.trim();
+      const templateSelect = document.getElementById('overlay-template');
+      const template = templateSelect ? templateSelect.value : 'center-media';
+
+      if (!overlayName) {
+        showCustomAlert('Please enter a name for the overlay', 'error');
+        return;
+      }
+
+      // Map special templates to their predefined overlay names
+      let actualOverlayId;
+      let actualDisplayName;
+
+      if (template === 'alert') {
+        actualOverlayId = 'alertOverlay';
+        actualDisplayName = `${overlayName} (Alert Overlay)`;
+      } else if (template === 'confetti') {
+        actualOverlayId = 'confettiOverlay';
+        actualDisplayName = `${overlayName} (Confetti Overlay)`;
       } else {
-        console.error('Overlay iframe not found');
+        // Create overlay name that includes template info for custom overlays
+        actualOverlayId = overlayName.toLowerCase().replace(/\s+/g, '-');
+        actualDisplayName = `${overlayName} (${getTemplateDisplayName(template)})`;
+      }
+      
+      // Check for duplicate names (skip for predefined overlays like alert/confetti)
+      if (template !== 'alert' && template !== 'confetti') {
+        const savedOverlays = getSavedOverlays();
+        const isDuplicate = savedOverlays.some(overlay =>
+          overlay.id === actualOverlayId || overlay.name.toLowerCase() === overlayName.toLowerCase()
+        );
+
+        if (isDuplicate) {
+          showCustomAlert(`An overlay with the name "${overlayName}" already exists. Please choose a different name.`, 'error');
+          return;
+        }
+
+        // Save overlay to localStorage for custom overlays
+        savedOverlays.push({
+          id: actualOverlayId,
+          name: overlayName,
+          displayName: actualDisplayName,
+          template: template,
+          createdAt: new Date().toISOString()
+        });
+        saveOverlays(savedOverlays);
+      }
+
+      // Create new overlay option
+      const option = document.createElement('option');
+      option.value = actualOverlayId;
+      option.textContent = actualDisplayName;
+      option.dataset.template = template;
+      overlaySelect.appendChild(option);
+      
+      // Clear input
+      newOverlayNameInput.value = '';
+      
+      // Show success message
+      const successMessage = (template === 'alert' || template === 'confetti')
+        ? `Overlay "${overlayName}" ready! Use the URL to add it to OBS.`
+        : `Overlay "${overlayName}" created successfully!`;
+      showCustomAlert(successMessage, 'success');
+
+      // Update all overlay selects in forms
+      updateAllOverlaySelects();
+
+      console.log(`✅ Created overlay: ${overlayName} (${template}) -> ${actualOverlayId}`);
+    });
+  }
+  
+  if (deleteOverlayBtn && overlaySelect) {
+    deleteOverlayBtn.addEventListener('click', async () => {
+      const selectedValue = overlaySelect.value;
+
+      // Prevent deletion of predefined overlays
+      const predefinedOverlays = ['alertOverlay', 'confettiOverlay'];
+      if (predefinedOverlays.includes(selectedValue)) {
+        showCustomAlert('Predefined overlays cannot be deleted.', 'warning');
+        return;
+      }
+
+      // Use custom confirm dialog instead of native confirm
+      const overlayName = overlaySelect.options[overlaySelect.selectedIndex].textContent;
+      if (confirm(`Are you sure you want to delete the "${overlayName}" overlay?`)) {
+        // Close all WebSocket connections for this overlay
+        if (window.electronAPI && window.electronAPI.closeOverlayConnections) {
+          try {
+            const result = await window.electronAPI.closeOverlayConnections(selectedValue);
+            if (result.success) {
+              console.log(`🔌 Closed ${result.closedCount} connection(s) for overlay: ${selectedValue}`);
+            }
+          } catch (error) {
+            console.error('Error closing overlay connections:', error);
+          }
+        }
+        
+        // Remove from localStorage
+        const savedOverlays = getSavedOverlays();
+        const updatedOverlays = savedOverlays.filter(o => o.id !== selectedValue);
+        saveOverlays(updatedOverlays);
+        
+        // Remove from select
+        const option = overlaySelect.querySelector(`option[value="${selectedValue}"]`);
+        if (option) {
+          option.remove();
+        }
+        
+        // Reset to default overlay (second in list)
+        overlaySelect.value = getDefaultOverlay();
+        
+        // Update all overlay selects in forms
+        updateAllOverlaySelects();
+        
+        // Update overlay URL to reflect new selection
+        updateOverlayUrl();
+        
+        // Update preview iframe
+        updatePreviewIframe();
+        
+        // Force connection status update (after a short delay to let connections close)
+        setTimeout(() => {
+          updateOverlayConnectionStatus();
+        }, 100);
+        
+        console.log(`✅ Deleted overlay: ${selectedValue}`);
+        showCustomAlert(`Overlay "${overlayName}" deleted successfully`, 'success');
       }
     });
+  }
+  
+  if (overlaySelect) {
+    overlaySelect.addEventListener('change', () => {
+      updateOverlayUrl();
+      updatePreviewIframe();
+    });
+  }
+  
+  // Initialize overlay management - load saved overlays first
+  loadSavedOverlaysIntoUI();
+  updateAllOverlaySelects();
+  updateOverlayUrl();
+  
+  // Start periodic connection status updates
+  updateOverlayConnectionStatus();
+  setInterval(updateOverlayConnectionStatus, 3000); // Update every 3 seconds
+  
+  // Predefined overlay cards removed - only user-created overlays will be shown
+  
+  // Ensure overlay selects are updated after a short delay to catch any late-loading forms
+  setTimeout(() => {
+    updateAllOverlaySelects();
+    console.log('🔄 Refreshed overlay selects after delay');
+  }, 1000);
+  
+  // Hydration tracker handlers
+  const openHydrationSettingsBtn = document.getElementById('open-hydration-settings');
+  const copyHydrationUrlBtn = document.getElementById('copy-hydration-url');
+  
+  if (openHydrationSettingsBtn) {
+    openHydrationSettingsBtn.addEventListener('click', () => {
+      openHydrationSettings();
+    });
+  }
+  
+  if (copyHydrationUrlBtn) {
+    copyHydrationUrlBtn.addEventListener('click', () => {
+      const url = 'http://localhost:8080/hydration';
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => {
+          showCustomAlert('Hydration overlay URL copied to clipboard!', 'success');
+        }).catch(err => {
+          console.error('Failed to copy:', err);
+          showCustomAlert('Failed to copy URL to clipboard', 'error');
+        });
+      }
+    });
+  }
+  
+  // Progression system handlers
+  const openProgressionManagerBtn = document.getElementById('open-progression-manager');
+  const copyProgressionUrlBtn = document.getElementById('copy-progression-url');
+  
+  if (openProgressionManagerBtn) {
+    console.log('✅ Progression manager button found, adding click handler');
+    console.log('✅ Button element:', openProgressionManagerBtn);
+    console.log('✅ Button ID:', openProgressionManagerBtn.id);
+    console.log('✅ Button parent:', openProgressionManagerBtn.parentElement);
+    console.log('✅ Button closest widget:', openProgressionManagerBtn.closest('.overlay-widget, .alert-widget'));
+    
+    // Remove any existing listeners by cloning the element
+    const newBtn = openProgressionManagerBtn.cloneNode(true);
+    openProgressionManagerBtn.parentNode.replaceChild(newBtn, openProgressionManagerBtn);
+    
+    newBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      console.log('🟢 PROGRESSION MANAGER button clicked from Overlay Widget');
+      console.log('🟢 Event target:', e.target);
+      console.log('🟢 Event currentTarget:', e.currentTarget);
+      console.log('🟢 Stack trace:');
+      console.trace();
+      openProgressionManager();
+    }, { once: false });
+  } else {
+    console.warn('⚠️ Progression manager button not found');
+  }
+  
+  if (copyProgressionUrlBtn) {
+    copyProgressionUrlBtn.addEventListener('click', () => {
+      const url = 'http://localhost:8080/progression';
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => {
+          showCustomAlert('Progression overlay URL copied to clipboard!', 'success');
+        }).catch(err => {
+          console.error('Failed to copy:', err);
+          showCustomAlert('Failed to copy URL to clipboard', 'error');
+        });
+      }
+    });
+  }
+
+  // Twitch Battles overlay URL (overlay app runs e.g. on 5173; backend on 4000)
+  const battleChannelInput = document.getElementById('battle-channel-input');
+  const battleOverlayUrlDisplay = document.getElementById('battle-overlay-url-display');
+  const copyBattleOverlayUrlBtn = document.getElementById('copy-battle-overlay-url');
+  const openBattleOverlayBtn = document.getElementById('open-battle-overlay');
+  const BATTLE_OVERLAY_BASE = 'http://localhost:5173';
+
+  function getBattleOverlayUrl() {
+    const channel = (battleChannelInput && battleChannelInput.value.trim()) || '';
+    return channel ? `${BATTLE_OVERLAY_BASE}?channel=${encodeURIComponent(channel)}` : BATTLE_OVERLAY_BASE + '?channel=';
+  }
+
+  function updateBattleOverlayUrlDisplay() {
+    if (battleOverlayUrlDisplay) battleOverlayUrlDisplay.textContent = getBattleOverlayUrl();
+  }
+
+  if (battleChannelInput) {
+    battleChannelInput.addEventListener('input', updateBattleOverlayUrlDisplay);
+    battleChannelInput.addEventListener('change', updateBattleOverlayUrlDisplay);
+  }
+
+  // Default channel to the authenticated Twitch user
+  if (window.electronAPI && window.electronAPI.getTwitchUsername) {
+    window.electronAPI.getTwitchUsername().then(function (username) {
+      if (username && battleChannelInput && !battleChannelInput.value.trim()) {
+        battleChannelInput.value = username;
+        battleChannelInput.placeholder = username;
+        updateBattleOverlayUrlDisplay();
+      }
+    });
+  }
+  updateBattleOverlayUrlDisplay();
+
+  if (copyBattleOverlayUrlBtn) {
+    copyBattleOverlayUrlBtn.addEventListener('click', () => {
+      const url = getBattleOverlayUrl();
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => {
+          showCustomAlert('Battle overlay URL copied to clipboard!', 'success');
+        }).catch(err => {
+          console.error('Failed to copy:', err);
+          showCustomAlert('Failed to copy URL to clipboard', 'error');
+        });
+      } else {
+        showCustomAlert('Copy this URL: ' + url, 'info');
+      }
+    });
+  }
+
+  if (openBattleOverlayBtn) {
+    openBattleOverlayBtn.addEventListener('click', () => {
+      const url = getBattleOverlayUrl();
+      if (window.electronAPI && window.electronAPI.openExternal) {
+        window.electronAPI.openExternal(url);
+      } else {
+        window.open(url, '_blank');
+      }
+    });
+  }
+}
+
+// Hydration Settings Functions
+async function openHydrationSettings() {
+  const modal = document.getElementById('hydration-settings-modal');
+  if (!modal) return;
+  
+  // Load current config
+  if (window.electronAPI && window.electronAPI.getHydrationConfig) {
+    try {
+      const config = await window.electronAPI.getHydrationConfig();
+      
+      // Populate form fields
+      document.getElementById('hydration-goal').value = config.streamGoal || 64;
+      document.getElementById('hydration-increment').value = config.incrementAmount || 8;
+      document.getElementById('hydration-keyword').value = config.redemptionKeyword || 'hydrate';
+      document.getElementById('hydration-reset-on-live').checked = config.resetOnLive !== false;
+      document.getElementById('hydration-water-color').value = config.waterColor || '#4fc3f7';
+      document.getElementById('hydration-text-color').value = config.textColor || '#ffffff';
+      document.getElementById('hydration-size').value = config.gaugeSize || 200;
+      document.getElementById('hydration-size-value').textContent = config.gaugeSize || 200;
+      document.getElementById('hydration-pos-x').value = config.positionX || 50;
+      document.getElementById('hydration-pos-y').value = config.positionY || 50;
+      
+      // Set gauge style radio button
+      const gaugeStyleRadio = document.querySelector(`input[name="gauge-style"][value="${config.gaugeStyle || 'circular'}"]`);
+      if (gaugeStyleRadio) gaugeStyleRadio.checked = true;
+      updateGaugeStyleButtons();
+    } catch (error) {
+      console.error('Error loading hydration config:', error);
+    }
+  }
+  
+  modal.classList.remove('hidden');
+  
+  // Disable hotkeys when modal is open
+  if (window.electronAPI && window.electronAPI.disableHotkeys) {
+    window.electronAPI.disableHotkeys();
+  }
+}
+
+function closeHydrationSettings() {
+  const modal = document.getElementById('hydration-settings-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    
+    // Re-enable hotkeys
+    if (window.electronAPI && window.electronAPI.enableHotkeys) {
+      window.electronAPI.enableHotkeys();
+    }
+  }
+}
+
+async function saveHydrationSettings() {
+  if (!window.electronAPI || !window.electronAPI.saveHydrationConfig) {
+    console.error('electronAPI not available');
+    return;
+  }
+  
+  try {
+    const config = {
+      streamGoal: parseInt(document.getElementById('hydration-goal').value) || 64,
+      incrementAmount: parseInt(document.getElementById('hydration-increment').value) || 8,
+      redemptionKeyword: document.getElementById('hydration-keyword').value.trim() || 'hydrate',
+      currentProgress: 0, // Keep existing progress, will be loaded from saved config
+      gaugeStyle: document.querySelector('input[name="gauge-style"]:checked')?.value || 'circular',
+      waterColor: document.getElementById('hydration-water-color').value,
+      backgroundColor: 'transparent',
+      textColor: document.getElementById('hydration-text-color').value,
+      gaugeSize: parseInt(document.getElementById('hydration-size').value) || 200,
+      positionX: parseInt(document.getElementById('hydration-pos-x').value) || 50,
+      positionY: parseInt(document.getElementById('hydration-pos-y').value) || 50,
+      borderWidth: 0,
+      borderColor: '#ffffff',
+      borderRadius: 10,
+      resetOnLive: document.getElementById('hydration-reset-on-live').checked
+    };
+    
+    // Load existing config to preserve currentProgress
+    const existingConfig = await window.electronAPI.getHydrationConfig();
+    config.currentProgress = existingConfig.currentProgress || 0;
+    
+    const result = await window.electronAPI.saveHydrationConfig(config);
+    if (result.success) {
+      showCustomAlert('Hydration settings saved!', 'success');
+      closeHydrationSettings();
+    } else {
+      showCustomAlert('Failed to save hydration settings', 'error');
+    }
+  } catch (error) {
+    console.error('Error saving hydration settings:', error);
+    showCustomAlert('Error saving settings: ' + error.message, 'error');
+  }
+}
+
+function updateGaugeStyleButtons() {
+  const radioLabels = document.querySelectorAll('label:has(input[name="gauge-style"])');
+  radioLabels.forEach(label => {
+    const radio = label.querySelector('input[type="radio"]');
+    if (radio && radio.checked) {
+      label.style.background = 'var(--accent)';
+      label.style.color = 'white';
+      label.style.borderColor = 'var(--accent)';
+    } else {
+      label.style.background = 'var(--bg-secondary)';
+      label.style.color = 'var(--text-primary)';
+      label.style.borderColor = 'var(--border-color)';
+    }
+  });
+}
+
+// Setup hydration settings event handlers
+function setupHydrationSettings() {
+  // Close button
+  const closeBtn = document.getElementById('hydration-settings-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => closeHydrationSettings());
+  }
+  
+  // Close on backdrop click
+  const modal = document.getElementById('hydration-settings-modal');
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeHydrationSettings();
+      }
+    });
+  }
+  
+  // Save button
+  const saveBtn = document.getElementById('hydration-save');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => saveHydrationSettings());
+  }
+  
+  // Test button
+  const testBtn = document.getElementById('hydration-test');
+  if (testBtn) {
+    testBtn.addEventListener('click', async () => {
+      if (window.electronAPI && window.electronAPI.updateHydrationProgress) {
+        try {
+          await window.electronAPI.updateHydrationProgress();
+          showCustomAlert('Hydration updated! Check your overlay.', 'success');
+        } catch (error) {
+          console.error('Error testing hydration:', error);
+          showCustomAlert('Error testing hydration', 'error');
+        }
+      }
+    });
+  }
+  
+  // Manual reset button
+  const resetBtn = document.getElementById('hydration-manual-reset');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async () => {
+      if (confirm('Are you sure you want to reset hydration progress to 0?')) {
+        if (window.electronAPI && window.electronAPI.resetHydration) {
+          try {
+            await window.electronAPI.resetHydration();
+            showCustomAlert('Hydration progress reset to 0', 'success');
+          } catch (error) {
+            console.error('Error resetting hydration:', error);
+            showCustomAlert('Error resetting hydration', 'error');
+          }
+        }
+      }
+    });
+  }
+  
+  // Gauge style radio buttons
+  const gaugeStyleRadios = document.querySelectorAll('input[name="gauge-style"]');
+  gaugeStyleRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      updateGaugeStyleButtons();
+    });
+  });
+  
+  // Size slider update
+  const sizeSlider = document.getElementById('hydration-size');
+  const sizeValue = document.getElementById('hydration-size-value');
+  if (sizeSlider && sizeValue) {
+    sizeSlider.addEventListener('input', () => {
+      sizeValue.textContent = sizeSlider.value;
+    });
+  }
+  
+  console.log('✅ Hydration settings handlers setup complete');
+}
+
+// Predefined overlay cards function removed - only user-created overlays are supported
+
+// Get overlay URL
+function getOverlayUrl(overlayName) {
+  return `http://localhost:8080/overlay?name=${overlayName}`;
+}
+
+// Helper functions for overlay management
+function updateAllOverlaySelects() {
+  // Get all overlay options from the main overlay select
+  const mainOverlaySelect = document.getElementById('overlay-select');
+  if (!mainOverlaySelect) return;
+  
+  const options = Array.from(mainOverlaySelect.options).map(option => ({
+    value: option.value,
+    text: option.textContent
+  }));
+  
+  // Update multi-media form overlay select
+  const multiMediaOverlaySelect = document.getElementById('multi-media-overlay-select');
+  if (multiMediaOverlaySelect) {
+    const currentValue = multiMediaOverlaySelect.value;
+    console.log('🔄 Updating multi-media overlay select. Current value:', currentValue);
+    console.log('🔄 Available options:', options);
+    multiMediaOverlaySelect.innerHTML = '';
+    
+    options.forEach(option => {
+      const optionElement = document.createElement('option');
+      optionElement.value = option.value;
+      optionElement.textContent = option.text;
+      if (option.value === currentValue) {
+        optionElement.selected = true;
+      }
+      multiMediaOverlaySelect.appendChild(optionElement);
+    });
+    console.log('✅ Multi-media overlay select updated with', options.length, 'options');
+  } else {
+    console.log('⚠️ Multi-media overlay select not found');
+  }
+  
+  // Update alert form overlay select
+  const alertOverlaySelect = document.getElementById('alert-overlay-select');
+  if (alertOverlaySelect) {
+    const currentValue = alertOverlaySelect.value;
+    console.log('🔄 Updating alert overlay select. Current value:', currentValue);
+    console.log('🔄 Available options for alert:', options);
+    alertOverlaySelect.innerHTML = '';
+    
+    options.forEach(option => {
+      const optionElement = document.createElement('option');
+      optionElement.value = option.value;
+      optionElement.textContent = option.text;
+      if (option.value === currentValue) {
+        optionElement.selected = true;
+      }
+      alertOverlaySelect.appendChild(optionElement);
+    });
+    console.log('✅ Alert overlay select updated with', options.length, 'options');
+  } else {
+    console.log('⚠️ Alert overlay select not found');
+  }
+}
+
+function updateOverlayUrl() {
+  const overlaySelect = document.getElementById('overlay-select');
+  const overlayUrlDisplay = document.getElementById('overlay-url-display');
+  
+  if (overlaySelect && overlayUrlDisplay) {
+    const selectedOverlay = overlaySelect.value;
+    const baseUrl = 'http://localhost:8080/overlay';
+    const url = `${baseUrl}?name=${selectedOverlay}`;
+    overlayUrlDisplay.textContent = url;
+  }
+}
+
+function getTemplateDisplayName(template) {
+  const templateNames = {
+    'center-media': 'Center Media',
+    'fullscreen-media': 'Full Screen',
+    'alert': 'Alert Overlay',
+    'confetti': 'Confetti Overlay',
+    // Legacy templates (kept for backward compatibility)
+    'text-only': 'Text Only',
+    'custom': 'Custom'
+  };
+  return templateNames[template] || 'Center Media';
+}
+
+// Overlay persistence functions
+function getSavedOverlays() {
+  try {
+    const saved = localStorage.getItem('customOverlays');
+    return saved ? JSON.parse(saved) : [];
+  } catch (error) {
+    console.error('Error loading saved overlays:', error);
+    return [];
+  }
+}
+
+function saveOverlays(overlays) {
+  try {
+    localStorage.setItem('customOverlays', JSON.stringify(overlays));
+    console.log('✅ Saved overlays to localStorage:', overlays.length);
+  } catch (error) {
+    console.error('Error saving overlays:', error);
+  }
+}
+
+function loadSavedOverlaysIntoUI() {
+  const overlaySelect = document.getElementById('overlay-select');
+  if (!overlaySelect) return;
+  
+  const savedOverlays = getSavedOverlays();
+  console.log(`📂 Loading ${savedOverlays.length} saved overlays...`);
+  
+  // Remove all options except 'main'
+  Array.from(overlaySelect.options).forEach(option => {
+    if (option.value !== 'main') {
+      option.remove();
+    }
+  });
+  
+  // Predefined overlays removed - only user-created overlays will be shown
+  
+  // Add saved overlays
+  savedOverlays.forEach(overlay => {
+    const option = document.createElement('option');
+    option.value = overlay.id;
+    option.textContent = overlay.displayName;
+    option.dataset.template = overlay.template;
+    overlaySelect.appendChild(option);
+    console.log(`✅ Loaded custom overlay: ${overlay.displayName}`);
+  });
+}
+
+function updatePreviewIframe(overlayName = null) {
+  const overlaySelect = document.getElementById('overlay-select');
+  const overlayIframe = document.getElementById('overlay-iframe');
+  
+  if (!overlayIframe) return;
+  
+  const selectedOverlay = overlayName || (overlaySelect ? overlaySelect.value : 'default');
+  
+  // Determine the correct URL for the iframe (preview=1 so overlay mutes itself — no double audio with OBS)
+  let iframeUrl;
+  iframeUrl = `http://localhost:8080/overlay?name=${selectedOverlay}&preview=1`;
+  
+  console.log(`🔄 Updating preview iframe to: ${iframeUrl}`);
+  
+  // Only update if the src is different to avoid unnecessary reloads
+  if (overlayIframe.src !== iframeUrl && !overlayIframe.src.endsWith(iframeUrl)) {
+    overlayIframe.src = iframeUrl;
+    console.log(`✅ Preview iframe updated to ${selectedOverlay} overlay`);
+  }
+}
+
+async function updateOverlayConnectionStatus() {
+  const connectionsList = document.getElementById('overlay-connections-list');
+  if (!connectionsList) return;
+  
+  try {
+    if (window.electronAPI && window.electronAPI.getConnectedOverlays) {
+      const connections = await window.electronAPI.getConnectedOverlays();
+      
+      // Filter out dashboard preview from connection status
+      const actualConnections = connections.filter(conn => conn.name !== 'dashboard-preview');
+      
+      if (actualConnections.length === 0) {
+        connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">⚠️ No overlays connected. Open overlay in OBS to connect.</div>';
+      } else {
+        // Group connections by overlay name and count clients
+        const connectionMap = new Map();
+        actualConnections.forEach(conn => {
+          const count = connectionMap.get(conn.name) || 0;
+          connectionMap.set(conn.name, count + conn.clientCount);
+        });
+        
+        const html = Array.from(connectionMap.entries()).map(([name, count]) => 
+          `<div style="color: var(--accent-color); margin: 4px 0;">
+            ✅ <strong>${name}</strong> - ${count} client${count !== 1 ? 's' : ''} connected
+          </div>`
+        ).join('');
+        
+        const total = Array.from(connectionMap.values()).reduce((sum, count) => sum + count, 0);
+        const header = `<div style="color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;">
+          🔗 ${total} total connection${total !== 1 ? 's' : ''} across ${connectionMap.size} overlay${connectionMap.size !== 1 ? 's' : ''}
+        </div>`;
+        
+        connectionsList.innerHTML = header + html;
+      }
+    } else {
+      connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">Connection status unavailable. Restart app to enable.</div>';
+    }
+  } catch (error) {
+    // Handler not registered yet - needs app restart
+    if (error.message?.includes('No handler registered')) {
+      connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">⚠️ Restart app to see connection status</div>';
+    } else {
+      console.error('Error updating overlay connection status:', error);
+      connectionsList.innerHTML = '<div style="color: var(--text-tertiary);">Error loading connections</div>';
+    }
   }
 }
 
@@ -4550,7 +7896,10 @@ function setupAlertTypeFilter() {
         'gift-sub': 'Gift Sub',
         'gift-sub-received': 'Gift Received',
         'raid': 'Raid',
-        'bits': 'Bits'
+        'bits': 'Bits',
+        'ban': 'Ban',
+        'daily-checkin': 'Daily Checkin',
+        'first-chat-walkon': 'Walk On (First Chat)'
       };
       
       selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
@@ -4567,6 +7916,10 @@ function setupAlertTypeFilter() {
       'gift-sub-received': 'Gift Received',
       'raid': 'Raid',
       'bits': 'Bits',
+      'ban': 'Ban',
+      'channel-points': 'Channel Point Redemption',
+      'daily-checkin': 'Daily Checkin',
+      'first-chat-walkon': 'Walk On (First Chat)'
     };
     selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
   }
@@ -4581,12 +7934,19 @@ function setupAlertWidget() {
   const alertWidget = document.getElementById('alert-widget');
   const closeBtn = document.getElementById('close-alert-widget');
   const alertTypeSelect = document.getElementById('alert-type');
+  const selectedAlertTypeName = document.getElementById('selected-alert-type-name');
   const alertTextInput = document.getElementById('alert-text');
   const alertDurationInput = document.getElementById('alert-duration');
   const alertBitsThresholdInput = document.getElementById('alert-bits-threshold');
   const bitsThresholdGroup = document.getElementById('bits-threshold-group');
   const alertSoundInput = document.getElementById('alert-sound');
   const alertImageInput = document.getElementById('alert-image');
+  const alertVideoInput = document.getElementById('alert-video');
+  const alertVideoSettings = document.getElementById('alert-video-settings');
+  const alertVideoLoop = document.getElementById('alert-video-loop');
+  const alertVideoVolume = document.getElementById('alert-video-volume');
+  const alertVideoVolumeValue = document.getElementById('alert-video-volume-value');
+  const alertVideoDisplayMode = document.getElementById('alert-video-display-mode');
   const saveAlertBtn = document.getElementById('save-alert');
   const clearAlertsBtn = document.getElementById('clear-alerts');
   const alertPreviewArea = document.getElementById('alert-preview-area');
@@ -4614,17 +7974,17 @@ function setupAlertWidget() {
   const animationDelayValue = document.getElementById('animation-delay-value');
   
   
-  // Queue control elements
-  const clearQueueBtn = document.getElementById('clear-queue');
-  const skipCurrentBtn = document.getElementById('skip-current');
-  const hardStopBtn = document.getElementById('hard-stop');
-  const queueStatusBtn = document.getElementById('queue-status');
-  const queueInfo = document.getElementById('queue-info');
+  // Compact queue control widget elements (on dashboard)
+  const queueWidgetClear = document.getElementById('queue-widget-clear');
+  const queueWidgetSkip = document.getElementById('queue-widget-skip');
+  const queueWidgetStop = document.getElementById('queue-widget-stop');
+  const queueWidgetStatus = document.getElementById('queue-widget-status');
   
   
   
-  // Alert storage
-  let savedAlerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  // Alert storage - make it globally accessible for window functions
+  window.savedAlerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  let savedAlerts = window.savedAlerts; // Keep local reference for backward compatibility
   
   
   // Helper function to convert file to base64
@@ -4718,6 +8078,12 @@ function setupAlertWidget() {
         bitsThresholdGroup.style.display = selectedType === 'bits' ? 'block' : 'none';
       }
       
+      // Show/hide daily check-in settings based on alert type
+      const dailyCheckinSettings = document.getElementById('daily-checkin-settings');
+      if (dailyCheckinSettings) {
+        dailyCheckinSettings.style.display = selectedType === 'daily-checkin' ? 'block' : 'none';
+      }
+      
       // Update alert list to show only matching alerts
       updateAlertList();
       
@@ -4731,8 +8097,28 @@ function setupAlertWidget() {
           'gift-sub-received': 'Gift Sub Received',
           'raid': 'Raid',
           'bits': 'Bits',
+          'ban': 'Ban',
+          'channel-points': 'Channel Point Redemption',
+          'daily-checkin': 'Daily Checkin'
         };
         selectedAlertTypeName.textContent = typeNames[selectedType] || 'Unknown';
+      }
+      
+      // Update placeholder text based on alert type
+      if (alertTextInput) {
+        const placeholderTexts = {
+          'follower': 'Welcome {username}!',
+          'subscriber': '{username} subscribed!',
+          'resubscriber': '{username} resubscribed for {months} months!',
+          'gift-sub': '{username} gifted {tier} to {recipient}!',
+          'gift-sub-received': '{username} received a gift sub!',
+          'raid': '{username} raided with {viewers} viewers!',
+          'bits': '{username} cheered {bits} bits!',
+          'ban': '{username} has been banned by {moderator}!',
+          'daily-checkin': '{username} checked in! Total: {total_checkins}',
+          'first-chat-walkon': 'Welcome {username} to the stream!'
+        };
+        alertTextInput.placeholder = placeholderTexts[selectedType] || 'Welcome {username}!';
       }
       
       // Update preview when type changes
@@ -4772,6 +8158,262 @@ function setupAlertWidget() {
   // Setup alert type change handler to filter saved alerts
   setupAlertTypeFilter();
   
+  // Walk-on (First Chat) follower selection UI
+  const alertWalkonUsersGroup = document.getElementById('alert-walkon-users-group');
+  const alertWalkonSearch = document.getElementById('alert-walkon-search');
+  const alertWalkonSelected = document.getElementById('alert-walkon-selected');
+  const alertWalkonFollowerList = document.getElementById('alert-walkon-follower-list');
+  
+  // Track selected followers
+  let selectedWalkonUsers = [];
+  let allFollowers = [];
+  
+  // Function to load followers
+  async function loadWalkonFollowers() {
+    try {
+      if (window.electronAPI && window.electronAPI.getFollowersWithUsers) {
+        allFollowers = await window.electronAPI.getFollowersWithUsers();
+        renderWalkonFollowerList();
+        console.log(`✅ Loaded ${allFollowers.length} followers for walk-on selection`);
+      } else {
+        console.error('getFollowersWithUsers API not available');
+      }
+    } catch (error) {
+      console.error('Error loading followers:', error);
+    }
+  }
+  
+  // Function to render follower list
+  function renderWalkonFollowerList(searchTerm = '') {
+    if (!alertWalkonFollowerList) return;
+    
+    const search = searchTerm.toLowerCase().trim();
+    const filtered = allFollowers.filter(f => {
+      if (!search) return true; // Show all if no search term
+      const username = (f.username || '').toLowerCase();
+      const displayName = (f.display_name || '').toLowerCase();
+      return username.includes(search) || displayName.includes(search);
+    });
+    
+    alertWalkonFollowerList.innerHTML = '';
+    
+    if (filtered.length === 0) {
+      alertWalkonFollowerList.innerHTML = '<div style="padding: 12px; text-align: center; color: var(--text-tertiary);">No followers found matching search</div>';
+      return;
+    }
+    
+    // Show count
+    const countInfo = document.createElement('div');
+    countInfo.style.cssText = 'padding: 8px 12px; font-size: 11px; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); background: var(--bg-secondary);';
+    countInfo.textContent = search ? `Showing ${filtered.length} of ${allFollowers.length} followers` : `Showing all ${filtered.length} followers`;
+    alertWalkonFollowerList.appendChild(countInfo);
+    
+    filtered.forEach(follower => {
+      const item = document.createElement('div');
+      const isSelected = selectedWalkonUsers.some(u => u.user_id === follower.user_id);
+      item.style.cssText = `
+        padding: 10px;
+        cursor: pointer;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: ${isSelected ? 'var(--accent)' : 'transparent'};
+        color: ${isSelected ? 'white' : 'var(--text-primary)'};
+        transition: background 0.2s ease;
+      `;
+      item.innerHTML = `
+        <img src="${follower.profile_image_url || ''}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'">
+        <div style="flex: 1;">
+          <div style="font-weight: 600;">${escapeHtml(follower.display_name || follower.username)}</div>
+          <div style="font-size: 11px; opacity: 0.7;">${escapeHtml(follower.username)}</div>
+        </div>
+        ${isSelected ? '<span style="color: white; font-size: 18px;">✓</span>' : ''}
+      `;
+      item.addEventListener('click', () => toggleWalkonUser(follower));
+      alertWalkonFollowerList.appendChild(item);
+    });
+  }
+  
+  // Function to escape HTML
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  
+  // Function to toggle user selection
+  function toggleWalkonUser(follower) {
+    const index = selectedWalkonUsers.findIndex(u => u.user_id === follower.user_id);
+    if (index >= 0) {
+      selectedWalkonUsers.splice(index, 1);
+    } else {
+      selectedWalkonUsers.push(follower);
+    }
+    renderWalkonSelected();
+    renderWalkonFollowerList(alertWalkonSearch ? alertWalkonSearch.value : '');
+  }
+  
+  // Function to render selected users
+  function renderWalkonSelected() {
+    if (!alertWalkonSelected) return;
+    
+    if (selectedWalkonUsers.length === 0) {
+      alertWalkonSelected.innerHTML = '<div style="color: var(--text-tertiary); font-size: 12px; align-self: center; width: 100%; text-align: center;">No users selected</div>';
+      return;
+    }
+    
+    alertWalkonSelected.innerHTML = selectedWalkonUsers.map(user => {
+      const isManual = user.user_id && user.user_id.startsWith('manual_');
+      const label = isManual ? '📝 ' : ''; // Mark manual entries
+      return `<div style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--accent); color: white; border-radius: 4px; font-size: 12px;">
+        <span>${label}${escapeHtml(user.display_name || user.username)}</span>
+        <button onclick="removeWalkonUser('${user.user_id}')" style="background: rgba(255,255,255,0.2); border: none; color: white; border-radius: 50%; width: 18px; height: 18px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; padding: 0;">×</button>
+      </div>`;
+    }).join('');
+  }
+  
+  // Function to remove user from selection (exposed globally)
+  window.removeWalkonUser = function(userId) {
+    selectedWalkonUsers = selectedWalkonUsers.filter(u => u.user_id !== userId);
+    renderWalkonSelected();
+    renderWalkonFollowerList(alertWalkonSearch ? alertWalkonSearch.value : '');
+  };
+  
+  // Show/hide walkon users group based on alert type
+  if (alertTypeSelect && alertWalkonUsersGroup) {
+    function updateWalkonUserFieldVisibility() {
+      const selectedType = alertTypeSelect.value;
+      if (selectedType === 'first-chat-walkon') {
+        alertWalkonUsersGroup.style.display = 'block';
+        if (allFollowers.length === 0) {
+          loadWalkonFollowers();
+        }
+      } else {
+        alertWalkonUsersGroup.style.display = 'none';
+        selectedWalkonUsers = [];
+        if (alertWalkonSearch) alertWalkonSearch.value = '';
+        if (alertWalkonFollowerList) {
+          alertWalkonFollowerList.innerHTML = '';
+          alertWalkonFollowerList.style.display = 'none';
+        }
+        const manualInput = document.getElementById('alert-walkon-manual-username');
+        if (manualInput) manualInput.value = '';
+        // Keep allFollowers loaded for faster switching back
+      }
+    }
+    
+    alertTypeSelect.addEventListener('change', updateWalkonUserFieldVisibility);
+    updateWalkonUserFieldVisibility();
+  }
+  
+  // Function to add manual username
+  function addManualUsername() {
+    const manualInput = document.getElementById('alert-walkon-manual-username');
+    if (!manualInput) return;
+    
+    const username = manualInput.value.trim();
+    if (!username) {
+      alert('Please enter a username');
+      return;
+    }
+    
+    const userLower = username.toLowerCase();
+    
+    // Check if already added
+    const alreadyAdded = selectedWalkonUsers.some(u => 
+      (u.username && u.username.toLowerCase() === userLower) ||
+      (u.user_id && u.user_id === 'manual_' + userLower)
+    );
+    
+    if (alreadyAdded) {
+      alert('User already in list');
+      manualInput.value = '';
+      return;
+    }
+    
+    // Create a manual user entry (without user_id from API)
+    const manualUser = {
+      user_id: 'manual_' + userLower, // Special ID for manual entries
+      username: userLower,
+      display_name: username
+    };
+    
+    selectedWalkonUsers.push(manualUser);
+    renderWalkonSelected();
+    renderWalkonFollowerList(alertWalkonSearch ? alertWalkonSearch.value : '');
+    manualInput.value = '';
+    
+    console.log('✅ Added manual username:', username);
+  }
+  
+  // Manual username entry handlers
+  const manualUsernameInput = document.getElementById('alert-walkon-manual-username');
+  const addManualButton = document.getElementById('alert-walkon-add-manual');
+  
+  if (addManualButton) {
+    addManualButton.addEventListener('click', addManualUsername);
+  }
+  
+  if (manualUsernameInput) {
+    manualUsernameInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addManualUsername();
+      }
+    });
+  }
+  
+  // Reset first-time chatters for testing
+  const resetTestButton = document.getElementById('alert-walkon-reset-test');
+  if (resetTestButton) {
+    resetTestButton.addEventListener('click', async () => {
+      if (confirm('Reset first-time chatters list? This will allow testing the same users again.\n\nNote: This only affects the walk-on detection, not saved alert configurations.')) {
+        try {
+          if (window.electronAPI && window.electronAPI.resetFirstTimeChatters) {
+            const result = await window.electronAPI.resetFirstTimeChatters();
+            if (result.success) {
+              alert('✅ First-time chatters list reset!\n\nYou can now test the walk-on alert again with the same users.');
+              console.log('✅ First-time chatters reset:', result.message);
+            } else {
+              alert('❌ Error resetting: ' + (result.error || 'Unknown error'));
+            }
+          } else {
+            alert('❌ Reset function not available');
+          }
+        } catch (error) {
+          console.error('Error resetting first-time chatters:', error);
+          alert('❌ Error: ' + error.message);
+        }
+      }
+    });
+  }
+  
+  // Search handler
+  if (alertWalkonSearch) {
+    alertWalkonSearch.addEventListener('input', (e) => {
+      const searchTerm = e.target.value;
+      renderWalkonFollowerList(searchTerm);
+      if (allFollowers.length > 0) {
+        alertWalkonFollowerList.style.display = 'block';
+      }
+    });
+    
+    alertWalkonSearch.addEventListener('focus', () => {
+      if (allFollowers.length > 0) {
+        alertWalkonFollowerList.style.display = 'block';
+        renderWalkonFollowerList(alertWalkonSearch.value);
+      }
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (alertWalkonFollowerList && alertWalkonUsersGroup && !alertWalkonUsersGroup.contains(e.target)) {
+        alertWalkonFollowerList.style.display = 'none';
+      }
+    });
+  }
+  
   // Close widget when clicking on backdrop
   const alertBackdrop = document.querySelector('.alert-widget-backdrop');
   if (alertBackdrop) {
@@ -4796,6 +8438,7 @@ function setupAlertWidget() {
     // Check for new files first, then existing media when editing
     let soundFile = alertSoundInput.files[0];
     let imageFile = alertImageInput.files[0];
+    let videoFile = alertVideoInput.files[0];
     
     // If no new files and we're editing, use existing media
     if (!soundFile && window.editingAlertMedia?.soundFile) {
@@ -4803,6 +8446,9 @@ function setupAlertWidget() {
     }
     if (!imageFile && window.editingAlertMedia?.imageFile) {
       imageFile = window.editingAlertMedia.imageFile;
+    }
+    if (!videoFile && window.editingAlertMedia?.videoFile) {
+      videoFile = window.editingAlertMedia.videoFile;
     }
     
     if (!text.trim()) {
@@ -4820,7 +8466,9 @@ function setupAlertWidget() {
       bits: '100',
       months: '3',
       message: 'Thanks for the follow!',
-      reward: 'Test Reward'
+      reward: 'Test Reward',
+      moderator: 'TestModerator',
+      reason: 'Spam'
     };
     
     // Process text with sample data for preview
@@ -4857,44 +8505,81 @@ function setupAlertWidget() {
       `;
     }
     
-    let previewHTML = '<div class="alert-preview-content">';
+    // Build position style for text
+    let positionStyle = '';
+    switch(textPosition) {
+      case 'topLeft':
+        positionStyle = 'top: 10%; left: 10%;';
+        break;
+      case 'topCenter':
+        positionStyle = 'top: 10%; left: 50%; transform: translateX(-50%);';
+        break;
+      case 'topRight':
+        positionStyle = 'top: 10%; right: 10%;';
+        break;
+      case 'midLeft':
+        positionStyle = 'top: 50%; left: 10%; transform: translateY(-50%);';
+        break;
+      case 'center':
+        positionStyle = 'top: 50%; left: 50%; transform: translate(-50%, -50%);';
+        break;
+      case 'midRight':
+        positionStyle = 'top: 50%; right: 10%; transform: translateY(-50%);';
+        break;
+      case 'bottomLeft':
+        positionStyle = 'bottom: 10%; left: 10%;';
+        break;
+      case 'bottomCenter':
+        positionStyle = 'bottom: 10%; left: 50%; transform: translateX(-50%);';
+        break;
+      case 'bottomRight':
+        positionStyle = 'bottom: 10%; right: 10%;';
+        break;
+    }
+    
+    let previewHTML = '<div class="alert-preview-content" style="position: relative; width: 100%; height: 300px; background: rgba(0,0,0,0.1); border: 1px solid var(--border-color);">';
     
     if (imageFile) {
       if (imageFile instanceof File) {
         // New file from input
         const imageUrl = URL.createObjectURL(imageFile);
-        previewHTML += `<img src="${imageUrl}" alt="Alert Image" />`;
+        previewHTML += `<img src="${imageUrl}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
       } else if (imageFile.data) {
         // Legacy base64 data
-        previewHTML += `<img src="${imageFile.data}" alt="Alert Image" />`;
+        previewHTML += `<img src="${imageFile.data}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
       } else if (imageFile.path && window.electronAPI && window.electronAPI.getMediaFile) {
         // Existing saved file with path - load from disk
         try {
           const result = await window.electronAPI.getMediaFile(imageFile.path);
           if (result.success) {
-            previewHTML += `<img src="${result.data}" alt="Alert Image" />`;
+            previewHTML += `<img src="${result.data}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
           } else {
             // Fallback to placeholder if loading fails
-            previewHTML += `<div class="image-placeholder">📷 ${imageFile.name || 'Alert Image'}</div>`;
+            previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name || 'Alert Image'}</div>`;
           }
         } catch (error) {
           console.error('Error loading preview image:', error);
-          previewHTML += `<div class="image-placeholder">📷 ${imageFile.name || 'Alert Image'}</div>`;
+          previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name || 'Alert Image'}</div>`;
         }
       } else if (imageFile.name) {
         // Existing file (show placeholder)
-        previewHTML += `<div class="image-placeholder">📷 ${imageFile.name}</div>`;
+        previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name}</div>`;
       }
     }
     
-    previewHTML += `<h3>${getAlertTypeDisplayName(type)}</h3>`;
-    previewHTML += `<p style="${textStyle}">${processedText}</p>`;
-    previewHTML += `<p><small>Duration: ${duration}s</small></p>`;
+    // Add positioned text
+    previewHTML += `<div style="position: absolute; ${positionStyle} white-space: nowrap;">`;
+    previewHTML += `<p style="${textStyle} margin: 0;">${processedText}</p>`;
+    previewHTML += `</div>`;
     
+    // Add info at bottom
+    previewHTML += `<div style="position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--text-tertiary); text-align: center;">`;
+    previewHTML += `<div><small>Position: ${textPosition} | Duration: ${duration}s</small></div>`;
     if (soundFile) {
       const soundName = soundFile.name || 'Existing Sound';
-      previewHTML += `<p><small>🔊 Sound: ${soundName}</small></p>`;
+      previewHTML += `<div><small>🔊 Sound: ${soundName}</small></div>`;
     }
+    previewHTML += `</div>`;
     
     previewHTML += '</div>';
     alertPreviewArea.innerHTML = previewHTML;
@@ -4908,13 +8593,15 @@ function setupAlertWidget() {
       'resubscriber': 'Resubscriber',
       'raid': 'Raid',
       'gift-sub': 'Gifted Subscription',
-      'bits': 'Bits Donation'
+      'bits': 'Bits Donation',
+      'daily-checkin': 'Daily Checkin',
+      'first-chat-walkon': 'Walk On (First Chat)'
     };
     return typeNames[type] || type;
   }
   
   // Event listeners for form changes
-  [alertTypeSelect, alertTextInput, alertDurationInput, alertSoundInput, alertImageInput].forEach(element => {
+  [alertTypeSelect, alertTextInput, alertDurationInput, alertSoundInput, alertImageInput, alertVideoInput].forEach(element => {
     if (element) {
       element.addEventListener('change', () => updatePreview().catch(console.error));
       element.addEventListener('input', () => updatePreview().catch(console.error));
@@ -4943,12 +8630,132 @@ function setupAlertWidget() {
         const duration = await getMediaDuration(file);
         if (duration && duration > parseInt(alertDurationInput.value)) {
           alertDurationInput.value = duration;
-          console.log(`🎵 Auto-updated duration to ${duration}s for image/video file`);
+          console.log(`🎵 Auto-updated duration to ${duration}s for image file`);
           updatePreview().catch(console.error);
         }
       }
     });
   }
+  
+  if (alertVideoInput) {
+    alertVideoInput.addEventListener('change', async () => {
+      const file = alertVideoInput.files[0];
+      if (file) {
+        // Show video settings panel
+        if (alertVideoSettings) {
+          alertVideoSettings.style.display = 'block';
+        }
+        
+        const duration = await getMediaDuration(file);
+        if (duration && duration > parseInt(alertDurationInput.value)) {
+          alertDurationInput.value = duration;
+          console.log(`🎬 Auto-updated duration to ${duration}s for video file`);
+          updatePreview().catch(console.error);
+        }
+      } else {
+        // Hide video settings panel if no file
+        if (alertVideoSettings) {
+          alertVideoSettings.style.display = 'none';
+        }
+      }
+    });
+  }
+  
+  // Video volume slider
+  if (alertVideoVolume && alertVideoVolumeValue) {
+    alertVideoVolume.addEventListener('input', () => {
+      alertVideoVolumeValue.textContent = alertVideoVolume.value + '%';
+    });
+  }
+  
+  // Media removal buttons
+  const removeSoundBtn = document.getElementById('remove-alert-sound');
+  const removeImageBtn = document.getElementById('remove-alert-image');
+  const removeVideoBtn = document.getElementById('remove-alert-video');
+  
+  // Helper function to show/hide remove buttons based on file selection
+  function updateRemoveButtons() {
+    // Sound file
+    if (removeSoundBtn) {
+      const hasSound = alertSoundInput.files[0] || window.editingAlertMedia?.soundFile;
+      removeSoundBtn.style.display = hasSound ? 'inline-block' : 'none';
+    }
+    
+    // Image file
+    if (removeImageBtn) {
+      const hasImage = alertImageInput.files[0] || window.editingAlertMedia?.imageFile;
+      removeImageBtn.style.display = hasImage ? 'inline-block' : 'none';
+    }
+    
+    // Video file
+    if (removeVideoBtn) {
+      const hasVideo = alertVideoInput.files[0] || window.editingAlertMedia?.videoFile;
+      removeVideoBtn.style.display = hasVideo ? 'inline-block' : 'none';
+    }
+  }
+  
+  // Update remove buttons when files change
+  if (alertSoundInput) {
+    alertSoundInput.addEventListener('change', () => {
+      updateRemoveButtons();
+    });
+  }
+  
+  if (alertImageInput) {
+    alertImageInput.addEventListener('change', () => {
+      updateRemoveButtons();
+    });
+  }
+  
+  if (alertVideoInput) {
+    alertVideoInput.addEventListener('change', () => {
+      updateRemoveButtons();
+    });
+  }
+  
+  // Remove sound file
+  if (removeSoundBtn) {
+    removeSoundBtn.addEventListener('click', () => {
+      alertSoundInput.value = '';
+      if (window.editingAlertMedia) {
+        window.editingAlertMedia.soundFile = null;
+      }
+      updateRemoveButtons();
+      updatePreview().catch(console.error);
+      console.log('Sound file removed');
+    });
+  }
+  
+  // Remove image file
+  if (removeImageBtn) {
+    removeImageBtn.addEventListener('click', () => {
+      alertImageInput.value = '';
+      if (window.editingAlertMedia) {
+        window.editingAlertMedia.imageFile = null;
+      }
+      updateRemoveButtons();
+      updatePreview().catch(console.error);
+      console.log('Image file removed');
+    });
+  }
+  
+  // Remove video file
+  if (removeVideoBtn) {
+    removeVideoBtn.addEventListener('click', () => {
+      alertVideoInput.value = '';
+      if (window.editingAlertMedia) {
+        window.editingAlertMedia.videoFile = null;
+      }
+      // Hide video settings panel
+      if (alertVideoSettings) {
+        alertVideoSettings.style.display = 'none';
+      }
+      updateRemoveButtons();
+      updatePreview().catch(console.error);
+      console.log('Video file removed');
+    });
+  }
+  
   
   // Save alert
   if (saveAlertBtn) {
@@ -4958,19 +8765,18 @@ function setupAlertWidget() {
       let duration = parseInt(alertDurationInput.value) || 5;
       const soundFile = alertSoundInput.files[0];
       const imageFile = alertImageInput.files[0];
+      const videoFile = alertVideoInput.files[0];
       
-      if (!text) {
-        alert('Please enter alert text');
-        return;
-      }
+      // Alert text is now optional - alerts can have just images/videos/sounds without text
       
       // Auto-detect duration from media files
       const soundDuration = await getMediaDuration(soundFile);
       const imageDuration = await getMediaDuration(imageFile);
+      const videoDuration = await getMediaDuration(videoFile);
       
       // Use the longer duration if media is present
-      if (soundDuration || imageDuration) {
-        const mediaDuration = Math.max(soundDuration || 0, imageDuration || 0);
+      if (soundDuration || imageDuration || videoDuration) {
+        const mediaDuration = Math.max(soundDuration || 0, imageDuration || 0, videoDuration || 0);
         if (mediaDuration > duration) {
           duration = mediaDuration;
           alertDurationInput.value = duration;
@@ -4984,6 +8790,7 @@ function setupAlertWidget() {
       // Save media files to disk instead of base64
       let soundFilePath = null;
       let imageFilePath = null;
+      let videoFilePath = null;
       
       if (soundFile && window.electronAPI && window.electronAPI.saveMediaFile) {
         try {
@@ -5021,6 +8828,24 @@ function setupAlertWidget() {
         }
       }
       
+      if (videoFile && window.electronAPI && window.electronAPI.saveMediaFile) {
+        try {
+          const base64Data = await fileToBase64(videoFile);
+          const result = await window.electronAPI.saveMediaFile({
+            base64Data: base64Data,
+            buttonId: alertId,
+            mediaType: 'video',
+            originalName: videoFile.name
+          });
+          if (result.success) {
+            videoFilePath = result.filePath;
+            console.log(`💾 Alert video saved to: ${videoFilePath}`);
+          }
+        } catch (error) {
+          console.error('Error saving alert video:', error);
+        }
+      }
+      
       // Get styling values
       const textStyling = {
         position: alertTextPositionSelect ? alertTextPositionSelect.value : 'topCenter',
@@ -5043,11 +8868,17 @@ function setupAlertWidget() {
       // Get volume value
       const soundVolume = alertSoundVolumeRange ? parseInt(alertSoundVolumeRange.value) : 100;
       
+      // Get overlay selection
+      const overlaySelect = document.getElementById('alert-overlay-select')?.value || 'default';
+      
+      console.log('🔍 Creating alert with overlay:', overlaySelect);
+      
       const alertData = {
         id: alertId,
         type: type,
         text: text,
         duration: duration,
+        overlay: overlaySelect,
         bitsThreshold: type === 'bits' ? (parseInt(alertBitsThresholdInput.value) || 10) : null,
         textStyling: textStyling,
         animation: animation,
@@ -5064,6 +8895,30 @@ function setupAlertWidget() {
           type: imageFile.type,
           path: imageFilePath // Store file path instead of base64
         } : null,
+        videoFile: videoFilePath ? {
+          name: videoFile.name,
+          size: videoFile.size,
+          type: videoFile.type,
+          path: videoFilePath, // Store file path instead of base64
+          loop: alertVideoLoop ? alertVideoLoop.checked : false,
+          volume: alertVideoVolume ? parseInt(alertVideoVolume.value) : 100,
+          displayMode: alertVideoDisplayMode ? alertVideoDisplayMode.value : 'center'
+        } : null,
+        // Include daily check-in config if this is a daily-checkin alert
+        dailyCheckinConfig: type === 'daily-checkin' ? {
+          enabled: document.getElementById('daily-checkin-enabled')?.checked ?? true,
+          rewardName: document.getElementById('daily-checkin-reward-name')?.value || 'Daily Check-In',
+          chatResponse: document.getElementById('daily-checkin-chat-response')?.value || 'Welcome back {username}!',
+          alreadyCheckedMessage: document.getElementById('daily-checkin-already-checked-message')?.value || 'You\'ve already checked in today!',
+          showStreak: document.getElementById('daily-checkin-show-streak')?.checked ?? false,
+          sendToChat: document.getElementById('daily-checkin-send-to-chat')?.checked ?? true,
+          testMode: document.getElementById('daily-checkin-test-mode')?.checked ?? false
+        } : null,
+        walkonUsers: type === 'first-chat-walkon' ? selectedWalkonUsers.map(u => ({
+          user_id: u.user_id,
+          username: u.username,
+          display_name: u.display_name
+        })) : [],
         variations: [],
         randomMode: false,
         createdAt: new Date().toISOString()
@@ -5092,8 +8947,30 @@ function setupAlertWidget() {
               console.log('Preserved existing image file:', window.editingAlertMedia.imageFile.name);
             }
             
+            if (!videoFilePath && window.editingAlertMedia?.videoFile) {
+              alertData.videoFile = {
+                ...window.editingAlertMedia.videoFile,
+                loop: alertVideoLoop ? alertVideoLoop.checked : window.editingAlertMedia.videoFile.loop,
+                volume: alertVideoVolume ? parseInt(alertVideoVolume.value) : window.editingAlertMedia.videoFile.volume,
+                displayMode: alertVideoDisplayMode ? alertVideoDisplayMode.value : window.editingAlertMedia.videoFile.displayMode
+              };
+              console.log('Preserved existing video file with updated settings:', window.editingAlertMedia.videoFile.name, 'volume:', alertData.videoFile.volume + '%');
+            }
+            
+            // Preserve existing text styling and animation if they weren't explicitly changed
+            if (!textStyling || Object.keys(textStyling).length === 0) {
+              alertData.textStyling = savedAlerts[alertIndex].textStyling || alertData.textStyling;
+              console.log('Preserved existing text styling');
+            }
+            
+            if (!animation || Object.keys(animation).length === 0) {
+              alertData.animation = savedAlerts[alertIndex].animation || alertData.animation;
+              console.log('Preserved existing animation');
+            }
+            
             savedAlerts[alertIndex] = alertData;
-            console.log('Updated existing alert:', window.editingAlertId);
+            console.log('✅ Updated existing alert:', window.editingAlertId);
+            console.log('✅ Alert overlay property:', alertData.overlay);
           } else {
             console.error('Alert to edit not found:', window.editingAlertId);
             savedAlerts.push(alertData);
@@ -5104,10 +8981,25 @@ function setupAlertWidget() {
         } else {
           // Create new alert
           savedAlerts.push(alertData);
-          console.log('Created new alert:', alertId);
+          console.log('✅ Created new alert:', alertId);
+          console.log('✅ Alert overlay property:', alertData.overlay);
         }
         
         localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+        console.log('💾 Saved to localStorage. Verifying overlay property persisted...');
+        
+        // Verify the alert was saved correctly with overlay
+        const savedAlertsCheck = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+        const savedAlert = savedAlertsCheck.find(a => a.id === alertId);
+        if (savedAlert) {
+          console.log('✅ Verified alert in localStorage has overlay:', savedAlert.overlay);
+        } else {
+          console.error('❌ Alert not found in localStorage after save');
+        }
+        
+        // Update alertSystem's in-memory cache
+        alertSystem.updateAlerts();
+        console.log('✅ Updated alertSystem cache with new alerts');
         
         updateAlertList();
         clearForm();
@@ -5124,9 +9016,12 @@ function setupAlertWidget() {
     clearAlertsBtn.addEventListener('click', () => {
       if (confirm('Are you sure you want to clear all saved alerts?')) {
         savedAlerts = [];
+        window.savedAlerts = savedAlerts; // Keep window reference in sync
         localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+        alertSystem.updateAlerts();
         updateAlertList();
-        console.log('All alerts cleared');
+        clearForm();
+        console.log('All alerts cleared - form cleared');
       }
     });
   }
@@ -5157,6 +9052,24 @@ function setupAlertWidget() {
     alertDurationInput.value = '5';
     alertSoundInput.value = '';
     alertImageInput.value = '';
+    alertVideoInput.value = '';
+    
+    // Reset video settings
+    if (alertVideoSettings) {
+      alertVideoSettings.style.display = 'none';
+    }
+    if (alertVideoLoop) {
+      alertVideoLoop.checked = false;
+    }
+    if (alertVideoVolume) {
+      alertVideoVolume.value = '100';
+      if (alertVideoVolumeValue) {
+        alertVideoVolumeValue.textContent = '100%';
+      }
+    }
+    if (alertVideoDisplayMode) {
+      alertVideoDisplayMode.value = 'center';
+    }
     
     // Reset volume slider
     if (alertSoundVolumeRange) {
@@ -5227,6 +9140,22 @@ function setupAlertWidget() {
       alertAnimationEasingSelect.value = 'ease';
     }
     
+    // Hide all remove buttons
+    updateRemoveButtons();
+    
+    // Reset walkon selections
+    if (alertWalkonUsersGroup) {
+      selectedWalkonUsers = [];
+      if (alertWalkonSelected) renderWalkonSelected();
+      if (alertWalkonSearch) alertWalkonSearch.value = '';
+      if (alertWalkonFollowerList) {
+        alertWalkonFollowerList.innerHTML = '';
+        alertWalkonFollowerList.style.display = 'none';
+      }
+      const manualInput = document.getElementById('alert-walkon-manual-username');
+      if (manualInput) manualInput.value = '';
+    }
+    
     updatePreview().catch(console.error);
   }
   
@@ -5240,6 +9169,9 @@ function setupAlertWidget() {
       'gift-sub-received': 'Gift Received',
       'raid': 'Raid',
       'bits': 'Bits',
+      'channel-points': 'Channel Point Redemption',
+      'daily-checkin': 'Daily Checkin',
+      'first-chat-walkon': 'Walk On (First Chat)'
     };
     return typeNames[alertType] || alertType;
   }
@@ -5277,20 +9209,43 @@ function setupAlertWidget() {
     const variationsHtml = `
       <div class="alert-variations-list">
         <div class="variations-header">
-          <span>Variations (${filteredAlerts.length}):</span>
-          <label class="random-toggle">
-            <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
-                   onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
-            Random
-          </label>
+          <span>Variations (${filteredAlerts.length} total, ${filteredAlerts.filter(a => a.enabled !== false).length} enabled):</span>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', true)" style="padding: 4px 8px; font-size: 12px;">Enable All</button>
+            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', false)" style="padding: 4px 8px; font-size: 12px;">Disable All</button>
+            <label class="random-toggle">
+              <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
+                     onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
+              Random Mode
+            </label>
+          </div>
+        </div>
+        <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
+          <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
+        </div>
+
+        <!-- Test Overlay Buttons -->
+        <div class="overlay-test-controls" style="display: flex; gap: 8px; margin-bottom: 12px; padding: 8px; background: rgba(255, 193, 7, 0.1); border-radius: 4px;">
+          <button class="variation-btn test-alert" onclick="testAlert('${selectedType}')" style="padding: 6px 12px; font-size: 12px; background: #9147ff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+            🚨 Test Alert
+          </button>
+          <button class="variation-btn test-confetti" onclick="testConfetti()" style="padding: 6px 12px; font-size: 12px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer;">
+            🎊 Test Confetti
+          </button>
+          <span style="font-size: 11px; color: var(--text-secondary); align-self: center;">
+            Test overlays (open in OBS first)
+          </span>
         </div>
         <div class="variations-items">
           ${filteredAlerts.map((alert, index) => `
-            <div class="variation-item ${alert.enabled !== false ? 'enabled' : ''}">
+            <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
               <label class="variation-toggle">
                 <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
                        onchange="toggleAlert('${alert.id}', this.checked)" />
-                <span class="variation-text">${alert.text}</span>
+                <span class="variation-text">
+                  ${alert.enabled !== false ? '✓' : '○'} ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
+                  <span class="overlay-badge">${alert.overlay || 'main'}</span>
+                </span>
               </label>
               <div class="variation-actions">
                 <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
@@ -5319,6 +9274,8 @@ function setupAlertWidget() {
     const alert = savedAlerts.find(a => a.id === alertId);
     if (alert) {
       console.log('🎭 Testing specific saved alert:', alertId, alert);
+      console.log('🎯 Alert overlay setting:', alert.overlay || 'NOT SET (will default to default)');
+      console.log('🎬 Alert animation in saved data:', alert.animation);
       
       // Create sample user data for the alert
       const sampleUserData = {
@@ -5330,7 +9287,9 @@ function setupAlertWidget() {
         bits: '100',
         months: '3',
         message: 'Thanks for the follow!',
-        reward: 'Test Reward'
+        reward: 'Test Reward',
+        moderator: 'TestModerator',
+        reason: 'Spam'
       };
       
       // Directly trigger this specific alert - bypass the overlay event system
@@ -5348,7 +9307,7 @@ function setupAlertWidget() {
   
   // Delete alert
   // Display existing media files in the form
-  function displayExistingMedia(soundFile, imageFile) {
+  function displayExistingMedia(soundFile, imageFile, videoFile) {
     // Display existing sound file
     if (soundFile) {
       const soundFileLabel = document.querySelector('label[for="alert-sound"]');
@@ -5370,6 +9329,44 @@ function setupAlertWidget() {
         imageFileLabel.style.fontWeight = 'bold';
       }
     }
+    
+    // Display existing video file
+    if (videoFile) {
+      const videoFileLabel = document.querySelector('label[for="alert-video"]');
+      if (videoFileLabel) {
+        const fileName = videoFile.name || 'Existing Video File';
+        videoFileLabel.textContent = `Video File: ${fileName}`;
+        videoFileLabel.style.color = 'var(--accent-color)';
+        videoFileLabel.style.fontWeight = 'bold';
+      }
+      
+      // Show video settings panel
+      const videoSettings = document.getElementById('alert-video-settings');
+      if (videoSettings) {
+        videoSettings.style.display = 'block';
+      }
+      
+      // Populate video settings
+      const videoLoop = document.getElementById('alert-video-loop');
+      if (videoLoop && videoFile.loop !== undefined) {
+        videoLoop.checked = videoFile.loop;
+      }
+      
+      const videoVolume = document.getElementById('alert-video-volume');
+      const videoVolumeValue = document.getElementById('alert-video-volume-value');
+      if (videoVolume && videoFile.volume !== undefined) {
+        videoVolume.value = videoFile.volume;
+        if (videoVolumeValue) {
+          videoVolumeValue.textContent = videoFile.volume + '%';
+        }
+      }
+      
+      const videoDisplayMode = document.getElementById('alert-video-display-mode');
+      if (videoDisplayMode && videoFile.displayMode !== undefined) {
+        videoDisplayMode.value = videoFile.displayMode;
+      }
+      
+    }
   }
 
   window.editAlert = function(alertId) {
@@ -5390,11 +9387,18 @@ function setupAlertWidget() {
     }
     
     if (alertTextInput) {
-      alertTextInput.value = alertToEdit.text;
+      alertTextInput.value = alertToEdit.text || '';
     }
     
     if (alertDurationInput) {
       alertDurationInput.value = alertToEdit.duration || 5;
+    }
+    
+    // Set overlay selection
+    const alertOverlaySelect = document.getElementById('alert-overlay-select');
+    if (alertOverlaySelect && alertToEdit.overlay) {
+      alertOverlaySelect.value = alertToEdit.overlay;
+      console.log(`📝 [Edit Alert] Setting overlay to: ${alertToEdit.overlay}`);
     }
     
     // Populate bits threshold if it's a bits alert
@@ -5468,15 +9472,79 @@ function setupAlertWidget() {
       }
     }
     
+    // Populate video settings if video file exists
+    if (alertToEdit.videoFile) {
+      if (alertVideoVolume && alertToEdit.videoFile.volume !== undefined) {
+        alertVideoVolume.value = alertToEdit.videoFile.volume;
+        if (alertVideoVolumeValue) {
+          alertVideoVolumeValue.textContent = alertToEdit.videoFile.volume + '%';
+        }
+      }
+      if (alertVideoLoop && alertToEdit.videoFile.loop !== undefined) {
+        alertVideoLoop.checked = alertToEdit.videoFile.loop;
+      }
+      if (alertVideoDisplayMode && alertToEdit.videoFile.displayMode) {
+        alertVideoDisplayMode.value = alertToEdit.videoFile.displayMode;
+      }
+      console.log('Loaded video settings - volume:', alertToEdit.videoFile.volume, 'loop:', alertToEdit.videoFile.loop);
+    }
+    
+    // Populate daily check-in config if this is a daily-checkin alert
+    if (alertToEdit.type === 'daily-checkin' && alertToEdit.dailyCheckinConfig) {
+      const config = alertToEdit.dailyCheckinConfig;
+      
+      const enabledCheckbox = document.getElementById('daily-checkin-enabled');
+      if (enabledCheckbox) enabledCheckbox.checked = config.enabled ?? true;
+      
+      const rewardNameInput = document.getElementById('daily-checkin-reward-name');
+      if (rewardNameInput) rewardNameInput.value = config.rewardName || 'Daily Check-In';
+      
+      const chatResponseInput = document.getElementById('daily-checkin-chat-response');
+      if (chatResponseInput) chatResponseInput.value = config.chatResponse || 'Welcome back {username}!';
+      
+      const alreadyCheckedInput = document.getElementById('daily-checkin-already-checked-message');
+      if (alreadyCheckedInput) alreadyCheckedInput.value = config.alreadyCheckedMessage || 'You\'ve already checked in today!';
+      
+      const showStreakCheckbox = document.getElementById('daily-checkin-show-streak');
+      if (showStreakCheckbox) showStreakCheckbox.checked = config.showStreak ?? false;
+      
+      const sendToChatCheckbox = document.getElementById('daily-checkin-send-to-chat');
+      if (sendToChatCheckbox) sendToChatCheckbox.checked = config.sendToChat ?? true;
+      
+      const testModeCheckbox = document.getElementById('daily-checkin-test-mode');
+      if (testModeCheckbox) testModeCheckbox.checked = config.testMode ?? false;
+      
+      console.log('Loaded daily check-in config for editing');
+    }
+    
+    // Populate walk-on users if this is a first-chat-walkon alert
+    if (alertToEdit.type === 'first-chat-walkon' && alertToEdit.walkonUsers) {
+      selectedWalkonUsers = alertToEdit.walkonUsers || [];
+      if (allFollowers.length === 0) {
+        loadWalkonFollowers().then(() => {
+          renderWalkonSelected();
+          renderWalkonFollowerList();
+        });
+      } else {
+        renderWalkonSelected();
+        renderWalkonFollowerList();
+      }
+      console.log('Loaded walk-on users for editing:', selectedWalkonUsers.length);
+    }
+    
     // Store the alert ID and existing media for editing
     window.editingAlertId = alertId;
     window.editingAlertMedia = {
       soundFile: alertToEdit.soundFile,
-      imageFile: alertToEdit.imageFile
+      imageFile: alertToEdit.imageFile,
+      videoFile: alertToEdit.videoFile
     };
     
     // Display existing media files in the form
-    displayExistingMedia(alertToEdit.soundFile, alertToEdit.imageFile);
+    displayExistingMedia(alertToEdit.soundFile, alertToEdit.imageFile, alertToEdit.videoFile);
+    
+    // Update remove buttons visibility
+    updateRemoveButtons();
     
     // Update preview
     updatePreview().catch(console.error);
@@ -5493,74 +9561,79 @@ function setupAlertWidget() {
   window.deleteAlert = function(alertId) {
     if (confirm('Are you sure you want to delete this alert?')) {
       savedAlerts = savedAlerts.filter(a => a.id !== alertId);
+      window.savedAlerts = savedAlerts; // Keep window reference in sync
       localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+      alertSystem.updateAlerts();
       updateAlertList();
       console.log('Alert deleted:', alertId);
+      
+      // Clear the form if no alerts remain
+      if (savedAlerts.length === 0) {
+        clearForm();
+        console.log('All alerts deleted - form cleared');
+      }
     }
   };
   
 
-  // Queue control event listeners
-  if (clearQueueBtn) {
-    clearQueueBtn.addEventListener('click', () => {
+  // Compact queue control widget event listeners (on dashboard)
+  if (queueWidgetClear) {
+    queueWidgetClear.addEventListener('click', () => {
       alertQueue.clearQueue();
-      updateQueueStatus();
+      updateQueueWidgetStatus();
     });
   }
   
-  if (skipCurrentBtn) {
-    skipCurrentBtn.addEventListener('click', () => {
+  if (queueWidgetSkip) {
+    queueWidgetSkip.addEventListener('click', () => {
+      alertQueue.skipCurrentAlert();
+      updateQueueWidgetStatus();
+    });
+  }
+  
+  if (queueWidgetStop) {
+    queueWidgetStop.addEventListener('click', () => {
       alertQueue.clearCurrentAlert();
-      updateQueueStatus();
+      updateQueueWidgetStatus();
     });
   }
   
-  if (hardStopBtn) {
-    hardStopBtn.addEventListener('click', () => {
-      alertQueue.hardStop();
-      updateQueueStatus();
-    });
-  }
-  
-  if (queueStatusBtn) {
-    queueStatusBtn.addEventListener('click', () => {
-      updateQueueStatus();
-      const status = alertQueue.getStatus();
-      console.log('Queue Status:', status);
-    });
-  }
-  
-  // Update queue status display
-  function updateQueueStatus() {
-    if (!queueInfo) return;
+  // Update compact queue widget status
+  function updateQueueWidgetStatus() {
+    if (!queueWidgetStatus) return;
     
     const status = alertQueue.getStatus();
-    const statusText = queueInfo.querySelector('.queue-status-text');
+    queueWidgetStatus.textContent = status.queueLength;
     
-    if (statusText) {
-      let statusMessage = `Queue: ${status.queueLength} alerts`;
-      statusMessage += ` | Processing: ${status.isProcessing ? 'Yes' : 'No'}`;
-      
-      if (status.currentAlert) {
-        statusMessage += ` | Current: ${status.currentAlert.type}`;
-      }
-      
-      statusText.textContent = statusMessage;
+    // Update status color based on queue state
+    if (status.isProcessing) {
+      queueWidgetStatus.style.background = '#ffc107';
+      queueWidgetStatus.style.color = '#000';
+    } else if (status.queueLength > 0) {
+      queueWidgetStatus.style.background = '#17a2b8';
+      queueWidgetStatus.style.color = '#fff';
+    } else {
+      queueWidgetStatus.style.background = '#6c757d';
+      queueWidgetStatus.style.color = '#fff';
     }
   }
   
+  
   // Update queue status every second
-  setInterval(updateQueueStatus, 1000);
+  setInterval(() => {
+    updateQueueWidgetStatus();
+  }, 1000);
   
   
   // Initialize
   updateAlertList();
   updatePreview();
-  updateQueueStatus();
+  updateQueueWidgetStatus();
 }
 
 // Global functions for inline event handlers
 window.updateAlertList = function() {
+  const alertListContainer = document.getElementById('alert-list-container');
   if (!alertListContainer) return;
   
   // Get the currently selected alert type
@@ -5592,20 +9665,30 @@ window.updateAlertList = function() {
   const variationsHtml = `
     <div class="alert-variations-list">
       <div class="variations-header">
-        <span>Variations (${filteredAlerts.length}):</span>
-        <label class="random-toggle">
-          <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
-                 onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
-          Random
-        </label>
+        <span>Variations (${filteredAlerts.length} total, ${filteredAlerts.filter(a => a.enabled !== false).length} enabled):</span>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', true)" style="padding: 4px 8px; font-size: 12px;">Enable All</button>
+          <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', false)" style="padding: 4px 8px; font-size: 12px;">Disable All</button>
+          <label class="random-toggle">
+            <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
+                   onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
+            Random Mode
+          </label>
+        </div>
+      </div>
+      <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
+        <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
       </div>
       <div class="variations-items">
         ${filteredAlerts.map((alert, index) => `
-          <div class="variation-item ${alert.enabled !== false ? 'enabled' : ''}">
+          <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
             <label class="variation-toggle">
               <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
                      onchange="toggleAlert('${alert.id}', this.checked)" />
-              <span class="variation-text">${alert.text}</span>
+              <span class="variation-text">
+                ${alert.enabled !== false ? '✓' : '○'} ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
+                <span class="overlay-badge">${alert.overlay || 'main'}</span>
+              </span>
             </label>
             <div class="variation-actions">
               <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
@@ -5632,26 +9715,84 @@ window.updateAlertList = function() {
 };
 
 window.toggleAlert = function(alertId, enabled) {
-  const alert = savedAlerts.find(a => a.id === alertId);
+  const alert = window.savedAlerts.find(a => a.id === alertId);
   if (alert) {
     alert.enabled = enabled;
-    localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+    localStorage.setItem('twitchAlerts', JSON.stringify(window.savedAlerts));
+    alertSystem.updateAlerts();
     updateAlertList();
     console.log('Toggled alert:', alertId, 'enabled:', enabled);
   }
 };
 
+// Test functions for new overlays
+window.testAlert = function(alertType) {
+  console.log('🚨 Testing alert for type:', alertType);
+
+  // Create test data based on alert type
+  const testData = {
+    type: alertType,
+    user: 'TestUser',
+    message: 'This is a test alert!',
+    amount: alertType === 'donation' ? 5.00 : null,
+    bits: alertType === 'bits' ? 100 : null
+  };
+
+  if (window.electronAPI && window.electronAPI.triggerAlert) {
+    window.electronAPI.triggerAlert(testData);
+    showCustomAlert('🚨 Alert sent to overlay! Make sure alert overlay is open in OBS.', 'success');
+  } else {
+    console.error('Electron API not available for alert testing');
+    showCustomAlert('❌ Cannot test alert - Electron API not available', 'error');
+  }
+};
+
+window.testConfetti = function() {
+  console.log('🎊 Testing confetti effect');
+
+  const testData = {
+    count: 50,
+    duration: 2000
+  };
+
+  if (window.electronAPI && window.electronAPI.triggerConfetti) {
+    window.electronAPI.triggerConfetti(testData);
+    showCustomAlert('🎊 Confetti sent to overlay! Make sure confetti overlay is open in OBS.', 'success');
+  } else {
+    console.error('Electron API not available for confetti testing');
+    showCustomAlert('❌ Cannot test confetti - Electron API not available', 'error');
+  }
+};
+
 window.toggleRandomModeForType = function(alertType, randomMode) {
   // Update random mode for all alerts of this type
-  savedAlerts.forEach(alert => {
+  window.savedAlerts.forEach(alert => {
     if (alert.type === alertType) {
       alert.randomMode = randomMode;
     }
   });
   
-  localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+  localStorage.setItem('twitchAlerts', JSON.stringify(window.savedAlerts));
+  alertSystem.updateAlerts();
   updateAlertList();
   console.log('Toggled random mode for type:', alertType, 'random:', randomMode);
+};
+
+window.toggleAllAlertsForType = function(alertType, enabled) {
+  // Enable or disable all alerts of this type
+  let count = 0;
+  window.savedAlerts.forEach(alert => {
+    if (alert.type === alertType) {
+      alert.enabled = enabled;
+      count++;
+    }
+  });
+  
+  localStorage.setItem('twitchAlerts', JSON.stringify(window.savedAlerts));
+  alertSystem.updateAlerts();
+  updateAlertList();
+  console.log(`${enabled ? 'Enabled' : 'Disabled'} ${count} alerts for type: ${alertType}`);
+  showCustomAlert(`${enabled ? 'Enabled' : 'Disabled'} all ${count} ${alertType} alerts`, 'success');
 };
 
 // Global replace placeholders function
@@ -5663,12 +9804,19 @@ function replacePlaceholders(text, userData) {
   // Replace common placeholders
   processedText = processedText.replace(/\{username\}/g, userData.username || userData.user_name || userData.user || 'Unknown');
   processedText = processedText.replace(/\{display_name\}/g, userData.display_name || userData.user_name || userData.user || 'Unknown');
-  processedText = processedText.replace(/\{tier\}/g, userData.tier || userData.sub_plan || '');
-  processedText = processedText.replace(/\{viewers\}/g, userData.viewers || userData.view_count || userData.viewer_count || '');
-  processedText = processedText.replace(/\{bits\}/g, userData.bits || userData.bits_used || userData.bits_amount || userData.amount || '');
-  processedText = processedText.replace(/\{months\}/g, userData.cumulative_months || userData.months || '');
-  processedText = processedText.replace(/\{message\}/g, userData.message || userData.user_input || '');
-  processedText = processedText.replace(/\{reward\}/g, userData.reward || userData.reward_title || '');
+  processedText = processedText.replace(/\{displayName\}/g, userData.displayName || userData.display_name || userData.user_name || userData.user || 'Unknown');
+  processedText = processedText.replace(/\{tier\}/g, String(userData.tier || userData.sub_plan || ''));
+  processedText = processedText.replace(/\{viewers\}/g, String(userData.viewers || userData.view_count || userData.viewer_count || ''));
+  processedText = processedText.replace(/\{bits\}/g, String(userData.bits || userData.bits_used || userData.bits_amount || userData.amount || ''));
+  processedText = processedText.replace(/\{months\}/g, String(userData.cumulative_months || userData.months || ''));
+  processedText = processedText.replace(/\{message\}/g, String(userData.message || userData.user_input || ''));
+  processedText = processedText.replace(/\{reward\}/g, String(userData.reward || userData.reward_title || ''));
+  processedText = processedText.replace(/\{moderator\}/g, String(userData.moderator || ''));
+  processedText = processedText.replace(/\{reason\}/g, String(userData.reason || ''));
+  
+  // Daily Check-In specific placeholders
+  processedText = processedText.replace(/\{total_checkins\}/g, String(userData.total_checkins || '0'));
+  processedText = processedText.replace(/\{streak\}/g, String(userData.streak || '0'));
   
   return processedText;
 }
@@ -5771,8 +9919,10 @@ let alertQueue = {
     });
   },
   
-  // Clear current alert and stop processing
+  // Clear current alert and stop processing (does NOT continue to next alert)
   clearCurrentAlert() {
+    console.log('🛑 Stopping current alert (will not continue to next)');
+    
     this.hardStop();
     
     if (this.currentAlert) {
@@ -5780,7 +9930,36 @@ let alertQueue = {
       this.currentAlert = null;
     }
     
-    console.log('🛑 Current alert cleared');
+    // Reset processing flag to stop the queue
+    this.isProcessing = false;
+    
+    console.log('🛑 Current alert stopped - queue processing halted');
+  },
+
+  // Skip current alert and move to next one
+  skipCurrentAlert() {
+    console.log('⏭️ Skipping current alert and moving to next');
+    
+    if (this.currentAlert) {
+      this.currentAlert.status = 'skipped';
+      this.currentAlert = null;
+    }
+    
+    // Stop current processing
+    this.hardStop();
+    
+    // Reset processing flag to allow next alert to process
+    this.isProcessing = false;
+    
+    // If there are more alerts in queue, start processing the next one immediately
+    if (this.queue.length > 0) {
+      console.log(`⏭️ Moving to next alert (${this.queue.length} remaining in queue)`);
+      setTimeout(() => {
+        this.processQueue();
+      }, 100); // Small delay to ensure cleanup
+    } else {
+      console.log('⏭️ No more alerts in queue');
+    }
   },
   
   // Clear entire queue
@@ -5812,19 +9991,33 @@ let alertQueue = {
       return;
     }
     
+    console.log('🔥 triggerAlert called with alertData:', alertData);
+    console.log('🔥 alertData.overlay:', alertData.overlay);
+    
     if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
       // Process text with user data if available
       const processedText = userData ? replacePlaceholders(alertData.text, userData) : alertData.text;
       
       console.log('🎯 Triggering alert:', { alertData, userData, processedText });
       
+      console.log('🎯 Alert overlay from alertData:', alertData.overlay || 'NOT SET');
+      console.log('🎯 Alert will be sent to overlay:', alertData.overlay || getDefaultOverlay());
+      console.log('🎬 Alert animation config:', alertData.animation);
+      console.log('📝 Alert text:', alertData.text);
+      console.log('📝 Processed text:', processedText);
+      console.log('📝 Processed text length:', processedText ? processedText.length : 'null/undefined');
+      console.log('📝 Processed text trim check:', processedText && processedText.trim() ? 'HAS CONTENT' : 'EMPTY OR NULL');
+      console.log('🎨 Alert textStyling:', alertData.textStyling);
+      console.log('📍 Text position:', alertData.textStyling?.position || 'topCenter');
+      
       const payload = {
         type: 'buttonTrigger',
+        targetOverlay: alertData.overlay || getDefaultOverlay(), // Route to specific overlay
         options: {
           clearPrevious: true,
           durationMs: alertData.duration * 1000
         },
-        slots: {
+        slots: processedText && processedText.trim() ? {
           [alertData.textStyling?.position || 'topCenter']: {
             text: processedText,
             style: {
@@ -5837,17 +10030,23 @@ let alertQueue = {
               textAlign: 'center',
               zIndex: '1'
             },
-            animation: alertData.animation?.type !== 'none' ? {
+            animation: (alertData.animation && alertData.animation.type && alertData.animation.type !== 'none') ? {
               name: alertData.animation.type,
-              duration: alertData.animation.duration,
-              delay: alertData.animation.delay,
-              iterationCount: alertData.animation.iteration,
-              timingFunction: alertData.animation.easing
+              duration: alertData.animation.duration || '1s',
+              delay: alertData.animation.delay || '0s',
+              iterationCount: alertData.animation.iteration || '1',
+              timingFunction: alertData.animation.easing || 'ease'
             } : null
           }
-        },
-        centerMedia: []
+        } : {},
+        centerMedia: [],
+        fullscreenMedia: [] // New: fullscreen media support for alerts
       };
+      
+      console.log('🎬 Payload animation data:', payload.slots[alertData.textStyling?.position || 'topCenter']?.animation);
+      console.log('📦 Payload slots object:', payload.slots);
+      console.log('📦 Payload slots keys:', Object.keys(payload.slots));
+      console.log('📦 Payload slots topCenter:', payload.slots.topCenter);
       
       // Add image if present
       if (alertData.imageFile) {
@@ -5863,23 +10062,20 @@ let alertQueue = {
             alt: 'Alert Image'
           });
         } else if (alertData.imageFile.path) {
-          // This is a saved alert with file path - load from disk like multi-media buttons
-          console.log('🖼️ Loading alert image from disk:', alertData.imageFile.path);
+          // This is a saved alert with file path - serve via HTTP like multi-media buttons
+          console.log('🖼️ Converting alert image path to HTTP URL:', alertData.imageFile.path);
           try {
-            if (window.electronAPI && window.electronAPI.getMediaFile) {
-              const result = await window.electronAPI.getMediaFile(alertData.imageFile.path);
-              if (result.success) {
-                const sizeKB = (result.data.length / 1024).toFixed(2);
-                console.log(`✅ Alert image loaded: ${alertData.imageFile.path} (${sizeKB} KB)`);
+            // Use the relative path directly (same as multimedia buttons)
+            const relativePath = alertData.imageFile.path.replace(/\\/g, '/');
+            const imageSrc = `http://localhost:8080/media/${encodeURIComponent(relativePath)}`;
+            console.log(`✅ Serving alert image via HTTP: ${imageSrc}`);
+            console.log(`🔍 Image relative path: ${relativePath}`);
+            
                 payload.centerMedia.push({
                   type: 'image',
-                  src: result.data, // Send base64 data URI like multi-media buttons
+              src: imageSrc, // Use HTTP URL instead of base64
                   alt: 'Alert Image'
                 });
-              } else {
-                console.error('Failed to load alert image:', result.error);
-              }
-            }
           } catch (error) {
             console.error('Error loading alert image:', error);
           }
@@ -5896,6 +10092,76 @@ let alertQueue = {
         }
       }
       
+      // Add video file if present
+      if (alertData.videoFile) {
+        if (alertData.videoFile instanceof File) {
+          // Fresh file upload - use blob URL (video settings not available for unsaved alerts)
+          const videoUrl = URL.createObjectURL(alertData.videoFile);
+          console.log('🎬 Created blob URL for fresh video file:', videoUrl);
+          const videoItem = {
+            type: 'video',
+            src: videoUrl,
+            loop: false,
+            volume: 1.0,
+            muted: false
+          };
+          
+          // For fresh uploads, use center media by default
+          payload.centerMedia.push(videoItem);
+        } else if (alertData.videoFile.path) {
+          // This is a saved alert with file path - serve via HTTP like multi-media buttons
+          console.log('🎬 Converting alert video path to HTTP URL:', alertData.videoFile.path);
+          console.log('🎬 Video file object:', alertData.videoFile);
+          try {
+            // Use the relative path directly (same as multimedia buttons)
+            const relativePath = alertData.videoFile.path.replace(/\\/g, '/');
+            const videoSrc = `http://localhost:8080/media/${encodeURIComponent(relativePath)}`;
+            console.log(`✅ Serving alert video via HTTP: ${videoSrc}`);
+            console.log(`🔍 Video relative path: ${relativePath}`);
+            
+            const videoItem = {
+              type: 'video',
+              src: videoSrc, // Use HTTP URL instead of base64
+              loop: alertData.videoFile.loop || false,
+              volume: (alertData.videoFile.volume || 100) / 100, // Convert percentage to 0-1
+              muted: false
+            };
+            
+            console.log('🎬 Video item created:', videoItem);
+            
+            // Add to appropriate media array based on display mode
+            const displayMode = alertData.videoFile.displayMode || 'center';
+            console.log('🎬 Alert video displayMode:', displayMode);
+            if (displayMode === 'fullscreen') {
+              payload.fullscreenMedia.push(videoItem);
+              console.log('🎬 Added video to fullscreenMedia');
+            } else {
+              payload.centerMedia.push(videoItem);
+              console.log('🎬 Added video to centerMedia');
+            }
+            
+            console.log('🎬 CenterMedia array now has:', payload.centerMedia.length, 'items');
+          } catch (error) {
+            console.error('Error loading alert video:', error);
+          }
+        } else if (alertData.videoFile.data) {
+          // Legacy: saved alert with base64 data (backwards compatibility)
+          console.log('🎬 Using legacy base64 data for alert video');
+          const videoItem = {
+            type: 'video',
+            src: alertData.videoFile.data, // Use base64 data directly
+            loop: alertData.videoFile.loop || false,
+            volume: (alertData.videoFile.volume || 100) / 100,
+            muted: false
+          };
+          
+          
+          payload.centerMedia.push(videoItem);
+        } else {
+          console.warn('🎬 Unknown video file format:', alertData.videoFile);
+        }
+      }
+      
       // Log payload summary instead of full object to avoid base64 spam
       const payloadSummary = {
         type: payload.type,
@@ -5907,7 +10173,11 @@ let alertQueue = {
         })) : 'none'
       };
       console.log('📤 Sending overlay message with payload:', payloadSummary);
+      console.log('🎬 Full centerMedia array:', payload.centerMedia);
+      console.log(`🎯 SENDING ALERT TO OVERLAY: "${payload.targetOverlay}"`);
+      console.log(`📊 Alert overlay setting: ${alertData.overlay || 'NOT SET (defaulting to default)'}`);
       window.electronAPI.sendOverlayMessage(payload);
+      console.log(`✅ Alert sent via WebSocket to overlay: "${payload.targetOverlay}"`);
       
       // Play sound if present - store reference for hard stop
       if (alertData.soundFile) {
@@ -5918,7 +10188,9 @@ let alertQueue = {
         if (alertData.soundFile instanceof File) {
           // Fresh file upload
           this.currentAudio = new Audio(URL.createObjectURL(alertData.soundFile));
-          this.currentAudio.volume = volume;
+          // Set volume immediately to prevent loud burst
+          this.currentAudio.volume = 0; // Start muted
+          this.currentAudio.volume = volume; // Then set to desired volume
           this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
         } else if (alertData.soundFile.path) {
           // Saved alert with file path - load from disk for audio playback
@@ -5930,7 +10202,9 @@ let alertQueue = {
                 const sizeKB = (result.data.length / 1024).toFixed(2);
                 console.log(`✅ Alert sound loaded: ${alertData.soundFile.path} (${sizeKB} KB)`);
                 this.currentAudio = new Audio(result.data);
-                this.currentAudio.volume = volume;
+                // Set volume immediately to prevent loud burst
+                this.currentAudio.volume = 0; // Start muted
+                this.currentAudio.volume = volume; // Then set to desired volume
                 this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
               } else {
                 console.error('Failed to load alert sound:', result.error);
@@ -5943,7 +10217,9 @@ let alertQueue = {
           // Legacy: saved alert with base64 data (backwards compatibility)
           console.log('🎵 Using legacy base64 data for alert sound');
           this.currentAudio = new Audio(alertData.soundFile.data);
-          this.currentAudio.volume = volume;
+          // Set volume immediately to prevent loud burst
+          this.currentAudio.volume = 0; // Start muted
+          this.currentAudio.volume = volume; // Then set to desired volume
           this.currentAudio.play().catch(err => console.warn('Could not play alert sound:', err));
         }
       }
@@ -6060,9 +10336,12 @@ let alertSystem = {
   
   // Trigger alert for specific event type
   triggerAlertForEvent(eventType, userData) {
+    console.log(`🔍 Looking for alerts of type: ${eventType}`);
+    console.log(`📋 Available alert types:`, this.alerts.map(a => a.type));
     const alertsOfType = this.alerts.filter(a => a.type === eventType);
     if (alertsOfType.length === 0) {
       console.log(`⚠️ No alerts found for event type: ${eventType}`);
+      console.log(`💡 Create a "${eventType}" alert in Tools → Alerts to fix this`);
       return;
     }
     
@@ -6070,6 +10349,50 @@ let alertSystem = {
     const enabledAlerts = alertsOfType.filter(a => a.enabled !== false);
     if (enabledAlerts.length === 0) {
       console.log(`⚠️ No enabled alerts found for event type: ${eventType}`);
+      return;
+    }
+    
+    // For first-chat-walkon, check if user is in selected walkon users list
+    if (eventType === 'first-chat-walkon') {
+      const username = (userData.username || userData.user_name || '').toLowerCase();
+      const userId = userData.user_id;
+      
+        const alertsMatchingUser = enabledAlerts.filter(alert => {
+        // If no walkonUsers specified, don't trigger (safety)
+        if (!alert.walkonUsers || alert.walkonUsers.length === 0) {
+          console.log(`⏭️ Alert "${alert.id}" has no walkon users configured, skipping`);
+          return false;
+        }
+        // Check if user is in the selected list (by username or user_id)
+        const isInList = alert.walkonUsers.some(wu => {
+          // Match by exact user_id (for followers from API)
+          if (wu.user_id && wu.user_id === userId) return true;
+          // Match by username (case-insensitive) - works for both API followers and manual entries
+          const wuUsername = (wu.username || '').toLowerCase();
+          if (wuUsername && wuUsername === username) return true;
+          return false;
+        });
+        
+        if (!isInList) {
+          console.log(`⏭️ User "${username}" not in walkon list for alert "${alert.id}", skipping`);
+        }
+        return isInList;
+      });
+      
+      if (alertsMatchingUser.length === 0) {
+        console.log(`⚠️ No alerts matched for walk-on user: ${username}`);
+        return;
+      }
+      
+      // Use alertsMatchingUser instead of enabledAlerts for the rest
+      const alertToTrigger = alertsMatchingUser[0].randomMode 
+        ? alertsMatchingUser[Math.floor(Math.random() * alertsMatchingUser.length)]
+        : alertsMatchingUser[0];
+      
+      console.log(`🎯 Triggering walk-on alert for ${username}:`, userData);
+      console.log(`🎯 Alert text before processing:`, alertToTrigger.text);
+      
+      alertQueue.addToQueue(alertToTrigger, userData);
       return;
     }
     
@@ -6112,6 +10435,8 @@ let alertSystem = {
   }
 };
 
+// Expose alertSystem to global scope
+window.alertSystem = alertSystem;
 
 // Expose alertQueue to global scope
 window.alertQueue = alertQueue;
@@ -6140,6 +10465,90 @@ window.testMultipleAlerts = () => {
   console.log('Added 3 test alerts to queue');
 };
 
+// Reset first-time chatters (for testing)
+// Usage: resetWalkonTest() or resetWalkonTest(true) to skip confirmation
+window.resetWalkonTest = async function(skipConfirm = false) {
+  if (!skipConfirm && !confirm('Reset first-time chatters list? This will allow testing the same users again.')) {
+    return { cancelled: true };
+  }
+  
+  try {
+    if (window.electronAPI && window.electronAPI.resetFirstTimeChatters) {
+      const result = await window.electronAPI.resetFirstTimeChatters();
+      if (result.success) {
+        console.log('✅ First-time chatters list reset! You can now test again.');
+        return { success: true, message: result.message };
+      } else {
+        console.error('❌ Error resetting:', result.error);
+        return { success: false, error: result.error };
+      }
+    } else {
+      console.error('❌ Reset function not available');
+      return { success: false, error: 'Reset function not available' };
+    }
+  } catch (error) {
+    console.error('❌ Error resetting first-time chatters:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Test first-chat walk-on event through the full Twitch pipeline
+// Usage: 
+//   testFirstChatWalkon('Iflewthetardis')
+//   testFirstChatWalkon('deathblade', 'DeathBlade', '87654321')
+//   testFirstChatWalkon('TestUser')  // Uses default TestUser
+window.testFirstChatWalkon = function(username = 'TestUser', displayName = null, userId = null) {
+  console.log('🧪 Testing first-chat walk-on event for:', username);
+  
+  // Generate a random user ID if not provided
+  if (!userId) {
+    userId = Math.floor(Math.random() * 100000000).toString();
+  }
+  
+  const display = displayName || (username.charAt(0).toUpperCase() + username.slice(1));
+  const userLower = username.toLowerCase();
+  
+  // Simulate the event data that would come from main.js chat handler
+  const eventData = {
+    type: 'first-chat-walkon',
+    event: {
+      user_id: userId,
+      user_name: userLower,
+      display_name: display
+    }
+  };
+  
+  console.log('🧪 Simulating first-chat-walkon event:', eventData);
+  
+  // Create user data matching what the real handler expects
+  const userData = {
+    username: userLower,
+    display_name: display,
+    user_id: userId,
+    user_name: userLower,
+    ...eventData.event
+  };
+  
+  // Trigger through the same path as real events - directly call alertSystem
+  // This bypasses the IPC layer but tests the alert filtering and triggering logic
+  if (window.alertSystem) {
+    console.log('✅ Triggering first-chat-walkon alert for user:', username);
+    window.alertSystem.triggerAlertForEvent('first-chat-walkon', userData);
+    
+    // Also add to chat display if the function exists (simulates full pipeline)
+    if (typeof addTwitchEvent === 'function') {
+      addTwitchEvent('first-chat-walkon', eventData.event);
+    }
+    
+    console.log('✅ Test first-chat-walkon completed - alert should have triggered if user is in walkon list');
+    console.log('💡 To test, make sure the user is in your walk-on alert\'s selected followers list');
+    return { success: true, eventData, userData };
+  } else {
+    console.error('❌ Alert system not available');
+    return { success: false, error: 'Alert system not available' };
+  }
+};
+
 // Test media duration detection
 window.testMediaDuration = async (file) => {
   if (!file) {
@@ -6162,8 +10571,10 @@ function showOverlayWidget() {
 
 // Function to show alert widget
 function showAlertWidget() {
+  console.log('📢 showAlertWidget() function called');
   const alertWidget = document.getElementById('alert-widget');
   if (alertWidget) {
+    console.log('📢 Alert widget found, showing it');
     alertWidget.classList.remove('hidden');
     
     // Disable hotkeys when alert widget is open to prevent conflicts
@@ -6174,12 +10585,22 @@ function showAlertWidget() {
     // Ensure bits threshold is hidden unless alert type is 'bits'
     const alertTypeSelect = document.getElementById('alert-type');
     const bitsThresholdGroup = document.getElementById('bits-threshold-group');
+    const dailyCheckinSettings = document.getElementById('daily-checkin-settings');
     
     if (alertTypeSelect && bitsThresholdGroup) {
       if (alertTypeSelect.value === 'bits') {
         bitsThresholdGroup.style.display = 'block';
       } else {
         bitsThresholdGroup.style.display = 'none';
+      }
+    }
+    
+    // Ensure daily check-in settings are hidden unless alert type is 'daily-checkin'
+    if (alertTypeSelect && dailyCheckinSettings) {
+      if (alertTypeSelect.value === 'daily-checkin') {
+        dailyCheckinSettings.style.display = 'block';
+      } else {
+        dailyCheckinSettings.style.display = 'none';
       }
     }
     
@@ -6214,6 +10635,538 @@ function hideOverlayWidget() {
   }
 }
 
+// ===============================
+// Daily Check-In System
+// ===============================
+
+// In-memory storage for check-ins (will be persisted to file)
+let dailyCheckinData = {
+  viewers: {},
+  liveDays: [], // Array of date strings (YYYY-MM-DD) when stream was live
+  config: {
+    enabled: true,
+    rewardName: 'Daily Check-In',
+    chatResponse: 'Welcome back {username}! You\'ve checked in {total_checkins} times!',
+    alreadyCheckedMessage: 'You\'ve already checked in today, {username}! Come back tomorrow!',
+    showStreak: false,
+    sendToChat: true,
+    testMode: false
+  }
+};
+
+// Load daily check-in data
+async function loadDailyCheckinData() {
+  try {
+    if (window.electronAPI && window.electronAPI.loadDailyCheckins) {
+      const data = await window.electronAPI.loadDailyCheckins();
+      if (data) {
+        dailyCheckinData = data;
+        // Ensure liveDays array exists (for backward compatibility)
+        if (!dailyCheckinData.liveDays) {
+          dailyCheckinData.liveDays = [];
+        }
+        console.log('📊 Loaded daily check-in data:', Object.keys(dailyCheckinData.viewers).length, 'viewers');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error loading daily check-in data:', error);
+  }
+}
+
+// Save daily check-in data
+async function saveDailyCheckinData() {
+  try {
+    if (window.electronAPI && window.electronAPI.saveDailyCheckins) {
+      await window.electronAPI.saveDailyCheckins(dailyCheckinData);
+      console.log('💾 Saved daily check-in data');
+    }
+  } catch (error) {
+    console.error('❌ Error saving daily check-in data:', error);
+  }
+}
+
+// Check if user has already checked in today
+function hasCheckedInToday(userId) {
+  const viewer = dailyCheckinData.viewers[userId];
+  if (!viewer) return false;
+  
+  const lastCheckin = new Date(viewer.last_checkin);
+  const today = new Date();
+  
+  // Check if last check-in was today (same date)
+  return lastCheckin.toDateString() === today.toDateString();
+}
+
+// Process a daily check-in
+async function processDailyCheckin(userData, testMode = false) {
+  const { user_id, user_name, display_name } = userData;
+  
+  // Check test mode setting
+  const testModeCheckbox = document.getElementById('daily-checkin-test-mode');
+  const isTestMode = testMode || (testModeCheckbox && testModeCheckbox.checked);
+  
+  // Record that today is a live day when someone checks in (Twitch already restricts redemption when not live)
+  // Skip this in test mode so test check-ins don't affect live day tracking
+  if (!isTestMode) {
+    const now = new Date();
+    const todayStr = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().split('T')[0]; // YYYY-MM-DD
+    if (!dailyCheckinData.liveDays.includes(todayStr)) {
+      dailyCheckinData.liveDays.push(todayStr);
+      console.log('📅 Recorded live day:', todayStr);
+    }
+  }
+  
+  // Check if user already checked in today (skip in test mode)
+  if (!isTestMode && hasCheckedInToday(user_id)) {
+    console.log('⚠️ User', user_name, 'already checked in today');
+    
+    // Send already checked message if enabled
+    if (dailyCheckinData.config.sendToChat) {
+      const message = dailyCheckinData.config.alreadyCheckedMessage
+        .replace(/{username}/g, user_name)
+        .replace(/{display_name}/g, display_name || user_name);
+      
+      await sendTwitchChatMessage(message);
+    }
+    
+    return false;
+  }
+  
+  // Initialize or update viewer data
+  if (!dailyCheckinData.viewers[user_id]) {
+    dailyCheckinData.viewers[user_id] = {
+      user_id: user_id,
+      username: user_name,
+      display_name: display_name || user_name,
+      total_checkins: 0,
+      last_checkin: null,
+      streak: 0
+    };
+  }
+  
+  const viewer = dailyCheckinData.viewers[user_id];
+  const now = new Date();
+  const todayStr = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().split('T')[0];
+  const todayCheckinDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  // Save the previous last_checkin before updating (needed for streak calculation)
+  const previousLastCheckin = viewer.last_checkin;
+  
+  // Update check-in data
+  viewer.total_checkins++;
+  viewer.last_checkin = now.toISOString();
+  viewer.username = user_name; // Update in case username changed
+  viewer.display_name = display_name || user_name;
+  
+  // Calculate streak if enabled
+  if (dailyCheckinData.config.showStreak) {
+    if (!previousLastCheckin || !previousLastCheckin.includes('T')) {
+      // First check-in ever, start streak at 1
+      viewer.streak = 1;
+      console.log(`📈 First check-in for ${user_name}, streak started at 1`);
+    } else {
+      const lastCheckinDate = new Date(previousLastCheckin);
+      const lastCheckinDay = new Date(lastCheckinDate.getFullYear(), lastCheckinDate.getMonth(), lastCheckinDate.getDate());
+      
+      // Calculate days difference
+      const daysDiff = Math.floor((todayCheckinDate - lastCheckinDay) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff === 1) {
+        // Consecutive day - check if stream was live yesterday
+        const yesterdayStr = new Date(lastCheckinDay).toISOString().split('T')[0];
+        const wasLiveYesterday = dailyCheckinData.liveDays.includes(yesterdayStr);
+        
+        if (wasLiveYesterday) {
+          // Stream was live yesterday and they checked in today = consecutive
+          viewer.streak = (viewer.streak || 0) + 1;
+          console.log(`📈 Streak incremented for ${user_name}: ${viewer.streak} days (stream was live yesterday)`);
+        } else {
+          // Stream wasn't live yesterday, but they're checking in today - maintain streak
+          // Don't increment, but don't reset either (stream wasn't live so it doesn't count against them)
+          viewer.streak = viewer.streak || 1;
+          console.log(`📈 Streak maintained for ${user_name}: ${viewer.streak} days (stream wasn't live yesterday)`);
+        }
+      } else if (daysDiff === 0) {
+        // Same day - shouldn't happen due to hasCheckedInToday check, but safety
+        // Keep streak as is
+      } else {
+        // More than 1 day apart - check which days were missed
+        let missedLiveDays = 0;
+        const checkDate = new Date(lastCheckinDay);
+        checkDate.setDate(checkDate.getDate() + 1); // Start checking from the day after last check-in
+        
+        while (checkDate < todayCheckinDate) {
+          const checkDateStr = checkDate.toISOString().split('T')[0];
+          if (dailyCheckinData.liveDays.includes(checkDateStr)) {
+            missedLiveDays++;
+          }
+          checkDate.setDate(checkDate.getDate() + 1);
+        }
+        
+        if (missedLiveDays === 0) {
+          // No live days were missed - maintain streak
+          viewer.streak = viewer.streak || 1;
+          console.log(`📈 Streak maintained for ${user_name}: ${viewer.streak} days (no live days missed)`);
+        } else {
+          // At least one live day was missed - reset streak to 1
+          viewer.streak = 1;
+          console.log(`📈 Streak reset for ${user_name}: missed ${missedLiveDays} live day(s), streak reset to 1`);
+        }
+      }
+    }
+  }
+  
+  // Save data
+  await saveDailyCheckinData();
+  
+  console.log('✅ Check-in processed for', user_name, '- Total:', viewer.total_checkins, 'Streak:', viewer.streak || 0);
+  
+  // Send chat response if enabled
+  if (dailyCheckinData.config.sendToChat) {
+    let message = dailyCheckinData.config.chatResponse;
+    message = message.replace(/{username}/g, viewer.username);
+    message = message.replace(/{display_name}/g, viewer.display_name);
+    message = message.replace(/{total_checkins}/g, String(viewer.total_checkins));
+    message = message.replace(/{streak}/g, String(viewer.streak || 0));
+    
+    await sendTwitchChatMessage(message);
+  }
+  
+  return true;
+}
+
+// Send message to Twitch chat
+async function sendTwitchChatMessage(message) {
+  try {
+    if (window.electronAPI && window.electronAPI.sendTwitchChatMessage) {
+      await window.electronAPI.sendTwitchChatMessage(message);
+      console.log('💬 Sent chat message:', message);
+    }
+  } catch (error) {
+    console.error('❌ Error sending chat message:', error);
+  }
+}
+
+// Update daily check-in config from UI
+function updateDailyCheckinConfig() {
+  const enabled = document.getElementById('daily-checkin-enabled')?.checked ?? true;
+  const rewardName = document.getElementById('daily-checkin-reward-name')?.value || 'Daily Check-In';
+  const chatResponse = document.getElementById('daily-checkin-chat-response')?.value || 'Welcome back {username}!';
+  const alreadyCheckedMessage = document.getElementById('daily-checkin-already-checked-message')?.value || 'You\'ve already checked in today!';
+  const showStreak = document.getElementById('daily-checkin-show-streak')?.checked ?? false;
+  const sendToChat = document.getElementById('daily-checkin-send-to-chat')?.checked ?? true;
+  const testMode = document.getElementById('daily-checkin-test-mode')?.checked ?? false;
+  
+  dailyCheckinData.config = {
+    enabled,
+    rewardName,
+    chatResponse,
+    alreadyCheckedMessage,
+    showStreak,
+    sendToChat,
+    testMode
+  };
+  
+  saveDailyCheckinData();
+  console.log('⚙️ Updated daily check-in config:', dailyCheckinData.config);
+}
+
+// Load daily check-in config into UI
+function loadDailyCheckinConfigToUI() {
+  const config = dailyCheckinData.config;
+  
+  const enabledCheckbox = document.getElementById('daily-checkin-enabled');
+  if (enabledCheckbox) enabledCheckbox.checked = config.enabled ?? true;
+  
+  const rewardNameInput = document.getElementById('daily-checkin-reward-name');
+  if (rewardNameInput) rewardNameInput.value = config.rewardName || 'Daily Check-In';
+  
+  const chatResponseInput = document.getElementById('daily-checkin-chat-response');
+  if (chatResponseInput) chatResponseInput.value = config.chatResponse || 'Welcome back {username}!';
+  
+  const alreadyCheckedInput = document.getElementById('daily-checkin-already-checked-message');
+  if (alreadyCheckedInput) alreadyCheckedInput.value = config.alreadyCheckedMessage || 'You\'ve already checked in today!';
+  
+  const showStreakCheckbox = document.getElementById('daily-checkin-show-streak');
+  if (showStreakCheckbox) showStreakCheckbox.checked = config.showStreak ?? false;
+  
+  const sendToChatCheckbox = document.getElementById('daily-checkin-send-to-chat');
+  if (sendToChatCheckbox) sendToChatCheckbox.checked = config.sendToChat ?? true;
+  
+  const testModeCheckbox = document.getElementById('daily-checkin-test-mode');
+  if (testModeCheckbox) testModeCheckbox.checked = config.testMode ?? false;
+}
+
+// Initialize daily check-in system
+async function initDailyCheckinSystem() {
+  console.log('🚀 Initializing Daily Check-In System...');
+  
+  // Load data
+  await loadDailyCheckinData();
+  
+  // Load config to UI
+  loadDailyCheckinConfigToUI();
+  
+  // Add change listeners to update config
+  const fields = [
+    'daily-checkin-enabled',
+    'daily-checkin-reward-name',
+    'daily-checkin-chat-response',
+    'daily-checkin-already-checked-message',
+    'daily-checkin-show-streak',
+    'daily-checkin-send-to-chat',
+    'daily-checkin-test-mode'
+  ];
+  
+  fields.forEach(fieldId => {
+    const element = document.getElementById(fieldId);
+    if (element) {
+      element.addEventListener('change', updateDailyCheckinConfig);
+      if (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT') {
+        element.addEventListener('input', updateDailyCheckinConfig);
+      }
+    }
+  });
+  
+  // Add button listeners
+  const viewStatsBtn = document.getElementById('view-checkin-stats');
+  if (viewStatsBtn) {
+    viewStatsBtn.addEventListener('click', showDailyCheckinStats);
+  }
+  
+  const testCheckinBtn = document.getElementById('test-checkin');
+  if (testCheckinBtn) {
+    testCheckinBtn.addEventListener('click', testDailyCheckin);
+  }
+  
+  const clearTodayBtn = document.getElementById('clear-today-checkins');
+  if (clearTodayBtn) {
+    clearTodayBtn.addEventListener('click', clearTodayCheckins);
+  }
+  
+  const clearAllBtn = document.getElementById('clear-all-checkins');
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', clearAllCheckins);
+  }
+  
+  console.log('✅ Daily Check-In System initialized');
+}
+
+// Show daily check-in statistics
+function showDailyCheckinStats() {
+  const modal = document.getElementById('checkin-stats-modal');
+  if (!modal) {
+    console.error('❌ Check-in stats modal not found');
+    return;
+  }
+  
+  // Show the modal
+  modal.classList.remove('hidden');
+  
+  // Disable hotkeys when modal is open
+  if (window.electronAPI && window.electronAPI.disableHotkeys) {
+    window.electronAPI.disableHotkeys();
+  }
+  
+  // Populate and render the stats
+  renderCheckinStats();
+}
+
+// Render check-in statistics data
+function renderCheckinStats() {
+  const viewers = dailyCheckinData.viewers;
+  const viewerList = Object.values(viewers);
+  
+  // Calculate summary stats
+  const totalViewers = viewerList.length;
+  const totalCheckins = viewerList.reduce((sum, v) => sum + v.total_checkins, 0);
+  const today = new Date().toDateString();
+  const todayCheckins = viewerList.filter(v => {
+    if (!v.last_checkin) return false;
+    return new Date(v.last_checkin).toDateString() === today;
+  }).length;
+  
+  // Update summary cards
+  document.getElementById('total-checkin-viewers').textContent = totalViewers;
+  document.getElementById('total-checkins-all').textContent = totalCheckins;
+  document.getElementById('total-checkins-today').textContent = todayCheckins;
+  
+  // Get filter and sort values
+  const sortBy = document.getElementById('stats-sort')?.value || 'total';
+  const filterBy = document.getElementById('stats-filter')?.value || 'all';
+  
+  // Filter viewers
+  let filteredViewers = [...viewerList];
+  if (filterBy === 'today') {
+    filteredViewers = filteredViewers.filter(v => {
+      if (!v.last_checkin) return false;
+      return new Date(v.last_checkin).toDateString() === today;
+    });
+  }
+  
+  // Sort viewers
+  if (sortBy === 'total') {
+    filteredViewers.sort((a, b) => b.total_checkins - a.total_checkins);
+  } else if (sortBy === 'recent') {
+    filteredViewers.sort((a, b) => {
+      const dateA = a.last_checkin ? new Date(a.last_checkin) : new Date(0);
+      const dateB = b.last_checkin ? new Date(b.last_checkin) : new Date(0);
+      return dateB - dateA;
+    });
+  } else if (sortBy === 'username') {
+    filteredViewers.sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+  }
+  
+  // Populate table
+  const tbody = document.getElementById('checkin-stats-tbody');
+  if (!tbody) return;
+  
+  if (filteredViewers.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-tertiary);">
+          No check-in data available yet
+        </td>
+      </tr>
+    `;
+    return;
+  }
+  
+  let rowsHTML = '';
+  filteredViewers.forEach((viewer, index) => {
+    const lastCheckin = viewer.last_checkin ? new Date(viewer.last_checkin).toLocaleDateString() : 'Never';
+    const lastCheckinTime = viewer.last_checkin ? new Date(viewer.last_checkin).toLocaleTimeString() : '';
+    const streak = viewer.streak || 0;
+    
+    rowsHTML += `
+      <tr>
+        <td style="text-align: center; font-weight: 600;">${index + 1}</td>
+        <td>${viewer.display_name || viewer.username}</td>
+        <td style="text-align: center; font-weight: 600; color: var(--accent);">${viewer.total_checkins}</td>
+        <td>${lastCheckin}<br><small style="color: var(--text-tertiary); font-size: 11px;">${lastCheckinTime}</small></td>
+        <td style="text-align: center;">${streak}</td>
+      </tr>
+    `;
+  });
+  
+  tbody.innerHTML = rowsHTML;
+  
+  console.log('📊 Rendered check-in statistics:', filteredViewers.length, 'viewers');
+}
+
+// Test check-in function (simulate a check-in)
+async function testDailyCheckin() {
+  // Create fake test user data
+  const testUser = {
+    user_id: 'test_user_' + Date.now(),
+    user_name: 'TestUser' + Math.floor(Math.random() * 1000),
+    display_name: 'TestUser' + Math.floor(Math.random() * 1000)
+  };
+  
+  console.log('🧪 Testing check-in with test user:', testUser);
+  
+  // Process the check-in
+  const result = await processDailyCheckin(testUser, true);
+  
+  if (result) {
+    // Get the viewer data
+    const viewer = dailyCheckinData.viewers[testUser.user_id];
+    
+    // Create user data with actual check-in counts
+    const userData = {
+      username: viewer.username,
+      display_name: viewer.display_name,
+      user_id: viewer.user_id,
+      total_checkins: viewer.total_checkins,
+      streak: viewer.streak || 0
+    };
+    
+    console.log('🧪 Triggering test alert with data:', userData);
+    
+    // Trigger alert
+    alertSystem.triggerAlertForEvent('daily-checkin', userData);
+    
+    alert(`✅ Test check-in successful!\n\nUsername: ${viewer.username}\nTotal Check-Ins: ${viewer.total_checkins}`);
+  } else {
+    alert('❌ Test check-in failed - check console for details');
+  }
+}
+
+// Clear today's check-ins
+async function clearTodayCheckins() {
+  if (!confirm('Clear all check-ins from today? This will allow users to check in again today.')) {
+    return;
+  }
+  
+  const today = new Date().toDateString();
+  let clearedCount = 0;
+  
+  Object.values(dailyCheckinData.viewers).forEach(viewer => {
+    if (viewer.last_checkin) {
+      const lastCheckinDate = new Date(viewer.last_checkin).toDateString();
+      if (lastCheckinDate === today) {
+        // Set last check-in to yesterday so they can check in again
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        viewer.last_checkin = yesterday.toISOString();
+        clearedCount++;
+      }
+    }
+  });
+  
+  await saveDailyCheckinData();
+  console.log(`🔄 Cleared ${clearedCount} check-ins from today`);
+  alert(`✅ Cleared ${clearedCount} check-ins from today!\n\nUsers can now check in again.`);
+  
+  // Refresh stats if modal is open
+  if (!document.getElementById('checkin-stats-modal')?.classList.contains('hidden')) {
+    renderCheckinStats();
+  }
+}
+
+// Clear all check-in data
+async function clearAllCheckins() {
+  if (!confirm('⚠️ WARNING: This will permanently delete ALL check-in data!\n\nThis includes:\n- All viewer check-in counts\n- All check-in history\n- All streaks\n\nAre you sure?')) {
+    return;
+  }
+  
+  // Double confirmation
+  if (!confirm('This action cannot be undone. Are you absolutely sure?')) {
+    return;
+  }
+  
+  const viewerCount = Object.keys(dailyCheckinData.viewers).length;
+  
+  // Reset viewer data
+  dailyCheckinData.viewers = {};
+  
+  await saveDailyCheckinData();
+  console.log(`🗑️ Cleared all check-in data for ${viewerCount} viewers`);
+  alert(`✅ All check-in data cleared!\n\n${viewerCount} viewers reset.`);
+  
+  // Refresh stats if modal is open
+  if (!document.getElementById('checkin-stats-modal')?.classList.contains('hidden')) {
+    renderCheckinStats();
+  }
+}
+
+// ===============================
+// End Daily Check-In System
+// ===============================
+
+// TODO: Integrate with Twitch Channel Point Redemptions
+// When a Channel Point redemption event is received that matches the reward name
+// configured in Daily Check-In settings, call:
+// 
+// processDailyCheckin({
+//   user_id: event.user_id,
+//   user_name: event.user_name,
+//   display_name: event.user_login
+// });
+//
+// Example integration location: TwitchConnected/tc.js or wherever Twitch EventSub
+// events are processed. Look for 'channel.channel_points_custom_reward_redemption' events.
+
 // Left app menu wiring: toggles File dropdown and wires Quit
 function setupLeftAppMenu() {
   const menuBtn = document.getElementById('menu-file-btn');
@@ -6228,8 +11181,10 @@ function setupLeftAppMenu() {
   }
   // Helper to close other menus (so only one menu is open at a time)
   function closeOtherMenus(exceptDropdown) {
-    const allDropdowns = [menuDropdown, viewDropdown, helpDropdown, editDropdown].filter(Boolean);
-    const allBtns = [menuBtn, viewBtn, helpBtn, editBtn].filter(Boolean);
+    const toolsDropdown = document.getElementById('menu-tools-dropdown');
+    const toolsBtn = document.getElementById('menu-tools-btn');
+    const allDropdowns = [menuDropdown, viewDropdown, helpDropdown, editDropdown, toolsDropdown].filter(Boolean);
+    const allBtns = [menuBtn, viewBtn, helpBtn, editBtn, toolsBtn].filter(Boolean);
     allDropdowns.forEach(dd => {
       if (dd !== exceptDropdown) dd.classList.add('hidden');
     });
@@ -6362,6 +11317,44 @@ function setupLeftAppMenu() {
       if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
     });
   }
+  
+  // Bug Report menu item
+  const helpBugReport = document.getElementById('menu-help-bug-report');
+  if (helpBugReport) {
+    helpBugReport.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        if (window.electronAPI && window.electronAPI.reportBug) {
+          await window.electronAPI.reportBug();
+        }
+      } catch (error) {
+        console.error('Error opening bug report form:', error);
+      }
+      if (helpDropdown) helpDropdown.classList.add('hidden');
+      if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  
+  // Placeholders Guide menu item
+  const helpPlaceholders = document.getElementById('menu-help-placeholders');
+  if (helpPlaceholders) {
+    helpPlaceholders.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openPlaceholdersGuide();
+      if (helpDropdown) helpDropdown.classList.add('hidden');
+      if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+  
+  const helpCommands = document.getElementById('menu-help-commands');
+  if (helpCommands) {
+    helpCommands.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openCommandsGuide();
+      if (helpDropdown) helpDropdown.classList.add('hidden');
+      if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
 
   // Edit menu wiring
   const editBtn = document.getElementById('menu-edit-btn');
@@ -6380,6 +11373,18 @@ function setupLeftAppMenu() {
       if (!editBtn.contains(e.target) && !editDropdown.contains(e.target)) { editDropdown.classList.add('hidden'); editBtn.setAttribute('aria-expanded', 'false'); }
     });
   }
+  
+  // Profile widget Manage button – toggle expand/collapse (content in widget)
+  const profileWidgetOpen = document.getElementById('profile-widget-open');
+  if (profileWidgetOpen) {
+    profileWidgetOpen.addEventListener('click', () => toggleProfileWidget());
+  }
+  // Battle widget Manage button – toggle expand/collapse (content in widget)
+  const battleWidgetOpen = document.getElementById('battle-widget-open');
+  if (battleWidgetOpen) {
+    battleWidgetOpen.addEventListener('click', () => toggleBattleWidget());
+  }
+  
   // Tools menu wiring (new)
   const toolsBtn = document.getElementById('menu-tools-btn');
   const toolsDropdown = document.getElementById('menu-tools-dropdown');
@@ -6525,12 +11530,31 @@ function setupLeftAppMenu() {
   const toolsAlerts = document.getElementById('menu-tools-alerts');
   if (toolsAlerts) {
     toolsAlerts.addEventListener('click', (e) => {
+      console.log('🔴 ALERT WIDGET button clicked from Tools menu');
       e.stopPropagation();
       showAlertWidget();
       if (toolsDropdown) toolsDropdown.classList.add('hidden');
       if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
     });
   }
+  
+  // Test Twitch Events - commented out but function available via console: testTwitchEvents()
+  /*
+  const toolsTestTwitch = document.getElementById('menu-tools-test-twitch');
+  if (toolsTestTwitch) {
+    toolsTestTwitch.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (toolsDropdown) toolsDropdown.classList.add('hidden');
+      if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
+      // Run the test function
+      if (window.testTwitchEventPipeline) {
+        window.testTwitchEventPipeline();
+      } else {
+        alert('Test function not available. Please reload the application.');
+      }
+    });
+  }
+  */
   
   // Themes population: built-in + dynamic skins
   async function renderToolsThemes() {
@@ -6743,33 +11767,16 @@ function setupLeftAppMenu() {
   if (prefBtn) {
     prefBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (window.electronAPI && typeof window.electronAPI.openPreferences === 'function') {
-        window.electronAPI.openPreferences();
-      } else {
-        try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('open-preferences'); } catch (e) {}
-      }
+      openPreferencesModal();
     });
   }
 }
 
-// Wait for DOM to be ready before initializing theme manager
+// ThemeManager now initialized early in first DOMContentLoaded (before ProfileManager)
+// This ensures ThemeSystem is available when ProfileManager tries to load theme
+// Theme cycling hotkey (Ctrl+Shift+T) also registered in early DOMContentLoaded
+
 document.addEventListener('DOMContentLoaded', () => {
-  themeManager = new ThemeManager();
-  notificationManager = new NotificationManager();
-  
-  // Add hotkey to cycle through themes (Ctrl+Shift+T)
-  document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.shiftKey && e.key === 'T') {
-      e.preventDefault();
-      if (themeManager) {
-        themeManager.cycleTheme();
-      }
-    }
-  });
-  
-  // Export for potential use by other parts of the app
-  window.themeManager = themeManager;
-  window.notificationManager = notificationManager;
   
   // Overlay test functions
   window.testOverlayText = function() {
@@ -6786,7 +11793,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.electronAPI && typeof window.electronAPI.sendOverlayImage === 'function') {
       window.electronAPI.sendOverlayImage({ 
         position: 1, 
-        imageUrl: 'https://via.placeholder.com/200x100/00ff00/000000?text=Test+Image' 
+        imageUrl: 'http://localhost:8080/media/images/VirtualDeck2.png' 
       });
     } else {
       console.log('sendOverlayImage not available');
@@ -6798,7 +11805,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.electronAPI && typeof window.electronAPI.sendOverlayVideo === 'function') {
       window.electronAPI.sendOverlayVideo({ 
         position: 3, 
-        videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4' 
+        videoUrl: 'http://localhost:8080/media/videos/generated-video.mp4' 
       });
     } else {
       console.log('sendOverlayVideo not available');
@@ -6807,18 +11814,18 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Removed duplicate clearOverlay function - using the main one defined earlier
   
-  // Test multi-source functionality
-  window.testMultiSource = function(payload) {
-    console.log('Testing multi-source with payload:', payload);
+  // Utility function to send payload to overlay
+  window.sendOverlayPayload = function(payload) {
+    console.log('Sending payload to overlay:', payload);
     
     // Send to overlay iframe if available - send payload directly
     const overlayIframe = document.getElementById('overlay-iframe');
     if (overlayIframe && overlayIframe.contentWindow) {
       try {
         overlayIframe.contentWindow.postMessage(payload, '*');
-        console.log('Multi-source test sent to overlay iframe');
+        console.log('Payload sent to overlay iframe');
       } catch (error) {
-        console.warn('Failed to send multi-source test to overlay iframe:', error);
+        console.warn('Failed to send payload to overlay iframe:', error);
       }
     }
     
@@ -6826,9 +11833,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.electronAPI && window.electronAPI.sendOverlayMessage) {
       try {
         window.electronAPI.sendOverlayMessage(payload);
-        console.log('Multi-source test sent via WebSocket');
+        console.log('Payload sent via WebSocket');
       } catch (error) {
-        console.warn('Failed to send multi-source test via WebSocket:', error);
+        console.warn('Failed to send payload via WebSocket:', error);
       }
     }
   };
@@ -6862,11 +11869,13 @@ document.addEventListener('DOMContentLoaded', () => {
         text: pos.text,
         style: {
           fontFamily: 'Arial, sans-serif',
-          fontSize: '18px',
-          color: '#00ff00',
+          fontSize: '48px',
+          color: '#ffffff',
           fontWeight: 'bold',
           textAlign: 'center',
-          zIndex: (index + 1).toString()
+          textShadow: '3px 3px 6px rgba(0, 0, 0, 0.9)',
+          webkitTextStroke: '2px #000',
+          zIndex: '15'
         }
       };
     });
@@ -6874,8 +11883,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Add center media test
     payload.centerMedia = [{
       type: 'image',
-      src: 'https://via.placeholder.com/400x300/ff00ff/ffffff?text=Test+Center+Media',
-      alt: 'Test Center Media'
+      src: 'http://localhost:8080/media/images/VirtualDeck2.png',
+      alt: 'VirtualDeck Logo'
     }];
     
     if (window.electronAPI && typeof window.electronAPI.sendOverlayMessage === 'function') {
@@ -6892,30 +11901,9 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('- clearOverlay() - Clear all overlay content');
   
   // Watch for any changes to the document element's data-theme attribute
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
-        const currentTheme = document.documentElement.getAttribute('data-theme');
-        if (currentTheme !== themeManager.getCurrentTheme()) {
-          setTimeout(() => {
-            themeManager.applyTheme(themeManager.getCurrentTheme());
-          }, 10);
-        }
-      }
-    });
-  });
-  
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['data-theme']
-  });
-  
-  // Final theme application after everything else has loaded
-  window.addEventListener('load', () => {
-    setTimeout(() => {
-      themeManager.applyTheme(themeManager.getCurrentTheme());
-    }, 1000);
-  });
+  // Theme persistence is now handled by ProfileManager
+  // Removed MutationObserver and delayed theme application to prevent conflicts
+  // ProfileManager applies the correct theme from profile settings
 
   // Initialize AddEditButtonForm integration (minimal)
   if (window.AddEditButtonForm) {
@@ -6933,10 +11921,13 @@ document.addEventListener('DOMContentLoaded', () => {
           name: buttonData.name,
           hotkey: buttonData.hotkey,
           type: 'multi-media',
+          overlay: buttonData.overlay || getDefaultOverlay(), // Preserve overlay selection
           slots: buttonData.slots,
           centerMedia: buttonData.centerMedia,
           audio: buttonData.audio,
-          options: buttonData.options
+          options: buttonData.options,
+          // Include chat command data if provided
+          chatCommand: buttonData.chatCommand || undefined
         };
 
         // Check if Electron API is available
@@ -6978,6 +11969,16 @@ document.addEventListener('DOMContentLoaded', () => {
           // Refresh hotkeys to register the new hotkey
           window.electronAPI.refreshHotkeys();
           
+          // Clear audio cache to ensure new audio files are loaded
+          audioCache.clear();
+          console.log('🧹 Audio cache cleared after multi-media button save');
+          
+          // Force immediate profile save to persist button changes
+          if (profileManager && profileManager.saveCurrentSettings) {
+            await profileManager.saveCurrentSettings();
+            console.log('✅ Profile saved after button edit');
+          }
+          
           // Reload buttons
           await loadButtons();
           
@@ -7000,6 +12001,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Button Type Selection Modal
   setupButtonTypeSelection();
+  setupMeldLoadScenesButton();
   
   // Expose helper functions globally for debugging
   window.findMultiMediaButtons = findMultiMediaButtons;
@@ -8747,7 +13749,7 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('🎬 Testing different video sources...');
     
     const videoSources = [
-      'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+      'http://localhost:8080/media/videos/generated-video.mp4',
       'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
       'https://www.w3schools.com/html/mov_bbb.mp4'
     ];
@@ -9059,7 +14061,7 @@ document.addEventListener('DOMContentLoaded', () => {
         {
           id: 'm1',
           type: 'image',
-          src: 'https://via.placeholder.com/400x300/ff6600/ffffff?text=Test+Image',
+          src: 'http://localhost:8080/media/images/VirtualDeck2.png',
           loop: false,
           widthPct: 70,
           align: 'center',
@@ -9297,6 +14299,15 @@ function setupButtonTypeSelection() {
     });
   }
 
+  // Meld Scene option clicked
+  const meldSceneOption = document.querySelector('[data-type="meld-scene"]');
+  if (meldSceneOption) {
+    meldSceneOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      openMeldSceneForm();
+    });
+  }
+
   // Cancel button clicked
   if (cancelBtn) {
     cancelBtn.addEventListener('click', () => {
@@ -9310,6 +14321,11 @@ function setupButtonTypeSelection() {
       selectionModal.classList.add('hidden');
     }
   });
+}
+
+function setupMeldLoadScenesButton() {
+  const btn = document.getElementById('meld-load-scenes');
+  if (btn) btn.addEventListener('click', () => loadMeldScenes());
 }
 
 function setupOverlayPreview() {
@@ -9337,6 +14353,8 @@ function setupOverlayPreview() {
 function openAudioForm() {
   const settingsForm = document.getElementById('settings-form');
   settingsForm.reset();
+  const saveBtn = document.getElementById('save-sound');
+  if (saveBtn) saveBtn.disabled = false;
   
   // Set the form type to 'audio'
   const typeInput = document.getElementById('type-input');
@@ -9355,6 +14373,16 @@ function openAudioForm() {
   delete settingsForm.dataset.resolvedPath;
   delete settingsForm.dataset.resolvedArgs;
   delete settingsForm.dataset.existingFile;
+  
+  // Clear chat command fields
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const redeemName = document.getElementById('redeem-name');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  if (chatCommandEnabled) chatCommandEnabled.checked = false;
+  if (chatCommandKeyword) chatCommandKeyword.value = '';
+  if (redeemName) redeemName.value = '';
+  if (chatCommandSettings) chatCommandSettings.style.display = 'none';
   
   // Replace file inputs to clear previous file references
   const oldFileInput = document.getElementById('file-input');
@@ -9376,9 +14404,1335 @@ function openAudioForm() {
   
   document.getElementById('settings-modal-title').textContent = 'Add New Audio Button';
   
+  // Show audio section, hide app and meld
+  const meldSection = document.getElementById('meld-scene-section');
+  if (meldSection) { meldSection.classList.add('hidden'); meldSection.style.display = 'none'; }
+  
   // Show settings modal
   document.getElementById('settings-modal').classList.remove('hidden');
   if (window.electronAPI && window.electronAPI.disableHotkeys) {
     window.electronAPI.disableHotkeys();
   }
 }
+
+async function loadMeldScenes() {
+  const select = document.getElementById('meld-scene-select');
+  const status = document.getElementById('meld-scene-status');
+  if (!select || !window.meldClient) {
+    if (status) status.textContent = 'Meld client not loaded.';
+    return;
+  }
+  if (status) status.textContent = 'Loading…';
+  try {
+    const scenes = await window.meldClient.getScenes();
+    select.innerHTML = '<option value="">— Select a scene —</option>';
+    scenes.forEach(({ id, name }) => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = name || id;
+      select.appendChild(opt);
+    });
+    if (status) status.textContent = scenes.length ? `${scenes.length} scene(s)` : 'No scenes';
+  } catch (err) {
+    if (status) status.textContent = 'Failed';
+    select.innerHTML = '<option value="">— Is Meld Studio running? —</option>';
+    console.warn('Load Meld scenes failed:', err);
+  }
+}
+
+function openMeldSceneForm() {
+  window.__meldSceneSubmitInProgress = false; // allow new submit
+  const settingsForm = document.getElementById('settings-form');
+  settingsForm.reset();
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'meld-scene';
+  delete settingsForm.dataset.editingIndex;
+  delete settingsForm.dataset.editingId;
+  delete settingsForm.dataset.resolvedPath;
+  delete settingsForm.dataset.resolvedArgs;
+  delete settingsForm.dataset.existingFile;
+  if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
+  const hkIn = document.getElementById('hotkey-input');
+  if (hkIn) hkIn.value = '';
+  const hkStatus = document.getElementById('hotkey-status');
+  if (hkStatus) hkStatus.textContent = '';
+  const chatCommandEnabled = document.getElementById('chat-command-enabled');
+  const chatCommandKeyword = document.getElementById('chat-command-keyword');
+  const redeemName = document.getElementById('redeem-name');
+  const chatCommandSettings = document.getElementById('chat-command-settings');
+  if (chatCommandEnabled) chatCommandEnabled.checked = false;
+  if (chatCommandKeyword) chatCommandKeyword.value = '';
+  if (redeemName) redeemName.value = '';
+  if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  const meldSection = document.getElementById('meld-scene-section');
+  if (audioFileSection) audioFileSection.style.display = 'none';
+  if (appFileSection) appFileSection.style.display = 'none';
+  if (meldSection) {
+    meldSection.classList.remove('hidden');
+    meldSection.style.display = '';
+  }
+  // So browser validation doesn't block submit: file inputs are hidden for Meld
+  const fileInput = document.getElementById('file-input');
+  const appFileInput = document.getElementById('app-file-input');
+  if (fileInput) fileInput.required = false;
+  if (appFileInput) appFileInput.required = false;
+  document.getElementById('settings-modal-title').textContent = 'Add Meld Scene Button';
+  const saveBtn = document.getElementById('save-sound');
+  if (saveBtn) saveBtn.disabled = false;
+  document.getElementById('settings-modal').classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
+  loadMeldScenes();
+}
+
+// Preferences Modal Functions
+function openPreferencesModal() {
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.classList.remove('hidden');
+    loadPreferences();
+  }
+}
+
+function closePreferencesModal() {
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.classList.add('hidden');
+  }
+}
+
+function loadPreferences() {
+  // Load preferences from localStorage
+  const preferences = JSON.parse(localStorage.getItem('vdPreferences') || '{}');
+  
+  // Update checkboxes
+  document.getElementById('auto-update-checkbox').checked = preferences.autoUpdate !== false; // default to true
+}
+
+function savePreferences() {
+  const preferences = {
+    autoUpdate: document.getElementById('auto-update-checkbox').checked
+  };
+  
+  // Save to localStorage
+  localStorage.setItem('vdPreferences', JSON.stringify(preferences));
+  
+  // Send preferences to main process if available
+  if (window.electronAPI && window.electronAPI.savePreferences) {
+    window.electronAPI.savePreferences(preferences);
+  }
+  
+  // Show success message
+  if (window.notificationManager) {
+    window.notificationManager.show('Preferences saved successfully!', 'success');
+  }
+  
+  // Close modal
+  closePreferencesModal();
+}
+
+function checkForUpdatesFromPreferences() {
+  // Send check for updates request to main process
+  if (window.electronAPI && window.electronAPI.checkForUpdates) {
+    window.electronAPI.checkForUpdates();
+    if (window.notificationManager) {
+      window.notificationManager.show('Checking for updates...', 'info');
+    }
+  } else {
+    if (window.notificationManager) {
+      window.notificationManager.show('Update checking not available in development mode', 'warning');
+    }
+  }
+}
+
+// Initialize preferences modal event listeners
+function initializePreferencesModal() {
+  // Close button
+  const closeBtn = document.getElementById('preferences-modal-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closePreferencesModal);
+  }
+  
+  // Save button
+  const saveBtn = document.getElementById('save-preferences');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', savePreferences);
+  }
+  
+  // Cancel button
+  const cancelBtn = document.getElementById('cancel-preferences');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', closePreferencesModal);
+  }
+  
+  // Check for updates button
+  const checkUpdatesBtn = document.getElementById('check-updates-button');
+  if (checkUpdatesBtn) {
+    checkUpdatesBtn.addEventListener('click', checkForUpdatesFromPreferences);
+  }
+
+  // Twitch Setup button
+  const twitchSetupBtn = document.getElementById('preferences-twitch-setup');
+  if (twitchSetupBtn) {
+    twitchSetupBtn.addEventListener('click', () => {
+      closePreferencesModal();
+      // Show Twitch config modal (from TwitchConnected/tc.js)
+      if (typeof showTwitchConfigModal === 'function') {
+        showTwitchConfigModal();
+      } else {
+        console.error('showTwitchConfigModal function not found');
+      }
+    });
+  }
+  
+  // Close modal when clicking outside
+  const preferencesModal = document.getElementById('preferences-modal');
+  if (preferencesModal) {
+    preferencesModal.addEventListener('click', (e) => {
+      if (e.target === preferencesModal) {
+        closePreferencesModal();
+      }
+    });
+  }
+
+  // Initialize first-run popup
+  initializeFirstRunPopup();
+}
+
+function initializeFirstRunPopup() {
+  const firstRunPopup = document.getElementById('first-run-twitch-popup');
+  const dontShowCheckbox = document.getElementById('dont-show-welcome-again');
+  const setupBtn = document.getElementById('welcome-popup-setup');
+  const dismissBtn = document.getElementById('welcome-popup-dismiss');
+  const hideKey = 'vd-hide-welcome-twitch-popup';
+
+  // Check if user has opted to hide the popup
+  const shouldHide = localStorage.getItem(hideKey) === '1';
+  
+  // Show popup on first run if not hidden
+  if (!shouldHide && firstRunPopup) {
+    // Delay showing popup slightly to ensure TwitchConnected/tc.js is loaded
+    setTimeout(() => {
+      firstRunPopup.classList.remove('hidden');
+    }, 500);
+  }
+
+  // Handle setup button
+  if (setupBtn) {
+    setupBtn.addEventListener('click', () => {
+      firstRunPopup.classList.add('hidden');
+      
+      // Save "don't show" preference if checked
+      if (dontShowCheckbox && dontShowCheckbox.checked) {
+        localStorage.setItem(hideKey, '1');
+      }
+
+      // Open Twitch config modal
+      if (typeof showTwitchConfigModal === 'function') {
+        setTimeout(() => showTwitchConfigModal(), 300);
+      } else {
+        console.error('showTwitchConfigModal function not found');
+      }
+    });
+  }
+
+  // Handle dismiss button
+  if (dismissBtn) {
+    dismissBtn.addEventListener('click', () => {
+      firstRunPopup.classList.add('hidden');
+      
+      // Save "don't show" preference if checked
+      if (dontShowCheckbox && dontShowCheckbox.checked) {
+        localStorage.setItem(hideKey, '1');
+      }
+    });
+  }
+}
+
+// ============================================================================
+// TWITCH EVENT PIPELINE TESTING
+// ============================================================================
+
+/**
+ * Test function that simulates Twitch follow and subscription events
+ * going through the entire pipeline as if they came from Twitch.
+ * This helps diagnose alert issues.
+ */
+window.testTwitchEventPipeline = function() {
+  console.log('');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('🧪 TWITCH EVENT PIPELINE TEST');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('');
+  
+  // First, check what alerts are configured
+  console.log('📋 STEP 1: Checking configured alerts...');
+  console.log('─────────────────────────────────────────────────────────');
+  const alerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+  console.log(`Total alerts configured: ${alerts.length}`);
+  
+  if (alerts.length === 0) {
+    console.log('❌ NO ALERTS CONFIGURED!');
+    console.log('💡 This is why you\'re not seeing alerts.');
+    console.log('💡 Go to Tools → Alerts to create alerts.');
+    console.log('');
+    alert('⚠️ No alerts configured!\n\nYou need to create alerts in Tools → Alerts first.\n\nCreate at least:\n• 1 "Follower" alert\n• 1 "Subscriber" alert');
+    return;
+  }
+  
+  // Group alerts by type
+  const alertsByType = {};
+  alerts.forEach(alert => {
+    if (!alertsByType[alert.type]) {
+      alertsByType[alert.type] = [];
+    }
+    alertsByType[alert.type].push(alert);
+  });
+  
+  console.log('\nAlerts by type:');
+  Object.keys(alertsByType).forEach(type => {
+    const typeAlerts = alertsByType[type];
+    const enabledCount = typeAlerts.filter(a => a.enabled !== false).length;
+    console.log(`  • ${type}: ${typeAlerts.length} total, ${enabledCount} enabled`);
+  });
+  console.log('');
+  
+  // Check for follower alerts
+  const followerAlerts = alertsByType['follower'] || [];
+  const enabledFollowerAlerts = followerAlerts.filter(a => a.enabled !== false);
+  
+  if (followerAlerts.length === 0) {
+    console.log('⚠️ WARNING: No follower alerts configured!');
+  } else if (enabledFollowerAlerts.length === 0) {
+    console.log('⚠️ WARNING: Follower alerts exist but none are enabled!');
+  } else {
+    console.log(`✅ Follower alerts: ${enabledFollowerAlerts.length} enabled`);
+  }
+  
+  // Check for subscriber alerts
+  const subscriberAlerts = alertsByType['subscriber'] || [];
+  const enabledSubscriberAlerts = subscriberAlerts.filter(a => a.enabled !== false);
+  
+  if (subscriberAlerts.length === 0) {
+    console.log('⚠️ WARNING: No subscriber alerts configured!');
+  } else if (enabledSubscriberAlerts.length === 0) {
+    console.log('⚠️ WARNING: Subscriber alerts exist but none are enabled!');
+  } else {
+    console.log(`✅ Subscriber alerts: ${enabledSubscriberAlerts.length} enabled`);
+  }
+  
+  console.log('');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log('📡 STEP 2: Simulating Twitch EventSub events...');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log('');
+  
+  // Test 1: Simulate a FOLLOW event
+  console.log('🧪 TEST 1: Simulating FOLLOW event');
+  console.log('──────────────────────────────────');
+  
+  const followEvent = {
+    type: 'channel.follow',
+    event: {
+      user_id: '123456789',
+      user_login: 'test_follower',
+      user_name: 'TestFollower',
+      display_name: 'TestFollower',
+      broadcaster_user_id: '987654321',
+      broadcaster_user_login: 'yourchannel',
+      broadcaster_user_name: 'YourChannel',
+      followed_at: new Date().toISOString()
+    }
+  };
+  
+  console.log('📤 Sending follow event through pipeline:', followEvent);
+  
+  // Check if the EventSub handler exists
+  if (typeof window.electronAPI !== 'undefined' && window.electronAPI.onTwitchEventSub) {
+    // Manually trigger the EventSub handler
+    // We need to get the handler function directly
+    console.log('✅ EventSub handler found');
+    
+    // Update alert system first
+    if (window.alertSystem) {
+      window.alertSystem.updateAlerts();
+      console.log('✅ Alert system updated');
+    }
+    
+    // Map event to alert type
+    const alertType = 'follower';
+    console.log(`🎯 Alert type for this event: "${alertType}"`);
+    
+    // Check if we have alerts for this type
+    const alertsForType = alerts.filter(a => a.type === alertType && a.enabled !== false);
+    if (alertsForType.length === 0) {
+      console.log(`❌ No enabled alerts found for type "${alertType}"!`);
+      console.log('💡 Create a "Follower" alert in Tools → Alerts');
+    } else {
+      console.log(`✅ Found ${alertsForType.length} enabled alert(s) for "${alertType}"`);
+      
+      // Trigger the alert
+      const userData = {
+        username: followEvent.event.user_name,
+        display_name: followEvent.event.display_name || followEvent.event.user_name,
+        ...followEvent.event
+      };
+      
+      console.log('🚀 Triggering alert with user data:', userData);
+      
+      if (window.alertSystem) {
+        window.alertSystem.triggerAlertForEvent(alertType, userData);
+        console.log('✅ Follow alert triggered!');
+      } else {
+        console.log('❌ Alert system not found!');
+      }
+    }
+    
+    // Add to chat display
+    if (typeof addTwitchEvent === 'function') {
+      addTwitchEvent(followEvent.type, followEvent.event);
+      console.log('✅ Added to chat display');
+    }
+    
+    // Update recent followers
+    if (typeof addRecentFollower === 'function') {
+      addRecentFollower(followEvent.event);
+      console.log('✅ Updated recent followers');
+    }
+  } else {
+    console.log('❌ EventSub handler not found - may not be initialized yet');
+  }
+  
+  console.log('');
+  
+  // Test 2: Simulate a SUBSCRIPTION event
+  console.log('🧪 TEST 2: Simulating SUBSCRIPTION event');
+  console.log('─────────────────────────────────────────');
+  
+  const subEvent = {
+    type: 'channel.subscribe',
+    event: {
+      user_id: '987654321',
+      user_login: 'test_subscriber',
+      user_name: 'TestSubscriber',
+      display_name: 'TestSubscriber',
+      broadcaster_user_id: '123456789',
+      broadcaster_user_login: 'yourchannel',
+      broadcaster_user_name: 'YourChannel',
+      tier: '1000',
+      is_gift: false,
+      cumulative_months: 3,
+      streak_months: 1,
+      duration_months: 1,
+      message: {
+        text: 'Love the stream!',
+        emotes: []
+      }
+    }
+  };
+  
+  console.log('📤 Sending subscription event through pipeline:', subEvent);
+  
+  if (typeof window.electronAPI !== 'undefined' && window.electronAPI.onTwitchEventSub) {
+    console.log('✅ EventSub handler found');
+    
+    // Update alert system
+    if (window.alertSystem) {
+      window.alertSystem.updateAlerts();
+    }
+    
+    // Map event to alert type
+    const alertType = 'subscriber';
+    console.log(`🎯 Alert type for this event: "${alertType}"`);
+    
+    // Check if we have alerts for this type
+    const alertsForType = alerts.filter(a => a.type === alertType && a.enabled !== false);
+    if (alertsForType.length === 0) {
+      console.log(`❌ No enabled alerts found for type "${alertType}"!`);
+      console.log('💡 Create a "Subscriber" alert in Tools → Alerts');
+    } else {
+      console.log(`✅ Found ${alertsForType.length} enabled alert(s) for "${alertType}"`);
+      
+      // Trigger the alert
+      const userData = {
+        username: subEvent.event.user_name,
+        display_name: subEvent.event.display_name || subEvent.event.user_name,
+        tier: subEvent.event.tier,
+        months: subEvent.event.cumulative_months,
+        message: subEvent.event.message,
+        ...subEvent.event
+      };
+      
+      console.log('🚀 Triggering alert with user data:', userData);
+      
+      if (window.alertSystem) {
+        window.alertSystem.triggerAlertForEvent(alertType, userData);
+        console.log('✅ Subscription alert triggered!');
+      } else {
+        console.log('❌ Alert system not found!');
+      }
+    }
+    
+    // Add to chat display
+    if (typeof addTwitchEvent === 'function') {
+      addTwitchEvent(subEvent.type, subEvent.event);
+      console.log('✅ Added to chat display');
+    }
+    
+    // Update recent subscribers
+    if (typeof addRecentSubscriber === 'function') {
+      addRecentSubscriber(subEvent.event);
+      console.log('✅ Updated recent subscribers');
+    }
+  } else {
+    console.log('❌ EventSub handler not found');
+  }
+  
+  console.log('');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('✅ TEST COMPLETE');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('');
+  console.log('📊 RESULTS SUMMARY:');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log(`• Total alerts configured: ${alerts.length}`);
+  console.log(`• Follower alerts enabled: ${enabledFollowerAlerts.length}`);
+  console.log(`• Subscriber alerts enabled: ${enabledSubscriberAlerts.length}`);
+  console.log('');
+  console.log('💡 WHAT TO CHECK:');
+  console.log('─────────────────────────────────────────────────────────');
+  console.log('1. Did you see alerts appear on screen?');
+  console.log('2. Check the console messages above for errors');
+  console.log('3. Make sure you have alerts created in Tools → Alerts');
+  console.log('4. Make sure your alerts are ENABLED (not disabled)');
+  console.log('5. Check if you have an overlay URL open in OBS');
+  console.log('6. Look for any error messages in red above');
+  console.log('');
+  console.log('🔍 If alerts didn\'t show:');
+  console.log('─────────────────────────────────────────────────────────');
+  if (enabledFollowerAlerts.length === 0) {
+    console.log('❌ Create/enable a "Follower" alert in Tools → Alerts');
+  }
+  if (enabledSubscriberAlerts.length === 0) {
+    console.log('❌ Create/enable a "Subscriber" alert in Tools → Alerts');
+  }
+  console.log('• Check that your overlay is properly connected');
+  console.log('• Verify alert queue is working (check alertQueue in console)');
+  console.log('• Test individual alerts using the Test button in Alerts menu');
+  console.log('');
+  
+  // Create a summary alert for the user
+  let summaryMessage = '🧪 Twitch Event Pipeline Test Complete!\n\n';
+  summaryMessage += `Alerts configured: ${alerts.length}\n`;
+  summaryMessage += `Follower alerts enabled: ${enabledFollowerAlerts.length}\n`;
+  summaryMessage += `Subscriber alerts enabled: ${enabledSubscriberAlerts.length}\n\n`;
+  
+  if (enabledFollowerAlerts.length === 0 || enabledSubscriberAlerts.length === 0) {
+    summaryMessage += '⚠️ ISSUES FOUND:\n';
+    if (enabledFollowerAlerts.length === 0) {
+      summaryMessage += '• No enabled follower alerts\n';
+    }
+    if (enabledSubscriberAlerts.length === 0) {
+      summaryMessage += '• No enabled subscriber alerts\n';
+    }
+    summaryMessage += '\n💡 Create/enable alerts in Tools → Alerts';
+  } else {
+    summaryMessage += '✅ Alerts are configured correctly!\n\n';
+    summaryMessage += 'Check console (F12) for detailed logs.\n';
+    summaryMessage += 'Did you see the test alerts appear?';
+  }
+  
+  alert(summaryMessage);
+};
+
+// Add a shorter alias for quick testing
+window.testTwitchEvents = window.testTwitchEventPipeline;
+
+// ========== Progression System Management ==========
+
+// Open progression manager modal
+async function openProgressionManager() {
+  console.log('🔵 Opening progression manager modal...');
+  
+  // Close overlay widget if it's open (so modal is visible)
+  const overlayWidget = document.getElementById('overlay-widget');
+  if (overlayWidget && !overlayWidget.classList.contains('hidden')) {
+    console.log('🔵 Closing overlay widget to show progression modal');
+    overlayWidget.classList.add('hidden');
+  }
+  
+  // Also close alert widget if it's open
+  const alertWidget = document.getElementById('alert-widget');
+  if (alertWidget && !alertWidget.classList.contains('hidden')) {
+    console.log('🔵 Closing alert widget to show progression modal');
+    alertWidget.classList.add('hidden');
+  }
+  
+  const modal = document.getElementById('progression-manager-modal');
+  if (!modal) {
+    console.error('Progression manager modal not found!');
+    showCustomAlert('Progression manager modal not found. Please restart the app.', 'error');
+    return;
+  }
+  
+  // Debug: Check all parent elements for visibility issues
+  console.log('🔍 Checking parent chain:');
+  let el = modal;
+  while (el) {
+    console.log(el.tagName, el.id || el.className, {
+      display: getComputedStyle(el).display,
+      visibility: getComputedStyle(el).visibility,
+      opacity: getComputedStyle(el).opacity
+    });
+    el = el.parentElement;
+  }
+  
+  // Remove hidden class first
+  modal.classList.remove('hidden');
+  
+  // Force a reflow to ensure browser recalculates layout
+  void modal.offsetHeight; // Forces reflow
+  
+  // Use requestAnimationFrame to defer the style changes to next paint
+  requestAnimationFrame(() => {
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex !important; justify-content: center; align-items: center; z-index: 100000; padding: 20px; box-sizing: border-box;';
+    
+    // Force another reflow after setting styles
+    void modal.offsetHeight;
+    
+    console.log('Modal opened, classes:', modal.className);
+    console.log('Modal display:', window.getComputedStyle(modal).display);
+    console.log('Modal z-index:', window.getComputedStyle(modal).zIndex);
+    console.log('Modal visibility:', window.getComputedStyle(modal).visibility);
+    console.log('Modal opacity:', window.getComputedStyle(modal).opacity);
+    console.log('🔵 Progression modal should now be visible!');
+  });
+  
+  // Load progressions list
+  await loadProgressionsList();
+  
+  // Setup close button if not already set up
+  const closeBtn = document.getElementById('progression-manager-close');
+  if (closeBtn && !closeBtn.hasAttribute('data-listener-attached')) {
+    closeBtn.setAttribute('data-listener-attached', 'true');
+    closeBtn.addEventListener('click', () => {
+      console.log('Closing progression manager...');
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    });
+  }
+  
+  // Setup create button if not already set up
+  const createBtn = document.getElementById('create-new-progression');
+  if (createBtn && !createBtn.hasAttribute('data-listener-attached')) {
+    createBtn.setAttribute('data-listener-attached', 'true');
+    createBtn.addEventListener('click', () => {
+      openProgressionEditor(null);
+    });
+  }
+  
+  // Setup test redeem button
+  const testRedeemBtn = document.getElementById('test-progression-redeem');
+  if (testRedeemBtn && !testRedeemBtn.hasAttribute('data-listener-attached')) {
+    testRedeemBtn.setAttribute('data-listener-attached', 'true');
+    testRedeemBtn.addEventListener('click', () => {
+      testProgressionRedeem();
+    });
+  }
+}
+
+// Test a single progression (called from progression card)
+window.testSingleProgression = async function(progressionId) {
+  try {
+    const result = await window.electronAPI.getProgressions();
+    const progression = result.progressions.find(p => p.id === progressionId);
+    
+    if (!progression) {
+      showCustomAlert('Progression not found!', 'error');
+      return;
+    }
+    
+    openProgressionTestModal(progression);
+  } catch (error) {
+    console.error('Error testing progression:', error);
+    showCustomAlert('Error: ' + error.message, 'error');
+  }
+};
+
+// Test progression redeem (with selection)
+async function testProgressionRedeem() {
+  try {
+    const result = await window.electronAPI.getProgressions();
+    const progressions = result.progressions || [];
+    
+    if (progressions.length === 0) {
+      showCustomAlert('No progressions configured yet. Create one first!', 'error');
+      return;
+    }
+    
+    // If only one progression, open it directly
+    if (progressions.length === 1) {
+      openProgressionTestModal(progressions[0]);
+      return;
+    }
+    
+    // Show custom alert to select which progression
+    const listHtml = progressions.map((prog, i) => 
+      `<button onclick="window.testSingleProgression('${prog.id}')" style="width:100%;padding:12px;margin:5px 0;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:6px;cursor:pointer;color:var(--text-primary);text-align:left;">
+        ${i + 1}. ${prog.name} (${prog.redeemKeyword})
+      </button>`
+    ).join('');
+    
+    showCustomAlert(`<div style="max-height:400px;overflow-y:auto;">${listHtml}</div>`, 'info');
+  } catch (error) {
+    console.error('Error testing progression redeem:', error);
+    showCustomAlert('Error: ' + error.message, 'error');
+  }
+}
+
+// Open progression test modal
+function openProgressionTestModal(progression) {
+  const modal = document.getElementById('progression-test-modal');
+  if (!modal) {
+    showCustomAlert('Test modal not found!', 'error');
+    return;
+  }
+  
+  // Populate progression info
+  const currentStage = progression.stages[progression.currentStageIndex];
+  document.getElementById('test-prog-name').textContent = progression.name;
+  document.getElementById('test-prog-keyword').textContent = progression.redeemKeyword;
+  document.getElementById('test-prog-stage').textContent = progression.currentStageIndex + 1;
+  document.getElementById('test-prog-total').textContent = progression.stages.length;
+  document.getElementById('test-prog-count').textContent = progression.currentCount;
+  document.getElementById('test-prog-required').textContent = currentStage ? currentStage.requiredCount : 0;
+  
+  // Store progression ID for later
+  modal.dataset.progressionId = progression.id;
+  
+  // Setup handlers
+  setupProgressionTestHandlers();
+  
+  // Show modal
+  modal.classList.remove('hidden');
+  void modal.offsetHeight;
+  requestAnimationFrame(() => {
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex !important; justify-content: center; align-items: center; z-index: 100001; padding: 20px; box-sizing: border-box;';
+  });
+}
+
+// Setup progression test modal handlers
+function setupProgressionTestHandlers() {
+  const modal = document.getElementById('progression-test-modal');
+  const closeBtn = document.getElementById('progression-test-close');
+  const cancelBtn = document.getElementById('progression-test-cancel');
+  const sendBtn = document.getElementById('progression-test-send');
+  
+  if (closeBtn && !closeBtn.hasAttribute('data-test-listener')) {
+    closeBtn.setAttribute('data-test-listener', 'true');
+    closeBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    });
+  }
+  
+  if (cancelBtn && !cancelBtn.hasAttribute('data-test-listener')) {
+    cancelBtn.setAttribute('data-test-listener', 'true');
+    cancelBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    });
+  }
+  
+  if (sendBtn && !sendBtn.hasAttribute('data-test-listener')) {
+    sendBtn.setAttribute('data-test-listener', 'true');
+    sendBtn.addEventListener('click', async () => {
+      const progressionId = modal.dataset.progressionId;
+      const username = document.getElementById('test-progression-username').value || 'TestUser';
+      
+      // Get the progression
+      const result = await window.electronAPI.getProgressions();
+      const progression = result.progressions.find(p => p.id === progressionId);
+      
+      if (!progression) {
+        showCustomAlert('Progression not found!', 'error');
+        return;
+      }
+      
+      // Send test redemption
+      await sendTestRedemption(progression, username);
+      
+      // Refresh progression info in the modal
+      setTimeout(async () => {
+        const updatedResult = await window.electronAPI.getProgressions();
+        const updatedProg = updatedResult.progressions.find(p => p.id === progressionId);
+        if (updatedProg) {
+          const currentStage = updatedProg.stages[updatedProg.currentStageIndex];
+          document.getElementById('test-prog-stage').textContent = updatedProg.currentStageIndex + 1;
+          document.getElementById('test-prog-count').textContent = updatedProg.currentCount;
+          document.getElementById('test-prog-required').textContent = currentStage ? currentStage.requiredCount : 0;
+        }
+      }, 300);
+      
+      // Don't close modal - let user test multiple times
+      // modal.classList.add('hidden');
+      // modal.style.display = 'none';
+    });
+  }
+}
+
+// Helper to send test redemption (global so it can be used from anywhere)
+window.sendTestRedemption = async function sendTestRedemption(progression, username) {
+  try {
+    
+    // Send fake Twitch redemption event
+    const fakeEvent = {
+      type: 'redeem',
+      user_name: username,
+      user: username,
+      event: {
+        user_name: username,
+        user_login: username.toLowerCase(),
+        reward: {
+          title: progression.redeemKeyword,
+          name: progression.redeemKeyword
+        },
+        user_input: ''
+      }
+    };
+    
+    console.log('🧪 Sending test redemption:', fakeEvent);
+    
+    // Send the event through the Twitch event system
+    if (window.electronAPI && window.electronAPI.sendFakeTwitchEventHandle) {
+      const sendResult = await window.electronAPI.sendFakeTwitchEventHandle(fakeEvent);
+      console.log('Test event sent:', sendResult);
+      showCustomAlert(`Test redeem sent for "${progression.name}" by ${username}! Check the progression overlay.`, 'success');
+      
+      // Refresh the list to show updated counts
+      setTimeout(async () => {
+        await loadProgressionsList();
+      }, 500);
+    } else {
+      showCustomAlert('Test event API not available', 'error');
+    }
+  } catch (error) {
+    console.error('Error testing progression redeem:', error);
+    showCustomAlert('Error: ' + error.message, 'error');
+  }
+}
+
+// Load progressions list
+async function loadProgressionsList() {
+  console.log('Loading progressions list...');
+  const listContainer = document.getElementById('progressions-list');
+  const noMessage = document.getElementById('no-progressions-message');
+  
+  if (!listContainer) {
+    console.warn('Progressions list container not found!');
+    return;
+  }
+  
+  try {
+    console.log('Fetching progressions from backend...');
+    
+    if (!window.electronAPI || !window.electronAPI.getProgressions) {
+      console.error('electronAPI.getProgressions not available!');
+      listContainer.innerHTML = '<div style="padding:20px;color:red;">Error: Progression API not available. Please restart the app.</div>';
+      return;
+    }
+    
+    const result = await window.electronAPI.getProgressions();
+    console.log('Progressions result:', result);
+    const progressions = result.progressions || [];
+    
+    if (progressions.length === 0) {
+      listContainer.innerHTML = '';
+      if (noMessage) noMessage.style.display = 'block';
+      return;
+    }
+    
+    if (noMessage) noMessage.style.display = 'none';
+    
+    listContainer.innerHTML = progressions.map(prog => {
+      const currentStage = prog.stages[prog.currentStageIndex];
+      return `
+        <div class="progression-card" style="padding:15px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;">
+            <div>
+              <h4 style="margin:0 0 5px 0;">${prog.name}</h4>
+              <div style="font-size:12px;color:var(--text-tertiary);">
+                Redeem: <code>${prog.redeemKeyword}</code> | 
+                Action: <span style="color:var(--accent);">${prog.actionWord || 'contributed'}</span> | 
+                Stage ${prog.currentStageIndex + 1}/${prog.stages.length} | 
+                ${prog.currentCount}/${currentStage ? currentStage.requiredCount : 0}
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button onclick="testSingleProgression('${prog.id}')" style="padding:6px 12px;background:#10b981;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">🧪 Test</button>
+              <button onclick="openProgressionEditor('${prog.id}')" style="padding:6px 12px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Edit</button>
+              <button onclick="resetProgression('${prog.id}')" style="padding:6px 12px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:4px;cursor:pointer;font-size:12px;">Reset</button>
+              <button onclick="deleteProgression('${prog.id}')" style="padding:6px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Delete</button>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--text-secondary);">
+            Total Redeems: ${prog.totalRedeems} | 
+            Top Contributor: ${prog.topRedeemers && prog.topRedeemers.length > 0 ? prog.topRedeemers[0].username + ' (' + prog.topRedeemers[0].count + ')' : 'None yet'}
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (error) {
+    console.error('Error loading progressions:', error);
+    showCustomAlert('Failed to load progressions: ' + error.message, 'error');
+  }
+}
+
+// Open progression editor (global so onclick handlers can call it)
+window.openProgressionEditor = async function openProgressionEditor(progressionId) {
+  console.log('📝 Opening progression editor for:', progressionId || 'new progression');
+  
+  const editorModal = document.getElementById('progression-editor-modal');
+  const managerModal = document.getElementById('progression-manager-modal');
+  
+  if (!editorModal) {
+    showCustomAlert('Progression editor modal not found!', 'error');
+    return;
+  }
+  
+  // Close manager modal
+  if (managerModal) {
+    managerModal.classList.add('hidden');
+    managerModal.style.display = 'none';
+  }
+  
+  // Reset form
+  const form = document.getElementById('progression-form');
+  form.reset();
+  form.dataset.progressionId = ''; // Clear progression ID
+  document.getElementById('progression-stages-list').innerHTML = '';
+  document.getElementById('progression-editor-title').textContent = 'New Progression';
+  
+  // Load existing progression if editing
+  if (progressionId) {
+    const result = await window.electronAPI.getProgressions();
+    const progression = result.progressions.find(p => p.id === progressionId);
+    if (progression) {
+      await loadProgressionIntoEditor(progression);
+    }
+  } else {
+    // Add one default stage for new progressions
+    addProgressionStage();
+  }
+  
+  // Setup form handlers
+  setupProgressionEditorHandlers();
+  
+  // Show modal
+  editorModal.classList.remove('hidden');
+  void editorModal.offsetHeight;
+  requestAnimationFrame(() => {
+    editorModal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex !important; justify-content: center; align-items: center; z-index: 100001; padding: 20px; box-sizing: border-box;';
+  });
+}
+
+// Setup progression editor event handlers
+function setupProgressionEditorHandlers() {
+  const form = document.getElementById('progression-form');
+  const closeBtn = document.getElementById('progression-editor-close');
+  const cancelBtn = document.getElementById('progression-form-cancel');
+  const addStageBtn = document.getElementById('add-progression-stage');
+  const uniformCheckbox = document.getElementById('progression-uniform-count');
+  const uniformCountValue = document.getElementById('progression-uniform-count-value');
+  const displayModeSelect = document.getElementById('progression-display-mode');
+  const durationContainer = document.getElementById('progression-duration-container');
+  const helpBtn = document.getElementById('progression-placeholders-help');
+  
+  // Help button (placeholders guide)
+  if (helpBtn && !helpBtn.hasAttribute('data-editor-listener')) {
+    helpBtn.setAttribute('data-editor-listener', 'true');
+    helpBtn.addEventListener('click', () => {
+      openPlaceholdersGuide();
+    });
+  }
+  
+  // Close button
+  if (closeBtn && !closeBtn.hasAttribute('data-editor-listener')) {
+    closeBtn.setAttribute('data-editor-listener', 'true');
+    closeBtn.addEventListener('click', () => {
+      closeProgressionEditor();
+    });
+  }
+  
+  // Cancel button
+  if (cancelBtn && !cancelBtn.hasAttribute('data-editor-listener')) {
+    cancelBtn.setAttribute('data-editor-listener', 'true');
+    cancelBtn.addEventListener('click', () => {
+      closeProgressionEditor();
+    });
+  }
+  
+  // Add stage button
+  if (addStageBtn && !addStageBtn.hasAttribute('data-editor-listener')) {
+    addStageBtn.setAttribute('data-editor-listener', 'true');
+    addStageBtn.addEventListener('click', () => {
+      addProgressionStage();
+    });
+  }
+  
+  // Uniform count checkbox
+  if (uniformCheckbox && !uniformCheckbox.hasAttribute('data-editor-listener')) {
+    uniformCheckbox.setAttribute('data-editor-listener', 'true');
+    uniformCheckbox.addEventListener('change', () => {
+      if (uniformCheckbox.checked) {
+        uniformCountValue.style.display = 'block';
+        // Hide individual stage count inputs
+        document.querySelectorAll('.stage-required-count').forEach(input => {
+          input.style.display = 'none';
+        });
+      } else {
+        uniformCountValue.style.display = 'none';
+        // Show individual stage count inputs
+        document.querySelectorAll('.stage-required-count').forEach(input => {
+          input.style.display = 'block';
+        });
+      }
+    });
+  }
+  
+  // Display mode change
+  if (displayModeSelect && !displayModeSelect.hasAttribute('data-editor-listener')) {
+    displayModeSelect.setAttribute('data-editor-listener', 'true');
+    displayModeSelect.addEventListener('change', () => {
+      if (displayModeSelect.value === 'duration') {
+        durationContainer.style.display = 'block';
+      } else {
+        durationContainer.style.display = 'none';
+      }
+    });
+    
+    // Set initial state
+    if (displayModeSelect.value === 'duration') {
+      durationContainer.style.display = 'block';
+    } else {
+      durationContainer.style.display = 'none';
+    }
+  }
+  
+  // Form submit
+  if (form && !form.hasAttribute('data-editor-listener')) {
+    form.setAttribute('data-editor-listener', 'true');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await saveProgression();
+    });
+  }
+}
+
+// Close progression editor
+function closeProgressionEditor() {
+  const editorModal = document.getElementById('progression-editor-modal');
+  if (editorModal) {
+    editorModal.classList.add('hidden');
+    editorModal.style.display = 'none';
+  }
+  
+  // Reopen manager modal
+  openProgressionManager();
+}
+
+// Add a stage to the progression
+let stageCounter = 0;
+function addProgressionStage(stageData = null) {
+  const stagesList = document.getElementById('progression-stages-list');
+  if (!stagesList) return;
+  
+  const stageId = stageData?.id || `stage_${Date.now()}_${stageCounter++}`;
+  const stageNum = stagesList.children.length + 1;
+  
+  const existingMedia = stageData?.mediaPath ? `<div style="color:var(--text-secondary);font-size:12px;margin-top:4px;">Current: ${stageData.mediaPath.split(/[\\/]/).pop()}</div>` : '';
+  const existingAudio = stageData?.audioPath ? `<div style="color:var(--text-secondary);font-size:12px;margin-top:4px;">Current: ${stageData.audioPath.split(/[\\/]/).pop()}</div>` : '';
+  
+  const stageHtml = `
+    <div class="progression-stage-item" data-stage-id="${stageId}" 
+         data-media-path="${stageData?.mediaPath || ''}" 
+         data-media-type="${stageData?.mediaType || ''}"
+         data-audio-path="${stageData?.audioPath || ''}"
+         style="padding:15px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <h4 style="margin:0;">Stage ${stageNum}</h4>
+        <button type="button" class="remove-stage-btn" data-stage-id="${stageId}" style="padding:6px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Remove</button>
+      </div>
+      
+      <div style="display:grid;gap:12px;">
+        <div class="stage-required-count">
+          <label style="display:block;margin-bottom:5px;font-weight:600;font-size:14px;">Redeems Required</label>
+          <input type="number" class="stage-count-input" data-stage-id="${stageId}" min="1" value="${stageData?.requiredCount || 5}" required style="width:100%;padding:8px;border-radius:4px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+        </div>
+        
+        <div>
+          <label style="display:block;margin-bottom:5px;font-weight:600;font-size:14px;">Media File (Image/GIF/Video)</label>
+          <input type="file" class="stage-media-input" data-stage-id="${stageId}" accept="image/*,video/*" style="width:100%;padding:8px;border-radius:4px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+          ${existingMedia}
+          <div class="stage-media-preview" data-stage-id="${stageId}" style="margin-top:8px;min-height:40px;display:none;"></div>
+        </div>
+        
+        <div>
+          <label style="display:block;margin-bottom:5px;font-weight:600;font-size:14px;">Audio File (Optional)</label>
+          <input type="file" class="stage-audio-input" data-stage-id="${stageId}" accept="audio/*" style="width:100%;padding:8px;border-radius:4px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
+          ${existingAudio}
+        </div>
+      </div>
+    </div>
+  `;
+  
+  stagesList.insertAdjacentHTML('beforeend', stageHtml);
+  
+  // Add remove handler
+  const removeBtn = stagesList.querySelector(`[data-stage-id="${stageId}"].remove-stage-btn`);
+  if (removeBtn) {
+    removeBtn.addEventListener('click', () => {
+      const stageItem = stagesList.querySelector(`[data-stage-id="${stageId}"].progression-stage-item`);
+      if (stageItem) {
+        stageItem.remove();
+        // Renumber remaining stages
+        renumberStages();
+      }
+    });
+  }
+  
+  // Add media preview handler
+  const mediaInput = stagesList.querySelector(`[data-stage-id="${stageId}"].stage-media-input`);
+  if (mediaInput) {
+    mediaInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const preview = stagesList.querySelector(`[data-stage-id="${stageId}"].stage-media-preview`);
+        if (preview) {
+          preview.style.display = 'block';
+          if (file.type.startsWith('image/')) {
+            preview.innerHTML = `<img src="${URL.createObjectURL(file)}" style="max-width:200px;max-height:150px;border-radius:4px;">`;
+          } else if (file.type.startsWith('video/')) {
+            preview.innerHTML = `<video src="${URL.createObjectURL(file)}" style="max-width:200px;max-height:150px;border-radius:4px;" controls></video>`;
+          }
+        }
+      }
+    });
+  }
+}
+
+// Renumber stages
+function renumberStages() {
+  const stages = document.querySelectorAll('.progression-stage-item');
+  stages.forEach((stage, index) => {
+    const header = stage.querySelector('h4');
+    if (header) {
+      header.textContent = `Stage ${index + 1}`;
+    }
+  });
+}
+
+// Load progression into editor
+async function loadProgressionIntoEditor(progression) {
+  document.getElementById('progression-editor-title').textContent = 'Edit Progression';
+  document.getElementById('progression-name').value = progression.name || '';
+  document.getElementById('progression-redeem-keyword').value = progression.redeemKeyword || '';
+  document.getElementById('progression-action-word').value = progression.actionWord || 'contributed';
+  document.getElementById('progression-overlay-text').value = progression.overlayText || '';
+  document.getElementById('progression-chat-command').value = progression.chatCommand || '';
+  document.getElementById('progression-chat-message').value = progression.chatMessage || '';
+  document.getElementById('progression-display-mode').value = progression.displayMode || 'always';
+  document.getElementById('progression-duration').value = progression.duration || 10;
+  document.getElementById('progression-persistence').value = progression.persistenceMode || 'permanent';
+  document.getElementById('progression-uniform-count').checked = progression.uniformCount || false;
+  
+  if (progression.uniformCount) {
+    document.getElementById('progression-uniform-count-value').style.display = 'block';
+    document.getElementById('progression-uniform-count-input').value = progression.stages[0]?.requiredCount || 5;
+  }
+  
+  // Load stages
+  if (progression.stages && progression.stages.length > 0) {
+    progression.stages.forEach(stage => {
+      addProgressionStage(stage);
+    });
+  }
+  
+  // Store progression ID for update
+  document.getElementById('progression-form').dataset.progressionId = progression.id;
+}
+
+// Save progression
+async function saveProgression() {
+  try {
+    console.log('💾 Saving progression...');
+    
+    const form = document.getElementById('progression-form');
+    const progressionId = form.dataset.progressionId;
+    
+    const uniformCount = document.getElementById('progression-uniform-count').checked;
+    const uniformCountValue = uniformCount ? parseInt(document.getElementById('progression-uniform-count-input').value) : null;
+    
+    // Collect stage data
+    const stages = [];
+    const stageItems = document.querySelectorAll('.progression-stage-item');
+    
+    for (let i = 0; i < stageItems.length; i++) {
+      const stageItem = stageItems[i];
+      const stageId = stageItem.dataset.stageId;
+      const countInput = stageItem.querySelector('.stage-count-input');
+      const mediaInput = stageItem.querySelector('.stage-media-input');
+      const audioInput = stageItem.querySelector('.stage-audio-input');
+      
+      const requiredCount = uniformCount ? uniformCountValue : parseInt(countInput.value);
+      
+      const stage = {
+        id: stageId,
+        requiredCount: requiredCount
+      };
+      
+      // Check for existing media data
+      const existingMediaPath = stageItem.dataset.mediaPath;
+      const existingMediaType = stageItem.dataset.mediaType;
+      const existingAudioPath = stageItem.dataset.audioPath;
+      
+      // Handle media file
+      if (mediaInput && mediaInput.files && mediaInput.files.length > 0) {
+        const file = mediaInput.files[0];
+        const filePath = window.electronAPI.getFilePathFromFile(file);
+        
+        if (filePath) {
+          // Save media file
+          const mediaResult = await window.electronAPI.saveProgressionMedia({
+            sourcePath: filePath,
+            progressionId: progressionId || 'temp_' + Date.now(),
+            stageId: stageId,
+            mediaType: file.type.startsWith('image/') ? 'image' : 'video',
+            originalName: file.name
+          });
+          
+          if (mediaResult.success) {
+            stage.mediaPath = mediaResult.filePath;
+            stage.mediaType = file.type.startsWith('image/') ? 'image' : 'video';
+          }
+        }
+      } else if (existingMediaPath) {
+        // Use existing media if no new file uploaded
+        stage.mediaPath = existingMediaPath;
+        stage.mediaType = existingMediaType;
+      }
+      
+      // Handle audio file
+      if (audioInput && audioInput.files && audioInput.files.length > 0) {
+        const file = audioInput.files[0];
+        const filePath = window.electronAPI.getFilePathFromFile(file);
+        
+        if (filePath) {
+          const audioResult = await window.electronAPI.saveProgressionMedia({
+            sourcePath: filePath,
+            progressionId: progressionId || 'temp_' + Date.now(),
+            stageId: stageId,
+            mediaType: 'audio',
+            originalName: file.name
+          });
+          
+          if (audioResult.success) {
+            stage.audioPath = audioResult.filePath;
+          }
+        }
+      } else if (existingAudioPath) {
+        // Use existing audio if no new file uploaded
+        stage.audioPath = existingAudioPath;
+      }
+      
+      stages.push(stage);
+    }
+    
+    if (stages.length === 0) {
+      showCustomAlert('Please add at least one stage!', 'error');
+      return;
+    }
+    
+    // Build progression object
+    const progression = {
+      id: progressionId,
+      name: document.getElementById('progression-name').value,
+      redeemKeyword: document.getElementById('progression-redeem-keyword').value,
+      targetOverlay: 'progressionOverlay', // Always use dedicated progression overlay
+      actionWord: document.getElementById('progression-action-word').value || 'contributed',
+      overlayText: document.getElementById('progression-overlay-text').value,
+      chatCommand: document.getElementById('progression-chat-command').value,
+      chatMessage: document.getElementById('progression-chat-message').value,
+      displayMode: document.getElementById('progression-display-mode').value,
+      duration: parseInt(document.getElementById('progression-duration').value),
+      persistenceMode: document.getElementById('progression-persistence').value,
+      uniformCount: uniformCount,
+      stages: stages,
+      currentStageIndex: 0,
+      currentCount: 0,
+      totalRedeems: 0,
+      topRedeemers: []
+    };
+    
+    console.log('Saving progression:', progression);
+    
+    // Save to backend
+    const result = await window.electronAPI.saveProgression(progression);
+    
+    if (result.success) {
+      showCustomAlert('Progression saved successfully!', 'success');
+      closeProgressionEditor();
+      // Refresh the manager list
+      await loadProgressionsList();
+    } else {
+      showCustomAlert('Failed to save progression: ' + result.error, 'error');
+    }
+  } catch (error) {
+    console.error('Error saving progression:', error);
+    showCustomAlert('Error saving progression: ' + error.message, 'error');
+  }
+}
+
+// Reset progression
+window.resetProgression = async function(progressionId) {
+  if (!confirm('Reset this progression? This will clear all progress and leaderboard data.')) {
+    return;
+  }
+  
+  try {
+    const result = await window.electronAPI.resetProgression(progressionId);
+    if (result.success) {
+      showCustomAlert('Progression reset successfully!', 'success');
+      await loadProgressionsList();
+    } else {
+      showCustomAlert('Failed to reset progression: ' + result.error, 'error');
+    }
+  } catch (error) {
+    console.error('Error resetting progression:', error);
+    showCustomAlert('Error resetting progression: ' + error.message, 'error');
+  }
+};
+
+// Delete progression
+window.deleteProgression = async function(progressionId) {
+  if (!confirm('Delete this progression? This action cannot be undone.')) {
+    return;
+  }
+  
+  try {
+    const result = await window.electronAPI.deleteProgression(progressionId);
+    if (result.success) {
+      showCustomAlert('Progression deleted successfully!', 'success');
+      await loadProgressionsList();
+    } else {
+      showCustomAlert('Failed to delete progression: ' + result.error, 'error');
+    }
+  } catch (error) {
+    console.error('Error deleting progression:', error);
+    showCustomAlert('Error deleting progression: ' + error.message, 'error');
+  }
+};
+
+// Progression system is initialized via setupOverlayWidget()
+console.log('✅ Progression system functions loaded');
