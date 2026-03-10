@@ -1,5 +1,13 @@
 # Build and publish to GitHub Releases when a version tag (v*) is pushed.
-# Use the production branch for live releases: merge to production, then tag and push from there.
+#
+# HOW TO RELEASE (do this when pushing a new version):
+#   1. Bump "version" in package.json (e.g. 1.1.4 -> 1.1.5).
+#   2. Commit: git add package.json && git commit -m "Bump version to X.Y.Z for release"
+#   3. Create tag: git tag vX.Y.Z   (must match package.json version, e.g. v1.1.5)
+#   4. Push branch: git push origin production
+#   5. Push tag (this triggers the workflow): git push origin vX.Y.Z
+# The workflow runs only on tag push — pushing the branch alone will not run it.
+#
 name: Release
 
 on:
@@ -25,13 +33,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build:win -- --publish never
-
-      - name: Publish to GitHub Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: VirtualDeck ${{ github.ref_name }}
-          files: dist/*.exe dist/*.yml dist/*.blockmap
-          draft: false
+      - name: Build and publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:win -- --publish always
+        # electron-builder creates the release, uploads .exe, latest.yml, and .blockmap
+        # (with --publish never those files are not generated/uploaded, so updater got 404)
