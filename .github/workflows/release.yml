@@ -26,7 +26,7 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build:win
+        run: npm run build:win -- --publish never
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
