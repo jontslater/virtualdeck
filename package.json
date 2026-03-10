@@ -1,6 +1,6 @@
 {
   "name": "virtualdeck",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "A virtual deck application built with Electron",
   "main": "main.js",
   "scripts": {
@@ -17,6 +17,10 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jontslater/virtualdeck.git"
+  },
   "devDependencies": {
     "electron": "^39.0.0",
     "electron-builder": "^24.13.3"
@@ -24,7 +28,12 @@
   "build": {
     "appId": "com.virtualdeck.app",
     "productName": "VirtualDeck",
-    "publish": null,
+    "publish": {
+      "provider": "github",
+      "owner": "jontslater",
+      "repo": "virtualdeck",
+      "releaseType": "release"
+    },
     "directories": {
       "output": "dist"
     },
