@@ -2990,6 +2990,12 @@ function initializeVisibilityDropdown() {
       checkbox.addEventListener('change', (e) => {
         e.stopPropagation();
         const component = document.getElementById(componentId);
+        // Battle widget is hidden until feature is finished - ignore toggle
+        if (componentId === 'battle-control-widget') {
+          if (component) component.classList.add('hidden');
+          checkbox.checked = false;
+          return;
+        }
         if (component) {
           if (checkbox.checked) {
             component.classList.remove('hidden');
@@ -3098,9 +3104,16 @@ function initializeVisibilityDropdown() {
       console.log('Show All clicked'); // Debug log
       Object.keys(checkboxes).forEach(checkboxId => {
         const checkbox = document.getElementById(checkboxId);
+        const componentId = checkboxes[checkboxId];
+        // Battle widget is hidden until feature is finished - skip when showing all
+        if (componentId === 'battle-control-widget') {
+          if (checkbox) checkbox.checked = false;
+          const component = document.getElementById(componentId);
+          if (component) component.classList.add('hidden');
+          return;
+        }
         if (checkbox) {
           checkbox.checked = true;
-          const componentId = checkboxes[checkboxId];
           const component = document.getElementById(componentId);
           if (component) {
             component.classList.remove('hidden');
@@ -3171,6 +3184,12 @@ function applyVisibilityPrefs() {
     const componentId = map[checkboxId];
     const checkbox = document.getElementById(checkboxId);
     const component = document.getElementById(componentId);
+    // Battle widget is hidden until feature is finished - never show from prefs
+    if (componentId === 'battle-control-widget') {
+      if (component) component.classList.add('hidden');
+      if (checkbox) checkbox.checked = false;
+      return;
+    }
     const visible = prefs.hasOwnProperty(componentId) ? !!prefs[componentId] : true;
 
     if (checkbox) checkbox.checked = visible;
@@ -6609,6 +6628,49 @@ function updateProfileWidgetLabel() {
     ? (profileManager.profiles.find(p => p.id === profileManager.currentProfile)?.name || 'Default')
     : 'Default';
   el.textContent = name;
+  updateMinimizedBarContent();
+}
+
+// Minimized widgets bar: show profile, battle, queue and allow restore
+const DASHBOARD_MINIMIZED_KEY = 'vdDashboardMinimized';
+
+function updateMinimizedBarContent() {
+  const profileEl = document.getElementById('minimized-profile-name');
+  const battleEl = document.getElementById('minimized-battle-status');
+  const queueEl = document.getElementById('minimized-queue-count');
+  if (profileEl) {
+    const currentEl = document.getElementById('profile-widget-current');
+    profileEl.textContent = currentEl ? currentEl.textContent : 'Default';
+  }
+  if (battleEl) battleEl.textContent = (typeof getBattlesEnabled === 'function' && getBattlesEnabled()) ? 'On' : 'Off';
+  if (queueEl && typeof getQueueStatus === 'function') {
+    const status = getQueueStatus();
+    queueEl.textContent = status && typeof status.queueLength !== 'undefined' ? status.queueLength : '0';
+  }
+}
+
+function setDashboardMinimized(minimized) {
+  const column = document.getElementById('dashboard-widgets-column');
+  const bar = document.getElementById('widgets-minimized-bar');
+  if (!column || !bar) return;
+  try {
+    localStorage.setItem(DASHBOARD_MINIMIZED_KEY, minimized ? '1' : '0');
+  } catch (e) {}
+  if (minimized) {
+    closeProfileModal();
+    closeBattleModal();
+    column.classList.add('minimized');
+    bar.classList.remove('hidden');
+    updateMinimizedBarContent();
+  } else {
+    column.classList.remove('minimized');
+    bar.classList.add('hidden');
+  }
+}
+
+function isDashboardMinimized() {
+  const column = document.getElementById('dashboard-widgets-column');
+  return column ? column.classList.contains('minimized') : false;
 }
 
 // Profile/Battle: content shown in shared flyout menu to the left of the widget column
@@ -6681,9 +6743,12 @@ function setBattlesEnabled(enabled) {
   } catch (e) {}
   const widgetEl = document.getElementById('battle-widget-status');
   if (widgetEl) widgetEl.textContent = enabled ? 'On' : 'Off';
+  if (typeof updateMinimizedBarContent === 'function') updateMinimizedBarContent();
 }
 
 function openBattleModal() {
+  // Battle feature hidden until finished - do not show widget or flyout
+  return;
   const flyout = document.getElementById('widget-flyout');
   const battleBody = document.getElementById('battle-widget-body');
   const profileBody = document.getElementById('profile-widget-body');
@@ -6896,6 +6961,7 @@ function setupBattleModal() {
   const modal = document.getElementById('battle-modal');
   const widgetStatus = document.getElementById('battle-widget-status');
   if (widgetStatus) widgetStatus.textContent = getBattlesEnabled() ? 'On' : 'Off';
+  if (typeof updateMinimizedBarContent === 'function') updateMinimizedBarContent();
   if (openBtn) openBtn.addEventListener('click', openBattleModal);
   if (closeBtn) closeBtn.addEventListener('click', closeBattleModal);
   if (modal) {
@@ -9616,6 +9682,7 @@ function setupAlertWidget() {
       queueWidgetStatus.style.background = '#6c757d';
       queueWidgetStatus.style.color = '#fff';
     }
+    if (typeof updateMinimizedBarContent === 'function') updateMinimizedBarContent();
   }
   
   
@@ -11384,6 +11451,21 @@ function setupLeftAppMenu() {
   if (battleWidgetOpen) {
     battleWidgetOpen.addEventListener('click', () => toggleBattleWidget());
   }
+
+  // Dashboard widgets: minimize / restore
+  const widgetsMinimizeBtn = document.getElementById('widgets-minimize-btn');
+  const widgetsRestoreBtn = document.getElementById('widgets-restore-btn');
+  if (widgetsMinimizeBtn) {
+    widgetsMinimizeBtn.addEventListener('click', () => setDashboardMinimized(true));
+  }
+  if (widgetsRestoreBtn) {
+    widgetsRestoreBtn.addEventListener('click', () => setDashboardMinimized(false));
+  }
+  try {
+    if (localStorage.getItem(DASHBOARD_MINIMIZED_KEY) === '1') {
+      setDashboardMinimized(true);
+    }
+  } catch (e) {}
   
   // Tools menu wiring (new)
   const toolsBtn = document.getElementById('menu-tools-btn');
@@ -14491,6 +14573,7 @@ function openPreferencesModal() {
   const preferencesModal = document.getElementById('preferences-modal');
   if (preferencesModal) {
     preferencesModal.classList.remove('hidden');
+    if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
     loadPreferences();
   }
 }
@@ -14499,28 +14582,84 @@ function closePreferencesModal() {
   const preferencesModal = document.getElementById('preferences-modal');
   if (preferencesModal) {
     preferencesModal.classList.add('hidden');
+    if (window.electronAPI && window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
   }
 }
 
-function loadPreferences() {
-  // Load preferences from localStorage
-  const preferences = JSON.parse(localStorage.getItem('vdPreferences') || '{}');
+async function loadPreferences() {
+  // Prefer main process preferences (source of truth for clipHotkey, etc.)
+  let preferences = {};
+  if (window.electronAPI && window.electronAPI.getPreferences) {
+    try {
+      preferences = await window.electronAPI.getPreferences();
+    } catch (e) {
+      console.warn('Could not load preferences from main, using localStorage:', e);
+    }
+  }
+  if (!preferences || Object.keys(preferences).length === 0) {
+    preferences = JSON.parse(localStorage.getItem('vdPreferences') || '{}');
+  }
   
   // Update checkboxes
-  document.getElementById('auto-update-checkbox').checked = preferences.autoUpdate !== false; // default to true
+  const autoUpdateCheckbox = document.getElementById('auto-update-checkbox');
+  if (autoUpdateCheckbox) autoUpdateCheckbox.checked = preferences.autoUpdate !== false; // default to true
+
+  // Update clip hotkey
+  const clipHotkeyInput = document.getElementById('clip-hotkey-input');
+  if (clipHotkeyInput) clipHotkeyInput.value = preferences.clipHotkey || '';
+
+  // Go live & clips
+  const goLiveEnabled = document.getElementById('go-live-enabled');
+  if (goLiveEnabled) goLiveEnabled.checked = !!preferences.goLiveEnabled;
+  const goLiveMessageTemplate = document.getElementById('go-live-message-template');
+  if (goLiveMessageTemplate) goLiveMessageTemplate.value = preferences.goLiveMessageTemplate || 'Live now! {stream_url}';
+  const goLiveDiscordWebhook = document.getElementById('go-live-discord-webhook');
+  if (goLiveDiscordWebhook) goLiveDiscordWebhook.value = preferences.goLiveDiscordWebhook || '';
+  const goLiveBlueskyEnabled = document.getElementById('go-live-bluesky-enabled');
+  if (goLiveBlueskyEnabled) goLiveBlueskyEnabled.checked = !!preferences.goLiveBlueskyEnabled;
+  const goLiveBlueskyHandle = document.getElementById('go-live-bluesky-handle');
+  if (goLiveBlueskyHandle) goLiveBlueskyHandle.value = preferences.goLiveBlueskyHandle || '';
+  const goLiveBlueskyAppPassword = document.getElementById('go-live-bluesky-app-password');
+  if (goLiveBlueskyAppPassword) goLiveBlueskyAppPassword.value = preferences.goLiveBlueskyAppPassword || '';
+  const clipDiscordWebhook = document.getElementById('clip-discord-webhook');
+  if (clipDiscordWebhook) clipDiscordWebhook.value = preferences.clipDiscordWebhook || '';
 }
 
 function savePreferences() {
+  const clipHotkeyInput = document.getElementById('clip-hotkey-input');
+  const clipHotkey = clipHotkeyInput && clipHotkeyInput.value ? clipHotkeyInput.value.trim() : '';
+
+  const goLiveMessageEl = document.getElementById('go-live-message-template');
+  const goLiveDiscordEl = document.getElementById('go-live-discord-webhook');
+  const goLiveBlueskyHandleEl = document.getElementById('go-live-bluesky-handle');
+  const goLiveBlueskyAppPasswordEl = document.getElementById('go-live-bluesky-app-password');
+  const clipDiscordWebhookEl = document.getElementById('clip-discord-webhook');
+
   const preferences = {
-    autoUpdate: document.getElementById('auto-update-checkbox').checked
+    autoUpdate: document.getElementById('auto-update-checkbox').checked,
+    clipHotkey: clipHotkey || undefined,
+    goLiveEnabled: document.getElementById('go-live-enabled')?.checked ?? false,
+    goLiveMessageTemplate: (goLiveMessageEl && goLiveMessageEl.value.trim()) || undefined,
+    goLiveDiscordWebhook: (goLiveDiscordEl && goLiveDiscordEl.value.trim()) || undefined,
+    goLiveBlueskyEnabled: document.getElementById('go-live-bluesky-enabled')?.checked ?? false,
+    goLiveBlueskyHandle: (goLiveBlueskyHandleEl && goLiveBlueskyHandleEl.value.trim()) || undefined,
+    goLiveBlueskyAppPassword: (goLiveBlueskyAppPasswordEl && goLiveBlueskyAppPasswordEl.value.trim()) || undefined,
+    clipDiscordWebhook: (clipDiscordWebhookEl && clipDiscordWebhookEl.value.trim()) || undefined
   };
-  
-  // Save to localStorage
-  localStorage.setItem('vdPreferences', JSON.stringify(preferences));
-  
-  // Send preferences to main process if available
+
+  // Save to localStorage (omit app password)
+  const forLocalStorage = { ...preferences };
+  delete forLocalStorage.goLiveBlueskyAppPassword;
+  localStorage.setItem('vdPreferences', JSON.stringify(forLocalStorage));
+
+  // Send full preferences to main process
   if (window.electronAPI && window.electronAPI.savePreferences) {
     window.electronAPI.savePreferences(preferences);
+  }
+  
+  // Re-register hotkeys (including clip hotkey)
+  if (window.electronAPI && window.electronAPI.refreshHotkeys) {
+    window.electronAPI.refreshHotkeys();
   }
   
   // Show success message
@@ -14583,6 +14722,65 @@ function initializePreferencesModal() {
       } else {
         console.error('showTwitchConfigModal function not found');
       }
+    });
+  }
+  
+  // Clip hotkey recording
+  const recordClipHotkeyBtn = document.getElementById('record-clip-hotkey');
+  const clipHotkeyInput = document.getElementById('clip-hotkey-input');
+  const clipHotkeyStatus = document.getElementById('clip-hotkey-status');
+  if (recordClipHotkeyBtn && clipHotkeyInput && clipHotkeyStatus) {
+    let clipHotkeyListener = null;
+    recordClipHotkeyBtn.addEventListener('click', () => {
+      if (clipHotkeyListener) {
+        document.removeEventListener('keydown', clipHotkeyListener);
+        clipHotkeyListener = null;
+      }
+      clipHotkeyStatus.textContent = 'Press any key or combination with Ctrl, Alt, Shift';
+      clipHotkeyInput.value = '';
+      recordClipHotkeyBtn.textContent = 'Recording...';
+      recordClipHotkeyBtn.classList.add('recording');
+      
+      function normalizeKey(ev) {
+        if (ev.code && ev.code.startsWith('F') && /^F\d+$/.test(ev.code)) return ev.code.toUpperCase();
+        if (ev.code && ev.code.startsWith('Numpad')) return ev.code.replace('Numpad', 'Num');
+        if (ev.key === ' ') return 'Space';
+        if (ev.key && ev.key.length === 1) return ev.key.toUpperCase();
+        return ev.key || ev.code || '';
+      }
+      
+      let recorded = new Set();
+      let finalizeTimer = null;
+      function keyHandler(ev) {
+        ev.preventDefault();
+        recorded.add(normalizeKey(ev));
+        if (finalizeTimer) clearTimeout(finalizeTimer);
+        finalizeTimer = setTimeout(() => {
+          const modifiersOrder = ['Control', 'Ctrl', 'Alt', 'Shift', 'Meta'];
+          const items = Array.from(recorded);
+          const mods = items.filter(i => modifiersOrder.includes(i));
+          const others = items.filter(i => !modifiersOrder.includes(i));
+          const normMods = [];
+          if (mods.includes('Control') || mods.includes('Ctrl')) normMods.push('Ctrl');
+          if (mods.includes('Alt')) normMods.push('Alt');
+          if (mods.includes('Shift')) normMods.push('Shift');
+          if (mods.includes('Meta')) normMods.push('Meta');
+          const combo = normMods.concat(others).join('+');
+          if (normMods.includes('Alt') && others.includes('F4')) {
+            clipHotkeyStatus.textContent = 'Alt+F4 is not allowed.';
+            clipHotkeyInput.value = '';
+          } else {
+            clipHotkeyInput.value = combo;
+            clipHotkeyStatus.textContent = 'Set to: ' + combo;
+          }
+          document.removeEventListener('keydown', clipHotkeyListener);
+          clipHotkeyListener = null;
+          recordClipHotkeyBtn.textContent = 'Record Hotkey';
+          recordClipHotkeyBtn.classList.remove('recording');
+        }, 700);
+      }
+      clipHotkeyListener = keyHandler;
+      document.addEventListener('keydown', clipHotkeyListener);
     });
   }
   

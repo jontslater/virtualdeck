@@ -557,12 +557,8 @@ let streamMonitorInterval = null;
 
 async function checkStreamAndResetHydration() {
   try {
-    const config = loadHydrationConfig();
-    if (!config.resetOnLive) return;
-    
-    // Check if stream is live
     if (!twitchClientId || !twitchToken || !twitchUserId) return;
-    
+
     const resp = await fetch(`https://api.twitch.tv/helix/streams?user_id=${encodeURIComponent(twitchUserId)}`, {
       headers: {
         'Client-ID': twitchClientId,
@@ -571,15 +567,18 @@ async function checkStreamAndResetHydration() {
     });
     const data = await resp.json();
     const isLive = data.data && data.data.length > 0;
-    
-    // If stream just went live (transition from offline to live), reset hydration
+
     if (isLive && !lastStreamLiveState) {
-      console.log('Stream went live - resetting hydration tracker');
-      config.currentProgress = 0;
-      saveHydrationConfig(config);
-      broadcastHydrationUpdate(config);
+      const config = loadHydrationConfig();
+      if (config.resetOnLive) {
+        console.log('Stream went live - resetting hydration tracker');
+        config.currentProgress = 0;
+        saveHydrationConfig(config);
+        broadcastHydrationUpdate(config);
+      }
+      announceGoLive();
     }
-    
+
     lastStreamLiveState = isLive;
   } catch (error) {
     console.error('Error in stream monitor:', error);
@@ -2308,10 +2307,10 @@ ipcMain.handle('is-stream-live', async () => {
 ipcMain.handle('create-clip', async () => {
   try {
     const result = await createClip();
-    // Notify renderer with result
     if (win && win.webContents) {
       win.webContents.send('twitch-clip-created', result);
     }
+    onClipCreated(result);
     return result;
   } catch (error) {
     console.error('Error in create-clip IPC handler:', error);
@@ -3324,6 +3323,7 @@ async function startTwitchChatConnection({ username, oauth, clientId }) {
         createClip().then((result) => {
           console.log(`📹 Clip creation result:`, result);
           if (result.success) {
+            onClipCreated(result);
             const clipMessage = result.testMode
               ? `🧪 TEST MODE: @${username} ${result.message}`
               : (result.clipUrl 
@@ -4721,6 +4721,7 @@ function registerHotkeys() {
         console.log(`🔑 Clip hotkey "${preferences.clipHotkey}" triggered`);
         const result = await createClip();
         console.log(`📹 Clip creation result from hotkey:`, result);
+        onClipCreated(result);
         if (win && win.webContents) {
           win.webContents.send('twitch-clip-created', result);
         }
@@ -4781,6 +4782,115 @@ function saveStoredPreferences(preferences) {
   } catch (error) {
     console.error('Error saving preferences:', error);
   }
+}
+
+// --- Go-live and clip announcements (Discord + Bluesky) ---
+function isValidDiscordWebhookUrl(u) {
+  if (!u || typeof u !== 'string') return false;
+  try {
+    const parsed = new URL(u.trim());
+    return parsed.protocol === 'https:' && parsed.hostname.includes('discord.com') && parsed.pathname.includes('/api/webhooks/');
+  } catch (_) {
+    return false;
+  }
+}
+
+async function postToDiscordWebhook(webhookUrl, content) {
+  if (!isValidDiscordWebhookUrl(webhookUrl)) {
+    console.warn('Discord webhook URL invalid or missing; skipping post');
+    return;
+  }
+  try {
+    const res = await fetch(webhookUrl.trim(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: String(content).slice(0, 2000) })
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.error('Discord webhook failed:', res.status, text);
+      if (win && win.webContents) win.webContents.send('announce-failed', { platform: 'Discord', status: res.status });
+    }
+  } catch (err) {
+    console.error('Discord webhook error:', err.message);
+    if (win && win.webContents) win.webContents.send('announce-failed', { platform: 'Discord', error: err.message });
+  }
+}
+
+async function postToBluesky(handle, appPassword, text) {
+  if (!handle || !appPassword || !text) return;
+  try {
+    const sessionRes = await fetch('https://bsky.social/xrpc/com.atproto.server.createSession', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: String(handle).trim(), password: String(appPassword) })
+    });
+    if (!sessionRes.ok) {
+      const errText = await sessionRes.text();
+      console.error('Bluesky session failed:', sessionRes.status, errText);
+      if (win && win.webContents) win.webContents.send('announce-failed', { platform: 'Bluesky', status: sessionRes.status });
+      return;
+    }
+    const session = await sessionRes.json();
+    const accessJwt = session.accessJwt;
+    const did = session.did;
+    if (!accessJwt || !did) {
+      console.error('Bluesky session missing accessJwt or did');
+      return;
+    }
+    const record = {
+      $type: 'app.bsky.feed.post',
+      text: String(text).slice(0, 300),
+      createdAt: new Date().toISOString()
+    };
+    const createRes = await fetch('https://bsky.social/xrpc/com.atproto.repo.createRecord', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessJwt}`
+      },
+      body: JSON.stringify({
+        repo: did,
+        collection: 'app.bsky.feed.post',
+        record
+      })
+    });
+    if (!createRes.ok) {
+      const errText = await createRes.text();
+      console.error('Bluesky createRecord failed:', createRes.status, errText);
+      if (win && win.webContents) win.webContents.send('announce-failed', { platform: 'Bluesky', status: createRes.status });
+    }
+  } catch (err) {
+    console.error('Bluesky post error:', err.message);
+    if (win && win.webContents) win.webContents.send('announce-failed', { platform: 'Bluesky', error: err.message });
+  }
+}
+
+function onClipCreated(result) {
+  if (!result || !result.success) return;
+  const prefs = getStoredPreferences();
+  const webhook = prefs.clipDiscordWebhook;
+  if (!webhook || !isValidDiscordWebhookUrl(webhook)) return;
+  const message = result.clipUrl || result.editUrl || result.message || 'New clip';
+  const content = message.length > 2000 ? message.slice(0, 1997) + '...' : message;
+  postToDiscordWebhook(webhook, content);
+}
+
+async function announceGoLive() {
+  const prefs = getStoredPreferences();
+  if (!prefs.goLiveEnabled) return;
+  const hasDiscord = prefs.goLiveDiscordWebhook && isValidDiscordWebhookUrl(prefs.goLiveDiscordWebhook);
+  const hasBluesky = prefs.goLiveBlueskyEnabled && prefs.goLiveBlueskyHandle && prefs.goLiveBlueskyAppPassword;
+  if (!hasDiscord && !hasBluesky) return;
+  if (!twitchUserName) await getUserId();
+  if (!twitchUserName) {
+    console.warn('Go-live announce: no Twitch username');
+    return;
+  }
+  const streamUrl = `https://www.twitch.tv/${twitchUserName}`;
+  let message = (prefs.goLiveMessageTemplate || 'Live now! {stream_url}').replace(/\{stream_url\}/g, streamUrl);
+  if (hasDiscord) postToDiscordWebhook(prefs.goLiveDiscordWebhook, message);
+  if (hasBluesky) postToBluesky(prefs.goLiveBlueskyHandle, prefs.goLiveBlueskyAppPassword, message);
 }
 
 // Auto-updater event handlers
@@ -4947,11 +5057,9 @@ app.whenReady().then(() => {
     // Check if auto-update is enabled in preferences
     const preferences = getStoredPreferences();
     if (preferences.autoUpdate !== false) { // default to true if not set
-      // Disabled auto-update check for private repository
-      console.log('Auto-update check disabled (private repository)');
-      // autoUpdater.checkForUpdates().catch(err => {
-      //   console.log('Auto-update check failed (expected if not installed from installer):', err.message);
-      // });
+      autoUpdater.checkForUpdates().catch(err => {
+        console.log('Auto-update check failed (expected if not installed from installer):', err.message);
+      });
     } else {
       console.log('Auto-update disabled in preferences');
     }
@@ -5251,11 +5359,17 @@ app.whenReady().then(() => {
     return getOverlayServerUrl();
   });
 
+  // Handle preferences get from renderer
+  ipcMain.handle('get-preferences', async () => {
+    return getStoredPreferences();
+  });
+
   // Handle preferences save from renderer
   ipcMain.on('save-preferences', (event, preferences) => {
     try {
       console.log('Saving preferences:', preferences);
       saveStoredPreferences(preferences);
+      registerHotkeys(); // Re-register clip hotkey with new value
     } catch (e) { console.warn('save-preferences failed', e); }
   });
 

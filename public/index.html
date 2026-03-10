@@ -46,7 +46,7 @@
         <button data-toggle="toggle-sound-controls" class="menu-dropdown-item" role="menuitem">Sound Controls</button>
         <button data-toggle="toggle-queue-control" class="menu-dropdown-item" role="menuitem">Alert Queue</button>
         <button data-toggle="toggle-profile-widget" class="menu-dropdown-item" role="menuitem">Profile</button>
-        <button data-toggle="toggle-battle-widget" class="menu-dropdown-item" role="menuitem">Battle</button>
+        <button data-toggle="toggle-battle-widget" class="menu-dropdown-item hidden" role="menuitem" aria-hidden="true">Battle</button>
       </div>
     </div>
     <div class="menu-item" id="menu-tools" aria-haspopup="true">
@@ -186,6 +186,15 @@
 
     <!-- Dashboard widgets column: Alert Queue + Profile + Battle, with flyout menu to the left -->
     <div id="dashboard-widgets-column" class="dashboard-widgets-column">
+      <!-- Minimized bar: shown when column is minimized -->
+      <div id="widgets-minimized-bar" class="widgets-minimized-bar hidden">
+        <div class="widgets-minimized-row">
+          <span class="widgets-minimized-item"><span class="widgets-minimized-label">Profile</span> <span id="minimized-profile-name">Default</span></span>
+          <span class="widgets-minimized-item hidden" aria-hidden="true"><span class="widgets-minimized-label">Battle</span> <span id="minimized-battle-status">Off</span></span>
+          <span class="widgets-minimized-item"><span class="widgets-minimized-label">Queue</span> <span id="minimized-queue-count">0</span></span>
+        </div>
+        <button id="widgets-restore-btn" class="widgets-restore-btn" title="Expand widgets">▲ Restore</button>
+      </div>
       <!-- Flyout menu (appears to the left when Profile or Battle Manage is opened) -->
       <div id="widget-flyout" class="widget-flyout">
         <div id="profile-widget-body" class="widget-flyout-panel hidden">
@@ -264,10 +273,13 @@
         </div>
       </div>
 
-      <div id="battle-control-widget" class="queue-control-widget battle-control-widget">
+      <div id="battle-control-widget" class="queue-control-widget battle-control-widget hidden" aria-hidden="true">
         <div class="queue-widget-header">
           <span class="queue-widget-title">Battle</span>
-          <span class="queue-widget-status battle-widget-status" id="battle-widget-status">Off</span>
+          <div class="queue-widget-header-right">
+            <span class="queue-widget-status battle-widget-status" id="battle-widget-status">Off</span>
+            <button id="widgets-minimize-btn" class="widgets-minimize-btn" type="button" title="Minimize widgets">−</button>
+          </div>
         </div>
         <div class="queue-widget-actions">
           <button id="battle-widget-open" class="queue-widget-btn" title="Manage battles">
@@ -1102,6 +1114,61 @@
           </div>
         </div>
 
+        <!-- Shortcuts Section (Clip hotkey, Meld shortcuts are per-button in Add form) -->
+        <div class="preferences-section">
+          <h3>Shortcuts</h3>
+          <div class="preference-item">
+            <label for="clip-hotkey-input">Clip hotkey (creates Twitch clip, same as !clip command):</label>
+            <div style="display: flex; gap: 8px; align-items: center; margin-top: 6px;">
+              <input type="text" id="clip-hotkey-input" placeholder="e.g. Ctrl+Shift+C" readonly style="flex: 1; max-width: 200px;" />
+              <button type="button" id="record-clip-hotkey" class="preference-button">Record Hotkey</button>
+            </div>
+            <div id="clip-hotkey-status" style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;"></div>
+            <small>Meld scene shortcuts are set when adding Meld Scene buttons</small>
+          </div>
+        </div>
+
+        <!-- Go live & clips announcements (Discord, Bluesky) - hidden until built out -->
+        <div class="preferences-section hidden" aria-hidden="true">
+          <h3>Go live &amp; clips</h3>
+          <div class="preference-item">
+            <label for="go-live-enabled">
+              <input type="checkbox" id="go-live-enabled" />
+              Enable go-live announcements
+            </label>
+            <small style="display: block; margin-top: 4px;">When you go live on Twitch, post a message to Discord and/or Bluesky</small>
+          </div>
+          <div class="preference-item" style="margin-top: 10px;">
+            <label for="go-live-message-template">Message template (use <code>{stream_url}</code> for your Twitch link):</label>
+            <input type="text" id="go-live-message-template" placeholder="Live now! {stream_url}" style="width: 100%; max-width: 400px; margin-top: 4px; padding: 6px 8px;" />
+          </div>
+          <div class="preference-item" style="margin-top: 10px;">
+            <label for="go-live-discord-webhook">Discord webhook for go-live (paste URL for the channel):</label>
+            <input type="url" id="go-live-discord-webhook" placeholder="https://discord.com/api/webhooks/..." style="width: 100%; max-width: 400px; margin-top: 4px; padding: 6px 8px;" />
+            <small style="display: block; margin-top: 4px;">Server → Integrations → Webhooks → create and copy URL</small>
+          </div>
+          <div class="preference-item" style="margin-top: 10px;">
+            <label for="go-live-bluesky-enabled">
+              <input type="checkbox" id="go-live-bluesky-enabled" />
+              Also post go-live to Bluesky
+            </label>
+            <div style="margin-top: 6px;">
+              <label for="go-live-bluesky-handle">Handle (e.g. user.bsky.social):</label>
+              <input type="text" id="go-live-bluesky-handle" placeholder="user.bsky.social" style="width: 100%; max-width: 240px; margin-top: 2px; padding: 6px 8px;" />
+            </div>
+            <div style="margin-top: 6px;">
+              <label for="go-live-bluesky-app-password">App password:</label>
+              <input type="password" id="go-live-bluesky-app-password" placeholder="xxxx-xxxx-xxxx-xxxx" style="width: 100%; max-width: 240px; margin-top: 2px; padding: 6px 8px;" />
+              <small style="display: block; margin-top: 4px;">Bluesky Settings → App passwords → Create</small>
+            </div>
+          </div>
+          <div class="preference-item" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-color);">
+            <label for="clip-discord-webhook">Post new clips to Discord (webhook URL):</label>
+            <input type="url" id="clip-discord-webhook" placeholder="https://discord.com/api/webhooks/..." style="width: 100%; max-width: 400px; margin-top: 4px; padding: 6px 8px;" />
+            <small style="display: block; margin-top: 4px;">When a clip is created (!clip or hotkey), post the link to this channel. Leave empty to disable.</small>
+          </div>
+        </div>
+
         <!-- Updates Section -->
         <div class="preferences-section">
           <h3>Updates</h3>
@@ -1252,8 +1319,8 @@
         </div>
       </div>
 
-      <!-- Twitch Battles Overlay -->
-      <div class="overlay-section">
+      <!-- Twitch Battles Overlay - hidden until finished -->
+      <div class="overlay-section hidden" aria-hidden="true">
         <h4>Twitch Battles</h4>
         <div class="overlay-info">
           <p>Run a TikTok-style battle between two streamers. Viewers cheer, sub, or gift to deal damage. Add the overlay as a Browser Source in OBS; run the battles backend and overlay app when using this feature.</p>

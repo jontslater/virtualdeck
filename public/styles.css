@@ -585,8 +585,88 @@ html[data-theme], body[data-theme] {
 }
 .dashboard-widgets-column > .queue-control-widget,
 .dashboard-widgets-column > .profile-control-widget,
-.dashboard-widgets-column > .battle-control-widget {
+.dashboard-widgets-column > .battle-control-widget,
+.dashboard-widgets-column > .widgets-minimize-btn,
+.dashboard-widgets-column > .widgets-minimized-bar {
   pointer-events: auto;
+}
+
+/* Minimized state: hide full widgets and minimize btn, show minimized bar */
+.dashboard-widgets-column.minimized .queue-control-widget,
+.dashboard-widgets-column.minimized .profile-control-widget,
+.dashboard-widgets-column.minimized .battle-control-widget,
+.dashboard-widgets-column.minimized .widgets-minimize-btn {
+  display: none !important;
+}
+.widgets-minimized-bar {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  min-width: 200px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  font-size: 12px;
+}
+.widgets-minimized-bar:not(.hidden) {
+  display: flex !important;
+}
+.dashboard-widgets-column.minimized .widgets-minimized-bar.hidden {
+  display: flex !important;
+}
+.dashboard-widgets-column:not(.minimized) .widgets-minimized-bar {
+  display: none !important;
+}
+.widgets-minimized-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  color: var(--text-primary);
+}
+.widgets-minimized-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.widgets-minimized-label {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+.widgets-restore-btn {
+  padding: 6px 10px;
+  font-size: 11px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  align-self: flex-end;
+}
+.widgets-restore-btn:hover {
+  filter: brightness(1.1);
+}
+.queue-widget-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.widgets-minimize-btn {
+  padding: 2px 6px;
+  font-size: 14px;
+  line-height: 1;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.widgets-minimize-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
 }
 
 /* Queue widget lives in column (no longer fixed on its own) */
@@ -1891,7 +1971,8 @@ body.vd-dragging .sound-card.draggable:hover {
   background: #666;
 }
 
-#record-hotkey.recording {
+#record-hotkey.recording,
+#record-clip-hotkey.recording {
   background: #ff4444;
   animation: pulse 1s infinite;
 }
