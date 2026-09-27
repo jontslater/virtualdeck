@@ -172,6 +172,52 @@ npm run build:linux
 npm run build:all
 ```
 
+## 🤖 JARVIS Tool API (Phase 1)
+
+VirtualDeck now includes **JARVIS**, a tool API layer for controlled LLM/AI agent integration. This allows AI assistants (like Grok, GPT, or Claude) to control VirtualDeck functionality through a clean HTTP/WebSocket interface instead of unrestricted system access.
+
+### Quick Start
+
+**See [JARVIS-QUICKSTART.md](JARVIS-QUICKSTART.md) for a complete quick start guide.**
+
+### What It Does
+
+JARVIS provides a localhost HTTP/WebSocket server (default port 8081) that exposes controlled tools:
+- ✅ Launch applications
+- ✅ Switch Meld Studio scenes
+- ✅ Trigger VirtualDeck buttons/sounds
+- ✅ Send Twitch chat messages
+- ✅ Get stream status
+- ⚠️ Volume/mic control (stubbed for future)
+
+### Example
+
+```bash
+# List available tools
+curl http://127.0.0.1:8081/jarvis/tools
+
+# Change scene
+curl -X POST http://127.0.0.1:8081/jarvis/invoke \
+  -H "Content-Type: application/json" \
+  -d '{"tool": "change_scene", "arguments": {"sceneName": "BRB Scene"}}'
+```
+
+### Documentation
+
+- **Quick Start**: [JARVIS-QUICKSTART.md](JARVIS-QUICKSTART.md)
+- **Full API Docs**: [docs/jarvis-tools.md](docs/jarvis-tools.md)
+- **Examples**: [examples/README.md](examples/README.md)
+- **Test Suite**: `node test-jarvis-api.js`
+
+### Configuration
+
+Optional `.env` configuration:
+```env
+JARVIS_PORT=8081
+JARVIS_HOST=127.0.0.1
+JARVIS_TOKEN=your-secret-token-here
+```
+
 ## 🤝 Contributing
 
 1. Fork the repository
