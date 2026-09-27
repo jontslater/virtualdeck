@@ -76,6 +76,7 @@ const defaultConfigPath = path.join(__dirname, 'config.json');
 
 // Initialize security manager
 const securityManager = new SecurityManager(userDataPath);
+securityManager.getOrCreateToken();
 const wsRateLimiter = securityManager.createRateLimiter(1000, 10);
 
 // Initialize VTuber Manager
