@@ -1,233 +1,256 @@
-# JARVIS API Examples
+# JARVIS Examples
 
-This directory contains example code demonstrating how to interact with VirtualDeck's JARVIS tool API.
+This directory contains example clients and test tools for VirtualDeck's JARVIS Tool API.
+
+## Files
+
+### `raven-jarvis-bridge.js` ⭐ Recommended for AI Brains
+
+Lightweight helper class for AI brains (Raven, Grok, Claude, etc.) to control VirtualDeck.
+
+**Features:**
+- Auto-loads `.vd-auth-token` from VirtualDeck's userData directory
+- Clean API: `listTools()`, `getTool()`, `invoke()`, `exec()`
+- Cross-platform (Windows, macOS, Linux)
+- No external dependencies (uses Node.js built-in `http` and `fs`)
+
+**Usage:**
+```javascript
+const { RavenJarvisBridge } = require('./raven-jarvis-bridge');
+
+const bridge = new RavenJarvisBridge();
+
+// List all available tools
+const { tools } = await bridge.listTools();
+
+// Execute a tool (throws on error)
+const status = await bridge.exec('get_stream_status');
+
+// Invoke a tool (returns {success, result?, error?})
+const result = await bridge.invoke('play_sound', { name: 'airhorn' });
+```
+
+**Run Example:**
+```bash
+node raven-jarvis-bridge.js
+```
+
+---
+
+### `jarvis-client-example.js`
+
+General-purpose HTTP and WebSocket client example showing how to:
+- Load auth token automatically
+- List tools via HTTP GET
+- Invoke tools via HTTP POST
+- Connect via WebSocket for streaming
+
+**Usage:**
+```bash
+node jarvis-client-example.js
+```
+
+---
+
+### `test-jarvis-phase2.js` 🧪 Test Suite
+
+Comprehensive test suite for JARVIS Phase 2 features:
+- Tests all auth header formats (X-VD-Auth, X-Jarvis-Token, Bearer)
+- Validates auth requirement (401 without token)
+- Tests RavenJarvisBridge helper
+- Verifies tool invocation
+- Checks audio controls return errors (not fake success)
+
+**Usage:**
+```bash
+# Start VirtualDeck first, then run:
+node test-jarvis-phase2.js
+```
+
+**Output:**
+- ✓ Green checkmarks for passing tests
+- ✗ Red X's for failures
+- ℹ Blue info messages
+- Color-coded test results
+
+---
 
 ## Prerequisites
 
-1. VirtualDeck must be running with JARVIS server enabled
-2. Node.js and npm installed (for Node.js examples)
-3. Optional: Set `JARVIS_TOKEN` in `.env` if authentication is enabled
+All examples require:
+1. **VirtualDeck running** with JARVIS server enabled (default: port 8081)
+2. **Auth token generated**: VirtualDeck creates `.vd-auth-token` on first startup
 
-## Examples
+### Token Location
 
-### Node.js Client Example
+- **Windows**: `%APPDATA%\virtualdeck\.vd-auth-token`
+- **macOS**: `~/Library/Application Support/virtualdeck/.vd-auth-token`
+- **Linux**: `~/.config/virtualdeck/.vd-auth-token`
 
-**File:** `jarvis-client-example.js`
+### Reading Your Token
 
-A complete JavaScript client demonstrating:
-- Health checks
-- Listing available tools
-- Invoking tools with arguments
-- Error handling
-- WebSocket connection (commented out)
+**PowerShell:**
+```powershell
+Get-Content $env:APPDATA\virtualdeck\.vd-auth-token
+```
 
-**Run it:**
+**cmd:**
+```cmd
+type %APPDATA%\virtualdeck\.vd-auth-token
+```
+
+**bash/zsh:**
 ```bash
-node examples/jarvis-client-example.js
+cat ~/.config/virtualdeck/.vd-auth-token
 ```
 
-**With authentication:**
-```bash
-JARVIS_TOKEN=your-token-here node examples/jarvis-client-example.js
-```
+---
 
-### cURL Examples
+## Integration Patterns
 
-**List tools:**
-```bash
-curl http://127.0.0.1:8081/jarvis/tools
-```
+### Pattern 1: Simple HTTP Client
 
-**Get stream status:**
-```bash
-curl -X POST http://127.0.0.1:8081/jarvis/invoke \
-  -H "Content-Type: application/json" \
-  -d '{"tool": "get_stream_status", "arguments": {}}'
-```
-
-**Change scene:**
-```bash
-curl -X POST http://127.0.0.1:8081/jarvis/invoke \
-  -H "Content-Type: application/json" \
-  -d '{"tool": "change_scene", "arguments": {"sceneName": "BRB Scene"}}'
-```
-
-**With authentication:**
-```bash
-curl -H "X-Jarvis-Token: your-token-here" \
-  http://127.0.0.1:8081/jarvis/tools
-```
-
-### Python Example
-
-```python
-import requests
-
-JARVIS_URL = "http://127.0.0.1:8081"
-JARVIS_TOKEN = None  # Set if authentication is enabled
-
-headers = {"Content-Type": "application/json"}
-if JARVIS_TOKEN:
-    headers["X-Jarvis-Token"] = JARVIS_TOKEN
-
-# List tools
-response = requests.get(f"{JARVIS_URL}/jarvis/tools", headers=headers)
-tools = response.json()
-print(f"Found {tools['count']} tools")
-
-# Invoke a tool
-response = requests.post(
-    f"{JARVIS_URL}/jarvis/invoke",
-    headers=headers,
-    json={
-        "tool": "get_stream_status",
-        "arguments": {}
-    }
-)
-result = response.json()
-print(result)
-```
-
-## LLM/AI Agent Integration
-
-For integrating with AI agents like Grok, GPT, or Claude:
-
-### 1. Tool Discovery
-
-First, have the agent discover available tools:
+Use for basic tool invocation without dependencies:
 
 ```javascript
-const tools = await fetch('http://127.0.0.1:8081/jarvis/tools').then(r => r.json());
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+// Load token
+const tokenPath = path.join(process.env.APPDATA, 'virtualdeck', '.vd-auth-token');
+const token = fs.readFileSync(tokenPath, 'utf-8').trim();
+
+// Invoke tool
+const options = {
+  method: 'POST',
+  hostname: '127.0.0.1',
+  port: 8081,
+  path: '/jarvis/invoke',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-VD-Auth': token
+  }
+};
+
+const req = http.request(options, (res) => {
+  let data = '';
+  res.on('data', chunk => data += chunk);
+  res.on('end', () => console.log(JSON.parse(data)));
+});
+
+req.write(JSON.stringify({
+  tool: 'play_sound',
+  arguments: { name: 'airhorn' }
+}));
+req.end();
 ```
 
-### 2. Tool Schema
+### Pattern 2: RavenJarvisBridge (Recommended)
 
-Each tool includes a JSON schema describing its parameters:
+Use for AI brain integration:
 
-```json
-{
-  "name": "change_scene",
-  "description": "Switch to a different Meld Studio scene",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "sceneName": {
-        "type": "string",
-        "description": "Name of the scene to switch to"
-      }
-    },
-    "required": ["sceneName"]
+```javascript
+const { RavenJarvisBridge } = require('./raven-jarvis-bridge');
+
+async function handleVoiceCommand(intent) {
+  const bridge = new RavenJarvisBridge();
+  
+  switch (intent.action) {
+    case 'play_sound':
+      await bridge.exec('play_sound', { name: intent.soundName });
+      return 'Playing sound';
+    
+    case 'change_scene':
+      await bridge.exec('change_scene', { sceneName: intent.sceneName });
+      return 'Scene changed';
+    
+    default:
+      const { tools } = await bridge.listTools();
+      return `Available tools: ${tools.map(t => t.name).join(', ')}`;
   }
 }
 ```
 
-### 3. Tool Invocation
+### Pattern 3: WebSocket Streaming
 
-The agent can then invoke tools based on user intent:
-
-```javascript
-// User says: "Switch to the BRB scene"
-const result = await fetch('http://127.0.0.1:8081/jarvis/invoke', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    tool: 'change_scene',
-    arguments: { sceneName: 'BRB Scene' }
-  })
-}).then(r => r.json());
-
-// Response:
-// {
-//   "success": true,
-//   "result": {
-//     "success": true,
-//     "scene": "BRB Scene",
-//     "note": "Scene change requested via Meld client"
-//   }
-// }
-```
-
-### 4. Error Handling
-
-Tools return structured success/error responses:
+Use for real-time bidirectional communication:
 
 ```javascript
-{
-  "success": false,
-  "error": "Twitch client not connected"
-}
-```
+const WebSocket = require('ws');
+const fs = require('fs');
+const path = require('path');
 
-### Example AI Agent Workflow
+// Load token
+const tokenPath = path.join(process.env.APPDATA, 'virtualdeck', '.vd-auth-token');
+const token = fs.readFileSync(tokenPath, 'utf-8').trim();
 
-1. **Discovery**: Agent fetches tool list at startup
-2. **Intent Recognition**: User says "play the airhorn sound"
-3. **Tool Mapping**: Agent maps to `play_sound` tool
-4. **Validation**: Agent checks required parameters
-5. **Invocation**: Agent calls API with parameters
-6. **Response**: Agent confirms action to user
+// Connect with token as query param
+const ws = new WebSocket(`ws://127.0.0.1:8081/jarvis/ws?token=${token}`);
 
-## WebSocket for Streaming
-
-For long-running operations or real-time updates, use WebSocket:
-
-```javascript
-const ws = new WebSocket('ws://127.0.0.1:8081/jarvis/ws');
-
-ws.onopen = () => {
+ws.on('open', () => {
   ws.send(JSON.stringify({
     id: 'req-1',
-    tool: 'get_scenes',
+    tool: 'get_stream_status',
     arguments: {}
   }));
-};
+});
 
-ws.onmessage = (event) => {
-  const response = JSON.parse(event.data);
-  console.log('Tool result:', response);
-};
+ws.on('message', (data) => {
+  const response = JSON.parse(data);
+  console.log('Response:', response);
+});
 ```
 
-## Security Best Practices
-
-1. **Localhost Only**: Server binds to 127.0.0.1 by default
-2. **Token Auth**: Set `JARVIS_TOKEN` for additional security
-3. **Network Isolation**: Don't expose the API to external networks
-4. **Tool Restrictions**: Only whitelisted tools are available
-5. **Input Validation**: All tool parameters are validated
+---
 
 ## Troubleshooting
 
-### Connection Refused
+### Error: Cannot find token file
 
-Make sure VirtualDeck is running:
-```bash
-# Check if server is listening
-curl http://127.0.0.1:8081/jarvis/health
-```
+**Cause:** VirtualDeck hasn't run yet or userData path is incorrect
 
-### 401 Unauthorized
+**Solution:** 
+1. Start VirtualDeck once to generate the token
+2. Check the console log for "Auth token" message showing the path
 
-Include the auth token:
-```bash
-curl -H "X-Jarvis-Token: your-token" http://127.0.0.1:8081/jarvis/tools
-```
+### Error: 401 Unauthorized
 
-### Tool Returns Error
+**Cause:** Token not sent or incorrect
 
-Check the error message:
-```json
-{
-  "success": false,
-  "error": "VirtualDeck window not available"
-}
-```
+**Solution:**
+1. Verify token file exists and is readable
+2. Check header name: `X-VD-Auth`, `X-Jarvis-Token`, or `Authorization: Bearer <token>`
+3. Ensure no extra whitespace in token
 
-This usually means VirtualDeck isn't fully loaded yet.
+### Error: Connection refused
 
-## Next Steps
+**Cause:** JARVIS server not running
 
-- See `docs/jarvis-tools.md` for complete API documentation
-- Check available tools and their parameters
-- Build your own AI agent integration
-- Submit PRs for new tools or improvements!
+**Solution:**
+1. Start VirtualDeck
+2. Check console logs for "JARVIS Server] Listening on http://127.0.0.1:8081"
+3. Verify port 8081 is not blocked by firewall
+
+### Error: ECONNREFUSED or timeout
+
+**Cause:** Server not running or wrong host/port
+
+**Solution:**
+1. Verify VirtualDeck is running
+2. Check `JARVIS_PORT` and `JARVIS_HOST` env vars
+3. Default is `http://127.0.0.1:8081`
+
+---
+
+## See Also
+
+- [JARVIS Tools Documentation](../docs/jarvis-tools.md) - Complete API reference
+- [VirtualDeck Repository](https://github.com/jontslater/virtualdeck) - Main project
+- Phase 2 PR: #79 - Shared auth and tool bridge
+
+---
+
+## License
+
+Same as VirtualDeck (MIT)
