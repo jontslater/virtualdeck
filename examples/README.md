@@ -1,10 +1,35 @@
 # JARVIS Examples
 
-This directory contains example clients and test tools for VirtualDeck's JARVIS Tool API.
+This directory contains example clients and test tools for VirtualDeck's Brain API (JARVIS Tool API).
 
 ## Files
 
-### `raven-jarvis-bridge.js` ⭐ Recommended for AI Brains
+### `brain-http-client.js` 🚀 **NEW** - Minimal Brain API Example
+
+**Recommended starting point** for external AI brains (Grok, Cursor Grok Bot, Claude, etc.).
+
+**Features:**
+- Zero external dependencies (Node.js built-in `http`, `fs`, `path` only)
+- Auto-loads `.vd-auth-token` from VirtualDeck's userData directory
+- Simple, readable code demonstrating the core Brain API flow
+- Perfect for copy-paste into your own brain implementation
+
+**Usage:**
+```bash
+node brain-http-client.js
+```
+
+**What it does:**
+1. Loads auth token from standard location
+2. Checks server health (`GET /jarvis/health`)
+3. Lists all available tools (`GET /jarvis/tools`)
+4. Invokes `get_stream_status` as a safe example (`POST /jarvis/invoke`)
+
+**See also**: [docs/brain-api.md](../docs/brain-api.md) for complete API documentation.
+
+---
+
+### `raven-jarvis-bridge.js` ⭐ Advanced Helper Class
 
 Lightweight helper class for AI brains (Raven, Grok, Claude, etc.) to control VirtualDeck.
 

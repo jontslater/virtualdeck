@@ -172,17 +172,13 @@ npm run build:linux
 npm run build:all
 ```
 
-## 🤖 JARVIS Tool API (Phase 1)
+## 🤖 Brain API for AI Agents (Phase 3)
 
-VirtualDeck now includes **JARVIS**, a tool API layer for controlled LLM/AI agent integration. This allows AI assistants (like Grok, GPT, or Claude) to control VirtualDeck functionality through a clean HTTP/WebSocket interface instead of unrestricted system access.
-
-### Quick Start
-
-**See [JARVIS-QUICKSTART.md](JARVIS-QUICKSTART.md) for a complete quick start guide.**
+VirtualDeck now includes a **Brain API** for controlled LLM/AI agent integration. This allows external AI brains (Grok, Cursor Grok Bot, Claude, etc.) to control VirtualDeck functionality through a clean HTTP/WebSocket interface without requiring click automation or unrestricted system access.
 
 ### What It Does
 
-JARVIS provides a localhost HTTP/WebSocket server (default port 8091) that exposes controlled tools:
+The Brain API provides a localhost HTTP/WebSocket server (default port 8091) that exposes allowlisted tools:
 - ✅ Launch applications
 - ✅ Switch Meld Studio scenes
 - ✅ Trigger VirtualDeck buttons/sounds
@@ -190,32 +186,46 @@ JARVIS provides a localhost HTTP/WebSocket server (default port 8091) that expos
 - ✅ Get stream status
 - ⚠️ Volume/mic control (stubbed for future)
 
-### Example
+### Quick Start
 
-```bash
-# List available tools
-curl http://127.0.0.1:8091/jarvis/tools
-
-# Change scene
-curl -X POST http://127.0.0.1:8091/jarvis/invoke \
-  -H "Content-Type: application/json" \
-  -d '{"tool": "change_scene", "arguments": {"sceneName": "BRB Scene"}}'
-```
+1. **Start VirtualDeck** - The Brain API server starts automatically on port 8091
+2. **Get your auth token** from `%APPDATA%\virtualdeck\.vd-auth-token` (Windows) or `~/.config/virtualdeck/.vd-auth-token` (Linux/macOS)
+3. **Discover tools**:
+   ```bash
+   curl -H "X-VD-Auth: <your-token>" http://127.0.0.1:8091/jarvis/tools
+   ```
+4. **Invoke a tool**:
+   ```bash
+   curl -X POST http://127.0.0.1:8091/jarvis/invoke \
+     -H "Content-Type: application/json" \
+     -H "X-VD-Auth: <your-token>" \
+     -d '{"tool": "get_stream_status", "arguments": {}}'
+   ```
 
 ### Documentation
 
-- **Quick Start**: [JARVIS-QUICKSTART.md](JARVIS-QUICKSTART.md)
-- **Full API Docs**: [docs/jarvis-tools.md](docs/jarvis-tools.md)
-- **Examples**: [examples/README.md](examples/README.md)
-- **Test Suite**: `node test-jarvis-api.js`
+- 🚀 **[Brain API Guide](docs/brain-api.md)** - **Start here for brain integration**
+- 📖 **[Quick Start](JARVIS-QUICKSTART.md)** - Fastest way to get started
+- 🔧 **[Tool Reference](docs/jarvis-tools.md)** - Complete tool schemas and examples
+- 🔮 **[MCP Roadmap](docs/mcp-roadmap.md)** - Future Model Context Protocol integration
+- 💻 **[Examples](examples/README.md)** - Sample client code
+- 🧪 **Test Suite**: `node test-jarvis-api.js`
+
+### Example Client
+
+See [examples/brain-http-client.js](examples/brain-http-client.js) for a complete Node.js example:
+
+```bash
+node examples/brain-http-client.js
+```
 
 ### Configuration
 
 Optional `.env` configuration:
 ```env
-JARVIS_PORT=8091
-JARVIS_HOST=127.0.0.1
-JARVIS_TOKEN=your-secret-token-here
+JARVIS_PORT=8091           # Port for Brain API (default: 8091)
+JARVIS_HOST=127.0.0.1      # Host to bind to (default: 127.0.0.1, localhost only)
+JARVIS_TOKEN=custom-token  # Override auto-generated token
 ```
 
 ## 🤝 Contributing
