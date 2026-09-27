@@ -9624,9 +9624,9 @@ function updatePreviewIframe(overlayName = null) {
   
   const selectedOverlay = overlayName || (overlaySelect ? overlaySelect.value : 'default');
   
-  // Determine the correct URL for the iframe
+  // Determine the correct URL for the iframe (preview=1 so overlay mutes itself — no double audio with OBS)
   let iframeUrl;
-  iframeUrl = `http://localhost:8080/overlay?name=${selectedOverlay}`;
+  iframeUrl = `http://localhost:8080/overlay?name=${selectedOverlay}&preview=1`;
   
   console.log(`🔄 Updating preview iframe to: ${iframeUrl}`);
   
