@@ -377,7 +377,7 @@ html[data-theme], body[data-theme] {
 
 .container {
   text-align: center;
-  padding: 1.5vw;
+  padding: 16px;
   -webkit-app-region: no-drag;
   display: flex;
   flex-direction: column;
@@ -394,7 +394,7 @@ html[data-theme], body[data-theme] {
   gap: 20px;
   width: 100%;
   height: auto;
-  margin: 0.5vh 0 1vh 0;
+  margin: 8px 0 12px 0;
   min-height: 200px;
   align-items: flex-start;
   overflow: visible; /* Allow hovered cards to lift without being clipped */
@@ -425,11 +425,11 @@ html[data-theme], body[data-theme] {
 .sound-controls {
   display: flex;
   align-items: center;
-  gap: 1vw;
-  margin-bottom: 1vh;
-  padding: 0.5vw;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 8px;
   background: var(--bg-quaternary);
-  border-radius: 0.3vw;
+  border-radius: 6px;
   border: 1px solid var(--border-primary);
   width: 100%;
   box-sizing: border-box;
@@ -440,9 +440,9 @@ html[data-theme], body[data-theme] {
   background: var(--bg-quinary);
   color: var(--text-primary);
   border: 1px solid var(--border-tertiary);
-  padding: 0.3vw 0.8vw;
-  border-radius: 0.2vw;
-  font-size: 0.8vw;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.2s ease;
   -webkit-app-region: no-drag;
@@ -887,7 +887,7 @@ html[data-theme], body[data-theme] {
 
 .drag-status {
   color: var(--text-tertiary);
-  font-size: 0.7vw;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -895,9 +895,9 @@ html[data-theme], body[data-theme] {
   background: var(--bg-quinary);
   color: var(--text-primary);
   border: 1px solid var(--border-tertiary);
-  padding: 0.3vw 0.8vw;
-  border-radius: 0.2vw;
-  font-size: 0.8vw;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.2s ease;
   -webkit-app-region: no-drag;
@@ -2151,10 +2151,10 @@ button, input, select, textarea, label, #sound-grid, #add-sound-card, .sound-car
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 90%;
-  max-width: 900px;
-  height: 80%;
-  max-height: 600px;
+  width: 600px;
+  max-width: 90vw;
+  height: 400px;
+  max-height: 70vh;
   background: var(--bg-primary, #1a1a1a);
   border: 2px solid var(--border-color, #333);
   border-radius: 12px;
@@ -4026,9 +4026,9 @@ input[type="color"]::-webkit-color-swatch {
 #twitch-chat-container {
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
-  border-radius: 0.5vw;
-  width: 20vw;
-  height: 40vh;
+  border-radius: 8px;
+  width: 280px;
+  height: 400px;
   min-width: 200px;
   min-height: 300px;
   max-width: 600px; /* Increased max-width to allow expansion */
@@ -4047,8 +4047,8 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 #twitch-chat-container.collapsed {
-  width: 20vw;
-  height: 2.5vh;
+  width: 280px;
+  height: 40px;
   min-height: 40px;
   overflow: hidden;
   transition: height 0.3s ease;
@@ -4115,9 +4115,9 @@ input[type="color"]::-webkit-color-swatch {
 #twitch-stats-container {
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
-  border-radius: 0.3vw;
-  padding: 0.5vw;
-  margin: 0.5vh 0;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 8px 0;
   transition: all 0.3s ease;
   width: 100%;
   box-sizing: border-box;
@@ -4179,12 +4179,12 @@ input[type="color"]::-webkit-color-swatch {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.5vw;
+  padding: 8px;
   background: var(--bg-quaternary);
-  border-radius: 0.3vw;
+  border-radius: 6px;
   border: 1px solid var(--border-primary);
   transition: all 0.2s ease;
-  min-height: 3vh;
+  min-height: 40px;
 }
 
 .stat-item:hover {
@@ -4204,12 +4204,12 @@ input[type="color"]::-webkit-color-swatch {
   background: #444;
   color: white;
   border: 1px solid #666;
-  padding: 0.2vw 0.6vw;
-  border-radius: 0.2vw;
-  font-size: 0.6vw;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
   cursor: pointer;
   transition: all 0.2s ease;
-  min-width: 3vw;
+  min-width: 60px;
 }
 
 .stat-toggle-button:hover {
@@ -4246,15 +4246,15 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 .stat-label {
-  font-size: 0.7vw;
+  font-size: 11px;
   color: var(--text-tertiary);
-  margin-bottom: 0.2vw;
+  margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
 
 .stat-value {
-  font-size: 1.1vw;
+  font-size: 16px;
   font-weight: bold;
   color: var(--text-primary);
   font-family: 'Courier New', monospace;
@@ -4264,9 +4264,9 @@ input[type="color"]::-webkit-color-swatch {
 #recent-activity-container {
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
-  border-radius: 0.5vw;
-  padding: 0.8vw 1vw;
-  margin: 1vh 0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 12px 0;
   transition: all 0.3s ease;
   width: 100%;
   box-sizing: border-box;
@@ -4316,29 +4316,29 @@ input[type="color"]::-webkit-color-swatch {
 /* Responsive design for recent activity */
 @media (max-width: 900px) {
   .recent-activity-simple {
-    gap: 1vw;
+    gap: 12px;
   }
   
   .recent-label {
-    font-size: 1.2vw;
-    min-width: 8vw;
+    font-size: 13px;
+    min-width: 100px;
   }
   
   .recent-value {
-    font-size: 1.2vw;
+    font-size: 13px;
   }
 }
 
 @media (max-width: 600px) {
   .recent-activity-simple {
     flex-direction: column;
-    gap: 0.5vw;
+    gap: 8px;
     align-items: stretch;
   }
   
   .recent-item-simple {
     justify-content: space-between;
-    gap: 1vw;
+    gap: 12px;
   }
   
   .recent-label {
@@ -4353,15 +4353,15 @@ input[type="color"]::-webkit-color-swatch {
 
 @media (max-width: 400px) {
   #recent-activity-container {
-    padding: 0.5vw 0.8vw;
+    padding: 8px 12px;
   }
   
   .recent-label {
-    font-size: 1.1vw;
+    font-size: 12px;
   }
   
   .recent-value {
-    font-size: 1.1vw;
+    font-size: 12px;
   }
 }
 
@@ -4380,13 +4380,13 @@ input[type="color"]::-webkit-color-swatch {
   .stat-item {
     flex-direction: column;
     text-align: center;
-    gap: 0.5vw;
+    gap: 8px;
   }
   
   .stat-toggle {
-    width: 1.5vw;
-    height: 1.5vw;
-    font-size: 0.9vw;
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
   }
 }
 
@@ -4665,7 +4665,7 @@ body.resizing-chat * {
   #twitch-chat-container {
     width: 80vw;
     max-width: 600px;
-    height: 30vh;
+    height: 300px;
     min-height: 250px;
   }
   
@@ -4677,7 +4677,7 @@ body.resizing-chat * {
 /* Very small screens */
 @media (max-width: 500px) {
   .container {
-    padding: 1vw;
+    padding: 8px;
   }
   
   #sound-grid {
@@ -4695,7 +4695,7 @@ body.resizing-chat * {
   
   #twitch-chat-container {
     width: 90vw;
-    height: 25vh;
+    height: 200px;
     min-height: 200px;
   }
 }
