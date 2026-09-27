@@ -195,12 +195,12 @@ registry.register(
     }
   },
   async (args, context) => {
-    const { config, twitchClient } = context;
+    const { twitchClient, twitchChannel, twitchUserName } = context;
     
     return {
       connected: twitchClient && twitchClient.readyState() === 'OPEN',
-      channel: config?.twitchChannel || null,
-      username: config?.twitchUserName || null,
+      channel: twitchChannel || null,
+      username: twitchUserName || null,
       overlayServerRunning: true, // VirtualDeck overlay server runs on port 8080
       overlayPort: 8080
     };
@@ -381,7 +381,7 @@ registry.register(
   },
   async (args, context) => {
     const { text, channel } = args;
-    const { twitchClient, config } = context;
+    const { twitchClient, twitchChannel } = context;
     
     if (!twitchClient || twitchClient.readyState() !== 'OPEN') {
       return {
@@ -390,7 +390,7 @@ registry.register(
       };
     }
 
-    const targetChannel = channel || config?.twitchChannel;
+    const targetChannel = channel || twitchChannel;
     if (!targetChannel) {
       return {
         success: false,

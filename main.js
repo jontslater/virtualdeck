@@ -1155,10 +1155,15 @@ async function startJarvisServer() {
     });
 
     // Provide context to tool registry
+    const currentProfile = loadProfile(currentActiveProfile);
     jarvisRegistry.setContext({
       win,
       twitchClient,
-      config: loadedConfig,
+      twitchChannel: twitchUserName ? `#${twitchUserName}` : null,
+      twitchUserName,
+      config: currentProfile,
+      currentActiveProfile,
+      loadProfile,
       triggerButtonFn: triggerButtonWithDebounce
     });
 
@@ -3548,6 +3553,9 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
   twitchClient = new tmi.Client(opts);
   twitchClient.connect().then(() => {
     console.log('Connected to Twitch chat as', username);
+    
+    // Update JARVIS context with Twitch connection
+    updateJarvisContext();
 
     const kcUsers = getKillcommandUserAllowlist();
     if (kcUsers.length === 0) {
@@ -5303,10 +5311,15 @@ ipcMain.on('jarvis-scenes-response', (event, scenes) => {
 // Update JARVIS context when config or connections change
 function updateJarvisContext() {
   if (jarvisRegistry) {
+    const currentProfile = loadProfile(currentActiveProfile);
     jarvisRegistry.setContext({
       win,
       twitchClient,
-      config: loadedConfig,
+      twitchChannel: twitchUserName ? `#${twitchUserName}` : null,
+      twitchUserName,
+      config: currentProfile,
+      currentActiveProfile,
+      loadProfile,
       triggerButtonFn: triggerButtonWithDebounce
     });
   }
