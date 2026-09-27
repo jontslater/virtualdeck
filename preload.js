@@ -138,4 +138,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   renameProfile: async (profileId, newName) => ipcRenderer.invoke('rename-profile', { profileId, newName }),
   deleteProfile: async (profileId) => ipcRenderer.invoke('delete-profile', profileId),
   switchProfile: async (profileId) => ipcRenderer.invoke('switch-profile', profileId),
+  // JARVIS tool API integration
+  onJarvisChangeScene: (callback) => ipcRenderer.on('jarvis-change-scene', (event, data) => callback(data)),
+  onJarvisGetScenes: (callback) => ipcRenderer.on('jarvis-get-scenes', () => callback()),
+  sendJarvisScenesResponse: (scenes) => ipcRenderer.send('jarvis-scenes-response', scenes),
 });

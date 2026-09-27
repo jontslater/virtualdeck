@@ -16724,3 +16724,47 @@ window.testTwitchEventPipeline = function() {
 
 // Add a shorter alias for quick testing
 window.testTwitchEvents = window.testTwitchEventPipeline;
+
+/* ========================================================
+ * JARVIS Tool API Integration
+ * ======================================================== */
+
+// Handle JARVIS scene change requests
+if (window.electronAPI && window.electronAPI.onJarvisChangeScene) {
+  window.electronAPI.onJarvisChangeScene(async (data) => {
+    console.log('[JARVIS] Scene change requested:', data.sceneName);
+    
+    if (typeof window.meldClient !== 'undefined' && window.meldClient.showScene) {
+      try {
+        // Try to change scene using Meld client
+        const result = await window.meldClient.showScene(data.sceneName);
+        console.log('[JARVIS] Scene change result:', result);
+      } catch (error) {
+        console.error('[JARVIS] Error changing scene:', error);
+      }
+    } else {
+      console.warn('[JARVIS] Meld client not available');
+    }
+  });
+}
+
+// Handle JARVIS scene list requests
+if (window.electronAPI && window.electronAPI.onJarvisGetScenes) {
+  window.electronAPI.onJarvisGetScenes(async () => {
+    console.log('[JARVIS] Scene list requested');
+    
+    if (typeof window.meldClient !== 'undefined' && window.meldClient.getScenes) {
+      try {
+        const scenes = await window.meldClient.getScenes();
+        console.log('[JARVIS] Returning scenes:', scenes);
+        window.electronAPI.sendJarvisScenesResponse(scenes);
+      } catch (error) {
+        console.error('[JARVIS] Error getting scenes:', error);
+        window.electronAPI.sendJarvisScenesResponse([]);
+      }
+    } else {
+      console.warn('[JARVIS] Meld client not available');
+      window.electronAPI.sendJarvisScenesResponse([]);
+    }
+  });
+}

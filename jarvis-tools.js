@@ -1,0 +1,497 @@
+/**
+ * JARVIS Tool Registry & Handlers
+ * 
+ * Provides a controlled set of tool APIs for LLM brain integration.
+ * Each tool has a name, description, JSON schema for parameters, and a handler function.
+ */
+
+const { execFile } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+class JarvisToolRegistry {
+  constructor() {
+    this.tools = new Map();
+    this.context = {}; // Will be populated with references from main.js
+  }
+
+  /**
+   * Register a tool with its schema and handler
+   * @param {string} name - Tool name (snake_case)
+   * @param {object} schema - { description, parameters: { type, properties, required } }
+   * @param {function} handler - async (args, context) => result
+   */
+  register(name, schema, handler) {
+    this.tools.set(name, {
+      name,
+      ...schema,
+      handler
+    });
+  }
+
+  /**
+   * Get all registered tools (for listing)
+   */
+  list() {
+    const result = [];
+    for (const [name, tool] of this.tools.entries()) {
+      result.push({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Get a specific tool by name
+   */
+  get(name) {
+    return this.tools.get(name);
+  }
+
+  /**
+   * Invoke a tool by name with arguments
+   * @param {string} name - Tool name
+   * @param {object} args - Arguments object
+   * @returns {Promise<object>} - { success: boolean, result?: any, error?: string }
+   */
+  async invoke(name, args = {}) {
+    const tool = this.tools.get(name);
+    if (!tool) {
+      return {
+        success: false,
+        error: `Tool '${name}' not found`
+      };
+    }
+
+    try {
+      const result = await tool.handler(args, this.context);
+      return {
+        success: true,
+        result
+      };
+    } catch (error) {
+      console.error(`[JARVIS] Error invoking tool '${name}':`, error);
+      return {
+        success: false,
+        error: error.message || String(error)
+      };
+    }
+  }
+
+  /**
+   * Set context references from main.js (win, twitchClient, config, etc.)
+   */
+  setContext(context) {
+    this.context = { ...this.context, ...context };
+  }
+}
+
+// Create singleton registry
+const registry = new JarvisToolRegistry();
+
+// ============================================================================
+// TOOL DEFINITIONS
+// ============================================================================
+
+// Tool: launch_app
+registry.register(
+  'launch_app',
+  {
+    description: 'Launch an application by name or path',
+    parameters: {
+      type: 'object',
+      properties: {
+        nameOrPath: {
+          type: 'string',
+          description: 'Application name or full path to executable'
+        },
+        args: {
+          type: 'string',
+          description: 'Optional command-line arguments',
+          default: ''
+        }
+      },
+      required: ['nameOrPath']
+    }
+  },
+  async (args, context) => {
+    const { nameOrPath, args: cmdArgs = '' } = args;
+    
+    return new Promise((resolve) => {
+      const argsArray = cmdArgs ? cmdArgs.split(' ') : [];
+      
+      execFile(nameOrPath, argsArray, (error) => {
+        if (error) {
+          resolve({
+            launched: false,
+            error: error.message
+          });
+        } else {
+          resolve({
+            launched: true,
+            app: nameOrPath
+          });
+        }
+      });
+    });
+  }
+);
+
+// Tool: change_scene
+registry.register(
+  'change_scene',
+  {
+    description: 'Switch to a different Meld Studio scene',
+    parameters: {
+      type: 'object',
+      properties: {
+        sceneName: {
+          type: 'string',
+          description: 'Name of the scene to switch to (or sceneId if known)'
+        }
+      },
+      required: ['sceneName']
+    }
+  },
+  async (args, context) => {
+    const { sceneName } = args;
+    const { win } = context;
+    
+    if (!win || win.isDestroyed()) {
+      return {
+        success: false,
+        error: 'VirtualDeck window not available'
+      };
+    }
+
+    // Send scene change request to renderer via IPC
+    // The renderer will handle meldClient.showScene
+    return new Promise((resolve) => {
+      win.webContents.send('jarvis-change-scene', { sceneName });
+      
+      // Give it a moment to process
+      setTimeout(() => {
+        resolve({
+          success: true,
+          scene: sceneName,
+          note: 'Scene change requested via Meld client'
+        });
+      }, 100);
+    });
+  }
+);
+
+// Tool: get_stream_status
+registry.register(
+  'get_stream_status',
+  {
+    description: 'Get current streaming status and configuration',
+    parameters: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  async (args, context) => {
+    const { twitchClient, twitchChannel, twitchUserName } = context;
+    
+    return {
+      connected: twitchClient && twitchClient.readyState() === 'OPEN',
+      channel: twitchChannel || null,
+      username: twitchUserName || null,
+      overlayServerRunning: true, // VirtualDeck overlay server runs on port 8080
+      overlayPort: 8080
+    };
+  }
+);
+
+// Tool: set_volume
+registry.register(
+  'set_volume',
+  {
+    description: 'Set volume level for a target audio source',
+    parameters: {
+      type: 'object',
+      properties: {
+        target: {
+          type: 'string',
+          description: 'Audio target (e.g. "master", "media", "mic")',
+          enum: ['master', 'media', 'mic']
+        },
+        level: {
+          type: 'number',
+          description: 'Volume level (0-100)',
+          minimum: 0,
+          maximum: 100
+        }
+      },
+      required: ['target', 'level']
+    }
+  },
+  async (args, context) => {
+    const { target, level } = args;
+    
+    // TODO: Wire to actual VirtualDeck volume control once implemented
+    return {
+      success: true,
+      target,
+      level,
+      note: 'Volume control stub - implementation pending'
+    };
+  }
+);
+
+// Tool: mute_mic
+registry.register(
+  'mute_mic',
+  {
+    description: 'Mute the microphone',
+    parameters: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  async (args, context) => {
+    // TODO: Wire to actual microphone control once implemented
+    return {
+      success: true,
+      muted: true,
+      note: 'Microphone control stub - implementation pending'
+    };
+  }
+);
+
+// Tool: unmute_mic
+registry.register(
+  'unmute_mic',
+  {
+    description: 'Unmute the microphone',
+    parameters: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  async (args, context) => {
+    // TODO: Wire to actual microphone control once implemented
+    return {
+      success: true,
+      muted: false,
+      note: 'Microphone control stub - implementation pending'
+    };
+  }
+);
+
+// Tool: play_sound
+registry.register(
+  'play_sound',
+  {
+    description: 'Play a sound or alert from VirtualDeck library',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Name or label of the sound to play'
+        }
+      },
+      required: ['name']
+    }
+  },
+  async (args, context) => {
+    const { name } = args;
+    const { win } = context;
+    
+    if (!win || win.isDestroyed()) {
+      return {
+        success: false,
+        error: 'VirtualDeck window not available'
+      };
+    }
+
+    // Use existing trigger-media mechanism
+    win.webContents.send('trigger-media', name);
+    
+    return {
+      success: true,
+      sound: name,
+      note: 'Sound triggered via VirtualDeck media system'
+    };
+  }
+);
+
+// Tool: run_macro
+registry.register(
+  'run_macro',
+  {
+    description: 'Execute a named macro or button sequence',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Macro name or button label'
+        }
+      },
+      required: ['name']
+    }
+  },
+  async (args, context) => {
+    const { name } = args;
+    const { win } = context;
+    
+    if (!win || win.isDestroyed()) {
+      return {
+        success: false,
+        error: 'VirtualDeck window not available'
+      };
+    }
+
+    // Use the same trigger-media system that buttons use
+    win.webContents.send('trigger-media', name);
+    
+    return {
+      success: true,
+      macro: name,
+      note: 'Macro/button triggered via VirtualDeck button system'
+    };
+  }
+);
+
+// Tool: send_twitch_message
+registry.register(
+  'send_twitch_message',
+  {
+    description: 'Send a message to Twitch chat',
+    parameters: {
+      type: 'object',
+      properties: {
+        text: {
+          type: 'string',
+          description: 'Message text to send'
+        },
+        channel: {
+          type: 'string',
+          description: 'Optional channel override (defaults to configured channel)'
+        }
+      },
+      required: ['text']
+    }
+  },
+  async (args, context) => {
+    const { text, channel } = args;
+    const { twitchClient, twitchChannel } = context;
+    
+    if (!twitchClient || twitchClient.readyState() !== 'OPEN') {
+      return {
+        success: false,
+        error: 'Twitch client not connected'
+      };
+    }
+
+    const targetChannel = channel || twitchChannel;
+    if (!targetChannel) {
+      return {
+        success: false,
+        error: 'No channel specified and no default configured'
+      };
+    }
+
+    try {
+      await twitchClient.say(targetChannel, text);
+      return {
+        success: true,
+        channel: targetChannel,
+        message: text
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+);
+
+// Tool: trigger_button
+registry.register(
+  'trigger_button',
+  {
+    description: 'Trigger a VirtualDeck button by label',
+    parameters: {
+      type: 'object',
+      properties: {
+        label: {
+          type: 'string',
+          description: 'Button label to trigger'
+        }
+      },
+      required: ['label']
+    }
+  },
+  async (args, context) => {
+    const { label } = args;
+    const { triggerButtonFn } = context;
+    
+    if (!triggerButtonFn) {
+      return {
+        success: false,
+        error: 'Button trigger function not available'
+      };
+    }
+
+    const triggered = triggerButtonFn(label, 'jarvis-api');
+    
+    return {
+      success: triggered,
+      button: label,
+      note: triggered ? 'Button triggered' : 'Button trigger failed or debounced'
+    };
+  }
+);
+
+// Tool: get_scenes
+registry.register(
+  'get_scenes',
+  {
+    description: 'List available Meld Studio scenes',
+    parameters: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  async (args, context) => {
+    const { win } = context;
+    
+    if (!win || win.isDestroyed()) {
+      return {
+        success: false,
+        error: 'VirtualDeck window not available'
+      };
+    }
+
+    // Request scene list from renderer
+    return new Promise((resolve) => {
+      const timeoutId = setTimeout(() => {
+        resolve({
+          success: false,
+          error: 'Timeout waiting for scene list'
+        });
+      }, 5000);
+
+      const handler = (event, scenes) => {
+        clearTimeout(timeoutId);
+        resolve({
+          success: true,
+          scenes
+        });
+      };
+
+      require('electron').ipcMain.once('jarvis-scenes-response', handler);
+      win.webContents.send('jarvis-get-scenes');
+    });
+  }
+);
+
+module.exports = { registry };
