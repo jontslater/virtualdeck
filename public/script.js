@@ -17203,3 +17203,21 @@ if (window.electronAPI && window.electronAPI.onJarvisGetScenes) {
     }
   });
 }
+
+// Handle JARVIS refresh browser sources requests
+if (window.electronAPI && window.electronAPI.onJarvisRefreshBrowserSources) {
+  window.electronAPI.onJarvisRefreshBrowserSources(async (data) => {
+    console.log('[JARVIS] Refresh browser sources requested:', data);
+
+    if (typeof window.meldClient !== 'undefined' && window.meldClient.refreshBrowserSources) {
+      try {
+        const result = await window.meldClient.refreshBrowserSources(data.layerName, data.waitForSceneName);
+        console.log('[JARVIS] Browser sources refresh result:', result);
+      } catch (err) {
+        console.error('[JARVIS] Failed to refresh browser sources:', err);
+      }
+    } else {
+      console.warn('[JARVIS] meldClient.refreshBrowserSources not available');
+    }
+  });
+}

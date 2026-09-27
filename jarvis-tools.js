@@ -184,6 +184,51 @@ registry.register(
   }
 );
 
+// Tool: refresh_browser_sources
+registry.register(
+  'refresh_browser_sources',
+  {
+    description: 'Refresh browser sources in the current Meld Studio scene by toggling visibility',
+    parameters: {
+      type: 'object',
+      properties: {
+        layerName: {
+          type: 'string',
+          description: 'Optional: name of specific browser source layer to refresh. If not provided, all browser sources in the current scene will be refreshed.'
+        },
+        waitForSceneName: {
+          type: 'string',
+          description: 'Optional: scene name to wait for before refreshing (use when calling after change_scene to avoid race condition). Will poll up to 3 seconds for the scene to become active.'
+        }
+      }
+    }
+  },
+  async (args, context) => {
+    const { layerName, waitForSceneName } = args;
+    const { win } = context;
+    
+    if (!win || win.isDestroyed()) {
+      return {
+        success: false,
+        error: 'VirtualDeck window not available'
+      };
+    }
+
+    return new Promise((resolve) => {
+      win.webContents.send('jarvis-refresh-browser-sources', { layerName, waitForSceneName });
+      
+      setTimeout(() => {
+        resolve({
+          success: true,
+          layerName: layerName || 'all',
+          waitForSceneName: waitForSceneName || null,
+          note: 'Browser source refresh requested via Meld client'
+        });
+      }, 100);
+    });
+  }
+);
+
 // Tool: get_stream_status
 registry.register(
   'get_stream_status',
