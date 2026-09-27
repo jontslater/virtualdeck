@@ -745,9 +745,14 @@ html[data-theme], body[data-theme] {
   border-color: #dc3545;
 }
 
-/* AI Management Panel - HIDDEN (integrated into dashboard instead) */
+/* AI Management Panel */
 .ai-management-panel {
-  display: none !important;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 12px 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* AI Dashboard Controls - Compact Integration */
@@ -760,7 +765,7 @@ html[data-theme], body[data-theme] {
   width: 100%;
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto auto auto 1fr;
   gap: 12px;
   align-items: center;
 }
@@ -856,6 +861,47 @@ html[data-theme], body[data-theme] {
 
 .ai-toggle-switch.off .ai-toggle-label {
   color: var(--text-quaternary);
+}
+
+/* AI Connection Status Indicator */
+.ai-connection-status {
+  display: inline-block;
+  font-size: 8px;
+  line-height: 1;
+  margin-left: 4px;
+  vertical-align: middle;
+  transition: color 0.3s ease;
+}
+
+.ai-connection-status.connected {
+  color: var(--success-color, #4caf50);
+}
+
+.ai-connection-status.disconnected {
+  color: var(--error-color, #f44336);
+}
+
+.ai-connection-status.checking {
+  color: var(--text-quaternary, #666);
+}
+
+.ai-connection-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: color 0.3s ease;
+}
+
+.ai-connection-label.connected {
+  color: var(--success-color, #4caf50);
+}
+
+.ai-connection-label.disconnected {
+  color: var(--error-color, #f44336);
+}
+
+.ai-connection-label.checking {
+  color: var(--text-quaternary, #666);
 }
 
 @media (max-width: 900px) {
