@@ -10,20 +10,89 @@ The JARVIS Tool API provides a controlled set of tools for LLM brain integration
 
 ## Configuration
 
-Set these environment variables in `.env`:
+Set these environment variables in `.env` (optional):
 
 ```env
 # JARVIS server settings
 JARVIS_PORT=8081           # Port for JARVIS API (default: 8081)
 JARVIS_HOST=127.0.0.1      # Host to bind to (default: 127.0.0.1, localhost only)
-JARVIS_TOKEN=your-secret-token-here  # Optional auth token for API access
+JARVIS_TOKEN=your-custom-token  # Optional: Override default auth token
 ```
 
-### Security
+### Security & Authentication
 
-- **Default**: Server binds to `127.0.0.1` (localhost only) for security
-- **Auth**: Set `JARVIS_TOKEN` to require `X-Jarvis-Token` header on all requests
-- **Without token**: API is open but only accessible from localhost
+**Default Authentication**: JARVIS uses the shared `.vd-auth-token` from VirtualDeck's SecurityManager by default. This token is automatically generated on first startup and stored in:
+- **Windows**: `%APPDATA%\virtualdeck\.vd-auth-token`
+- **macOS**: `~/Library/Application Support/virtualdeck/.vd-auth-token`
+- **Linux**: `~/.config/virtualdeck/.vd-auth-token`
+
+**Custom Token**: Set `JARVIS_TOKEN` environment variable to override the default shared token.
+
+**Auth Headers**: Clients can provide the token using any of these methods:
+- `X-Jarvis-Token: <token>` (legacy JARVIS-specific)
+- `X-VD-Auth: <token>` (shared VirtualDeck auth)
+- `Authorization: Bearer <token>` (standard OAuth-style)
+
+**WebSocket Auth**: For WebSocket connections, pass the token as a query parameter:
+- `ws://127.0.0.1:8081/jarvis/ws?token=<your-token>`
+
+**Network Security**: 
+- Server binds to `127.0.0.1` (localhost only) by default for security
+- Authentication is always required (token is auto-generated if not provided)
+- No public network exposure without explicit host configuration
+
+## Raven/Brain Integration
+
+For AI brains (Raven, Grok, Claude, etc.) that need to control VirtualDeck, use the included `RavenJarvisBridge` helper:
+
+```javascript
+const { RavenJarvisBridge } = require('./examples/raven-jarvis-bridge');
+
+// Auto-loads .vd-auth-token from standard location
+const bridge = new RavenJarvisBridge();
+
+// List available tools
+const { tools } = await bridge.listTools();
+
+// Execute a tool (throws on error)
+const status = await bridge.exec('get_stream_status');
+
+// Invoke a tool (returns {success, result?, error?})
+const result = await bridge.invoke('play_sound', { name: 'airhorn' });
+```
+
+The bridge automatically:
+- Loads `.vd-auth-token` from VirtualDeck's userData directory
+- Handles HTTP requests with proper auth headers
+- Provides both high-level (`exec`) and low-level (`invoke`) APIs
+- Works cross-platform (Windows, macOS, Linux)
+
+Run the example:
+```bash
+node examples/raven-jarvis-bridge.js
+```
+
+## Tool Bridge API Reference
+
+### `new RavenJarvisBridge(options)`
+Create a new bridge instance.
+- `options.baseUrl` - JARVIS API URL (default: `http://127.0.0.1:8081`)
+- `options.token` - Auth token (auto-loaded if not provided)
+
+### `bridge.health()`
+Check server health. Returns `{status, version, uptime}`.
+
+### `bridge.listTools()`
+List all available tools with schemas. Returns `{tools: [...], count}`.
+
+### `bridge.getTool(toolName)`
+Get a specific tool's schema by name. Returns tool object or null.
+
+### `bridge.invoke(toolName, args)`
+Invoke a tool. Returns `{success: boolean, result?: any, error?: string}`.
+
+### `bridge.exec(toolName, args)`
+Execute a tool and return result directly. Throws Error on failure.
 
 ## API Endpoints
 
@@ -31,6 +100,7 @@ JARVIS_TOKEN=your-secret-token-here  # Optional auth token for API access
 
 ```http
 GET http://127.0.0.1:8081/jarvis/tools
+X-VD-Auth: <token-from-vd-auth-token-file>
 ```
 
 Returns:
@@ -58,7 +128,7 @@ Returns:
 
 ```http
 POST http://127.0.0.1:8081/jarvis/tools/:toolName
-X-Jarvis-Token: your-secret-token-here
+X-VD-Auth: <token-from-vd-auth-token-file>
 
 {
   "nameOrPath": "notepad.exe"
@@ -69,7 +139,7 @@ X-Jarvis-Token: your-secret-token-here
 
 ```http
 POST http://127.0.0.1:8081/jarvis/invoke
-X-Jarvis-Token: your-secret-token-here
+X-VD-Auth: <token-from-vd-auth-token-file>
 
 {
   "tool": "launch_app",
@@ -94,6 +164,7 @@ Response:
 
 ```http
 GET http://127.0.0.1:8081/jarvis/health
+X-VD-Auth: <token-from-vd-auth-token-file>
 ```
 
 Returns:
@@ -107,7 +178,7 @@ Returns:
 
 ## WebSocket API
 
-Connect to `ws://127.0.0.1:8081/jarvis/ws` for streaming tool calls.
+Connect to `ws://127.0.0.1:8081/jarvis/ws?token=<your-token>` for streaming tool calls.
 
 Send:
 ```json
@@ -311,7 +382,7 @@ Set volume level for a target audio source.
 }
 ```
 
-**Status:** Stub implementation - wire to actual volume control when available.
+**Status:** Not yet implemented - returns error. Requires audio control API integration (see TODOs in jarvis-tools.js).
 
 ### 10. mute_mic / unmute_mic
 
@@ -327,27 +398,52 @@ Mute or unmute the microphone.
 }
 ```
 
-**Status:** Stub implementation - wire to actual microphone control when available.
+**Status:** Not yet implemented - returns error. Requires audio control API integration (see TODOs in jarvis-tools.js).
 
 ## Testing
+
+### Reading the Auth Token
+
+On Windows, get your token with PowerShell:
+```powershell
+Get-Content $env:APPDATA\virtualdeck\.vd-auth-token
+```
+
+Or cmd:
+```cmd
+type %APPDATA%\virtualdeck\.vd-auth-token
+```
 
 ### Using curl
 
 List tools:
 ```bash
-curl http://127.0.0.1:8081/jarvis/tools
+# Read token first
+TOKEN=$(cat ~/.config/virtualdeck/.vd-auth-token)  # Linux/macOS
+# or
+TOKEN=$(type %APPDATA%\virtualdeck\.vd-auth-token)  # Windows cmd
+
+# Make request
+curl -H "X-VD-Auth: $TOKEN" http://127.0.0.1:8081/jarvis/tools
 ```
 
-With authentication:
+With authentication (using different header formats):
 ```bash
-curl -H "X-Jarvis-Token: your-secret-token-here" http://127.0.0.1:8081/jarvis/tools
+# Method 1: X-VD-Auth header (recommended for VirtualDeck clients)
+curl -H "X-VD-Auth: your-token-here" http://127.0.0.1:8081/jarvis/tools
+
+# Method 2: X-Jarvis-Token header (legacy)
+curl -H "X-Jarvis-Token: your-token-here" http://127.0.0.1:8081/jarvis/tools
+
+# Method 3: Authorization Bearer (standard OAuth-style)
+curl -H "Authorization: Bearer your-token-here" http://127.0.0.1:8081/jarvis/tools
 ```
 
 Invoke a tool:
 ```bash
 curl -X POST http://127.0.0.1:8081/jarvis/invoke \
   -H "Content-Type: application/json" \
-  -H "X-Jarvis-Token: your-secret-token-here" \
+  -H "X-VD-Auth: your-token-here" \
   -d '{
     "tool": "get_stream_status",
     "arguments": {}
@@ -357,11 +453,21 @@ curl -X POST http://127.0.0.1:8081/jarvis/invoke \
 ### Using Node.js
 
 ```javascript
+const fs = require('fs');
+const path = require('path');
+
+// Read token from file
+const tokenPath = process.platform === 'win32'
+  ? path.join(process.env.APPDATA, 'virtualdeck', '.vd-auth-token')
+  : path.join(process.env.HOME, '.config', 'virtualdeck', '.vd-auth-token');
+const token = fs.readFileSync(tokenPath, 'utf-8').trim();
+
+// Make authenticated request
 const response = await fetch('http://127.0.0.1:8081/jarvis/invoke', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    'X-Jarvis-Token': 'your-secret-token-here'
+    'X-VD-Auth': token  // or 'Authorization': `Bearer ${token}`
   },
   body: JSON.stringify({
     tool: 'play_sound',
@@ -376,7 +482,18 @@ console.log(result);
 ### WebSocket Example
 
 ```javascript
-const ws = new WebSocket('ws://127.0.0.1:8081/jarvis/ws');
+const fs = require('fs');
+const path = require('path');
+const WebSocket = require('ws');
+
+// Read token from file
+const tokenPath = process.platform === 'win32'
+  ? path.join(process.env.APPDATA, 'virtualdeck', '.vd-auth-token')
+  : path.join(process.env.HOME, '.config', 'virtualdeck', '.vd-auth-token');
+const token = fs.readFileSync(tokenPath, 'utf-8').trim();
+
+// Connect with token as query param
+const ws = new WebSocket(`ws://127.0.0.1:8081/jarvis/ws?token=${token}`);
 
 ws.on('open', () => {
   ws.send(JSON.stringify({
@@ -403,9 +520,11 @@ ws.on('message', (data) => {
 - `run_macro` - Runs macros/buttons via trigger-media system
 - `send_twitch_message` - Sends Twitch chat messages via tmi.js
 
-⚠️ **Stubbed (TODO):**
-- `set_volume` - Needs volume control API integration
-- `mute_mic` / `unmute_mic` - Needs microphone control integration
+❌ **Not Yet Implemented:**
+- `set_volume` - Needs Windows audio control API (nircmd or loudness-windows)
+- `mute_mic` / `unmute_mic` - Needs Windows microphone control API
+
+See detailed TODOs in `jarvis-tools.js` for implementation paths.
 
 ## Adding New Tools
 
@@ -457,8 +576,8 @@ jarvisRegistry.setContext({
 
 ## Future Enhancements
 
-- [ ] Wire volume control tools to actual audio API
-- [ ] Wire microphone mute tools to actual audio API
+- [ ] Complete volume control integration (Windows audio APIs)
+- [ ] Complete microphone mute integration (Windows audio APIs)
 - [ ] Add OBS control tools (scene switching, recording, streaming)
 - [ ] Add more VTube Studio integration tools
 - [ ] Add Discord webhook tools
@@ -466,8 +585,44 @@ jarvisRegistry.setContext({
 - [ ] Add monitoring tools (CPU, memory, disk usage)
 - [ ] Add rate limiting per tool
 - [ ] Add tool execution history/logging
-- [ ] Add WebSocket authentication
 - [ ] Add tool execution metrics
+
+## Integration with Raven Voice Assistant
+
+To integrate JARVIS with Raven (or other voice assistants):
+
+1. **Install Dependencies**: Raven should have `http` (built-in) or `node-fetch` available
+
+2. **Load Auth Token**: Use the RavenJarvisBridge helper (see above) or manually read `.vd-auth-token`
+
+3. **Voice → LLM → Tool Flow**:
+   ```
+   User speaks → Raven STT → LLM decides action → RavenJarvisBridge.exec() → VirtualDeck
+   ```
+
+4. **Example Integration**:
+   ```javascript
+   const { RavenJarvisBridge } = require('./path/to/examples/raven-jarvis-bridge');
+   
+   // In your Raven LLM handler
+   async function handleVoiceCommand(transcription, intent) {
+     const bridge = new RavenJarvisBridge();
+     
+     if (intent.action === 'play_sound') {
+       await bridge.exec('play_sound', { name: intent.soundName });
+       return 'Playing sound';
+     }
+     
+     if (intent.action === 'change_scene') {
+       await bridge.exec('change_scene', { sceneName: intent.sceneName });
+       return 'Scene changed';
+     }
+     
+     // ... more intent handlers
+   }
+   ```
+
+5. **Available Tool List**: Call `bridge.listTools()` to get all available tools and their schemas for LLM function calling
 
 ## Troubleshooting
 
@@ -479,7 +634,10 @@ jarvisRegistry.setContext({
 
 ### 401 Unauthorized
 
-Make sure to include the `X-Jarvis-Token` header with the correct token from your `.env` file.
+Make sure to include one of the auth headers (`X-VD-Auth`, `X-Jarvis-Token`, or `Authorization: Bearer`) with the token from your `.vd-auth-token` file:
+- **Windows**: `%APPDATA%\virtualdeck\.vd-auth-token`
+- **macOS**: `~/Library/Application Support/virtualdeck/.vd-auth-token`
+- **Linux**: `~/.config/virtualdeck/.vd-auth-token`
 
 ### Tool returns "VirtualDeck window not available"
 
