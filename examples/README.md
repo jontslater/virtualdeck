@@ -125,7 +125,7 @@ const token = fs.readFileSync(tokenPath, 'utf-8').trim();
 const options = {
   method: 'POST',
   hostname: '127.0.0.1',
-  port: 8081,
+  port: 8091,
   path: '/jarvis/invoke',
   headers: {
     'Content-Type': 'application/json',
@@ -186,7 +186,7 @@ const tokenPath = path.join(process.env.APPDATA, 'virtualdeck', '.vd-auth-token'
 const token = fs.readFileSync(tokenPath, 'utf-8').trim();
 
 // Connect with token as query param
-const ws = new WebSocket(`ws://127.0.0.1:8081/jarvis/ws?token=${token}`);
+const ws = new WebSocket(`ws://127.0.0.1:8091/jarvis/ws?token=${token}`);
 
 ws.on('open', () => {
   ws.send(JSON.stringify({
@@ -229,8 +229,8 @@ ws.on('message', (data) => {
 
 **Solution:**
 1. Start VirtualDeck
-2. Check console logs for "JARVIS Server] Listening on http://127.0.0.1:8081"
-3. Verify port 8081 is not blocked by firewall
+2. Check console logs for "JARVIS Server] Listening on http://127.0.0.1:8091"
+3. Verify port 8091 is not blocked by firewall
 
 ### Error: ECONNREFUSED or timeout
 
@@ -239,7 +239,7 @@ ws.on('message', (data) => {
 **Solution:**
 1. Verify VirtualDeck is running
 2. Check `JARVIS_PORT` and `JARVIS_HOST` env vars
-3. Default is `http://127.0.0.1:8081`
+3. Default is `http://127.0.0.1:8091`
 
 ---
 

@@ -14,7 +14,7 @@ Set these environment variables in `.env` (optional):
 
 ```env
 # JARVIS server settings
-JARVIS_PORT=8081           # Port for JARVIS API (default: 8081)
+JARVIS_PORT=8091           # Port for JARVIS API (default: 8091)
 JARVIS_HOST=127.0.0.1      # Host to bind to (default: 127.0.0.1, localhost only)
 JARVIS_TOKEN=your-custom-token  # Optional: Override default auth token
 ```
@@ -34,7 +34,7 @@ JARVIS_TOKEN=your-custom-token  # Optional: Override default auth token
 - `Authorization: Bearer <token>` (standard OAuth-style)
 
 **WebSocket Auth**: For WebSocket connections, pass the token as a query parameter:
-- `ws://127.0.0.1:8081/jarvis/ws?token=<your-token>`
+- `ws://127.0.0.1:8091/jarvis/ws?token=<your-token>`
 
 **Network Security**: 
 - Server binds to `127.0.0.1` (localhost only) by default for security
@@ -76,7 +76,7 @@ node examples/raven-jarvis-bridge.js
 
 ### `new RavenJarvisBridge(options)`
 Create a new bridge instance.
-- `options.baseUrl` - JARVIS API URL (default: `http://127.0.0.1:8081`)
+- `options.baseUrl` - JARVIS API URL (default: `http://127.0.0.1:8091`)
 - `options.token` - Auth token (auto-loaded if not provided)
 
 ### `bridge.health()`
@@ -99,7 +99,7 @@ Execute a tool and return result directly. Throws Error on failure.
 ### List Available Tools
 
 ```http
-GET http://127.0.0.1:8081/jarvis/tools
+GET http://127.0.0.1:8091/jarvis/tools
 X-VD-Auth: <token-from-vd-auth-token-file>
 ```
 
@@ -127,7 +127,7 @@ Returns:
 ### Invoke a Tool (Method 1)
 
 ```http
-POST http://127.0.0.1:8081/jarvis/tools/:toolName
+POST http://127.0.0.1:8091/jarvis/tools/:toolName
 X-VD-Auth: <token-from-vd-auth-token-file>
 
 {
@@ -138,7 +138,7 @@ X-VD-Auth: <token-from-vd-auth-token-file>
 ### Invoke a Tool (Method 2)
 
 ```http
-POST http://127.0.0.1:8081/jarvis/invoke
+POST http://127.0.0.1:8091/jarvis/invoke
 X-VD-Auth: <token-from-vd-auth-token-file>
 
 {
@@ -163,7 +163,7 @@ Response:
 ### Health Check
 
 ```http
-GET http://127.0.0.1:8081/jarvis/health
+GET http://127.0.0.1:8091/jarvis/health
 X-VD-Auth: <token-from-vd-auth-token-file>
 ```
 
@@ -178,7 +178,7 @@ Returns:
 
 ## WebSocket API
 
-Connect to `ws://127.0.0.1:8081/jarvis/ws?token=<your-token>` for streaming tool calls.
+Connect to `ws://127.0.0.1:8091/jarvis/ws?token=<your-token>` for streaming tool calls.
 
 Send:
 ```json
@@ -424,24 +424,24 @@ TOKEN=$(cat ~/.config/virtualdeck/.vd-auth-token)  # Linux/macOS
 TOKEN=$(type %APPDATA%\virtualdeck\.vd-auth-token)  # Windows cmd
 
 # Make request
-curl -H "X-VD-Auth: $TOKEN" http://127.0.0.1:8081/jarvis/tools
+curl -H "X-VD-Auth: $TOKEN" http://127.0.0.1:8091/jarvis/tools
 ```
 
 With authentication (using different header formats):
 ```bash
 # Method 1: X-VD-Auth header (recommended for VirtualDeck clients)
-curl -H "X-VD-Auth: your-token-here" http://127.0.0.1:8081/jarvis/tools
+curl -H "X-VD-Auth: your-token-here" http://127.0.0.1:8091/jarvis/tools
 
 # Method 2: X-Jarvis-Token header (legacy)
-curl -H "X-Jarvis-Token: your-token-here" http://127.0.0.1:8081/jarvis/tools
+curl -H "X-Jarvis-Token: your-token-here" http://127.0.0.1:8091/jarvis/tools
 
 # Method 3: Authorization Bearer (standard OAuth-style)
-curl -H "Authorization: Bearer your-token-here" http://127.0.0.1:8081/jarvis/tools
+curl -H "Authorization: Bearer your-token-here" http://127.0.0.1:8091/jarvis/tools
 ```
 
 Invoke a tool:
 ```bash
-curl -X POST http://127.0.0.1:8081/jarvis/invoke \
+curl -X POST http://127.0.0.1:8091/jarvis/invoke \
   -H "Content-Type: application/json" \
   -H "X-VD-Auth: your-token-here" \
   -d '{
@@ -463,7 +463,7 @@ const tokenPath = process.platform === 'win32'
 const token = fs.readFileSync(tokenPath, 'utf-8').trim();
 
 // Make authenticated request
-const response = await fetch('http://127.0.0.1:8081/jarvis/invoke', {
+const response = await fetch('http://127.0.0.1:8091/jarvis/invoke', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -493,7 +493,7 @@ const tokenPath = process.platform === 'win32'
 const token = fs.readFileSync(tokenPath, 'utf-8').trim();
 
 // Connect with token as query param
-const ws = new WebSocket(`ws://127.0.0.1:8081/jarvis/ws?token=${token}`);
+const ws = new WebSocket(`ws://127.0.0.1:8091/jarvis/ws?token=${token}`);
 
 ws.on('open', () => {
   ws.send(JSON.stringify({
@@ -628,8 +628,8 @@ To integrate JARVIS with Raven (or other voice assistants):
 
 ### Server won't start
 
-1. Check if port 8081 is already in use
-2. Set a different port: `JARVIS_PORT=8082`
+1. Check if port 8091 is already in use
+2. Set a different port: `JARVIS_PORT=8092`
 3. Check console logs for errors
 
 ### 401 Unauthorized

@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Configuration
-const JARVIS_URL = process.env.JARVIS_URL || 'http://127.0.0.1:8081';
+const JARVIS_URL = process.env.JARVIS_URL || 'http://127.0.0.1:8091';
 
 // Auto-load token from .vd-auth-token
 function loadToken() {
@@ -172,8 +172,8 @@ async function websocketExample() {
   
   // Connect with token as query param
   const wsUrl = JARVIS_TOKEN 
-    ? `ws://127.0.0.1:8081/jarvis/ws?token=${JARVIS_TOKEN}`
-    : 'ws://127.0.0.1:8081/jarvis/ws';
+    ? `ws://127.0.0.1:8091/jarvis/ws?token=${JARVIS_TOKEN}`
+    : 'ws://127.0.0.1:8091/jarvis/ws';
   
   const ws = new WebSocket(wsUrl);
 

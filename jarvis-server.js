@@ -15,7 +15,7 @@ const { registry } = require('./jarvis-tools');
 
 class JarvisServer {
   constructor(options = {}) {
-    this.port = options.port || 8081;
+    this.port = options.port || 8091;
     this.host = options.host || '127.0.0.1'; // Localhost only by default
     this.token = options.token || null; // Auth token (JARVIS_TOKEN or vd-auth-token)
     this.server = null;

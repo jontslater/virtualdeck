@@ -46,7 +46,7 @@ registry.setContext({
     // Test 3: Server Initialization
     console.log('\n3️⃣ Testing Server Initialization...');
     const server = new JarvisServer({
-      port: 18081, // Use different port for testing
+      port: 18091, // Use different port for testing
       host: '127.0.0.1',
       token: null
     });
@@ -62,12 +62,12 @@ registry.setContext({
     const fetch = require('node-fetch');
     
     // Test GET /jarvis/tools
-    const listResponse = await fetch('http://127.0.0.1:18081/jarvis/tools');
+    const listResponse = await fetch('http://127.0.0.1:18091/jarvis/tools');
     const listData = await listResponse.json();
     console.log(`   ✅ GET /jarvis/tools: ${listData.count} tools`);
 
     // Test POST /jarvis/invoke
-    const invokeResponse = await fetch('http://127.0.0.1:18081/jarvis/invoke', {
+    const invokeResponse = await fetch('http://127.0.0.1:18091/jarvis/invoke', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -79,14 +79,14 @@ registry.setContext({
     console.log(`   ✅ POST /jarvis/invoke: ${invokeData.success ? 'Success' : 'Failed'}`);
 
     // Test GET /jarvis/health
-    const healthResponse = await fetch('http://127.0.0.1:18081/jarvis/health');
+    const healthResponse = await fetch('http://127.0.0.1:18091/jarvis/health');
     const healthData = await healthResponse.json();
     console.log(`   ✅ GET /jarvis/health: ${healthData.status}`);
 
     // Test 5: WebSocket
     console.log('\n5️⃣ Testing WebSocket...');
     const WebSocket = require('ws');
-    const ws = new WebSocket('ws://127.0.0.1:18081/jarvis/ws');
+    const ws = new WebSocket('ws://127.0.0.1:18091/jarvis/ws');
 
     await new Promise((resolve, reject) => {
       ws.on('open', () => {
@@ -119,8 +119,8 @@ registry.setContext({
     console.log('\n✅ All tests passed!');
     console.log('\n📝 Next steps:');
     console.log('   1. Start VirtualDeck normally');
-    console.log('   2. JARVIS server will start on port 8081 (configurable)');
-    console.log('   3. Test with: curl http://127.0.0.1:8081/jarvis/tools');
+    console.log('   2. JARVIS server will start on port 8091 (configurable)');
+    console.log('   3. Test with: curl http://127.0.0.1:8091/jarvis/tools');
     console.log('   4. See docs/jarvis-tools.md for complete API reference');
 
   } catch (error) {
