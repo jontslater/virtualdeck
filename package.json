@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "prepare-build": "node prepare-build.js",
-    "stage-raven": "powershell -ExecutionPolicy Bypass -File E:\\AIChatBot\\scripts\\stage-raven-runtime.ps1",
+    "stage-raven": "powershell -ExecutionPolicy Bypass -File scripts/stage-raven-runtime.ps1",
     "dist": "npm run prepare-build && electron-builder",
     "build:win": "npm run prepare-build && electron-builder --win",
     "build:win:with-raven": "npm run stage-raven && npm run build:win"
