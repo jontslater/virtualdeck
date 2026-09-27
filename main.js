@@ -1142,11 +1142,16 @@ async function startJarvisServer() {
   try {
     const jarvisPort = process.env.JARVIS_PORT || 8081;
     const jarvisHost = process.env.JARVIS_HOST || '127.0.0.1';
-    const jarvisToken = process.env.JARVIS_TOKEN || null;
-
+    
+    // Use JARVIS_TOKEN env var if set, otherwise fall back to shared .vd-auth-token
+    let jarvisToken = process.env.JARVIS_TOKEN;
+    
     if (!jarvisToken) {
-      console.log('[JARVIS] ⚠️  No JARVIS_TOKEN set - API will be open on localhost');
-      console.log('[JARVIS] Set JARVIS_TOKEN env var to require authentication');
+      // Use shared SecurityManager token
+      jarvisToken = securityManager.getOrCreateToken();
+      console.log('[JARVIS] Using shared .vd-auth-token for authentication');
+    } else {
+      console.log('[JARVIS] Using JARVIS_TOKEN env var for authentication');
     }
 
     jarvisServer = new JarvisServer({
@@ -1170,6 +1175,7 @@ async function startJarvisServer() {
 
     await jarvisServer.start();
     console.log(`[JARVIS] ✅ Tool API ready at http://${jarvisHost}:${jarvisPort}/jarvis/tools`);
+    console.log(`[JARVIS] 📁 Auth token: ${path.join(userDataPath, '.vd-auth-token')}`);
   } catch (error) {
     console.error('[JARVIS] ❌ Failed to start tool server:', error);
   }

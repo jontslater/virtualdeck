@@ -17,21 +17,45 @@ class JarvisServer {
   constructor(options = {}) {
     this.port = options.port || 8081;
     this.host = options.host || '127.0.0.1'; // Localhost only by default
-    this.token = options.token || null; // Optional auth token
+    this.token = options.token || null; // Auth token (JARVIS_TOKEN or vd-auth-token)
     this.server = null;
     this.wss = null;
   }
 
   /**
    * Check authorization header if token is configured
+   * Supports multiple header formats for flexibility:
+   * - X-Jarvis-Token (legacy JARVIS-specific)
+   * - X-VD-Auth (shared VirtualDeck auth)
+   * - Authorization: Bearer <token>
    */
   isAuthorized(req) {
     if (!this.token) {
       return true; // No token required
     }
 
-    const authHeader = req.headers['x-jarvis-token'];
-    return authHeader === this.token;
+    // Check X-Jarvis-Token (legacy)
+    const jarvisHeader = req.headers['x-jarvis-token'];
+    if (jarvisHeader === this.token) {
+      return true;
+    }
+
+    // Check X-VD-Auth (shared VirtualDeck auth)
+    const vdAuthHeader = req.headers['x-vd-auth'];
+    if (vdAuthHeader === this.token) {
+      return true;
+    }
+
+    // Check Authorization: Bearer
+    const authHeader = req.headers['authorization'];
+    if (authHeader) {
+      const match = authHeader.match(/^Bearer\s+(.+)$/i);
+      if (match && match[1] === this.token) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
@@ -42,7 +66,7 @@ class JarvisServer {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, X-Jarvis-Token'
+      'Access-Control-Allow-Headers': 'Content-Type, X-Jarvis-Token, X-VD-Auth, Authorization'
     });
     res.end(JSON.stringify(data, null, 2));
   }
@@ -56,7 +80,7 @@ class JarvisServer {
       res.writeHead(200, {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, X-Jarvis-Token'
+        'Access-Control-Allow-Headers': 'Content-Type, X-Jarvis-Token, X-VD-Auth, Authorization'
       });
       res.end();
       return;
@@ -66,7 +90,7 @@ class JarvisServer {
     if (!this.isAuthorized(req)) {
       this.sendJSON(res, 401, {
         error: 'Unauthorized',
-        message: 'Missing or invalid X-Jarvis-Token header'
+        message: 'Missing or invalid auth token. Provide X-Jarvis-Token, X-VD-Auth, or Authorization: Bearer header'
       });
       return;
     }
@@ -155,6 +179,21 @@ class JarvisServer {
    * Handle WebSocket connections
    */
   handleWebSocket(ws, req) {
+    // Check WebSocket auth via query param or Sec-WebSocket-Protocol
+    if (this.token) {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const tokenParam = url.searchParams.get('token');
+      const protocolToken = req.headers['sec-websocket-protocol'];
+      
+      const isValid = tokenParam === this.token || protocolToken === this.token;
+      
+      if (!isValid) {
+        console.log('[JARVIS WS] Unauthorized connection attempt');
+        ws.close(1008, 'Unauthorized - provide token query param');
+        return;
+      }
+    }
+
     console.log('[JARVIS WS] Client connected');
 
     ws.on('message', async (data) => {
@@ -228,7 +267,7 @@ class JarvisServer {
           console.log(`[JARVIS Server] Listening on http://${this.host}:${this.port}`);
           console.log(`[JARVIS Server] WebSocket endpoint: ws://${this.host}:${this.port}/jarvis/ws`);
           if (this.token) {
-            console.log('[JARVIS Server] Auth token required: X-Jarvis-Token header');
+            console.log('[JARVIS Server] Auth required: X-Jarvis-Token, X-VD-Auth, or Authorization: Bearer <token>');
           } else {
             console.log('[JARVIS Server] WARNING: No auth token configured - server is open');
           }

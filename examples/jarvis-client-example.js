@@ -7,10 +7,37 @@
  */
 
 const fetch = require('node-fetch');
+const fs = require('fs');
+const path = require('path');
 
 // Configuration
 const JARVIS_URL = process.env.JARVIS_URL || 'http://127.0.0.1:8081';
-const JARVIS_TOKEN = process.env.JARVIS_TOKEN || null;
+
+// Auto-load token from .vd-auth-token
+function loadToken() {
+  let tokenPath;
+  
+  if (process.platform === 'win32') {
+    tokenPath = path.join(process.env.APPDATA || '', 'virtualdeck', '.vd-auth-token');
+  } else if (process.platform === 'darwin') {
+    tokenPath = path.join(process.env.HOME || '', 'Library', 'Application Support', 'virtualdeck', '.vd-auth-token');
+  } else {
+    tokenPath = path.join(process.env.HOME || '', '.config', 'virtualdeck', '.vd-auth-token');
+  }
+
+  try {
+    if (fs.existsSync(tokenPath)) {
+      return fs.readFileSync(tokenPath, 'utf-8').trim();
+    }
+  } catch (err) {
+    console.warn('Warning: Could not load .vd-auth-token:', err.message);
+  }
+  
+  // Fall back to env var
+  return process.env.JARVIS_TOKEN || null;
+}
+
+const JARVIS_TOKEN = loadToken();
 
 class JarvisClient {
   constructor(baseUrl, token) {
@@ -26,7 +53,7 @@ class JarvisClient {
       'Content-Type': 'application/json'
     };
     if (this.token) {
-      h['X-Jarvis-Token'] = this.token;
+      h['X-VD-Auth'] = this.token;
     }
     return h;
   }
@@ -143,7 +170,12 @@ async function websocketExample() {
   
   console.log('\n📡 WebSocket Example\n');
   
-  const ws = new WebSocket(`ws://127.0.0.1:8081/jarvis/ws`);
+  // Connect with token as query param
+  const wsUrl = JARVIS_TOKEN 
+    ? `ws://127.0.0.1:8081/jarvis/ws?token=${JARVIS_TOKEN}`
+    : 'ws://127.0.0.1:8081/jarvis/ws';
+  
+  const ws = new WebSocket(wsUrl);
 
   ws.on('open', () => {
     console.log('✅ Connected to JARVIS WebSocket');

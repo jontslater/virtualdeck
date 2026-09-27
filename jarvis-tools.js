@@ -233,12 +233,20 @@ registry.register(
   async (args, context) => {
     const { target, level } = args;
     
-    // TODO: Wire to actual VirtualDeck volume control once implemented
+    // TODO: Wire to VirtualDeck audio control when available
+    // Implementation path:
+    // 1. Check if VirtualDeck has system audio control APIs (Windows: nircmd or loudness-windows)
+    // 2. For 'master': control system master volume
+    // 3. For 'media': control media/application volume
+    // 4. For 'mic': control microphone input level
+    // 5. May require adding audio control dependency to package.json
+    // 
+    // Stub implementation - do not fake success for now
     return {
-      success: true,
+      success: false,
       target,
       level,
-      note: 'Volume control stub - implementation pending'
+      error: 'Volume control not yet wired - requires audio API integration'
     };
   }
 );
@@ -254,11 +262,17 @@ registry.register(
     }
   },
   async (args, context) => {
-    // TODO: Wire to actual microphone control once implemented
+    // TODO: Wire to VirtualDeck microphone control when available
+    // Implementation path:
+    // 1. Check if VirtualDeck has mic mute APIs (Windows: nircmd or audio device control)
+    // 2. Set mic input level to 0 or mute via system API
+    // 3. Store mute state for unmute_mic tool
+    // 4. May require adding audio control dependency to package.json
+    // 
+    // Stub implementation - do not fake success for now
     return {
-      success: true,
-      muted: true,
-      note: 'Microphone control stub - implementation pending'
+      success: false,
+      error: 'Microphone control not yet wired - requires audio API integration'
     };
   }
 );
@@ -274,11 +288,17 @@ registry.register(
     }
   },
   async (args, context) => {
-    // TODO: Wire to actual microphone control once implemented
+    // TODO: Wire to VirtualDeck microphone control when available
+    // Implementation path:
+    // 1. Check if VirtualDeck has mic mute APIs (Windows: nircmd or audio device control)
+    // 2. Restore mic input level to previous state or unmute via system API
+    // 3. Retrieve stored mute state from mute_mic tool
+    // 4. May require adding audio control dependency to package.json
+    // 
+    // Stub implementation - do not fake success for now
     return {
-      success: true,
-      muted: false,
-      note: 'Microphone control stub - implementation pending'
+      success: false,
+      error: 'Microphone control not yet wired - requires audio API integration'
     };
   }
 );
