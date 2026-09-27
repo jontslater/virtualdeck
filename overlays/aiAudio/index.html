@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>VirtualDeck AI Audio</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; width: 64px; height: 64px; }
+  </style>
+</head>
+<body>
+  <script>
+    const overlayName = 'aiAudio';
+    let current = null;
+
+    function wsUrl() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return proto + '//' + location.host + '?overlay=' + encodeURIComponent(overlayName);
+    }
+
+    function stopCurrent() {
+      if (!current) return;
+      try { current.pause(); } catch (e) {}
+      try { current.src = ''; } catch (e) {}
+      current = null;
+    }
+
+    function playUrl(url, volume) {
+      if (!url) return;
+      stopCurrent();
+      const audio = new Audio(url);
+      audio.volume = Math.max(0, Math.min(1, typeof volume === 'number' ? volume : 1));
+      audio.autoplay = true;
+      current = audio;
+      audio.play().catch((err) => {
+        console.warn('AI audio play blocked or failed:', err);
+      });
+      audio.addEventListener('ended', () => {
+        if (current === audio) current = null;
+      }, { once: true });
+    }
+
+    function handlePayload(payload) {
+      if (!payload || typeof payload !== 'object') return;
+      if (payload.type === 'play-audio' || payload.type === 'playAudio') {
+        playUrl(payload.src || payload.url || payload.audioUrl, payload.volume);
+        return;
+      }
+      if (payload.type === 'buttonTrigger') {
+        const media = [].concat(payload.centerMedia || [], payload.fullscreenMedia || []);
+        const clip = media.find((m) => m && m.type === 'audio' && (m.src || m.url));
+        if (clip) playUrl(clip.src || clip.url, clip.volume);
+      }
+    }
+
+    function connect() {
+      const ws = new WebSocket(wsUrl());
+      ws.onopen = () => console.log('AI audio overlay connected');
+      ws.onmessage = (event) => {
+        try {
+          handlePayload(JSON.parse(event.data));
+        } catch (err) {
+          console.warn('AI audio overlay bad message', err);
+        }
+      };
+      ws.onclose = () => setTimeout(connect, 1500);
+      ws.onerror = () => {
+        try { ws.close(); } catch (e) {}
+      };
+    }
+
+    connect();
+  </script>
+</body>
+</html>
