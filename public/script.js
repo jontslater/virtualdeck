@@ -16394,6 +16394,23 @@ function loadPreferences() {
   // Update checkboxes
   document.getElementById('auto-update-checkbox').checked = preferences.autoUpdate !== false; // default to true
   
+  // Load Discord settings
+  if (preferences.discord) {
+    const discord = preferences.discord;
+    if (document.getElementById('discord-webhook-url')) {
+      document.getElementById('discord-webhook-url').value = discord.webhookUrl || '';
+    }
+    if (document.getElementById('discord-bot-token')) {
+      document.getElementById('discord-bot-token').value = discord.botToken || '';
+    }
+    if (document.getElementById('discord-channel-id')) {
+      document.getElementById('discord-channel-id').value = discord.defaultChannelId || '';
+    }
+    if (document.getElementById('discord-username')) {
+      document.getElementById('discord-username').value = discord.username || 'VirtualDeck';
+    }
+  }
+  
   // Load auth token path
   if (window.electronAPI && window.electronAPI.getAuthTokenPath) {
     window.electronAPI.getAuthTokenPath().then(tokenPath => {
@@ -16409,7 +16426,13 @@ function loadPreferences() {
 
 function savePreferences() {
   const preferences = {
-    autoUpdate: document.getElementById('auto-update-checkbox').checked
+    autoUpdate: document.getElementById('auto-update-checkbox').checked,
+    discord: {
+      webhookUrl: document.getElementById('discord-webhook-url')?.value.trim() || '',
+      botToken: document.getElementById('discord-bot-token')?.value.trim() || '',
+      defaultChannelId: document.getElementById('discord-channel-id')?.value.trim() || '',
+      username: document.getElementById('discord-username')?.value.trim() || 'VirtualDeck'
+    }
   };
   
   // Save to localStorage
@@ -16418,6 +16441,11 @@ function savePreferences() {
   // Send preferences to main process if available
   if (window.electronAPI && window.electronAPI.savePreferences) {
     window.electronAPI.savePreferences(preferences);
+  }
+  
+  // Also update config with Discord settings for JARVIS tools
+  if (window.electronAPI && window.electronAPI.updateConfig) {
+    window.electronAPI.updateConfig({ discord: preferences.discord });
   }
   
   // Show success message

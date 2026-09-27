@@ -142,4 +142,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onJarvisChangeScene: (callback) => ipcRenderer.on('jarvis-change-scene', (event, data) => callback(data)),
   onJarvisGetScenes: (callback) => ipcRenderer.on('jarvis-get-scenes', () => callback()),
   sendJarvisScenesResponse: (scenes) => ipcRenderer.send('jarvis-scenes-response', scenes),
+  // Macro Management
+  getMacros: async () => ipcRenderer.invoke('get-macros'),
+  getMacro: async (id) => ipcRenderer.invoke('get-macro', id),
+  saveMacro: async (id, macro) => ipcRenderer.invoke('save-macro', { id, macro }),
+  deleteMacro: async (id) => ipcRenderer.invoke('delete-macro', id),
+  executeMacro: async (id) => ipcRenderer.invoke('execute-macro', id),
 });

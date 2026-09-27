@@ -88,6 +88,17 @@ try {
   console.error('❌ Error initializing VTuber Manager:', err);
   vtuberManager = null;
 }
+
+// Initialize Macro Manager
+const MacroManager = require('./lib/macro-manager');
+let macroManager;
+try {
+  macroManager = new MacroManager(userDataPath);
+  console.log('✅ Macro Manager initialized');
+} catch (err) {
+  console.error('❌ Error initializing Macro Manager:', err);
+  macroManager = null;
+}
 const defaultSoundsDir = path.join(__dirname, 'public', 'assets', 'sounds');
 const defaultSkinsDir = path.join(__dirname, 'skins');
 const tcConfigPath = path.join(userDataPath, 'tc_config.json');
@@ -1170,7 +1181,8 @@ async function startJarvisServer() {
       config: currentProfile,
       currentActiveProfile,
       loadProfile,
-      triggerButtonFn: triggerButtonWithDebounce
+      triggerButtonFn: triggerButtonWithDebounce,
+      macroManager
     });
 
     await jarvisServer.start();
@@ -2076,6 +2088,92 @@ ipcMain.handle('test-hydration', async () => {
     return { success: true };
   } catch (error) {
     console.error('Error testing hydration:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================================================
+// MACRO IPC HANDLERS
+// ============================================================================
+
+// Get all macros
+ipcMain.handle('get-macros', async () => {
+  try {
+    if (!macroManager) {
+      return { success: false, error: 'Macro manager not available' };
+    }
+    const macros = macroManager.list();
+    return { success: true, macros };
+  } catch (error) {
+    console.error('Error getting macros:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get a single macro
+ipcMain.handle('get-macro', async (event, id) => {
+  try {
+    if (!macroManager) {
+      return { success: false, error: 'Macro manager not available' };
+    }
+    const macro = macroManager.get(id);
+    if (!macro) {
+      return { success: false, error: 'Macro not found' };
+    }
+    return { success: true, macro: { id, ...macro } };
+  } catch (error) {
+    console.error('Error getting macro:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Save or update a macro
+ipcMain.handle('save-macro', async (event, { id, macro }) => {
+  try {
+    if (!macroManager) {
+      return { success: false, error: 'Macro manager not available' };
+    }
+
+    // Validate macro
+    const validation = macroManager.validate(macro);
+    if (!validation.valid) {
+      return { success: false, errors: validation.errors };
+    }
+
+    const saved = macroManager.set(id, macro);
+    return { success: true, macro: { id, ...saved } };
+  } catch (error) {
+    console.error('Error saving macro:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Delete a macro
+ipcMain.handle('delete-macro', async (event, id) => {
+  try {
+    if (!macroManager) {
+      return { success: false, error: 'Macro manager not available' };
+    }
+    const deleted = macroManager.delete(id);
+    return { success: deleted };
+  } catch (error) {
+    console.error('Error deleting macro:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Execute a macro (via JARVIS tool)
+ipcMain.handle('execute-macro', async (event, id) => {
+  try {
+    if (!macroManager) {
+      return { success: false, error: 'Macro manager not available' };
+    }
+    
+    // Use JARVIS tool to execute
+    const result = await jarvisRegistry.invoke('run_macro', { id });
+    return result;
+  } catch (error) {
+    console.error('Error executing macro:', error);
     return { success: false, error: error.message };
   }
 });

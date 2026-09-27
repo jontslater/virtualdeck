@@ -345,36 +345,92 @@ registry.register(
 registry.register(
   'run_macro',
   {
-    description: 'Execute a named macro or button sequence',
+    description: 'Execute a named macro (sequence of JARVIS tool calls)',
     parameters: {
       type: 'object',
       properties: {
-        name: {
+        id: {
           type: 'string',
-          description: 'Macro name or button label'
+          description: 'Macro ID (e.g. "going-live") or name'
         }
       },
-      required: ['name']
+      required: ['id']
     }
   },
   async (args, context) => {
-    const { name } = args;
-    const { win } = context;
+    const { id } = args;
+    const { macroManager } = context;
     
-    if (!win || win.isDestroyed()) {
+    if (!macroManager) {
       return {
         success: false,
-        error: 'VirtualDeck window not available'
+        error: 'Macro manager not available'
       };
     }
 
-    // Use the same trigger-media system that buttons use
-    win.webContents.send('trigger-media', name);
-    
+    // Try to find macro by ID first, then by phrase/name
+    let macro = macroManager.get(id);
+    if (!macro) {
+      macro = macroManager.findByPhrase(id);
+    }
+
+    if (!macro) {
+      return {
+        success: false,
+        error: `Macro '${id}' not found`
+      };
+    }
+
+    if (!macro.enabled) {
+      return {
+        success: false,
+        error: `Macro '${macro.name}' is disabled`
+      };
+    }
+
+    // Execute each step in sequence
+    const results = [];
+    for (let i = 0; i < macro.steps.length; i++) {
+      const step = macro.steps[i];
+      console.log(`[JARVIS] Executing macro step ${i + 1}/${macro.steps.length}: ${step.tool}`);
+      
+      try {
+        const result = await registry.invoke(step.tool, step.arguments || {});
+        results.push({
+          step: i + 1,
+          tool: step.tool,
+          description: step.description,
+          success: result.success,
+          result: result.result,
+          error: result.error
+        });
+
+        // Stop on first failure if configured
+        if (!result.success && macro.stopOnError !== false) {
+          console.error(`[JARVIS] Macro step ${i + 1} failed, stopping execution`);
+          break;
+        }
+      } catch (error) {
+        console.error(`[JARVIS] Error executing macro step ${i + 1}:`, error);
+        results.push({
+          step: i + 1,
+          tool: step.tool,
+          description: step.description,
+          success: false,
+          error: error.message
+        });
+        break;
+      }
+    }
+
+    const allSucceeded = results.every(r => r.success);
     return {
-      success: true,
-      macro: name,
-      note: 'Macro/button triggered via VirtualDeck button system'
+      success: allSucceeded,
+      macro: macro.name,
+      steps: results,
+      note: allSucceeded 
+        ? `Macro '${macro.name}' completed successfully` 
+        : `Macro '${macro.name}' completed with errors`
     };
   }
 );
@@ -510,6 +566,253 @@ registry.register(
 
       require('electron').ipcMain.once('jarvis-scenes-response', handler);
       win.webContents.send('jarvis-get-scenes');
+    });
+  }
+);
+
+// Tool: discord_send_message
+registry.register(
+  'discord_send_message',
+  {
+    description: 'Send a message to Discord channel via webhook or bot',
+    parameters: {
+      type: 'object',
+      properties: {
+        message: {
+          type: 'string',
+          description: 'Message text to send'
+        },
+        channelId: {
+          type: 'string',
+          description: 'Discord channel ID (optional if webhook URL is configured)'
+        },
+        embed: {
+          type: 'object',
+          description: 'Optional Discord embed object'
+        }
+      },
+      required: ['message']
+    }
+  },
+  async (args, context) => {
+    const { message, channelId, embed } = args;
+    const { config } = context;
+    
+    if (!config || !config.discord) {
+      return {
+        success: false,
+        error: 'Discord not configured. Add webhook URL or bot token in settings.'
+      };
+    }
+
+    const discordConfig = config.discord;
+    const fetch = require('node-fetch');
+
+    try {
+      // Prefer webhook for simplicity
+      if (discordConfig.webhookUrl) {
+        const payload = {
+          content: message,
+          username: discordConfig.username || 'VirtualDeck'
+        };
+
+        if (embed) {
+          payload.embeds = [embed];
+        }
+
+        const response = await fetch(discordConfig.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const error = await response.text();
+          return {
+            success: false,
+            error: `Discord webhook failed: ${response.status} ${error}`
+          };
+        }
+
+        return {
+          success: true,
+          method: 'webhook',
+          message
+        };
+      }
+
+      // Bot token method
+      if (discordConfig.botToken) {
+        const targetChannel = channelId || discordConfig.defaultChannelId;
+        
+        if (!targetChannel) {
+          return {
+            success: false,
+            error: 'No channel ID specified and no default configured'
+          };
+        }
+
+        const payload = { content: message };
+        if (embed) {
+          payload.embeds = [embed];
+        }
+
+        const response = await fetch(
+          `https://discord.com/api/v10/channels/${targetChannel}/messages`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bot ${discordConfig.botToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+          }
+        );
+
+        if (!response.ok) {
+          const error = await response.text();
+          return {
+            success: false,
+            error: `Discord API failed: ${response.status} ${error}`
+          };
+        }
+
+        return {
+          success: true,
+          method: 'bot',
+          channelId: targetChannel,
+          message
+        };
+      }
+
+      return {
+        success: false,
+        error: 'No Discord webhook URL or bot token configured'
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+);
+
+// Tool: discord_announce_live
+registry.register(
+  'discord_announce_live',
+  {
+    description: 'Post a go-live notification to Discord with stream info',
+    parameters: {
+      type: 'object',
+      properties: {
+        message: {
+          type: 'string',
+          description: 'Custom announcement message (optional)'
+        },
+        includeStreamInfo: {
+          type: 'boolean',
+          description: 'Include Twitch channel info in embed',
+          default: true
+        },
+        channelId: {
+          type: 'string',
+          description: 'Discord channel ID (optional if webhook is configured)'
+        }
+      }
+    }
+  },
+  async (args, context) => {
+    const { message, includeStreamInfo = true, channelId } = args;
+    const { config, twitchChannel, twitchUserName } = context;
+
+    const announcement = message || '🔴 Going live now! Come hang out! 🎮';
+
+    let embed = null;
+    if (includeStreamInfo && twitchChannel) {
+      const channelName = twitchChannel.replace('#', '');
+      embed = {
+        color: 0x9146FF,
+        title: '🎮 Stream is Live!',
+        description: announcement,
+        fields: [
+          {
+            name: 'Channel',
+            value: `[twitch.tv/${channelName}](https://twitch.tv/${channelName})`,
+            inline: true
+          }
+        ],
+        timestamp: new Date().toISOString()
+      };
+
+      if (twitchUserName) {
+        embed.author = {
+          name: twitchUserName
+        };
+      }
+    }
+
+    return await registry.invoke('discord_send_message', {
+      message: embed ? '' : announcement,
+      embed,
+      channelId
+    });
+  }
+);
+
+// Tool: discord_post_clip
+registry.register(
+  'discord_post_clip',
+  {
+    description: 'Post a clip notification to Discord',
+    parameters: {
+      type: 'object',
+      properties: {
+        clipUrl: {
+          type: 'string',
+          description: 'URL of the clip'
+        },
+        title: {
+          type: 'string',
+          description: 'Clip title'
+        },
+        message: {
+          type: 'string',
+          description: 'Custom message (optional)'
+        },
+        channelId: {
+          type: 'string',
+          description: 'Discord channel ID (optional)'
+        }
+      },
+      required: ['clipUrl']
+    }
+  },
+  async (args, context) => {
+    const { clipUrl, title, message, channelId } = args;
+
+    const announcement = message || '🎬 New clip created!';
+
+    const embed = {
+      color: 0x6441A5,
+      title: title || 'Stream Clip',
+      description: announcement,
+      url: clipUrl,
+      fields: [
+        {
+          name: 'Watch Clip',
+          value: `[Click here](${clipUrl})`,
+          inline: false
+        }
+      ],
+      timestamp: new Date().toISOString()
+    };
+
+    return await registry.invoke('discord_send_message', {
+      message: '',
+      embed,
+      channelId
     });
   }
 );
