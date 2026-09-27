@@ -233,19 +233,53 @@
           <option value="normal">Normal Chat</option>
           <option value="gaming">Gaming</option>
           <option value="just-chatting">Just Chatting</option>
-          <option value="special-event">Special Event</option>
           <option value="hype">Hype Mode</option>
+          <option value="copilot">Copilot (gaming help)</option>
+          <option value="special-event">Special Event</option>
         </select>
         <select id="ai-mode-selector" class="ai-management-selector">
+          <option value="JUST_CHATTING">Just Chatting</option>
           <option value="CHILL">Chill</option>
           <option value="HYPE">Hype</option>
           <option value="QA">Q&A</option>
           <option value="STORYTIME">Storytime</option>
           <option value="DND">D&D</option>
+          <option value="COPILOT">Copilot (gaming help)</option>
           <option value="AFK">AFK</option>
           <option value="SAFE">Safe</option>
           <option value="MUTED">Muted</option>
         </select>
+      </div>
+
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Copilot microphone</div>
+        <div style="display: flex; gap: 8px;">
+          <select id="ai-copilot-mic-selector" class="ai-management-selector" style="margin-bottom: 0; flex: 1;">
+            <option value="">Loading mics…</option>
+          </select>
+          <button id="ai-copilot-mic-refresh" class="ai-management-btn" style="min-width: 72px; justify-content: center;" title="Refresh microphone list">
+            <span class="btn-icon">🔄</span>
+            <span class="btn-label">Scan</span>
+          </button>
+        </div>
+        <div id="ai-copilot-mic-status" style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Used when AI mode is Copilot. Raven lists mics after it finishes starting.</div>
+      </div>
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Raven speaker / output</div>
+        <div style="display: flex; gap: 8px;">
+          <select id="ai-speaker-selector" class="ai-management-selector" style="margin-bottom: 0; flex: 1;">
+            <option value="">System default</option>
+          </select>
+          <button id="ai-speaker-refresh" class="ai-management-btn" style="min-width: 72px; justify-content: center;" title="Refresh speaker list">
+            <span class="btn-icon">🔄</span>
+            <span class="btn-label">Scan</span>
+          </button>
+          <button id="ai-speaker-test" class="ai-management-btn" style="min-width: 72px; justify-content: center;" title="Play a short beep on the selected speaker">
+            <span class="btn-icon">🔈</span>
+            <span class="btn-label">Test</span>
+          </button>
+        </div>
+        <div id="ai-speaker-status" style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Pick the speakers or headset on this PC. Leave System default if you just want Windows’ current output. This is per machine — not CABLE Input unless you choose it.</div>
       </div>
 
       <!-- Manual TTS: type something and have Cashe say it out loud -->
@@ -258,7 +292,15 @@
             <span class="btn-label">Say</span>
           </button>
         </div>
-        <div style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Uses controller Dev API (default `http://localhost:3002/api/dev/speak`).</div>
+        <div style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Uses controller Dev API (default `http://localhost:3003/api/dev/speak`; port 3002 is the overlay dev server).</div>
+      </div>
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">OBS / stream audio</div>
+        <div class="url-display" style="display: flex; gap: 8px; align-items: center;">
+          <code id="ai-audio-overlay-url" style="flex: 1; font-size: 11px; overflow-wrap: anywhere;">http://localhost:8080/overlay?name=aiAudio</code>
+          <button id="copy-ai-audio-overlay-url" class="ai-management-btn" style="min-width: 72px; justify-content: center;" title="Copy AI audio overlay URL">📋 Copy</button>
+        </div>
+        <div style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Add this as a Browser Source in OBS (64×64 is enough). Enable <strong>Control audio via OBS</strong>, uncheck <strong>Shutdown source when not visible</strong>, and keep the source in every scene. Don’t also capture VirtualDeck’s desktop audio or you’ll hear her twice on stream.</div>
       </div>
       <div class="ai-management-actions">
         <button id="ai-trivia-btn" class="ai-management-btn" title="Open Trivia">
@@ -422,6 +464,14 @@
             <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">🔊 Audio plays through overlay</div>
           </div>
         </button>
+        <button class="selection-option" data-type="meld-scene">
+          <div class="option-icon">📺</div>
+          <div class="option-content">
+            <div class="option-title">Meld Scene Button</div>
+            <div class="option-description">Switch to a Meld Studio scene with click, hotkey, chat, or redeem</div>
+            <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">Requires Meld Studio running</div>
+          </div>
+        </button>
       </div>
       <button class="cancel-selection">Cancel</button>
     </div>
@@ -509,6 +559,16 @@
           <label>App File:
             <input type="file" name="app-file" id="app-file-input" accept=".exe,.bat,.cmd,.lnk,.app,.sh,.desktop" required />
           </label>
+        </div>
+        <div id="meld-scene-section" class="hidden">
+          <label>Meld Studio scene:
+            <select id="meld-scene-select">
+              <option value="">— Connect to Meld to load scenes —</option>
+            </select>
+            <span id="meld-scene-status" style="margin-left: 8px; font-size: 12px; color: var(--text-secondary);"></span>
+          </label>
+          <p style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;">Open Meld Studio with your project, then load scenes.</p>
+          <button type="button" id="meld-load-scenes" class="form-button" style="margin-top: 8px;">Load scenes from Meld</button>
         </div>
         <!-- Multi-Media Form Button -->
         <div id="multi-media-form-trigger" class="hidden">
@@ -2253,6 +2313,7 @@
     </div>
   </div>
 
+  <script src="meldClient.js"></script>
   <script src="AddEditButtonForm.js"></script>
   <script src="script.js"></script>
   <script src="../TwitchConnected/tc.js"></script>

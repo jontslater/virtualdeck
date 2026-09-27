@@ -6,10 +6,33 @@
   const MELD_ADDRESS = '127.0.0.1';
   const MELD_PORT = 13376;
 
+  const QWEBCHANNEL_SCRIPT = 'https://packages.streamwithmeld.com/qt6.8/qwebchannel.min.js';
+
   let socket = null;
   let channel = null;
   let meld = null;
   let readyPromise = null;
+
+  function loadQWebChannel() {
+    return new Promise((resolve, reject) => {
+      if (typeof QWebChannel !== 'undefined') {
+        resolve();
+        return;
+      }
+      const existing = document.querySelector('script[data-qwebchannel]');
+      if (existing) {
+        existing.addEventListener('load', () => resolve());
+        existing.addEventListener('error', () => reject(new Error('Failed to load QWebChannel')));
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = QWEBCHANNEL_SCRIPT;
+      script.dataset.qwebchannel = '1';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load QWebChannel script'));
+      document.head.appendChild(script);
+    });
+  }
 
   function log(...args) {
     // Prefix logs so they're easy to filter in DevTools
@@ -24,9 +47,23 @@
     readyPromise = new Promise((resolve, reject) => {
       try {
         log(`Connecting to Meld WebChannel at ws://${MELD_ADDRESS}:${MELD_PORT} ...`);
+        loadQWebChannel()
+          .then(() => {
+            socket = new WebSocket(`ws://${MELD_ADDRESS}:${MELD_PORT}`);
+            bindSocket(resolve, reject);
+          })
+          .catch(reject);
+      } catch (e) {
+        log('❌ Error creating WebSocket connection:', e);
+        readyPromise = null;
+        reject(e);
+      }
+    });
 
-        socket = new WebSocket(`ws://${MELD_ADDRESS}:${MELD_PORT}`);
+    return readyPromise;
+  }
 
+  function bindSocket(resolve, reject) {
         socket.onopen = function () {
           if (typeof QWebChannel === 'undefined') {
             log('❌ QWebChannel is not available. Is qwebchannel.min.js loaded?');
@@ -61,14 +98,6 @@
           meld = null;
           readyPromise = null;
         };
-      } catch (e) {
-        log('❌ Error creating WebSocket connection:', e);
-        readyPromise = null;
-        reject(e);
-      }
-    });
-
-    return readyPromise;
   }
 
   async function ensureConnected() {
@@ -115,10 +144,47 @@
     }
   }
 
+  async function getScenes() {
+    const items = await getSessionItems();
+    if (!items) {
+      throw new Error('Meld Studio is not running or has no session.');
+    }
+    const scenes = [];
+    for (const [id, item] of Object.entries(items)) {
+      if (item && item.type === 'scene' && item.name != null) {
+        scenes.push({ id, name: item.name });
+      }
+    }
+    scenes.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    return scenes;
+  }
+
+  async function recordClip() {
+    const m = await ensureConnected();
+    if (!m) {
+      return { ok: false, reason: 'no-connection' };
+    }
+
+    try {
+      if (typeof m.sendCommand !== 'function') {
+        log('❌ meld.sendCommand is not available on this Meld version');
+        return { ok: false, reason: 'no-sendCommand' };
+      }
+      log('🎬 Calling meld.sendCommand("meld.recordClip")');
+      m.sendCommand('meld.recordClip');
+      return { ok: true };
+    } catch (e) {
+      log('❌ Error calling meld.recordClip:', e);
+      return { ok: false, reason: 'exception', error: e };
+    }
+  }
+
   // Expose a small API on window for use in script.js and DevTools
   window.meldClient = {
     connect,
     showScene,
+    getScenes,
+    recordClip,
     getSessionItems,
     getMeld: () => meld
   };

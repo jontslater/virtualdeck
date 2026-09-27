@@ -248,7 +248,7 @@
         // WebSocket connection
         function connectWebSocket() {
             try {
-                const wsUrl = `ws://localhost:8080?overlay=${OVERLAY_CONFIG.name}`;
+                const wsUrl = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}?overlay=${encodeURIComponent(OVERLAY_CONFIG.name)}`;
                 console.log('🔗 Connecting to:', wsUrl);
                 
                 overlayWS = new WebSocket(wsUrl);

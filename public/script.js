@@ -2193,9 +2193,12 @@ async function loadButtons() {
     card.dataset.soundData = JSON.stringify(button);
   if (button.id) card.dataset.buttonId = button.id;
     
-    // Fetch icon for app buttons
+    // Fetch icon for app buttons; use scene icon for meld-scene
     let iconImg = '';
-    if (button.type === 'app') {
+    if (button.type === 'meld-scene') {
+      const meldIcon = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#5b8def"/><text x="24" y="30" font-size="13" text-anchor="middle" fill="white">Meld</text></svg>');
+      iconImg = `<img src="${meldIcon}" alt="Meld Scene" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;pointer-events:none;" />`;
+    } else if (button.type === 'app') {
       let iconData = await window.electronAPI.getAppIcon(button.src);
       if (!iconData) {
         // Use a default icon if extraction fails
@@ -2207,8 +2210,8 @@ async function loadButtons() {
       <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
       <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
       ${iconImg}
-      <div class="sound-type">${button.type}</div>
-      <div class="sound-name">${button.name || button.label || 'Unnamed'}</div>
+      <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type}</div>
+      <div class="sound-name">${button.name || button.label || button.sceneName || 'Unnamed'}</div>
       <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
     `;
     card.addEventListener('click', (e) => {
@@ -4007,6 +4010,12 @@ async function handleTrigger(button) {
     } else {
       window.electronAPI.launchApp({ path: button.src });
     }
+  } else if (button.type === "meld-scene") {
+    if (button.sceneId && window.meldClient) {
+      window.meldClient.showScene(button.sceneId).catch((err) => console.error('Meld showScene failed:', err));
+    } else {
+      console.warn('Meld scene button missing sceneId or meldClient not loaded');
+    }
   } else if (button.type === "multi-media") {
     // Handle multi-media button trigger
     await handleMultiMediaTrigger(button);
@@ -4426,10 +4435,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   const form = e.target;
   const label = form.label.value.trim();
   
-  // Determine type based on which section is visible
+  const typeInput = document.getElementById('type-input');
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
-  const type = audioFileSection && audioFileSection.style.display !== 'none' ? 'audio' : 'app';
+  const meldSceneSection = document.getElementById('meld-scene-section');
+  const meldVisible = meldSceneSection && !meldSceneSection.classList.contains('hidden') && meldSceneSection.style.display !== 'none';
+  const type = (typeInput && typeInput.value) || (meldVisible ? 'meld-scene' : (audioFileSection && audioFileSection.style.display !== 'none' ? 'audio' : 'app'));
   
   // Ensure we reference the hotkey input element safely
   const hotkeyInput = document.getElementById('hotkey-input');
@@ -4483,6 +4494,39 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   console.log('- Description input element:', aiDescriptionInput);
   console.log('- AI allowed:', aiAllowed);
   console.log('- AI description:', aiDescription);
+
+  if (type === 'meld-scene') {
+    if (window.__meldSceneSubmitInProgress) return;
+    window.__meldSceneSubmitInProgress = true;
+    const saveBtn = document.getElementById('save-sound');
+    if (saveBtn) saveBtn.disabled = true;
+    const meldSelect = document.getElementById('meld-scene-select');
+    const sceneId = meldSelect && meldSelect.value ? meldSelect.value.trim() : '';
+    const sceneName = (meldSelect && meldSelect.selectedOptions && meldSelect.selectedOptions[0]) ? meldSelect.selectedOptions[0].text : '';
+    if (!sceneId) {
+      window.__meldSceneSubmitInProgress = false;
+      if (saveBtn) saveBtn.disabled = false;
+      return alert('Please select a Meld Studio scene.');
+    }
+    window.electronAPI.addMedia({
+      label,
+      type: 'meld-scene',
+      hotkey: completeHotkey,
+      sceneId,
+      sceneName,
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex, 10) : undefined,
+      chatCommand: chatCommand
+    });
+    window.electronAPI.refreshHotkeys();
+    document.getElementById('settings-modal').classList.add('hidden');
+    if (window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+    setTimeout(() => {
+      const btn = document.getElementById('save-sound');
+      if (btn) btn.disabled = false;
+      window.__meldSceneSubmitInProgress = false;
+    }, 100);
+    return;
+  }
 
   // Get the appropriate file input based on type
   const fileInput = type === 'app' ? document.getElementById('app-file-input') : document.getElementById('file-input');
@@ -4777,16 +4821,45 @@ window.editButton = async (index) => {
   // Toggle file input sections and required states based on type
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
+  const meldSceneSectionEdit = document.getElementById('meld-scene-section');
   const fileInput = document.getElementById('file-input');
   const appFileInput = document.getElementById('app-file-input');
+  const typeInputEl = document.getElementById('type-input');
   if (btn.type === 'audio') {
+    if (typeInputEl) typeInputEl.value = 'audio';
     audioFileSection.style.display = '';
     appFileSection.style.display = 'none';
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
     fileInput.required = false; // Not required when editing
     appFileInput.required = false;
+  } else if (btn.type === 'meld-scene') {
+    if (typeInputEl) typeInputEl.value = 'meld-scene';
+    audioFileSection.style.display = 'none';
+    appFileSection.style.display = 'none';
+    if (meldSceneSectionEdit) {
+      meldSceneSectionEdit.classList.remove('hidden');
+      meldSceneSectionEdit.style.display = '';
+    }
+    fileInput.required = false;
+    appFileInput.required = false;
+    const meldSelect = document.getElementById('meld-scene-select');
+    if (meldSelect && btn.sceneId) {
+      if (!meldSelect.querySelector(`option[value="${btn.sceneId}"]`)) {
+        const opt = document.createElement('option');
+        opt.value = btn.sceneId;
+        opt.textContent = btn.sceneName || btn.sceneId;
+        meldSelect.appendChild(opt);
+      }
+      meldSelect.value = btn.sceneId;
+    }
+    loadMeldScenes().then(() => {
+      if (meldSelect && btn.sceneId) meldSelect.value = btn.sceneId;
+    }).catch(() => {});
   } else {
+    if (typeInputEl) typeInputEl.value = 'app';
     audioFileSection.style.display = 'none';
     appFileSection.style.display = '';
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
     fileInput.required = false;
     appFileInput.required = false; // Not required when editing
   }
@@ -4885,7 +4958,7 @@ window.editButton = async (index) => {
   }
   // Update modal title
   const buttonName = btn.name || btn.label || 'Unknown';
-  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : btn.type === 'multi-media' ? 'Multi-Media' : 'App'}: ${buttonName}`;
+  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : btn.type === 'multi-media' ? 'Multi-Media' : btn.type === 'meld-scene' ? 'Meld Scene' : 'App'}: ${buttonName}`;
   // Handle multi-media buttons differently
   if (btn.type === 'multi-media') {
     // Close the regular settings modal
@@ -5308,6 +5381,46 @@ window.electronAPI.onTriggerMedia(async (mediaId) => {
   }
 });
 
+let aiTtsAudio = null;
+if (window.electronAPI && typeof window.electronAPI.onPlayAiTts === 'function') {
+  window.electronAPI.onPlayAiTts(async (payload) => {
+    try {
+      const relativePath = payload && payload.relativePath;
+      const vol = typeof payload.volume === 'number' ? payload.volume : 1.0;
+      const play = async (url) => {
+        if (aiTtsAudio) {
+          try { aiTtsAudio.pause(); } catch (e) {}
+        }
+        aiTtsAudio = new Audio(url);
+        aiTtsAudio.volume = Math.max(0, Math.min(1, isNaN(vol) ? 1.0 : vol));
+        if (typeof window.applyVdTtsSink === 'function') {
+          await window.applyVdTtsSink(aiTtsAudio);
+        }
+        console.log('Playing Raven TTS via dashboard audio pipeline:', url);
+        await aiTtsAudio.play();
+      };
+      try {
+        if (payload && payload.audioUrl) {
+          await play(payload.audioUrl);
+          return;
+        }
+        if (relativePath) {
+          const audioPath = await window.electronAPI.getSoundPath(relativePath);
+          const cacheBuster = `?t=${Date.now()}`;
+          await play(audioPath + (String(audioPath).includes('?') ? '&' : '?') + cacheBuster);
+        }
+      } catch (err) {
+        console.warn('Raven TTS dashboard playback failed:', err);
+        if (payload && payload.audioUrl) {
+          await play(payload.audioUrl);
+        }
+      }
+    } catch (err) {
+      console.warn('Raven TTS dashboard playback failed:', err);
+    }
+  });
+}
+
 function handleFileDrop(file) {
   console.log('🎵 handleFileDrop called with file:', file);
   console.log('  - File name:', file.name);
@@ -5388,6 +5501,7 @@ function handleFileDrop(file) {
   if (chatCommandKeyword) chatCommandKeyword.value = '';
   if (redeemName) redeemName.value = '';
   if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+  hideMeldSceneSection();
   
   // Clear AI use fields
   const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
@@ -6653,38 +6767,91 @@ function setupOverlayWidget() {
     }
   }
 
-  async function discoverAIStatusApiBaseUrl() {
-    // If explicitly set by URL param or localStorage, keep it.
+  async function discoverAIStatusApiBaseUrl(force) {
     const stored = (() => { try { return localStorage.getItem('AI_STATUS_API_BASE_URL'); } catch (e) { return null; } })();
-    if (stored) {
-      setAIStatusApiBaseUrl(stored);
-      return;
-    }
-
-    const candidates = [
-      'http://localhost:3004',
-      'http://localhost:3014',
-    ];
+    const candidates = [];
+    if (stored) candidates.push(String(stored).replace(/\/+$/, ''));
+    ['http://localhost:3004', 'http://localhost:3014'].forEach((url) => {
+      if (!candidates.includes(url)) candidates.push(url);
+    });
 
     for (const base of candidates) {
       try {
-        const r = await fetchWithTimeout(`${base}/api/ai/status`, {}, 450);
+        const r = await fetchWithTimeout(`${base}/api/ai/status`, {}, force ? 1200 : 800);
         if (r && r.ok) {
           setAIStatusApiBaseUrl(base);
-          return;
+          return true;
         }
       } catch (e) {
         // try next
       }
     }
     console.debug('Could not auto-discover AI Status API port; defaulting to', AI_STATUS_API_BASE_URL);
+    return false;
+  }
+
+  function isOverlayDevPort(url) {
+    return /:3002(\/|$)/.test(String(url || ''));
+  }
+
+  async function discoverDevApiBaseUrl() {
+    const stored = (() => { try { return localStorage.getItem('DEV_API_BASE_URL'); } catch (e) { return null; } })();
+    const candidates = [];
+    if (stored && !isOverlayDevPort(stored)) candidates.push(String(stored).replace(/\/+$/, ''));
+    ['http://localhost:3003', 'http://localhost:3013'].forEach((url) => {
+      if (!candidates.includes(url)) candidates.push(url);
+    });
+    for (const base of candidates) {
+      try {
+        const r = await fetchWithTimeout(`${base}/api/dev/mode`, {}, 1200);
+        if (r && (r.ok || r.status === 405)) {
+          try { localStorage.setItem('DEV_API_BASE_URL', base); } catch (e) {}
+          return base;
+        }
+      } catch (e) {
+        // try next
+      }
+    }
+    return 'http://localhost:3003';
   }
 
   function setupAIManagementPanel() {
     console.log('🤖 Setting up AI Management Panel');
     
     // Auto-detect controller port if needed (helps when we move off 3004).
-    discoverAIStatusApiBaseUrl().catch(() => {});
+    // Raven starts a few seconds after VirtualDeck, so keep retrying.
+    discoverAIStatusApiBaseUrl(true).catch(() => {});
+
+    async function refreshAiAudioOverlayUrl() {
+      const el = document.getElementById('ai-audio-overlay-url');
+      if (!el) return;
+      try {
+        const base = window.electronAPI && window.electronAPI.getOverlayUrl
+          ? await window.electronAPI.getOverlayUrl()
+          : 'http://localhost:8080/overlay';
+        const url = String(base || 'http://localhost:8080/overlay').replace(/\/+$/, '') + '?name=aiAudio';
+        el.textContent = url;
+      } catch (err) {
+        el.textContent = 'http://localhost:8080/overlay?name=aiAudio';
+      }
+    }
+    refreshAiAudioOverlayUrl();
+    const copyAiAudio = document.getElementById('copy-ai-audio-overlay-url');
+    if (copyAiAudio) {
+      copyAiAudio.addEventListener('click', async () => {
+        const el = document.getElementById('ai-audio-overlay-url');
+        const url = el ? el.textContent.trim() : '';
+        if (!url) return;
+        try {
+          await navigator.clipboard.writeText(url);
+          const original = copyAiAudio.textContent;
+          copyAiAudio.textContent = 'Copied';
+          setTimeout(() => { copyAiAudio.textContent = original || '📋 Copy'; }, 1200);
+        } catch (err) {
+          window.prompt('Copy this OBS browser source URL:', url);
+        }
+      });
+    }
 
     async function setAIMode(mode) {
       const selectedMode = String(mode || '').toUpperCase().trim();
@@ -6729,9 +6896,255 @@ function setupOverlayWidget() {
       statusText: !!statusText
     });
 
-    // Manual Speak (Controller Dev API)
+    const micSelect = document.getElementById('ai-copilot-mic-selector');
+    const micRefreshBtn = document.getElementById('ai-copilot-mic-refresh');
+    const micStatus = document.getElementById('ai-copilot-mic-status');
+
+    async function loadCopilotMics(opts) {
+      if (!micSelect) return false;
+      const quiet = !!(opts && opts.quiet);
+      if (!quiet || !micSelect.options.length || micSelect.value === '') {
+        micSelect.innerHTML = '<option value="">Scanning…</option>';
+      }
+      if (micStatus && !quiet) micStatus.textContent = 'Waiting for Raven…';
+      try {
+        const ready = await discoverAIStatusApiBaseUrl(true);
+        if (!ready) throw new Error('Raven status API is not up yet');
+        const res = await fetch(`${AI_STATUS_API_BASE_URL}/api/copilot/mic`);
+        if (!res.ok) {
+          const raw = await res.text().catch(() => '');
+          throw new Error(raw || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        const devices = Array.isArray(data.devices) ? data.devices : [];
+        const selected = String(data.selected || '').trim();
+        micSelect.innerHTML = '';
+        if (!devices.length) {
+          const empty = document.createElement('option');
+          empty.value = '';
+          empty.textContent = selected ? selected : 'No mics found';
+          micSelect.appendChild(empty);
+          if (selected) empty.value = selected;
+          if (micStatus) {
+            micStatus.textContent = selected
+              ? `Using saved mic: ${selected}`
+              : 'Raven is up, but no capture devices were listed. Click Scan after granting mic permission.';
+          }
+          return true;
+        }
+        devices.forEach((name) => {
+          const opt = document.createElement('option');
+          opt.value = name;
+          opt.textContent = name;
+          if (name === selected) opt.selected = true;
+          micSelect.appendChild(opt);
+        });
+        if (selected && !devices.includes(selected)) {
+          const opt = document.createElement('option');
+          opt.value = selected;
+          opt.textContent = `${selected} (saved)`;
+          opt.selected = true;
+          micSelect.appendChild(opt);
+        }
+        if (micStatus) {
+          micStatus.textContent = data.listening
+            ? `Listening on ${selected || micSelect.value}`
+            : `${devices.length} mic(s). ${selected ? 'Selected: ' + selected : 'Pick one to use for Copilot.'}`;
+        }
+        return true;
+      } catch (err) {
+        console.warn('Copilot mic list failed:', err);
+        micSelect.innerHTML = '<option value="">Raven not ready</option>';
+        if (micStatus) {
+          micStatus.textContent = 'Can’t reach Raven yet. Wait a few seconds after launch, or Raven AI → Start Raven AI, then Scan.';
+        }
+        return false;
+      }
+    }
+
+    if (micRefreshBtn) {
+      micRefreshBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        loadCopilotMics();
+      });
+    }
+    if (micSelect) {
+      micSelect.addEventListener('change', async () => {
+        const device = String(micSelect.value || '').trim();
+        if (!device) return;
+        try {
+          await discoverAIStatusApiBaseUrl(true);
+          const res = await fetch(`${AI_STATUS_API_BASE_URL}/api/copilot/mic`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device }),
+          });
+          if (!res.ok) {
+            const raw = await res.text().catch(() => '');
+            throw new Error(raw || `HTTP ${res.status}`);
+          }
+          if (micStatus) micStatus.textContent = `Using ${device}`;
+        } catch (err) {
+          console.error('Failed to set Copilot mic:', err);
+          if (micStatus) micStatus.textContent = 'Could not set mic. Is Raven running?';
+        }
+      });
+    }
+    loadCopilotMics();
+    let micRetries = 0;
+    const micRetryTimer = setInterval(async () => {
+      micRetries += 1;
+      const ok = await loadCopilotMics({ quiet: true });
+      if (ok || micRetries >= 20) clearInterval(micRetryTimer);
+    }, 2000);
+
+    const speakerSelect = document.getElementById('ai-speaker-selector');
+    const speakerRefreshBtn = document.getElementById('ai-speaker-refresh');
+    const speakerTestBtn = document.getElementById('ai-speaker-test');
+    const speakerStatus = document.getElementById('ai-speaker-status');
+    const TTS_SINK_KEY = 'VD_TTS_SINK';
+
+    function readSavedSpeaker() {
+      try {
+        return JSON.parse(localStorage.getItem(TTS_SINK_KEY) || '{}') || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function saveSpeakerChoice(deviceId, label) {
+      const payload = { deviceId: deviceId || '', label: label || '' };
+      try { localStorage.setItem(TTS_SINK_KEY, JSON.stringify(payload)); } catch (e) {}
+      discoverAIStatusApiBaseUrl(true).then(() => {
+        fetch(`${AI_STATUS_API_BASE_URL}/api/audio/output`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device: label || '' }),
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+
+    window.applyVdTtsSink = async function applyVdTtsSink(audio) {
+      const saved = readSavedSpeaker();
+      if (!saved.deviceId || !audio || typeof audio.setSinkId !== 'function') return;
+      try {
+        await audio.setSinkId(saved.deviceId);
+      } catch (err) {
+        console.warn('Could not route TTS to saved speaker; using default', err);
+      }
+    };
+
+    async function listBrowserSpeakers() {
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== 'function') {
+        return [];
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
+      } catch (e) {
+        // labels may still be empty; keep going
+      }
+      const all = await navigator.mediaDevices.enumerateDevices();
+      return all.filter((d) => d.kind === 'audiooutput');
+    }
+
+    async function loadSpeakers() {
+      if (!speakerSelect) return;
+      const saved = readSavedSpeaker();
+      speakerSelect.innerHTML = '<option value="">System default</option>';
+      let devices = [];
+      try {
+        devices = await listBrowserSpeakers();
+      } catch (err) {
+        console.warn('Browser speaker list failed:', err);
+      }
+      if (!devices.length) {
+        try {
+          await discoverAIStatusApiBaseUrl(true);
+          const res = await fetch(`${AI_STATUS_API_BASE_URL}/api/audio/output`);
+          if (res.ok) {
+            const data = await res.json();
+            (data.devices || []).forEach((name) => {
+              const opt = document.createElement('option');
+              opt.value = name;
+              opt.textContent = name;
+              if (saved.label && saved.label === name) opt.selected = true;
+              speakerSelect.appendChild(opt);
+            });
+            if (speakerStatus) {
+              speakerStatus.textContent = data.selected
+                ? `Raven speaker: ${data.selected}. Pick one for this PC.`
+                : 'Using Windows default. Choose a speaker if this PC’s default is silent.';
+            }
+            return;
+          }
+        } catch (err) {
+          console.warn('Raven speaker list failed:', err);
+        }
+      }
+      devices.forEach((d) => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || `Speaker ${d.deviceId.slice(0, 8)}`;
+        if (saved.deviceId && saved.deviceId === d.deviceId) opt.selected = true;
+        speakerSelect.appendChild(opt);
+      });
+      if (speakerStatus) {
+        const chosen = speakerSelect.selectedOptions[0];
+        speakerStatus.textContent = speakerSelect.value
+          ? `Playing Raven on ${chosen ? chosen.textContent : 'selected speaker'}`
+          : 'Using this PC’s Windows default output. Change it if you hear nothing.';
+      }
+    }
+
+    if (speakerRefreshBtn) {
+      speakerRefreshBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        loadSpeakers();
+      });
+    }
+    if (speakerSelect) {
+      speakerSelect.addEventListener('change', () => {
+        const opt = speakerSelect.selectedOptions[0];
+        saveSpeakerChoice(speakerSelect.value, opt ? opt.textContent : '');
+        if (speakerStatus) {
+          speakerStatus.textContent = speakerSelect.value
+            ? `Playing Raven on ${opt ? opt.textContent : 'selected speaker'}`
+            : 'Using this PC’s Windows default output.';
+        }
+      });
+    }
+    if (speakerTestBtn) {
+      speakerTestBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const saved = readSavedSpeaker();
+          if (saved.deviceId && typeof ctx.setSinkId === 'function') {
+            await ctx.setSinkId(saved.deviceId);
+          }
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.frequency.value = 440;
+          gain.gain.value = 0.12;
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.35);
+          if (speakerStatus) speakerStatus.textContent = 'Played a test beep on the selected output.';
+        } catch (err) {
+          console.warn('Speaker test failed:', err);
+          if (speakerStatus) speakerStatus.textContent = 'Test beep failed. Try Scan, then pick speakers again.';
+        }
+      });
+    }
+    loadSpeakers();
+
+    // Manual Speak (Controller Dev API on 3003 — never 3002, that is the overlay)
     if (sayBtn && sayText) {
-      const devApiBaseUrl = (localStorage.getItem('DEV_API_BASE_URL') || 'http://localhost:3002').replace(/\/+$/, '');
+      if (isOverlayDevPort(localStorage.getItem('DEV_API_BASE_URL'))) {
+        try { localStorage.removeItem('DEV_API_BASE_URL'); } catch (e) {}
+      }
       sayBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -6739,6 +7152,7 @@ function setupOverlayWidget() {
         if (!text) return;
         sayBtn.disabled = true;
         try {
+          const devApiBaseUrl = await discoverDevApiBaseUrl();
           const res = await fetch(`${devApiBaseUrl}/api/dev/speak`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -6754,7 +7168,11 @@ function setupOverlayWidget() {
           }
         } catch (err) {
           console.error('❌ Manual speak failed:', err);
-          alert(`Manual speak failed: ${err instanceof Error ? err.message : String(err)}`);
+          const raw = err instanceof Error ? err.message : String(err);
+          const offline = /Failed to fetch|NetworkError|Load failed|ECONNREFUSED/i.test(raw);
+          alert(offline
+            ? 'Raven is not answering yet (manual speak uses port 3003). Wait a few seconds after launch, or use Raven AI → Start Raven AI, then try again.'
+            : `Manual speak failed: ${raw}`);
         } finally {
           sayBtn.disabled = false;
         }
@@ -13358,6 +13776,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Button Type Selection Modal
   setupButtonTypeSelection();
+  setupMeldLoadScenesButton();
   
   // Expose helper functions globally for debugging
   window.findMultiMediaButtons = findMultiMediaButtons;
@@ -15635,6 +16054,7 @@ function setupButtonTypeSelection() {
   const selectionModal = document.getElementById('button-type-modal');
   const audioOption = document.querySelector('[data-type="audio"]');
   const multiMediaOption = document.querySelector('[data-type="multi-media"]');
+  const meldSceneOption = document.querySelector('[data-type="meld-scene"]');
   const cancelBtn = document.querySelector('.cancel-selection');
 
   // Audio option clicked
@@ -15655,6 +16075,13 @@ function setupButtonTypeSelection() {
     });
   }
 
+  if (meldSceneOption) {
+    meldSceneOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      openMeldSceneForm();
+    });
+  }
+
   // Cancel button clicked
   if (cancelBtn) {
     cancelBtn.addEventListener('click', () => {
@@ -15668,6 +16095,81 @@ function setupButtonTypeSelection() {
       selectionModal.classList.add('hidden');
     }
   });
+}
+
+function setupMeldLoadScenesButton() {
+  const btn = document.getElementById('meld-load-scenes');
+  if (btn) btn.addEventListener('click', () => loadMeldScenes());
+}
+
+async function loadMeldScenes() {
+  const select = document.getElementById('meld-scene-select');
+  const status = document.getElementById('meld-scene-status');
+  if (!select || !window.meldClient) {
+    if (status) status.textContent = 'Meld client not loaded.';
+    return;
+  }
+  if (status) status.textContent = 'Loading…';
+  try {
+    const scenes = await window.meldClient.getScenes();
+    select.innerHTML = '<option value="">— Select a scene —</option>';
+    scenes.forEach(({ id, name }) => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = name || id;
+      select.appendChild(opt);
+    });
+    if (status) status.textContent = scenes.length ? `${scenes.length} scene(s)` : 'No scenes';
+  } catch (err) {
+    if (status) status.textContent = 'Failed — is Meld Studio running?';
+    select.innerHTML = '<option value="">— Is Meld Studio running? —</option>';
+    console.warn('Load Meld scenes failed:', err);
+  }
+}
+
+function hideMeldSceneSection() {
+  const meldSection = document.getElementById('meld-scene-section');
+  if (meldSection) {
+    meldSection.classList.add('hidden');
+    meldSection.style.display = 'none';
+  }
+}
+
+function openMeldSceneForm() {
+  window.__meldSceneSubmitInProgress = false;
+  const settingsForm = document.getElementById('settings-form');
+  settingsForm.reset();
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'meld-scene';
+  delete settingsForm.dataset.editingIndex;
+  delete settingsForm.dataset.editingId;
+  delete settingsForm.dataset.resolvedPath;
+  delete settingsForm.dataset.resolvedArgs;
+  delete settingsForm.dataset.existingFile;
+  if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
+  const hkIn = document.getElementById('hotkey-input');
+  if (hkIn) hkIn.value = '';
+  const hkStatus = document.getElementById('hotkey-status');
+  if (hkStatus) hkStatus.textContent = '';
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  const meldSection = document.getElementById('meld-scene-section');
+  if (audioFileSection) audioFileSection.style.display = 'none';
+  if (appFileSection) appFileSection.style.display = 'none';
+  if (meldSection) {
+    meldSection.classList.remove('hidden');
+    meldSection.style.display = '';
+  }
+  const fileInput = document.getElementById('file-input');
+  const appFileInput = document.getElementById('app-file-input');
+  if (fileInput) fileInput.required = false;
+  if (appFileInput) appFileInput.required = false;
+  document.getElementById('settings-modal-title').textContent = 'Add Meld Scene Button';
+  const saveBtn = document.getElementById('save-sound');
+  if (saveBtn) saveBtn.disabled = false;
+  document.getElementById('settings-modal').classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
+  loadMeldScenes();
 }
 
 function setupOverlayPreview() {
@@ -15699,6 +16201,15 @@ function openAudioForm() {
   // Set the form type to 'audio'
   const typeInput = document.getElementById('type-input');
   if (typeInput) typeInput.value = 'audio';
+  hideMeldSceneSection();
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  if (audioFileSection) audioFileSection.style.display = '';
+  if (appFileSection) appFileSection.style.display = 'none';
+  const fileInput = document.getElementById('file-input');
+  const appFileInput = document.getElementById('app-file-input');
+  if (fileInput) fileInput.required = true;
+  if (appFileInput) appFileInput.required = false;
   
   // Stop any active hotkey recording and clear displayed status/value
   if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();

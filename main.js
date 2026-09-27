@@ -1,6 +1,19 @@
 const { app, BrowserWindow, globalShortcut, Menu, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+(() => {
+  const envPaths = [path.join(__dirname, '.env'), path.join(process.cwd(), '.env')];
+  for (const envPath of envPaths) {
+    try {
+      if (fs.existsSync(envPath)) {
+        require('dotenv').config({ path: envPath, override: false });
+        console.log('[env] Loaded', envPath);
+      }
+    } catch (e) {
+      console.warn('[env] Failed to load', envPath, e && e.message);
+    }
+  }
+})();
 const fse = require('fs-extra'); // helpful for file copying
 const { ipcMain } = require('electron');
 const ws = require('windows-shortcuts'); // Import windows-shortcuts
@@ -13,6 +26,8 @@ const fetch = require('node-fetch');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
 const VTuberManager = require('./vtuber-manager');
+const { stopStreamlabsStreamingIfLive } = require('./streamlabs-tcp');
+const ravenHost = require('./raven-host');
 
 // Configure auto-updater
 autoUpdater.autoDownload = false; // Don't auto-download, ask user first
@@ -73,6 +88,167 @@ const hydrationConfigPath = path.join(userDataPath, 'hydration-config.json');
 const aiEventsLogPath = path.join(userDataPath, 'ai-events.log');
 const aiCommandsPath = path.join(userDataPath, 'ai-commands.json');
 const aiTtsSoundsDir = path.join(userDataPath, 'sounds', 'ai-tts');
+
+
+/** Append one NDJSON line for AIChatBot bridge (same format as twitch_chat). */
+function appendAiEventsLogLine(payload) {
+  try {
+    if (!payload || typeof payload !== 'object') return;
+    const channelNorm = twitchUserName
+      ? String(twitchUserName).replace(/^#/, '').toLowerCase()
+      : undefined;
+    const line = {
+      ...payload,
+      channel: payload.channel || channelNorm,
+      timestamp: payload.timestamp || Date.now(),
+    };
+    fs.appendFileSync(aiEventsLogPath, JSON.stringify(line) + '\n', 'utf-8');
+    console.log(`📝 [AI Events] wrote ${line.type}${line.channel ? ` (${line.channel})` : ''}`);
+  } catch (err) {
+    console.error('❌ [AI Events] append failed:', err);
+  }
+}
+
+/**
+ * Map Twitch EventSub notifications to ai-events.log types consumed by AIChatBot.
+ * @param {string} subscriptionType e.g. channel.subscribe
+ * @param {object} ev payload.event
+ * @param {string} [messageId] EventSub metadata.message_id (unique per delivery)
+ */
+function appendAiEventSubToLog(subscriptionType, ev, messageId) {
+  if (!subscriptionType || !ev || typeof ev !== 'object') return;
+  const ch = twitchUserName ? String(twitchUserName).replace(/^#/, '').toLowerCase() : undefined;
+  const id =
+    messageId ||
+    `${subscriptionType}_${ev.user_id || ev.from_broadcaster_user_id || 'evt'}_${Date.now()}`;
+  try {
+    switch (subscriptionType) {
+      case 'channel.follow': {
+        appendAiEventsLogLine({
+          id,
+          type: 'twitch_follow',
+          channel: ch,
+          user: {
+            id: ev.user_id,
+            name: ev.user_login,
+            displayName: ev.user_name || ev.user_login,
+          },
+        });
+        break;
+      }
+      case 'channel.subscribe': {
+        appendAiEventsLogLine({
+          id,
+          type: 'twitch_sub',
+          channel: ch,
+          user: {
+            id: ev.user_id,
+            name: ev.user_login,
+            displayName: ev.user_name || ev.user_login,
+          },
+          message: ev.is_gift ? 'Received a gifted subscription' : 'New subscriber',
+          amount: ev.tier === '3000' ? 3 : ev.tier === '2000' ? 2 : 1,
+        });
+        break;
+      }
+      case 'channel.subscription.message': {
+        const months = ev.cumulative_months != null ? ev.cumulative_months : undefined;
+        const subText =
+          ev.message && ev.message.text ? String(ev.message.text) : 'Resubscribed';
+        appendAiEventsLogLine({
+          id,
+          type: 'twitch_sub',
+          channel: ch,
+          user: {
+            id: ev.user_id,
+            name: ev.user_login,
+            displayName: ev.user_name || ev.user_login,
+            monthsSubscribed: months,
+          },
+          message: months != null ? `${months}-month resub: ${subText}` : subText,
+          amount: months,
+        });
+        break;
+      }
+      case 'channel.subscription.gift': {
+        if (ev.is_anonymous) {
+          appendAiEventsLogLine({
+            id,
+            type: 'twitch_gift_sub',
+            channel: ch,
+            user: { name: 'anonymous', displayName: 'Anonymous' },
+            amount: ev.total || 1,
+            message: `Anonymous gifted ${ev.total || 1} subs (tier ${ev.tier || '1000'})`,
+          });
+        } else {
+          appendAiEventsLogLine({
+            id,
+            type: 'twitch_gift_sub',
+            channel: ch,
+            user: {
+              id: ev.user_id,
+              name: ev.user_login,
+              displayName: ev.user_name || ev.user_login,
+            },
+            amount: ev.total || 1,
+            message: `Gifted ${ev.total || 1} subscriptions (tier ${ev.tier || '1000'})`,
+          });
+        }
+        break;
+      }
+      case 'channel.raid': {
+        appendAiEventsLogLine({
+          id,
+          type: 'twitch_raid',
+          channel: ch,
+          user: {
+            id: ev.from_broadcaster_user_id,
+            name: ev.from_broadcaster_user_login,
+            displayName: ev.from_broadcaster_user_name || ev.from_broadcaster_user_login,
+          },
+          raiderCount: ev.viewers,
+          message: `Raid incoming with ${ev.viewers} viewers`,
+        });
+        break;
+      }
+      case 'channel.cheer': {
+        appendAiEventsLogLine({
+          id,
+          type: 'twitch_bits',
+          channel: ch,
+          user: {
+            id: ev.user_id,
+            name: ev.user_login,
+            displayName: ev.user_name || ev.user_login,
+          },
+          amount: ev.bits,
+          message: ev.message ? String(ev.message) : '',
+        });
+        break;
+      }
+      case 'channel.channel_points_custom_reward_redemption.add': {
+        const title = (ev.reward && ev.reward.title) || 'channel points';
+        appendAiEventsLogLine({
+          id: ev.id || id,
+          type: 'twitch_redeem',
+          channel: ch,
+          user: {
+            id: ev.user_id,
+            name: ev.user_login,
+            displayName: ev.user_name || ev.user_login,
+          },
+          redeemTitle: title,
+          message: ev.user_input ? String(ev.user_input) : '',
+        });
+        break;
+      }
+      default:
+        break;
+    }
+  } catch (e) {
+    console.error('[AI Events] appendAiEventSubToLog error:', e);
+  }
+}
 
 // Profile management globals
 let currentActiveProfile = 'default';
@@ -589,7 +765,7 @@ function startOverlayServer() {
       console.log(`🎯 Serving overlay: ${overlayName}`);
       
       // Check if it's a predefined overlay
-      const predefinedOverlays = ['hudOverlay', 'cameraFrameOverlay', 'chatOverlay', 'vtuberOverlay'];
+      const predefinedOverlays = ['hudOverlay', 'cameraFrameOverlay', 'chatOverlay', 'vtuberOverlay', 'aiAudio'];
       if (predefinedOverlays.includes(overlayName)) {
         // Serve predefined overlay
         const overlayPath = path.join(__dirname, 'overlays', overlayName, 'index.html');
@@ -1050,6 +1226,12 @@ function handleAIAudioCommands() {
       try {
         const command = JSON.parse(line);
         
+        if (command.action === 'record-clip' || command.action === 'clip') {
+          console.log('🎬 [AI Clip] Host asked to clip — creating a Twitch clip');
+          void createTwitchClipAndAnnounce({ requestedBy: 'Raven' });
+          return;
+        }
+
         if (command.action === 'play-audio-file' && command.filePath) {
           // Verify file exists
           const audioPath = path.isAbsolute(command.filePath) 
@@ -1065,13 +1247,23 @@ function handleAIAudioCommands() {
             relativePath = relativePath.replace(/\\/g, '/');
             
             // Serve audio via HTTP instead of file:// (browsers block file:// URLs)
-            const audioUrl = `http://localhost:8080/media/${relativePath}?t=${Date.now()}`;
+            const mediaPort = overlayServerPort || 8080;
+            const encodedPath = relativePath.split('/').map(encodeURIComponent).join('/');
+            const audioUrl = `http://localhost:${mediaPort}/media/${encodedPath}?t=${Date.now()}`;
             
             console.log(`🎵 [AI Audio] Original path: ${audioPath}`);
             console.log(`🎵 [AI Audio] Relative path: ${relativePath}`);
             console.log(`🎵 [AI Audio] HTTP URL: ${audioUrl}`);
             
-            // Use VirtualDeck's existing buttonTrigger format
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('play-ai-tts', {
+                relativePath,
+                audioUrl,
+                volume: command.volume || 1.0,
+              });
+              console.log('🎵 [AI Audio] Sent to dashboard (same pipeline as audio buttons)');
+            }
+
             const buttonTriggerMessage = {
               type: 'buttonTrigger',
               options: {
@@ -1089,21 +1281,24 @@ function handleAIAudioCommands() {
               ],
               slots: {},
             };
-            
-            console.log(`🎵 [AI Audio] Broadcasting buttonTrigger message`);
+
+            const playAudioMessage = {
+              type: 'play-audio',
+              src: audioUrl,
+              url: audioUrl,
+              audioUrl,
+              volume: command.volume || 1.0,
+            };
+
             console.log(`🎵 [AI Audio] Overlay clients: ${overlayClients.size}`);
-            
-            if (overlayClients.size === 0) {
-              console.warn(`⚠️ [AI Audio] WARNING: No overlay clients connected!`);
-              console.warn(`   Make sure overlay is open: http://localhost:8080/overlay`);
+            const aiAudioClients = overlayRegistry.get('aiAudio');
+            if (aiAudioClients && aiAudioClients.size > 0) {
+              broadcastToOverlay(playAudioMessage, 'aiAudio');
+              console.log('🎵 [AI Audio] Sent to aiAudio OBS browser source');
             } else {
-              console.log(`✅ [AI Audio] Found ${overlayClients.size} overlay client(s)`);
+              broadcastToOverlay(buttonTriggerMessage);
+              console.log('🎵 [AI Audio] aiAudio overlay not connected — broadcast to all overlays');
             }
-            
-            // Target the "vtuber" overlay (dedicated VTuber audio overlay)
-            const targetOverlay = 'vtuber';
-            broadcastToOverlay(buttonTriggerMessage, targetOverlay);
-            console.log(`🎵 [AI Audio] ButtonTrigger message broadcast completed (target: ${targetOverlay})`);
             console.log('═══════════════════════════════════════════════════════\n');
           } else {
             console.warn(`🎵 [AI Audio] Audio file not found: ${audioPath}`);
@@ -1170,6 +1365,15 @@ function getOverlayServerUrl() {
   return `http://localhost:${overlayServerPort || 8080}/overlay`;
 }
 
+function nextUniqueButtonId(buttons) {
+  const existingIds = new Set((buttons || []).map((b) => b && b.id).filter(Boolean));
+  let id;
+  do {
+    id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+  } while (existingIds.has(id));
+  return id;
+}
+
 ipcMain.on('add-media', (event, data) => {
   try {
     console.log('add-media received:', data);
@@ -1177,6 +1381,30 @@ ipcMain.on('add-media', (event, data) => {
     // Load from active profile instead of old config.json
     const profile = loadProfile(currentActiveProfile);
     const config = profile; // Keep variable name for compatibility
+
+    if (data.type === 'meld-scene') {
+      const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
+      const newButton = {
+        id: (existing && existing.id) || nextUniqueButtonId(config.buttons),
+        label: data.label,
+        type: 'meld-scene',
+        sceneId: data.sceneId,
+        sceneName: data.sceneName || data.label,
+        src: '',
+        hotkey: data.hotkey || undefined,
+        chatCommand: data.chatCommand || undefined,
+      };
+      if (typeof data.editingIndex === 'number') {
+        config.buttons[data.editingIndex] = newButton;
+        console.log('✏️ Edited Meld scene button at index', data.editingIndex, ':', newButton.label);
+      } else {
+        config.buttons.push(newButton);
+        console.log('➕ Added Meld scene button:', newButton.label);
+      }
+      saveProfile(currentActiveProfile, config);
+      if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
+      return;
+    }
 
     // Validate required data
     if (!data.originalPath) {
@@ -3057,6 +3285,60 @@ ipcMain.handle('get-app-icon', async (event, filePath) => {
   }
 });
 
+// --- !killcommand → Streamlabs Desktop (local TCP JSON-RPC, port 28194) ---
+let lastKillcommandAt = 0;
+const KILLCOMMAND_DEBOUNCE_MS = 5000;
+
+function getKillcommandUserAllowlist() {
+  const raw = process.env.VD_KILLCOMMAND_USERS || '';
+  return raw
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isKillcommandAuthorized(username) {
+  const list = getKillcommandUserAllowlist();
+  const u = String(username || '').toLowerCase();
+  return list.length > 0 && list.includes(u);
+}
+
+async function handleKillcommandFromChat(username) {
+  const channels = twitchClient && twitchClient.getChannels();
+  const ch = channels && channels[0];
+  const reply = (text) => {
+    if (twitchClient && twitchClient.readyState() === 'OPEN' && ch) {
+      twitchClient.say(ch, text);
+    }
+  };
+
+  const now = Date.now();
+  if (now - lastKillcommandAt < KILLCOMMAND_DEBOUNCE_MS) {
+    reply(`@${username} — !killcommand is on cooldown.`);
+    return;
+  }
+
+  try {
+    const result = await stopStreamlabsStreamingIfLive();
+    lastKillcommandAt = Date.now();
+    if (!result.ok) {
+      if (result.reason === 'not_streaming') {
+        reply(`@${username} — Streamlabs is not live (status: ${result.detail || 'offline'}).`);
+      } else {
+        reply(`@${username} — Could not end stream: ${result.reason || 'unknown'}.`);
+      }
+      return;
+    }
+    reply(`@${username} — Ending stream via Streamlabs…`);
+  } catch (e) {
+    console.error('!killcommand / Streamlabs error:', e);
+    lastKillcommandAt = Date.now();
+    reply(
+      `@${username} — Streamlabs error: ${e.message || String(e)} (is Streamlabs running on this PC?)`,
+    );
+  }
+}
+
 let twitchClient = null;
 // In-memory cache of recent chat user state (badges, mod flag) to enable simple VIP/mod checks
 const recentChatUserState = new Map();
@@ -3100,6 +3382,15 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
   twitchClient = new tmi.Client(opts);
   twitchClient.connect().then(() => {
     console.log('Connected to Twitch chat as', username);
+
+    const kcUsers = getKillcommandUserAllowlist();
+    if (kcUsers.length === 0) {
+      console.warn(
+        '⚠️ !killcommand disabled: set VD_KILLCOMMAND_USERS in .env (comma-separated Twitch logins).',
+      );
+    } else {
+      console.log(`✅ !killcommand allowed users: ${kcUsers.join(', ')}`);
+    }
     
     // Save Twitch credentials to tc_config for AI controller to use
     try {
@@ -3294,7 +3585,21 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
         
         return;
       }
-      
+
+      // !clip — Twitch Helix clip + chat link (same path as Raven "clip that")
+      if (commandText === 'clip') {
+        void createTwitchClipAndAnnounce({ requestedBy: displayName || username });
+        return;
+      }
+
+      // !killcommand — Streamlabs end-stream (allowlist from .env VD_KILLCOMMAND_USERS)
+      if (commandText === 'killcommand') {
+        if (isKillcommandAuthorized(username)) {
+          void handleKillcommandFromChat(username);
+        }
+        return;
+      }
+
       // Regular button command handling
       const profile = loadProfile(currentActiveProfile);
       profile.buttons.forEach((btn) => {
@@ -3343,6 +3648,84 @@ let twitchUserId = null;
 let twitchToken = null;
 let twitchClientId = null;
 let twitchUserName = null;
+let lastTwitchClipAt = 0;
+const TWITCH_CLIP_COOLDOWN_MS = 20000;
+
+function helixAccessToken() {
+  return String(twitchToken || '').replace(/^oauth:/i, '').trim();
+}
+
+async function sayInTwitchChat(text) {
+  try {
+    if (!twitchClient || twitchClient.readyState() !== 'OPEN') return false;
+    const channels = twitchClient.getChannels();
+    if (!channels || channels.length === 0) return false;
+    await twitchClient.say(channels[0], text);
+    return true;
+  } catch (err) {
+    console.error('💬 Failed to send Twitch chat:', err);
+    return false;
+  }
+}
+
+async function createTwitchClipAndAnnounce({ requestedBy } = {}) {
+  const now = Date.now();
+  if (now - lastTwitchClipAt < TWITCH_CLIP_COOLDOWN_MS) {
+    await sayInTwitchChat('Clip cooldown — try again in a few seconds.');
+    return { ok: false, reason: 'cooldown' };
+  }
+
+  try {
+    if (!twitchUserId) await getUserId();
+    const token = helixAccessToken();
+    if (!twitchClientId || !token || !twitchUserId) {
+      await sayInTwitchChat("Can't clip — Twitch isn't connected.");
+      return { ok: false, reason: 'not-connected' };
+    }
+
+    const resp = await fetch(
+      `https://api.twitch.tv/helix/clips?broadcaster_id=${encodeURIComponent(twitchUserId)}&has_delay=false`,
+      {
+        method: 'POST',
+        headers: {
+          'Client-ID': twitchClientId,
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const msg = String(body?.message || resp.statusText || '');
+      console.error('🎬 Twitch clip failed:', resp.status, msg, body);
+      if (resp.status === 401 || /scope/i.test(msg)) {
+        await sayInTwitchChat('Clip failed — reconnect Twitch with the clips:edit scope.');
+      } else if (resp.status === 404 || /not live/i.test(msg)) {
+        await sayInTwitchChat("Can't clip — the stream doesn't look live.");
+      } else {
+        await sayInTwitchChat("Couldn't create a Twitch clip.");
+      }
+      return { ok: false, reason: msg || String(resp.status) };
+    }
+
+    const clipId = body?.data?.[0]?.id;
+    if (!clipId) {
+      await sayInTwitchChat("Twitch didn't return a clip id.");
+      return { ok: false, reason: 'no-id' };
+    }
+
+    lastTwitchClipAt = now;
+    const url = `https://clips.twitch.tv/${clipId}`;
+    const who = requestedBy ? String(requestedBy).replace(/^@/, '') : '';
+    const line = who ? `${who} clipped that: ${url}` : `Clip: ${url}`;
+    await sayInTwitchChat(line);
+    console.log('🎬 Twitch clip created', url);
+    return { ok: true, url, id: clipId };
+  } catch (err) {
+    console.error('🎬 Twitch clip error:', err);
+    await sayInTwitchChat("Couldn't create a Twitch clip.");
+    return { ok: false, reason: err && err.message };
+  }
+}
 
 async function getUserId() {
   console.log('Fetching Twitch user ID for', twitchUserName);
@@ -3390,6 +3773,20 @@ async function pollFollowers() {
           console.log('[Poll] New Follower:', f);
           if (win && win.webContents) {
             win.webContents.send('twitch-eventsub', { type: 'poll.follow', event: f });
+          }
+          try {
+            appendAiEventsLogLine({
+              id: `follow_${f.user_id}_${f.followed_at}`,
+              type: 'twitch_follow',
+              channel: twitchUserName ? String(twitchUserName).replace(/^#/, '').toLowerCase() : undefined,
+              user: {
+                id: f.user_id,
+                name: f.user_login,
+                displayName: f.user_name || f.user_login,
+              },
+            });
+          } catch (e) {
+            console.error('[AI Events] follow poll append failed:', e);
           }
         });
       }
@@ -3938,6 +4335,7 @@ function startTwitchEventSub({ username, oauth, clientId}) {
           win.webContents.send('twitch-eventsub', { type, event: eventData });
         }
         console.log(`[EventSub] ${type}:`, eventData);
+        appendAiEventSubToLog(type, eventData, msg.metadata && msg.metadata.message_id);
       }
     });
     eventSubWs.on('error', (err) => {
@@ -4197,6 +4595,7 @@ app.whenReady().then(() => {
   createWindow();
   registerHotkeys();
   startOverlayServer();
+  ravenHost.maybeAutoStart();
   
   // Setup and check for updates on startup (delay by 3 seconds to let app initialize)
   setTimeout(() => {
@@ -4247,6 +4646,7 @@ app.whenReady().then(() => {
         { type: 'separator' },
         { label: 'Clear Twitch Credentials', click: () => { if (win && !win.isDestroyed()) win.webContents.send('clear-twitch-creds'); } }
       ] },
+      { label: 'Raven AI', submenu: ravenHost.menuTemplateItems() },
       { type: 'separator' },
       { label: 'Themes', submenu: [] }, // Will be populated dynamically with themes and skins
       { role: 'reload' }
@@ -4629,6 +5029,7 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  try { ravenHost.stopRaven(); } catch (e) {}
 });
 
 // IPC: Clear stored Twitch credentials, close EventSub and chat connections, and remove created subscriptions
