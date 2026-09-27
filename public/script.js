@@ -6872,6 +6872,9 @@ function setupOverlayWidget() {
     // Setup AI On/Off Toggle (Dashboard)
     setupAIDashboardToggle();
     
+    // Setup compact AI dashboard controls
+    setupCompactAIDashboard();
+    
     const segmentSelector = document.getElementById('ai-segment-selector');
     const modeSelector = document.getElementById('ai-mode-selector');
     const sayText = document.getElementById('ai-say-text');
@@ -7553,6 +7556,135 @@ function setupOverlayWidget() {
         // Silently fail - API might not be available
         console.debug('Could not check AI mode:', err);
       }
+    }
+  }
+  
+  // Setup Compact AI Dashboard Controls
+  function setupCompactAIDashboard() {
+    console.log('🔌 Setting up Compact AI Dashboard Controls');
+    
+    const dashboardToggle = document.getElementById('ai-dashboard-toggle');
+    const dashboardToggleLabel = document.getElementById('ai-dashboard-toggle-label');
+    const dashboardMode = document.getElementById('ai-dashboard-mode');
+    const dashboardSayText = document.getElementById('ai-dashboard-say-text');
+    const dashboardSayBtn = document.getElementById('ai-dashboard-say-btn');
+    
+    if (!dashboardToggle || !dashboardMode) {
+      console.warn('⚠️ Compact AI dashboard elements not found');
+      return;
+    }
+    
+    // Sync mode selector with existing AI mode selector
+    const syncModeSelectors = () => {
+      const aiModeSelector = document.getElementById('ai-mode-selector');
+      if (aiModeSelector && dashboardMode.value !== aiModeSelector.value) {
+        dashboardMode.value = aiModeSelector.value;
+      }
+    };
+    
+    // Check current mode on load
+    syncModeSelectors();
+    setInterval(syncModeSelectors, 2000);
+    
+    // Toggle handler
+    dashboardToggle.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const isCurrentlyOn = dashboardToggleLabel.textContent === 'ON';
+      const isOn = !isCurrentlyOn;
+      
+      try {
+        console.log(`🔌 ${isOn ? 'Turning AI ON' : 'Turning AI OFF'}...`);
+        
+        const mode = isOn ? 'JUST_CHATTING' : 'MUTED';
+        
+        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to toggle AI: ${response.statusText}`);
+        }
+        
+        // Update UI
+        dashboardToggleLabel.textContent = isOn ? 'ON' : 'OFF';
+        dashboardToggle.classList.toggle('off', !isOn);
+        
+        // Sync with main selector
+        const aiModeSelector = document.getElementById('ai-mode-selector');
+        if (aiModeSelector) {
+          aiModeSelector.value = mode;
+        }
+        
+      } catch (err) {
+        console.error('❌ Error toggling AI:', err);
+      }
+    });
+    
+    // Mode selector handler
+    dashboardMode.addEventListener('change', async (e) => {
+      const mode = e.target.value;
+      
+      try {
+        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to set AI mode: ${response.statusText}`);
+        }
+        
+        // Sync with main selector
+        const aiModeSelector = document.getElementById('ai-mode-selector');
+        if (aiModeSelector) {
+          aiModeSelector.value = mode;
+        }
+        
+        // Update toggle state
+        const isMuted = mode === 'MUTED';
+        dashboardToggleLabel.textContent = isMuted ? 'OFF' : 'ON';
+        dashboardToggle.classList.toggle('off', isMuted);
+        
+      } catch (err) {
+        console.error('❌ Error setting AI mode:', err);
+      }
+    });
+    
+    // Say button handler
+    if (dashboardSayBtn && dashboardSayText) {
+      dashboardSayBtn.addEventListener('click', async () => {
+        const text = dashboardSayText.value.trim();
+        if (!text) return;
+        
+        try {
+          const response = await fetch('http://localhost:3006/api/say', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to speak: ${response.statusText}`);
+          }
+          
+          dashboardSayText.value = '';
+          
+        } catch (err) {
+          console.error('❌ Error speaking:', err);
+        }
+      });
+      
+      // Enter key handler
+      dashboardSayText.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          dashboardSayBtn.click();
+        }
+      });
     }
   }
   
