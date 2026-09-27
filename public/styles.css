@@ -1773,6 +1773,30 @@ body.vd-dragging .sound-card.draggable:hover {
   line-height: 1.4;
 }
 
+.token-path-container {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 5px;
+}
+
+.token-path-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  background: var(--bg-secondary, #2a2a2a);
+  color: var(--text-primary);
+  font-family: 'Roboto Mono', monospace;
+  font-size: 12px;
+  cursor: text;
+}
+
+.token-path-input:focus {
+  outline: 2px solid var(--accent-color, #4CAF50);
+  outline-offset: 1px;
+}
+
 .preference-button {
   background: var(--accent-color, #4CAF50);
   color: white;
