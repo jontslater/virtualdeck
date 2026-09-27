@@ -13,6 +13,36 @@ const publicPath = path.join(__dirname, 'public');
 
 console.log('🔧 Preparing VirtualDeck for build...');
 
+// P0 Security Check: Ensure no API keys are being bundled
+console.log('🔒 Running security checks...');
+
+const dangerousFiles = [
+  '.env',
+  'raven.env',
+  'twitch-oauth-config.js',
+  path.join('extra', 'raven', 'raven.env'),
+  path.join('extra', 'raven', '.env')
+];
+
+let foundDangerousFile = false;
+for (const file of dangerousFiles) {
+  const fullPath = path.join(__dirname, file);
+  if (fs.existsSync(fullPath)) {
+    console.error(`❌ SECURITY ERROR: Found ${file}`);
+    console.error(`   This file should NOT be bundled in the installer.`);
+    console.error(`   It likely contains API keys or credentials.`);
+    foundDangerousFile = true;
+  }
+}
+
+if (foundDangerousFile) {
+  console.error('\n❌ Build aborted to prevent credential leakage.');
+  console.error('   Remove sensitive files before building.');
+  process.exit(1);
+}
+
+console.log('✅ No sensitive credential files found');
+
 const ravenExtra = path.join(__dirname, 'extra', 'raven');
 if (!fs.existsSync(path.join(ravenExtra, 'sidecar.js'))) {
   fse.ensureDirSync(ravenExtra);
@@ -20,10 +50,29 @@ if (!fs.existsSync(path.join(ravenExtra, 'sidecar.js'))) {
   if (!fs.existsSync(keep)) {
     fs.writeFileSync(
       keep,
-      'Raven voice AI was not staged. From VirtualDeck run: npm run stage-raven\n'
+      'Raven voice AI was not staged. From VirtualDeck run: npm run stage-raven\n' +
+      'IMPORTANT: Never bundle raven.env with API keys. Users must provide their own keys.\n'
     );
   }
   console.log('⚠️  extra/raven has no sidecar yet — run npm run stage-raven for the combined installer.');
+} else {
+  // If Raven is staged, check for any .env or credential files
+  const ravenEnvFile = path.join(ravenExtra, 'raven.env');
+  if (fs.existsSync(ravenEnvFile)) {
+    const envContent = fs.readFileSync(ravenEnvFile, 'utf-8');
+    
+    // Check if any API keys are populated (non-empty values)
+    const hasKeys = /^(LLM_API_KEY|TTS_API_KEY|OPENAI_API_KEY|ELEVENLABS_API_KEY)\s*=\s*.+$/m.test(envContent);
+    
+    if (hasKeys) {
+      console.error('❌ SECURITY ERROR: extra/raven/raven.env contains API keys!');
+      console.error('   API keys should NEVER be bundled in the installer.');
+      console.error('   Users must provide their own keys.');
+      console.error('   Remove the API keys from raven.env before building.');
+      process.exit(1);
+    }
+  }
+  console.log('✅ Raven staged and no API keys detected');
 }
 
 // Ensure userData directory exists

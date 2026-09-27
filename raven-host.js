@@ -1,6 +1,12 @@
 /**
  * Starts/stops the bundled Raven voice AI (bridge + controller) next to VirtualDeck.
  * No Live2D / VTube Studio — TTS + Copilot + chat brain only.
+ * 
+ * SECURITY NOTE (P0):
+ * - API keys (OpenAI, ElevenLabs) are stored in userData/raven.env (user-local)
+ * - NEVER bundle pre-filled API keys in the installer or bundled env.defaults
+ * - Users MUST provide their own API keys (BYOK - Bring Your Own Key)
+ * - The empty template below prompts users to fill in their own keys
  */
 
 const { spawn } = require('child_process');
