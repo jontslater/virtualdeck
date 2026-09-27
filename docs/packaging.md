@@ -33,6 +33,16 @@ The VirtualDeck installer packages both VirtualDeck and Raven voice AI into a si
    - Or ensure ffmpeg is in system PATH
    - **Without ffmpeg**: TTS audio playback will not work
 
+## Recent Improvements
+
+**Version 1.1.1+ includes fixes for:**
+- Automatic detection of AITuber directory layouts (no manual path adjustments needed)
+- Improved validation that correctly handles empty API key placeholders
+- Better error messages when sidecar files cannot be found
+- Support for both root-level and scripts-based Raven installations
+
+These fixes ensure `npm run stage-raven` works reliably with Jonathan's AITuber checkout without requiring workarounds.
+
 ## Build Process
 
 ### Step 1: Clone and Setup VirtualDeck
@@ -53,6 +63,7 @@ npm run stage-raven
 ```
 
 **What this does:**
+- Automatically detects AITuber repository layout (supports multiple structures)
 - Copies Raven sidecar code from AITuber to `extra/raven/`
 - Bundles Node.js portable runtime to `extra/raven/node/`
 - Bundles ffmpeg binaries to `extra/raven/ffmpeg/`
@@ -60,16 +71,28 @@ npm run stage-raven
 - Installs Node.js dependencies in staged directory
 - Validates no secrets are being bundled
 
+**Supported AITuber Layouts:**
+The staging script automatically detects which layout your AITuber checkout uses:
+- **Root layout**: `sidecar.js`, `app/`, `scripts/` at repository root
+- **Scripts layout**: `scripts/raven-sidecar.js`, `app/` in subdirectories
+
 **Troubleshooting:**
 - If the script fails with "AITuber repository not found":
   - Ensure AITuber is cloned to `E:\AIChatBot`
   - Or set `$env:AITUBER_ROOT = "C:\your\path"`
+- If the script fails with "Cannot find sidecar.js":
+  - Ensure AITuber repository is complete and built
+  - The script checks both `sidecar.js` (root) and `scripts/raven-sidecar.js`
 - If Node.js is not found:
   - Ensure Node.js is installed and in PATH
   - Or place portable `node.exe` in `E:\AIChatBot\runtime\node\`
 - If ffmpeg warnings appear:
   - Download ffmpeg and place in `E:\AIChatBot\runtime\ffmpeg\`
   - Build will complete but TTS won't work without ffmpeg
+- If "Security check failed: env.defaults contains API keys" appears:
+  - This is a safety check to prevent accidentally bundling real API keys
+  - Ensure `extra/raven/env.defaults` has empty values like `LLM_API_KEY=`
+  - Never put real API keys in `env.defaults` (users fill them after install)
 
 ### Step 3: Build the Installer
 

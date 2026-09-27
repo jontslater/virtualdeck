@@ -54,28 +54,103 @@ New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
 # 1. Copy Raven sidecar application
 Write-Host "Copying Raven sidecar..." -ForegroundColor Cyan
 
-$SidecarFiles = @(
-    "sidecar.js",
-    "app",
-    "scripts",
-    "package.json",
-    "package-lock.json"
-)
+# Detect AITuber layout - sidecar.js can be at root or scripts/raven-sidecar.js
+$SidecarSource = $null
+$SidecarRootPath = Join-Path $AITuberRoot "sidecar.js"
+$SidecarScriptsPath = Join-Path $AITuberRoot "scripts\raven-sidecar.js"
 
-foreach ($Item in $SidecarFiles) {
-    $SourcePath = Join-Path $AITuberRoot $Item
-    $DestPath = Join-Path $StageDir $Item
+if (Test-Path $SidecarRootPath) {
+    Write-Host "  Detected root-level sidecar.js layout"
+    $SidecarSource = "root"
+} elseif (Test-Path $SidecarScriptsPath) {
+    Write-Host "  Detected scripts/raven-sidecar.js layout"
+    $SidecarSource = "scripts"
+} else {
+    Write-Host "  ERROR: Cannot find sidecar.js at:" -ForegroundColor Red
+    Write-Host "    - $SidecarRootPath" -ForegroundColor Red
+    Write-Host "    - $SidecarScriptsPath" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  Please ensure AITuber repository is properly set up." -ForegroundColor Yellow
+    exit 1
+}
+
+# Copy sidecar based on detected layout
+if ($SidecarSource -eq "root") {
+    # Root layout: sidecar.js, app/, scripts/, package.json at root
+    $SidecarFiles = @(
+        "sidecar.js",
+        "app",
+        "scripts",
+        "package.json",
+        "package-lock.json"
+    )
     
-    if (Test-Path $SourcePath) {
-        if (Test-Path $SourcePath -PathType Container) {
-            Write-Host "  Copying directory: $Item"
-            Copy-Item -Path $SourcePath -Destination $DestPath -Recurse -Force
+    foreach ($Item in $SidecarFiles) {
+        $SourcePath = Join-Path $AITuberRoot $Item
+        $DestPath = Join-Path $StageDir $Item
+        
+        if (Test-Path $SourcePath) {
+            if (Test-Path $SourcePath -PathType Container) {
+                Write-Host "  Copying directory: $Item"
+                Copy-Item -Path $SourcePath -Destination $DestPath -Recurse -Force
+            } else {
+                Write-Host "  Copying file: $Item"
+                Copy-Item -Path $SourcePath -Destination $DestPath -Force
+            }
         } else {
-            Write-Host "  Copying file: $Item"
-            Copy-Item -Path $SourcePath -Destination $DestPath -Force
+            Write-Host "  WARNING: Not found: $Item (skipping)" -ForegroundColor Yellow
         }
-    } else {
-        Write-Host "  WARNING: Not found: $Item (skipping)" -ForegroundColor Yellow
+    }
+} else {
+    # Scripts layout: scripts/raven-sidecar.js and related files in scripts/
+    # Copy raven-sidecar.js as sidecar.js for compatibility
+    $SourceSidecar = Join-Path $AITuberRoot "scripts\raven-sidecar.js"
+    $DestSidecar = Join-Path $StageDir "sidecar.js"
+    Write-Host "  Copying scripts/raven-sidecar.js -> sidecar.js"
+    Copy-Item -Path $SourceSidecar -Destination $DestSidecar -Force
+    
+    # Copy app/ directory (check multiple possible locations)
+    $AppDirs = @(
+        "app",
+        "scripts\app",
+        "src\app",
+        "raven\app"
+    )
+    
+    $AppFound = $false
+    foreach ($AppDir in $AppDirs) {
+        $SourceApp = Join-Path $AITuberRoot $AppDir
+        if (Test-Path $SourceApp) {
+            $DestApp = Join-Path $StageDir "app"
+            Write-Host "  Copying $AppDir -> app/"
+            Copy-Item -Path $SourceApp -Destination $DestApp -Recurse -Force
+            $AppFound = $true
+            break
+        }
+    }
+    
+    if (-not $AppFound) {
+        Write-Host "  WARNING: app/ directory not found in any expected location" -ForegroundColor Yellow
+        Write-Host "    Checked: $($AppDirs -join ', ')" -ForegroundColor Yellow
+    }
+    
+    # Copy scripts/ directory (contains supporting files)
+    $SourceScripts = Join-Path $AITuberRoot "scripts"
+    $DestScripts = Join-Path $StageDir "scripts"
+    if (Test-Path $SourceScripts) {
+        Write-Host "  Copying scripts/"
+        Copy-Item -Path $SourceScripts -Destination $DestScripts -Recurse -Force
+    }
+    
+    # Copy package.json and package-lock.json
+    $PackageFiles = @("package.json", "package-lock.json")
+    foreach ($PkgFile in $PackageFiles) {
+        $SourcePkg = Join-Path $AITuberRoot $PkgFile
+        $DestPkg = Join-Path $StageDir $PkgFile
+        if (Test-Path $SourcePkg) {
+            Write-Host "  Copying $PkgFile"
+            Copy-Item -Path $SourcePkg -Destination $DestPkg -Force
+        }
     }
 }
 
@@ -199,9 +274,10 @@ foreach ($File in $DangerousFiles) {
     }
 }
 
-# Check env.defaults for populated API keys
+# Check env.defaults for populated API keys (non-empty values)
+# Match API_KEY=<non-whitespace> but allow API_KEY= or API_KEY=<whitespace-only>
 $EnvDefaultsContent = Get-Content $EnvDefaultsPath -Raw
-if ($EnvDefaultsContent -match '(LLM_API_KEY|TTS_API_KEY|OPENAI_API_KEY|ELEVENLABS_API_KEY)\s*=\s*.+') {
+if ($EnvDefaultsContent -match '(LLM_API_KEY|TTS_API_KEY|OPENAI_API_KEY|ELEVENLABS_API_KEY)\s*=\s*[^\s\r\n]+') {
     Write-Host "  ERROR: env.defaults contains API keys!" -ForegroundColor Red
     Write-Host "         API keys must be empty placeholders only." -ForegroundColor Red
     $FoundDangerous = $true
