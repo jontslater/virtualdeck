@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, Menu, dialog } = require('electron');
+const { app, BrowserWindow, globalShortcut, Menu, dialog, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 (() => {
@@ -28,6 +28,7 @@ const { autoUpdater } = require('electron-updater');
 const VTuberManager = require('./vtuber-manager');
 const { stopStreamlabsStreamingIfLive } = require('./streamlabs-tcp');
 const ravenHost = require('./raven-host');
+const SecurityManager = require('./lib/security');
 
 // Configure auto-updater
 autoUpdater.autoDownload = false; // Don't auto-download, ask user first
@@ -70,6 +71,10 @@ const profilesMetaPath = path.join(userDataPath, 'profiles-meta.json');
 const userSoundsDir = path.join(userDataPath, 'sounds');
 const userSkinsDir = path.join(userDataPath, 'skins');
 const defaultConfigPath = path.join(__dirname, 'config.json');
+
+// Initialize security manager
+const securityManager = new SecurityManager(userDataPath);
+const wsRateLimiter = securityManager.createRateLimiter(1000, 10);
 
 // Initialize VTuber Manager
 let vtuberManager;
@@ -505,19 +510,49 @@ function ensureProfiles() {
 
 function loadTcConfig() {
   try {
-  const raw = JSON.parse(fs.readFileSync(tcConfigPath, 'utf-8'));
-  // Ensure shape compatibility
-  if (!raw.topics) raw.topics = [];
-  if (!raw.hasOwnProperty('lastFollowerPoll')) raw.lastFollowerPoll = null;
-  if (!Array.isArray(raw.createdSubscriptions)) raw.createdSubscriptions = [];
-  return raw;
+    const raw = JSON.parse(fs.readFileSync(tcConfigPath, 'utf-8'));
+    
+    // Decrypt sensitive fields if they were encrypted
+    if (raw.oauth_token_encrypted && safeStorage.isEncryptionAvailable()) {
+      try {
+        const encryptedBuffer = Buffer.from(raw.oauth_token_encrypted, 'base64');
+        raw.oauth_token = safeStorage.decryptString(encryptedBuffer);
+        console.log('✅ [Security] Decrypted Twitch OAuth token');
+      } catch (err) {
+        console.error('❌ [Security] Failed to decrypt OAuth token:', err.message);
+      }
+    }
+    
+    // Ensure shape compatibility
+    if (!raw.topics) raw.topics = [];
+    if (!raw.hasOwnProperty('lastFollowerPoll')) raw.lastFollowerPoll = null;
+    if (!Array.isArray(raw.createdSubscriptions)) raw.createdSubscriptions = [];
+    return raw;
   } catch (e) {
-  return { topics: [], lastFollowerPoll: null, createdSubscriptions: [] };
+    return { topics: [], lastFollowerPoll: null, createdSubscriptions: [] };
   }
 }
 
 function saveTcConfig(cfg) {
-  fs.writeFileSync(tcConfigPath, JSON.stringify(cfg, null, 2));
+  // Create a copy to avoid mutating the original
+  const toSave = { ...cfg };
+  
+  // Encrypt sensitive fields before saving
+  if (toSave.oauth_token && safeStorage.isEncryptionAvailable()) {
+    try {
+      const encrypted = safeStorage.encryptString(toSave.oauth_token);
+      toSave.oauth_token_encrypted = encrypted.toString('base64');
+      // Remove plain text token from saved config
+      delete toSave.oauth_token;
+      console.log('✅ [Security] Encrypted Twitch OAuth token before saving');
+    } catch (err) {
+      console.error('❌ [Security] Failed to encrypt OAuth token:', err.message);
+      // If encryption fails, remove token entirely to be safe
+      delete toSave.oauth_token;
+    }
+  }
+  
+  fs.writeFileSync(tcConfigPath, JSON.stringify(toSave, null, 2));
 }
 
 // Hydration config management
@@ -705,12 +740,32 @@ function startOverlayServer() {
   
   // Create HTTP server to serve overlay HTML and media files
   overlayServer = http.createServer((req, res) => {
+    const url = new URL(req.url || '/', `http://localhost:${port}`);
+    
+    // Check if this is a control/API endpoint that requires auth
+    const requiresAuth = req.url && (
+      req.url.startsWith('/api/vtuber/') && req.method !== 'GET' // Only protect write operations
+    );
+    
+    // Validate token for protected endpoints
+    if (requiresAuth) {
+      const token = securityManager.extractToken(req, url);
+      if (!token || !securityManager.validateToken(token)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          error: 'Unauthorized',
+          message: 'Valid authentication token required. Add ?token=YOUR_TOKEN to the URL or use X-VD-Auth header.'
+        }));
+        return;
+      }
+    }
+    
     // Handle CORS preflight requests
     if (req.method === 'OPTIONS') {
       res.writeHead(200, {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type'
+        'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization'
       });
       res.end();
       return;
@@ -728,7 +783,7 @@ function startOverlayServer() {
           'Content-Type': 'text/html',
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type'
+          'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization'
         });
         res.end(html);
       });
@@ -745,7 +800,7 @@ function startOverlayServer() {
           'Content-Type': 'text/html',
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type'
+          'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization'
         });
         res.end(data);
       });
@@ -779,7 +834,7 @@ function startOverlayServer() {
             'Content-Type': 'text/html',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type'
+            'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization'
           });
           res.end(data);
         });
@@ -795,7 +850,7 @@ function startOverlayServer() {
             'Content-Type': 'text/html',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type'
+            'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization'
           });
           res.end(html);
         });
@@ -864,7 +919,7 @@ function startOverlayServer() {
             'Content-Type': contentType,
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type'
+            'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization'
           });
           res.end(data);
         });
@@ -917,7 +972,7 @@ function startOverlayServer() {
             'Content-Type': contentType,
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization',
             'Cache-Control': 'public, max-age=3600'
           });
           res.end(data);
@@ -933,15 +988,30 @@ function startOverlayServer() {
   });
 
   // Create WebSocket server for real-time communication
-  overlayWSS = new WebSocket.Server({ server: overlayServer });
+  overlayWSS = new WebSocket.Server({ 
+    server: overlayServer,
+    verifyClient: (info, callback) => {
+      // Extract token from query parameters for WebSocket handshake
+      const url = new URL(info.req.url || '/', `http://localhost:${port}`);
+      const token = url.searchParams.get('token');
+      
+      // Allow connection without token for read-only overlays (for OBS compatibility)
+      // The individual message handlers will enforce permissions
+      callback(true);
+    }
+  });
   
   overlayWSS.on('connection', (ws, req) => {
     console.log('Overlay client connected - URL:', req.url);
     
-    // Extract overlay name from URL query parameters
+    // Extract overlay name and token from URL query parameters
     const url = new URL(req.url || '/', `http://localhost:${port}`);
     const overlayName = url.searchParams.get('overlay') || 'main';
+    const token = url.searchParams.get('token');
+    
     ws.overlayName = overlayName; // Store overlay name on the WebSocket connection
+    ws.isAuthenticated = token && securityManager.validateToken(token);
+    ws.clientId = crypto.randomBytes(16).toString('hex'); // Unique ID for rate limiting
     
     // Add to global clients set
     overlayClients.add(ws);
@@ -957,8 +1027,41 @@ function startOverlayServer() {
     
     ws.on('message', (message) => {
       try {
+        // Rate limiting check
+        if (!wsRateLimiter.check(ws.clientId)) {
+          console.warn(`⚠️ [Security] Rate limit exceeded for client ${ws.clientId}`);
+          ws.send(JSON.stringify({ 
+            type: 'error', 
+            message: 'Rate limit exceeded. Max 10 messages per second.' 
+          }));
+          return;
+        }
+
         const data = JSON.parse(message);
+        
+        // Validate message structure
+        if (!data || typeof data !== 'object') {
+          console.warn(`⚠️ [Security] Invalid message structure from ${overlayName}`);
+          return;
+        }
+
+        // Whitelist of allowed message types for unauthenticated clients
+        const ALLOWED_TYPES = new Set(['ping', 'pong', 'status']);
+        
+        // If client is not authenticated and message type is not whitelisted, reject
+        if (!ws.isAuthenticated && !ALLOWED_TYPES.has(data.type)) {
+          console.warn(`⚠️ [Security] Unauthorized message type "${data.type}" from ${overlayName}`);
+          ws.send(JSON.stringify({ 
+            type: 'error', 
+            message: 'Authentication required for this message type. Add ?token=YOUR_TOKEN to connection URL.' 
+          }));
+          return;
+        }
+
         console.log(`📨 Message from overlay ${overlayName}:`, data);
+        
+        // Future: Handle specific message types here
+        // For now, just log them as this is primarily read-only
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
       }
@@ -967,6 +1070,9 @@ function startOverlayServer() {
     ws.on('close', () => {
       console.log(`Overlay client disconnected: ${overlayName}`);
       overlayClients.delete(ws);
+      
+      // Clean up rate limiter
+      wsRateLimiter.reset(ws.clientId);
       
       // Remove from overlay registry
       if (overlayRegistry.has(overlayName)) {
@@ -982,6 +1088,9 @@ function startOverlayServer() {
     ws.on('error', (error) => {
       console.log('Overlay WebSocket error:', error);
       overlayClients.delete(ws);
+      
+      // Clean up rate limiter
+      wsRateLimiter.reset(ws.clientId);
       
       // Remove from overlay registry
       if (overlayRegistry.has(overlayName)) {
@@ -1038,7 +1147,7 @@ function handleVTuberAPI(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-VD-Auth, Authorization');
   
   if (req.method === 'OPTIONS') {
     res.writeHead(200);
@@ -1934,6 +2043,18 @@ ipcMain.handle('save-media-file-by-path', async (event, { sourcePath, buttonId, 
   try {
     console.log('Saving media file by path:', { sourcePath, buttonId, mediaType, originalName });
     
+    // Validate source path exists and is readable
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error('Source file not found');
+    }
+    
+    // Basic validation - reject paths that look suspicious
+    const normalizedSource = path.normalize(sourcePath);
+    if (normalizedSource.includes('..')) {
+      console.error('⚠️ [Security] Rejected path with traversal attempt:', sourcePath);
+      throw new Error('Invalid source path');
+    }
+    
     // Create button-specific directory
     const buttonMediaDir = path.join(mediaStoragePath, buttonId);
     if (!fs.existsSync(buttonMediaDir)) {
@@ -2082,13 +2203,15 @@ ipcMain.handle('save-media-file', async (event, { base64Data, buttonId, mediaTyp
 // IPC handler to get absolute path for media file (for HTTP serving)
 ipcMain.handle('get-media-file-path', async (event, relativePath) => {
   try {
-    const fullPath = path.join(userDataPath, relativePath);
-    if (!fs.existsSync(fullPath)) {
+    // Sanitize path to prevent traversal
+    const sanitizedPath = securityManager.sanitizePath(userDataPath, relativePath);
+    
+    if (!fs.existsSync(sanitizedPath)) {
       return { success: false, error: 'File not found' };
     }
     return { 
       success: true, 
-      absolutePath: fullPath
+      absolutePath: sanitizedPath
     };
   } catch (error) {
     console.error('Error getting media file path:', error);
@@ -2099,12 +2222,14 @@ ipcMain.handle('get-media-file-path', async (event, relativePath) => {
 // IPC handler to get media file as base64 (for serving to overlay) - DEPRECATED, use HTTP serving instead
 ipcMain.handle('get-media-file', async (event, relativePath) => {
   try {
-    const fullPath = path.join(userDataPath, relativePath);
-    if (!fs.existsSync(fullPath)) {
+    // Sanitize path to prevent traversal
+    const sanitizedPath = securityManager.sanitizePath(userDataPath, relativePath);
+    
+    if (!fs.existsSync(sanitizedPath)) {
       return { success: false, error: 'File not found' };
     }
 
-    const fileBuffer = fs.readFileSync(fullPath);
+    const fileBuffer = fs.readFileSync(sanitizedPath);
     const base64Data = fileBuffer.toString('base64');
     
     // Detect mime type from extension
@@ -3079,6 +3204,11 @@ async function importSkinFile(filePath) {
   try {
     if (!fs.existsSync(filePath)) {
       throw new Error('File not found');
+    }
+    
+    // Validate file extension
+    if (!filePath.toLowerCase().endsWith('.json')) {
+      throw new Error('Invalid file type. Only JSON files are allowed.');
     }
     
     const skinData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -4907,6 +5037,16 @@ app.whenReady().then(() => {
   // Allow renderer to get the current overlay server URL
   ipcMain.handle('get-overlay-url', async () => {
     return getOverlayServerUrl();
+  });
+
+  // Get auth token for display in settings
+  ipcMain.handle('get-auth-token', async () => {
+    return securityManager.getOrCreateToken();
+  });
+
+  // Get auth token file path
+  ipcMain.handle('get-auth-token-path', async () => {
+    return securityManager.tokenPath;
   });
 
   // Handle preferences save from renderer
