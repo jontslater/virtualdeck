@@ -31,6 +31,7 @@ const ravenHost = require('./raven-host');
 const SecurityManager = require('./lib/security');
 const { JarvisServer } = require('./jarvis-server');
 const { registry: jarvisRegistry } = require('./jarvis-tools');
+const { AIConfigManager } = require('./lib/ai-config');
 
 // Configure auto-updater
 autoUpdater.autoDownload = false; // Don't auto-download, ask user first
@@ -98,6 +99,16 @@ try {
 } catch (err) {
   console.error('❌ Error initializing Macro Manager:', err);
   macroManager = null;
+}
+
+// Initialize AI Config Manager
+let aiConfigManager;
+try {
+  aiConfigManager = new AIConfigManager();
+  console.log('✅ AI Config Manager initialized');
+} catch (err) {
+  console.error('❌ Error initializing AI Config Manager:', err);
+  aiConfigManager = null;
 }
 const defaultSoundsDir = path.join(__dirname, 'public', 'assets', 'sounds');
 const defaultSkinsDir = path.join(__dirname, 'skins');
@@ -759,7 +770,8 @@ function startOverlayServer() {
     
     // Check if this is a control/API endpoint that requires auth
     const requiresAuth = req.url && (
-      req.url.startsWith('/api/vtuber/') && req.method !== 'GET' // Only protect write operations
+      (req.url.startsWith('/api/vtuber/') && req.method !== 'GET') || // Only protect write operations
+      req.url.startsWith('/api/ai/') // Protect all AI config endpoints (includes GET /api/ai/voices)
     );
     
     // Validate token for protected endpoints
@@ -996,6 +1008,9 @@ function startOverlayServer() {
     } else if (req.url && req.url.startsWith('/api/vtuber/')) {
       // VTuber API endpoints
       handleVTuberAPI(req, res);
+    } else if (req.url && req.url.startsWith('/api/ai/')) {
+      // AI Configuration API endpoints (voices, personality)
+      handleAIConfigAPI(req, res);
     } else {
       res.writeHead(404);
       res.end('Not found');
@@ -1296,6 +1311,104 @@ function broadcastVTuberState(state) {
         client.send(message);
       }
     });
+  }
+}
+
+// AI Configuration API handler
+function handleAIConfigAPI(req, res) {
+  if (!req.url) {
+    res.writeHead(400);
+    res.end('Invalid request');
+    return;
+  }
+  
+  const url = new URL(req.url, `http://localhost:${overlayServerPort || 8080}`);
+  const path = url.pathname;
+  
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-VD-Auth, Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+  
+  if (!aiConfigManager) {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'AI Config Manager not initialized' }));
+    return;
+  }
+  
+  try {
+    if (path === '/api/ai/voices' && req.method === 'GET') {
+      // Fetch voices from ElevenLabs
+      aiConfigManager.fetchElevenLabsVoices().then(result => {
+        if (result.success) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ voices: result.voices }));
+        } else {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: result.error }));
+        }
+      }).catch(err => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      });
+    } else if (path === '/api/ai/voice' && req.method === 'POST') {
+      // Set voice ID
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', () => {
+        try {
+          const { voiceId, voiceName } = JSON.parse(body);
+          const success = aiConfigManager.setVoice(voiceId, voiceName);
+          if (success) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, voiceId, voiceName }));
+          } else {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Failed to save voice' }));
+          }
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+    } else if (path === '/api/ai/personality' && req.method === 'POST') {
+      // Set personality configuration
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', () => {
+        try {
+          const { personality, prompt } = JSON.parse(body);
+          const success = aiConfigManager.setPersonality(personality, prompt);
+          if (success) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, personality, prompt }));
+          } else {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Failed to save personality' }));
+          }
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+    } else if (path === '/api/ai/personality' && req.method === 'GET') {
+      // Get saved personality configuration
+      const personality = aiConfigManager.getPersonality();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ personality: personality || null }));
+    } else {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not found' }));
+    }
+  } catch (err) {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: err.message }));
   }
 }
 

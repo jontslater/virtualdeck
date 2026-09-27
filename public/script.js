@@ -7141,6 +7141,271 @@ function setupOverlayWidget() {
     }
     loadSpeakers();
 
+    // Voice Picker - Load and select TTS voices from ElevenLabs
+    const voiceSelect = document.getElementById('ai-voice-selector');
+    const voiceRefreshBtn = document.getElementById('ai-voice-refresh');
+    const voiceStatus = document.getElementById('ai-voice-status');
+    const VOICE_CONFIG_KEY = 'VD_AI_VOICE_CONFIG';
+
+    // Helper: Get auth headers for AI config API calls
+    async function getAIConfigAuthHeaders() {
+      try {
+        if (window.electronAPI && window.electronAPI.getAuthToken) {
+          const token = await window.electronAPI.getAuthToken();
+          return {
+            'Content-Type': 'application/json',
+            'X-VD-Auth': token
+          };
+        }
+      } catch (err) {
+        console.warn('Could not get auth token:', err);
+      }
+      return { 'Content-Type': 'application/json' };
+    }
+
+    function readSavedVoice() {
+      try {
+        return JSON.parse(localStorage.getItem(VOICE_CONFIG_KEY) || '{}') || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    async function saveVoiceChoice(voiceId, voiceName) {
+      const payload = { voiceId: voiceId || '', voiceName: voiceName || '' };
+      try { localStorage.setItem(VOICE_CONFIG_KEY, JSON.stringify(payload)); } catch (e) {}
+      
+      // Send to backend API to update raven.env (uses VirtualDeck overlay server with auth)
+      try {
+        const headers = await getAIConfigAuthHeaders();
+        await fetch('http://localhost:8080/api/ai/voice', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({ voiceId: voiceId || '', voiceName: voiceName || '' }),
+        });
+      } catch (err) {
+        console.warn('Failed to save voice to backend:', err);
+      }
+    }
+
+    async function loadVoices(opts) {
+      if (!voiceSelect) return false;
+      const quiet = !!(opts && opts.quiet);
+      if (!quiet || !voiceSelect.options.length || voiceSelect.value === '') {
+        voiceSelect.innerHTML = '<option value="">Loading voices…</option>';
+      }
+      if (voiceStatus && !quiet) voiceStatus.textContent = 'Fetching voices from ElevenLabs…';
+      
+      try {
+        // Use VirtualDeck overlay server API (port 8080) with auth
+        const headers = await getAIConfigAuthHeaders();
+        const res = await fetch('http://localhost:8080/api/ai/voices', {
+          method: 'GET',
+          headers: headers
+        });
+        if (!res.ok) {
+          const raw = await res.text().catch(() => '');
+          throw new Error(raw || `HTTP ${res.status}`);
+        }
+        
+        const data = await res.json();
+        const voices = Array.isArray(data.voices) ? data.voices : [];
+        const saved = readSavedVoice();
+        
+        voiceSelect.innerHTML = '<option value="">Default Voice</option>';
+        
+        if (!voices.length) {
+          if (voiceStatus) {
+            voiceStatus.textContent = 'No voices found. Check TTS_API_KEY in raven.env and ensure ElevenLabs account is active.';
+          }
+          return true;
+        }
+        
+        voices.forEach((voice) => {
+          const opt = document.createElement('option');
+          opt.value = voice.voice_id;
+          opt.textContent = voice.name;
+          if (saved.voiceId && saved.voiceId === voice.voice_id) opt.selected = true;
+          voiceSelect.appendChild(opt);
+        });
+        
+        if (voiceStatus) {
+          voiceStatus.textContent = saved.voiceId
+            ? `Voice: ${saved.voiceName || saved.voiceId}. ${voices.length} available.`
+            : `${voices.length} voice(s) available. Select one to use for TTS.`;
+        }
+        return true;
+      } catch (err) {
+        console.warn('Voice list failed:', err);
+        voiceSelect.innerHTML = '<option value="">Unable to load voices</option>';
+        if (voiceStatus) {
+          voiceStatus.textContent = 'Cannot load voices. Ensure Raven is running and TTS_API_KEY is configured in raven.env.';
+        }
+        return false;
+      }
+    }
+
+    if (voiceRefreshBtn) {
+      voiceRefreshBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        loadVoices();
+      });
+    }
+    
+    if (voiceSelect) {
+      voiceSelect.addEventListener('change', () => {
+        const opt = voiceSelect.selectedOptions[0];
+        const voiceId = voiceSelect.value;
+        const voiceName = opt ? opt.textContent : '';
+        saveVoiceChoice(voiceId, voiceName);
+        if (voiceStatus) {
+          voiceStatus.textContent = voiceId
+            ? `Voice set to: ${voiceName}`
+            : 'Using default voice.';
+        }
+        if (window.notificationManager) {
+          window.notificationManager.show(voiceId ? `Voice: ${voiceName}` : 'Using default voice', 'success');
+        }
+      });
+    }
+    
+    // Load voices on startup
+    loadVoices({ quiet: true });
+    
+    // Retry loading voices a few times in case Raven is still starting up
+    let voiceRetries = 0;
+    const voiceRetryTimer = setInterval(async () => {
+      voiceRetries += 1;
+      const ok = await loadVoices({ quiet: true });
+      if (ok || voiceRetries >= 15) clearInterval(voiceRetryTimer);
+    }, 3000);
+
+    // Personality Builder - Compose system prompt from dropdowns
+    const personalityTone = document.getElementById('ai-personality-tone');
+    const personalityEnergy = document.getElementById('ai-personality-energy');
+    const personalityHumor = document.getElementById('ai-personality-humor');
+    const personalityRole = document.getElementById('ai-personality-role');
+    const personalityRaw = document.getElementById('ai-personality-raw');
+    const personalitySaveBtn = document.getElementById('ai-personality-save');
+    const PERSONALITY_CONFIG_KEY = 'VD_AI_PERSONALITY_CONFIG';
+
+    function readSavedPersonality() {
+      try {
+        return JSON.parse(localStorage.getItem(PERSONALITY_CONFIG_KEY) || '{}') || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function savePersonalityConfig(config) {
+      try { localStorage.setItem(PERSONALITY_CONFIG_KEY, JSON.stringify(config)); } catch (e) {}
+    }
+
+    function composePersonalityPrompt(tone, energy, humor, role) {
+      const toneMap = {
+        'friendly': 'You are friendly and warm, making people feel welcome and comfortable.',
+        'professional': 'You are professional and articulate, maintaining a polished demeanor.',
+        'casual': 'You are casual and relaxed, speaking naturally like a friend.',
+        'enthusiastic': 'You are enthusiastic and excited, bringing positive energy.',
+        'sarcastic': 'You are sarcastic and sharp-witted, using dry humor and playful jabs.',
+        'witty': 'You are witty and clever, making smart observations and wordplay.'
+      };
+      
+      const energyMap = {
+        'high': 'You bring high energy and excitement to every interaction.',
+        'medium': 'You maintain a balanced, engaging energy level.',
+        'low': 'You are chill and laid-back, keeping things relaxed.',
+        'adaptive': 'You adapt your energy to match the chat vibe.'
+      };
+      
+      const humorMap = {
+        'none': 'You keep things serious and focused.',
+        'light': 'You occasionally make light jokes when appropriate.',
+        'moderate': 'You use humor regularly to keep things fun.',
+        'heavy': 'You frequently crack jokes and keep things lighthearted.',
+        'dry': 'You use dry, deadpan humor and subtle wit.',
+        'meme': 'You reference memes, internet culture, and current trends.'
+      };
+      
+      const roleMap = {
+        'companion': 'You are a gaming companion who plays alongside the streamer, reacting to gameplay and providing company.',
+        'coach': 'You are a gaming coach who provides tips, strategies, and constructive feedback.',
+        'commentator': 'You are a commentator who narrates and analyzes the action as it happens.',
+        'sidekick': 'You are a loyal sidekick who supports the streamer and hypes up their achievements.',
+        'assistant': 'You are an assistant who helps manage chat, answer questions, and keep things organized.',
+        'custom': ''
+      };
+      
+      const parts = [];
+      if (toneMap[tone]) parts.push(toneMap[tone]);
+      if (energyMap[energy]) parts.push(energyMap[energy]);
+      if (humorMap[humor]) parts.push(humorMap[humor]);
+      if (roleMap[role]) parts.push(roleMap[role]);
+      
+      return parts.join(' ');
+    }
+
+    function loadPersonalityUI() {
+      const saved = readSavedPersonality();
+      if (personalityTone && saved.tone) personalityTone.value = saved.tone;
+      if (personalityEnergy && saved.energy) personalityEnergy.value = saved.energy;
+      if (personalityHumor && saved.humor) personalityHumor.value = saved.humor;
+      if (personalityRole && saved.role) personalityRole.value = saved.role;
+      if (personalityRaw && saved.rawPrompt) personalityRaw.value = saved.rawPrompt;
+    }
+
+    async function savePersonality() {
+      const config = {
+        tone: personalityTone ? personalityTone.value : 'friendly',
+        energy: personalityEnergy ? personalityEnergy.value : 'medium',
+        humor: personalityHumor ? personalityHumor.value : 'moderate',
+        role: personalityRole ? personalityRole.value : 'companion',
+        rawPrompt: personalityRaw ? personalityRaw.value.trim() : ''
+      };
+      
+      savePersonalityConfig(config);
+      
+      // Compose or use raw prompt
+      const finalPrompt = config.rawPrompt || composePersonalityPrompt(config.tone, config.energy, config.humor, config.role);
+      
+      try {
+        // Use VirtualDeck overlay server API (port 8080) with auth
+        const headers = await getAIConfigAuthHeaders();
+        const res = await fetch('http://localhost:8080/api/ai/personality', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({ 
+            personality: config,
+            prompt: finalPrompt
+          }),
+        });
+        
+        if (!res.ok) {
+          const raw = await res.text().catch(() => '');
+          throw new Error(raw || `HTTP ${res.status}`);
+        }
+        
+        if (window.notificationManager) {
+          window.notificationManager.show('Personality saved successfully', 'success');
+        } else {
+          alert('Personality saved successfully');
+        }
+      } catch (err) {
+        console.error('Failed to save personality:', err);
+        alert(`Failed to save personality: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    if (personalitySaveBtn) {
+      personalitySaveBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        savePersonality();
+      });
+    }
+    
+    // Load saved personality on startup
+    loadPersonalityUI();
+
     // Manual Speak (Controller Dev API on 3003 — never 3002, that is the overlay)
     if (sayBtn && sayText) {
       if (isOverlayDevPort(localStorage.getItem('DEV_API_BASE_URL'))) {

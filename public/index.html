@@ -238,6 +238,86 @@
         </select>
       </div>
 
+      <!-- Voice Picker -->
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">🎙️ AI Voice</div>
+        <div style="display: flex; gap: 8px;">
+          <select id="ai-voice-selector" class="ai-management-selector" style="margin-bottom: 0; flex: 1;">
+            <option value="">Loading voices…</option>
+          </select>
+          <button id="ai-voice-refresh" class="ai-management-btn" style="min-width: 72px; justify-content: center;" title="Refresh voice list">
+            <span class="btn-icon">🔄</span>
+            <span class="btn-label">Refresh</span>
+          </button>
+        </div>
+        <div id="ai-voice-status" style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Select TTS voice from your ElevenLabs account. Requires TTS_API_KEY in raven.env.</div>
+      </div>
+
+      <!-- Personality Builder -->
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">🧠 AI Personality</div>
+        
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div>
+            <label style="font-size: 10px; color: var(--text-tertiary); display: block; margin-bottom: 3px;">Tone</label>
+            <select id="ai-personality-tone" class="ai-management-selector" style="margin-bottom: 0;">
+              <option value="friendly">Friendly & Warm</option>
+              <option value="professional">Professional</option>
+              <option value="casual">Casual & Relaxed</option>
+              <option value="enthusiastic">Enthusiastic</option>
+              <option value="sarcastic">Sarcastic</option>
+              <option value="witty">Witty & Clever</option>
+            </select>
+          </div>
+          
+          <div>
+            <label style="font-size: 10px; color: var(--text-tertiary); display: block; margin-bottom: 3px;">Energy Level</label>
+            <select id="ai-personality-energy" class="ai-management-selector" style="margin-bottom: 0;">
+              <option value="high">High Energy</option>
+              <option value="medium" selected>Medium Energy</option>
+              <option value="low">Low Energy / Chill</option>
+              <option value="adaptive">Adaptive (Match Chat)</option>
+            </select>
+          </div>
+          
+          <div>
+            <label style="font-size: 10px; color: var(--text-tertiary); display: block; margin-bottom: 3px;">Humor Style</label>
+            <select id="ai-personality-humor" class="ai-management-selector" style="margin-bottom: 0;">
+              <option value="none">No Humor</option>
+              <option value="light">Light Jokes</option>
+              <option value="moderate" selected>Moderate Humor</option>
+              <option value="heavy">Lots of Jokes</option>
+              <option value="dry">Dry Humor</option>
+              <option value="meme">Meme Culture</option>
+            </select>
+          </div>
+          
+          <div>
+            <label style="font-size: 10px; color: var(--text-tertiary); display: block; margin-bottom: 3px;">Role/Character</label>
+            <select id="ai-personality-role" class="ai-management-selector" style="margin-bottom: 0;">
+              <option value="companion">Gaming Companion</option>
+              <option value="coach">Gaming Coach</option>
+              <option value="commentator">Commentator</option>
+              <option value="sidekick">Sidekick</option>
+              <option value="assistant">Assistant</option>
+              <option value="custom">Custom (use raw prompt)</option>
+            </select>
+          </div>
+        </div>
+        
+        <button id="ai-personality-save" class="ai-management-btn" style="width: 100%; margin-top: 10px; justify-content: center;" title="Save personality settings">
+          <span class="btn-icon">💾</span>
+          <span class="btn-label">Save Personality</span>
+        </button>
+        
+        <!-- Advanced: Raw Prompt Override -->
+        <details id="ai-personality-advanced" style="margin-top: 8px;">
+          <summary style="font-size: 10px; color: var(--text-secondary); cursor: pointer; user-select: none;">⚙️ Advanced: Raw Prompt</summary>
+          <textarea id="ai-personality-raw" placeholder="Custom system prompt (overrides dropdowns above)..." style="width: 100%; min-height: 80px; margin-top: 6px; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 11px; font-family: monospace; resize: vertical;"></textarea>
+          <div style="font-size: 9px; color: var(--text-tertiary); margin-top: 4px;">Leave empty to use personality dropdowns. When filled, this overrides the composed personality prompt.</div>
+        </details>
+      </div>
+
       <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
         <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Copilot microphone</div>
         <div style="display: flex; gap: 8px;">
