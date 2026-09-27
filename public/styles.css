@@ -399,9 +399,6 @@ html[data-theme], body[data-theme] {
   align-items: flex-start;
   overflow: visible; /* Allow hovered cards to lift without being clipped */
 }
-  align-items: flex-start;
-  overflow: visible; /* Allow hovered cards to lift without being clipped */
-}
 
 /* Responsive behavior: stack secondary panes under the grid on narrow viewports */
 @media (max-width: 900px) {
