@@ -727,7 +727,10 @@ html[data-theme], body[data-theme] {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   padding: 12px;
   padding-bottom: 16px;
-  min-width: 220px;
+  width: 280px;
+  max-width: 320px;
+  max-height: 600px;
+  overflow-y: auto;
   font-size: 12px;
   pointer-events: auto;
 }
