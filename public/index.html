@@ -1350,6 +1350,40 @@
           </div>
         </div>
 
+        <!-- Discord Integration Section -->
+        <div class="preferences-section">
+          <h3>Discord Integration</h3>
+          <div class="preference-item">
+            <label for="discord-webhook-url">Webhook URL (Recommended)</label>
+            <input type="text" id="discord-webhook-url" class="preference-input" placeholder="https://discord.com/api/webhooks/..." />
+            <small>Discord webhook URL for posting notifications. Create one in your Discord server settings.</small>
+          </div>
+          <div class="preference-item">
+            <label for="discord-bot-token">Bot Token (Advanced)</label>
+            <input type="password" id="discord-bot-token" class="preference-input" placeholder="Bot token (optional)" />
+            <small>Alternative to webhook: Discord bot token. Do not share this with anyone.</small>
+          </div>
+          <div class="preference-item">
+            <label for="discord-channel-id">Default Channel ID</label>
+            <input type="text" id="discord-channel-id" class="preference-input" placeholder="Channel ID (optional with webhook)" />
+            <small>Default Discord channel ID for bot messages. Not needed if using webhook.</small>
+          </div>
+          <div class="preference-item">
+            <label for="discord-username">Username Override</label>
+            <input type="text" id="discord-username" class="preference-input" placeholder="VirtualDeck" />
+            <small>Display name for webhook messages (webhook mode only)</small>
+          </div>
+        </div>
+
+        <!-- Macros Section -->
+        <div class="preferences-section">
+          <h3>Macros</h3>
+          <div class="preference-item">
+            <button id="preferences-macros-manage" class="preference-button">Manage Macros</button>
+            <small>Create and edit macro sequences (voice phrase or button → ordered tool steps)</small>
+          </div>
+        </div>
+
         <!-- Security Section -->
         <div class="preferences-section">
           <h3>Security</h3>
@@ -1383,6 +1417,69 @@
         <div class="preferences-actions">
           <button type="button" id="save-preferences" class="preference-button primary">Save Preferences</button>
           <button type="button" id="cancel-preferences" class="preference-button">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Macros Manager Modal -->
+  <div id="macros-modal" class="hidden">
+    <div class="modal-content preferences-modal-content">
+      <div class="modal-header">
+        <h2>Macro Manager</h2>
+        <button id="macros-modal-close" class="modal-close">✕</button>
+      </div>
+      <div class="macros-content">
+        <div class="macros-toolbar">
+          <button id="add-macro-btn" class="preference-button primary">+ New Macro</button>
+        </div>
+        <div id="macros-list" class="macros-list">
+          <!-- Macros will be populated here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Macro Edit Modal -->
+  <div id="macro-edit-modal" class="hidden">
+    <div class="modal-content preferences-modal-content">
+      <div class="modal-header">
+        <h2 id="macro-edit-title">Edit Macro</h2>
+        <button id="macro-edit-close" class="modal-close">✕</button>
+      </div>
+      <div class="macro-edit-content">
+        <div class="preference-item">
+          <label for="macro-name">Macro Name</label>
+          <input type="text" id="macro-name" class="preference-input" placeholder="Going Live" required />
+        </div>
+        <div class="preference-item">
+          <label for="macro-description">Description</label>
+          <input type="text" id="macro-description" class="preference-input" placeholder="Prepare stream for going live" />
+        </div>
+        <div class="preference-item">
+          <label for="macro-phrase">Voice Trigger Phrase</label>
+          <input type="text" id="macro-phrase" class="preference-input" placeholder="raven we are going live" />
+          <small>The exact phrase that will trigger this macro (case-insensitive)</small>
+        </div>
+        <div class="preference-item">
+          <label>
+            <input type="checkbox" id="macro-enabled" checked />
+            Enabled
+          </label>
+        </div>
+
+        <div class="preference-item">
+          <h4>Steps</h4>
+          <div id="macro-steps-list" class="macro-steps-list">
+            <!-- Steps will be added here -->
+          </div>
+          <button id="add-step-btn" class="preference-button">+ Add Step</button>
+        </div>
+
+        <div class="preferences-actions">
+          <button type="button" id="save-macro-btn" class="preference-button primary">Save Macro</button>
+          <button type="button" id="delete-macro-btn" class="preference-button danger">Delete</button>
+          <button type="button" id="cancel-macro-btn" class="preference-button">Cancel</button>
         </div>
       </div>
     </div>
@@ -2356,6 +2453,7 @@
   <script src="meldClient.js"></script>
   <script src="AddEditButtonForm.js"></script>
   <script src="script.js"></script>
+  <script src="macros-ui.js"></script>
   <script src="../TwitchConnected/tc.js"></script>
 </body>
 </html> 

@@ -5001,3 +5001,241 @@ body.resizing-chat * {
 .overlay-actions .preview-btn:hover {
   background: var(--info-hover);
 }
+
+/* ============================================================================
+ * Macros UI Styles
+ * ============================================================================ */
+
+.macros-content {
+  padding: 20px;
+}
+
+.macros-toolbar {
+  margin-bottom: 20px;
+}
+
+.macros-list {
+  display: grid;
+  gap: 16px;
+}
+
+.macro-card {
+  background: var(--bg-secondary, #2a2a2a);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 8px;
+  padding: 16px;
+  transition: all 0.2s ease;
+}
+
+.macro-card:hover {
+  border-color: var(--accent, #6366f1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.macro-card.disabled {
+  opacity: 0.6;
+}
+
+.macro-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.macro-card-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #ffffff);
+}
+
+.macro-status {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--success-color, #22c55e);
+  color: white;
+}
+
+.macro-card.disabled .macro-status {
+  background: var(--text-tertiary, #666);
+}
+
+.macro-description {
+  font-size: 14px;
+  color: var(--text-secondary, #aaa);
+  margin: 8px 0;
+}
+
+.macro-trigger {
+  font-size: 13px;
+  color: var(--text-secondary, #aaa);
+  margin: 8px 0;
+}
+
+.macro-trigger strong {
+  color: var(--accent, #6366f1);
+}
+
+.macro-steps-count {
+  font-size: 12px;
+  color: var(--text-tertiary, #888);
+  margin: 8px 0;
+}
+
+.macro-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.no-macros {
+  text-align: center;
+  color: var(--text-secondary, #aaa);
+  padding: 40px 20px;
+  font-size: 14px;
+}
+
+/* Macro Editor Styles */
+
+.macro-edit-content {
+  padding: 20px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.macro-edit-content .preference-item {
+  margin-bottom: 20px;
+}
+
+.macro-steps-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.no-steps {
+  text-align: center;
+  color: var(--text-secondary, #aaa);
+  padding: 20px;
+  font-size: 14px;
+  background: var(--bg-tertiary, #1a1a1a);
+  border-radius: 6px;
+}
+
+.macro-step-card {
+  background: var(--bg-tertiary, #1a1a1a);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.step-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.step-number {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent, #6366f1);
+}
+
+.step-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.step-btn {
+  background: var(--bg-secondary, #2a2a2a);
+  border: 1px solid var(--border-color, #444);
+  color: var(--text-primary, #ffffff);
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.step-btn:hover {
+  background: var(--accent, #6366f1);
+  border-color: var(--accent, #6366f1);
+}
+
+.step-btn.danger {
+  background: var(--danger-color, #ef4444);
+  border-color: var(--danger-color, #ef4444);
+}
+
+.step-btn.danger:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+.step-tool-select {
+  width: 100%;
+  padding: 8px;
+  background: var(--bg-secondary, #2a2a2a);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  color: var(--text-primary, #ffffff);
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.step-args {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.step-arg-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-arg-group label {
+  min-width: 100px;
+  font-size: 13px;
+  color: var(--text-secondary, #aaa);
+}
+
+.step-arg-input {
+  flex: 1;
+  padding: 6px 10px;
+  background: var(--bg-secondary, #2a2a2a);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  color: var(--text-primary, #ffffff);
+  font-size: 13px;
+}
+
+.step-description-input {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--bg-secondary, #2a2a2a);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  color: var(--text-secondary, #aaa);
+  font-size: 12px;
+  font-style: italic;
+  margin-top: 8px;
+}
+
+.preference-button.small {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.preference-button.danger {
+  background: var(--danger-color, #ef4444);
+}
+
+.preference-button.danger:hover {
+  background: #dc2626;
+}
