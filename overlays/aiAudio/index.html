@@ -12,6 +12,11 @@
     const overlayName = 'aiAudio';
     let current = null;
 
+    // When loaded with ?preview=1 we're the dashboard preview — never play audio (only OBS overlay should)
+    const urlParams = new URLSearchParams(window.location.search || '');
+    const IS_PREVIEW = urlParams.get('preview') === '1';
+    if (IS_PREVIEW) console.log('🔇 AI Audio overlay running as preview — audio disabled');
+
     function wsUrl() {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       return proto + '//' + location.host + '?overlay=' + encodeURIComponent(overlayName);
@@ -26,6 +31,10 @@
 
     function playUrl(url, volume) {
       if (!url) return;
+      if (IS_PREVIEW) {
+        console.log('🔇 AI Audio blocked in preview mode — not playing:', url);
+        return;
+      }
       stopCurrent();
       const audio = new Audio(url);
       audio.volume = Math.max(0, Math.min(1, typeof volume === 'number' ? volume : 1));
