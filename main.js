@@ -29,6 +29,8 @@ const VTuberManager = require('./vtuber-manager');
 const { stopStreamlabsStreamingIfLive } = require('./streamlabs-tcp');
 const ravenHost = require('./raven-host');
 const SecurityManager = require('./lib/security');
+const { JarvisServer } = require('./jarvis-server');
+const { registry: jarvisRegistry } = require('./jarvis-tools');
 
 // Configure auto-updater
 autoUpdater.autoDownload = false; // Don't auto-download, ask user first
@@ -674,6 +676,7 @@ let overlayWSS;
 let overlayClients = new Set();
 let overlayRegistry = new Map(); // overlayName -> Set of WebSocket connections
 let overlayServerPort;
+let jarvisServer = null;
 
 function createWindow() {
   win = new BrowserWindow({
@@ -1131,6 +1134,39 @@ function startOverlayServer() {
   }
 
   tryStartServer(port);
+}
+
+// Start JARVIS tool server
+async function startJarvisServer() {
+  try {
+    const jarvisPort = process.env.JARVIS_PORT || 8081;
+    const jarvisHost = process.env.JARVIS_HOST || '127.0.0.1';
+    const jarvisToken = process.env.JARVIS_TOKEN || null;
+
+    if (!jarvisToken) {
+      console.log('[JARVIS] ⚠️  No JARVIS_TOKEN set - API will be open on localhost');
+      console.log('[JARVIS] Set JARVIS_TOKEN env var to require authentication');
+    }
+
+    jarvisServer = new JarvisServer({
+      port: jarvisPort,
+      host: jarvisHost,
+      token: jarvisToken
+    });
+
+    // Provide context to tool registry
+    jarvisRegistry.setContext({
+      win,
+      twitchClient,
+      config: loadedConfig,
+      triggerButtonFn: triggerButtonWithDebounce
+    });
+
+    await jarvisServer.start();
+    console.log(`[JARVIS] ✅ Tool API ready at http://${jarvisHost}:${jarvisPort}/jarvis/tools`);
+  } catch (error) {
+    console.error('[JARVIS] ❌ Failed to start tool server:', error);
+  }
 }
 
 // VTuber API handler
@@ -4725,6 +4761,7 @@ app.whenReady().then(() => {
   createWindow();
   registerHotkeys();
   startOverlayServer();
+  startJarvisServer();
   ravenHost.maybeAutoStart();
   
   // Setup and check for updates on startup (delay by 3 seconds to let app initialize)
@@ -5257,3 +5294,20 @@ ipcMain.on('twitch-clear-creds', async (event) => {
     console.error('Error handling twitch-clear-creds:', err);
   }
 });
+
+// JARVIS API IPC handlers - for renderer to respond to tool calls
+ipcMain.on('jarvis-scenes-response', (event, scenes) => {
+  // This is handled by the get_scenes tool promise
+});
+
+// Update JARVIS context when config or connections change
+function updateJarvisContext() {
+  if (jarvisRegistry) {
+    jarvisRegistry.setContext({
+      win,
+      twitchClient,
+      config: loadedConfig,
+      triggerButtonFn: triggerButtonWithDebounce
+    });
+  }
+}
