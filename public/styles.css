@@ -745,9 +745,14 @@ html[data-theme], body[data-theme] {
   border-color: #dc3545;
 }
 
-/* AI Management Panel - HIDDEN (integrated into dashboard instead) */
+/* AI Management Panel */
 .ai-management-panel {
-  display: none !important;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 12px 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* AI Dashboard Controls - Compact Integration */

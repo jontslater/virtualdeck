@@ -51,6 +51,7 @@
           <button data-toggle="toggle-sound-controls" class="menu-dropdown-item" role="menuitem">Sound Controls</button>
           <button data-toggle="toggle-queue-control" class="menu-dropdown-item" role="menuitem">Alert Queue</button>
           <button data-toggle="toggle-profile-panel" class="menu-dropdown-item" role="menuitem">Profile Panel</button>
+          <button data-toggle="toggle-ai-management-panel" class="menu-dropdown-item" role="menuitem">AI Audio Settings</button>
         </div>
       </div>
     </div>
@@ -115,6 +116,7 @@
       <input type="checkbox" id="toggle-sound-controls" checked style="display: none;">
       <input type="checkbox" id="toggle-queue-control" checked style="display: none;">
       <input type="checkbox" id="toggle-profile-panel" checked style="display: none;">
+      <input type="checkbox" id="toggle-ai-management-panel" checked style="display: none;">
       
       <!-- Hidden buttons that View menu delegates to -->
       <button id="hide-all-components" style="display: none;">Hide All</button>
@@ -203,21 +205,14 @@
     <div id="ai-management-panel" class="ai-management-panel">
       <div class="ai-management-header">
         <span class="ai-management-icon">🤖</span>
-        <span class="ai-management-title">AI Control</span>
+        <span class="ai-management-title">AI Audio Settings</span>
       </div>
       
-      <!-- AI On/Off Toggle -->
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 2px solid var(--accent-primary);">
-        <div style="flex: 1;">
-          <div style="font-size: 11px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">AI System</div>
-          <div id="ai-dashboard-toggle-status" style="font-size: 9px; color: var(--text-secondary);">Active</div>
+      <!-- Note about toggle location -->
+      <div style="margin-bottom: 12px; padding: 10px; background: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 11px; color: var(--text-secondary);">
+          💡 Use the <strong>AI System toggle and mode selector</strong> in the compact dashboard above to control AI on/off and modes.
         </div>
-        <label id="ai-dashboard-toggle-container" style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-          <span id="ai-dashboard-toggle-label" style="font-size: 11px; font-weight: 700; color: var(--accent-primary); min-width: 30px; text-align: right;">ON</span>
-          <div id="ai-dashboard-toggle-switch" style="position: relative; width: 40px; height: 22px; background: var(--accent-primary); border-radius: 11px; transition: all 0.3s ease; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-            <div style="position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; background: white; border-radius: 50%; transition: all 0.3s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>
-          </div>
-        </label>
       </div>
       
       <div class="ai-management-current">
