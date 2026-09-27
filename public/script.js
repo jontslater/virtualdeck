@@ -2648,9 +2648,8 @@ function getVisibilityMap() {
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
     'toggle-queue-control': 'queue-control-widget',
-    'toggle-profile-panel': 'profile-panel',
-    'toggle-ai-management-panel': 'ai-management-panel'
-    // move-bar removed
+    'toggle-profile-panel': 'profile-panel'
+    // AI Management Panel removed - integrated into compact dashboard
   };
 }
 
@@ -2946,9 +2945,8 @@ function applyVisibilityPrefs() {
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
     'toggle-queue-control': 'queue-control-widget',
-    'toggle-profile-panel': 'profile-panel',
-    'toggle-ai-management-panel': 'ai-management-panel'
-    // move-bar removed
+    'toggle-profile-panel': 'profile-panel'
+    // AI Management Panel removed - integrated into compact dashboard
   };
 
   let prefs = {};
@@ -7446,117 +7444,13 @@ function setupOverlayWidget() {
     updateAIManagementStatus();
   }
   
-  // Setup AI On/Off Toggle (Dashboard)
+  // Setup AI On/Off Toggle (Dashboard) - DISABLED
+  // This toggle is in the AI Management Panel which is hidden (CSS: display: none !important)
+  // The actual working toggle is in setupCompactAIDashboard()
   function setupAIDashboardToggle() {
-    console.log('🔌 Setting up AI Dashboard Toggle');
-    
-    const toggleSwitch = document.getElementById('ai-dashboard-toggle-switch');
-    const toggleContainer = document.getElementById('ai-dashboard-toggle-container');
-    const toggleLabel = document.getElementById('ai-dashboard-toggle-label');
-    const toggleStatus = document.getElementById('ai-dashboard-toggle-status');
-    
-    if (!toggleSwitch || !toggleContainer) {
-      console.warn('⚠️ Dashboard toggle elements not found');
-      return;
-    }
-    
-    // Check current mode on load
-    checkAIDashboardMode();
-    
-    // Update toggle every 2 seconds to stay in sync
-    setInterval(checkAIDashboardMode, 2000);
-    
-    // Click handler for the toggle
-    toggleContainer.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      // Get current state from the switch style
-      const isCurrentlyOn = toggleSwitch.style.background === 'var(--accent-primary)' || 
-                           toggleSwitch.style.background.includes('rgb') ||
-                           toggleSwitch.style.background === '';
-      const isOn = !isCurrentlyOn;
-      
-      try {
-        console.log(`🔌 ${isOn ? 'Turning AI ON' : 'Turning AI OFF'}...`);
-        
-        // Set mode to MUTED if turning off, or JUST_CHATTING if turning on
-        const mode = isOn ? 'JUST_CHATTING' : 'MUTED';
-        
-        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode }),
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Failed to ${isOn ? 'enable' : 'disable'} AI: ${response.statusText}`);
-        }
-        
-        const result = await response.json();
-        console.log(`✅ AI ${isOn ? 'enabled' : 'disabled'}:`, result);
-        
-        // Update UI
-        updateDashboardToggleUI(isOn);
-        
-      } catch (err) {
-        console.error(`❌ Error ${isOn ? 'enabling' : 'disabling'} AI:`, err);
-        alert(`Error ${isOn ? 'enabling' : 'disabling'} AI: ${err instanceof Error ? err.message : String(err)}`);
-        // Revert toggle on error
-        updateDashboardToggleUI(!isOn);
-      }
-    });
-    
-    // Update toggle UI based on state
-    function updateDashboardToggleUI(isOn) {
-      if (toggleSwitch) {
-        if (isOn) {
-          // ON state - green/primary color, slider on right
-          toggleSwitch.style.background = 'var(--accent-primary)';
-          const slider = toggleSwitch.querySelector('div');
-          if (slider) {
-            slider.style.left = '20px'; // Move to right (40px width - 18px slider - 2px margin)
-          }
-        } else {
-          // OFF state - gray/error color, slider on left
-          toggleSwitch.style.background = 'var(--error-color)';
-          const slider = toggleSwitch.querySelector('div');
-          if (slider) {
-            slider.style.left = '2px'; // Move to left
-          }
-        }
-      }
-      if (toggleLabel) {
-        toggleLabel.textContent = isOn ? 'ON' : 'OFF';
-        toggleLabel.style.color = isOn ? 'var(--accent-primary)' : 'var(--error-color)';
-      }
-      if (toggleStatus) {
-        toggleStatus.textContent = isOn ? 'Active' : 'Muted';
-        toggleStatus.style.color = isOn ? 'var(--success-color)' : 'var(--error-color)';
-      }
-    }
-    
-    // Check current AI mode
-    async function checkAIDashboardMode() {
-      try {
-        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
-        if (response.ok) {
-          const data = await response.json();
-          const isMuted = data.mode === 'MUTED';
-          
-          updateDashboardToggleUI(!isMuted);
-          
-          // Update mode selector if it exists
-          const modeSelector = document.getElementById('ai-mode-selector');
-          if (modeSelector && data.mode && modeSelector.value !== data.mode) {
-            modeSelector.value = data.mode;
-          }
-        }
-      } catch (err) {
-        // Silently fail - API might not be available
-        console.debug('Could not check AI mode:', err);
-      }
-    }
+    console.log('🔌 AI Dashboard Toggle setup skipped (panel is hidden)');
+    // Original implementation removed - AI Management Panel is not visible
+    // See setupCompactAIDashboard() for the active toggle
   }
   
   // Setup Compact AI Dashboard Controls
@@ -7574,17 +7468,8 @@ function setupOverlayWidget() {
       return;
     }
     
-    // Sync mode selector with existing AI mode selector
-    const syncModeSelectors = () => {
-      const aiModeSelector = document.getElementById('ai-mode-selector');
-      if (aiModeSelector && dashboardMode.value !== aiModeSelector.value) {
-        dashboardMode.value = aiModeSelector.value;
-      }
-    };
-    
-    // Check current mode on load
-    syncModeSelectors();
-    setInterval(syncModeSelectors, 2000);
+    // Load initial state from API once on startup
+    loadInitialAIState();
     
     // Toggle handler
     dashboardToggle.addEventListener('click', async (e) => {
@@ -7609,11 +7494,11 @@ function setupOverlayWidget() {
           throw new Error(`Failed to toggle AI: ${response.statusText}`);
         }
         
-        // Update UI
-        dashboardToggleLabel.textContent = isOn ? 'ON' : 'OFF';
-        dashboardToggle.classList.toggle('off', !isOn);
+        // Update UI immediately
+        updateToggleUI(isOn);
+        dashboardMode.value = mode;
         
-        // Sync with main selector
+        // Sync with main selector if it exists
         const aiModeSelector = document.getElementById('ai-mode-selector');
         if (aiModeSelector) {
           aiModeSelector.value = mode;
@@ -7621,6 +7506,7 @@ function setupOverlayWidget() {
         
       } catch (err) {
         console.error('❌ Error toggling AI:', err);
+        alert(`Failed to ${isOn ? 'enable' : 'disable'} AI: ${err.message}`);
       }
     });
     
@@ -7639,21 +7525,112 @@ function setupOverlayWidget() {
           throw new Error(`Failed to set AI mode: ${response.statusText}`);
         }
         
-        // Sync with main selector
+        // Sync with main selector if it exists
         const aiModeSelector = document.getElementById('ai-mode-selector');
         if (aiModeSelector) {
           aiModeSelector.value = mode;
         }
         
-        // Update toggle state
+        // Update toggle state based on mode
         const isMuted = mode === 'MUTED';
-        dashboardToggleLabel.textContent = isMuted ? 'OFF' : 'ON';
-        dashboardToggle.classList.toggle('off', isMuted);
+        updateToggleUI(!isMuted);
         
       } catch (err) {
         console.error('❌ Error setting AI mode:', err);
+        alert(`Failed to set AI mode: ${err.message}`);
       }
     });
+    
+    // Update toggle UI helper
+    function updateToggleUI(isOn) {
+      dashboardToggleLabel.textContent = isOn ? 'ON' : 'OFF';
+      dashboardToggle.classList.toggle('off', !isOn);
+    }
+    
+    // Load initial AI state from API
+    async function loadInitialAIState() {
+      try {
+        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
+        if (response.ok) {
+          const data = await response.json();
+          const isMuted = data.mode === 'MUTED';
+          updateToggleUI(!isMuted);
+          if (data.mode) {
+            dashboardMode.value = data.mode;
+          }
+        }
+      } catch (err) {
+        console.debug('Could not load initial AI state:', err);
+      }
+    }
+    
+    // Connection status monitoring
+    const connectionStatusDot = document.getElementById('ai-connection-status');
+    const connectionStatusLabel = document.getElementById('ai-connection-label');
+    let lastConnectionCheck = 0;
+    let connectionCheckInterval = null;
+    
+    async function checkConnectionStatus() {
+      const now = Date.now();
+      // Throttle checks to once every 3 seconds
+      if (now - lastConnectionCheck < 3000) return;
+      lastConnectionCheck = now;
+      
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+        
+        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          updateConnectionStatus('connected');
+        } else {
+          updateConnectionStatus('disconnected');
+        }
+      } catch (err) {
+        updateConnectionStatus('disconnected');
+      }
+    }
+    
+    function updateConnectionStatus(status) {
+      if (!connectionStatusDot || !connectionStatusLabel) return;
+      
+      // Remove all status classes
+      connectionStatusDot.classList.remove('connected', 'disconnected', 'checking');
+      connectionStatusLabel.classList.remove('connected', 'disconnected', 'checking');
+      
+      // Add current status class
+      connectionStatusDot.classList.add(status);
+      connectionStatusLabel.classList.add(status);
+      
+      // Update label text
+      if (status === 'connected') {
+        connectionStatusLabel.textContent = 'Connected';
+      } else if (status === 'disconnected') {
+        connectionStatusLabel.textContent = 'Disconnected';
+      } else {
+        connectionStatusLabel.textContent = 'Checking...';
+      }
+    }
+    
+    // Initial connection check
+    checkConnectionStatus();
+    
+    // Check connection status every 5 seconds
+    connectionCheckInterval = setInterval(checkConnectionStatus, 5000);
+    
+    // Also check after toggle or mode change
+    const originalToggleClick = dashboardToggle.onclick;
+    dashboardToggle.addEventListener('click', () => {
+      setTimeout(checkConnectionStatus, 500);
+    }, { capture: false });
+    
+    dashboardMode.addEventListener('change', () => {
+      setTimeout(checkConnectionStatus, 500);
+    }, { capture: false });
     
     // Say button handler
     if (dashboardSayBtn && dashboardSayText) {

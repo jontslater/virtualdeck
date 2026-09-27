@@ -51,7 +51,6 @@
           <button data-toggle="toggle-sound-controls" class="menu-dropdown-item" role="menuitem">Sound Controls</button>
           <button data-toggle="toggle-queue-control" class="menu-dropdown-item" role="menuitem">Alert Queue</button>
           <button data-toggle="toggle-profile-panel" class="menu-dropdown-item" role="menuitem">Profile Panel</button>
-          <button data-toggle="toggle-ai-management-panel" class="menu-dropdown-item" role="menuitem">AI Management Panel</button>
         </div>
       </div>
     </div>
@@ -116,7 +115,6 @@
       <input type="checkbox" id="toggle-sound-controls" checked style="display: none;">
       <input type="checkbox" id="toggle-queue-control" checked style="display: none;">
       <input type="checkbox" id="toggle-profile-panel" checked style="display: none;">
-      <input type="checkbox" id="toggle-ai-management-panel" checked style="display: none;">
       
       <!-- Hidden buttons that View menu delegates to -->
       <button id="hide-all-components" style="display: none;">Hide All</button>
@@ -412,6 +410,13 @@
           <span class="ai-toggle-label" id="ai-dashboard-toggle-label">ON</span>
           <div class="ai-toggle-switch-bg"></div>
         </label>
+      </div>
+      <div class="ai-control-group">
+        <div class="ai-control-label">
+          Connection
+          <span id="ai-connection-status" class="ai-connection-status" title="AI connection status">●</span>
+        </div>
+        <span id="ai-connection-label" class="ai-connection-label">Checking...</span>
       </div>
       <div class="ai-control-group">
         <div class="ai-control-label">Mode / Segment</div>
