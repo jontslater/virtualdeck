@@ -28,7 +28,7 @@ function info(msg) { log(colors.blue, 'ℹ', msg); }
 function warn(msg) { log(colors.yellow, '⚠', msg); }
 
 // Test configuration
-const JARVIS_URL = 'http://127.0.0.1:8081';
+const JARVIS_URL = 'http://127.0.0.1:8091';
 let authToken = null;
 
 // Load auth token

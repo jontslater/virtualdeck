@@ -12,7 +12,7 @@ JARVIS is VirtualDeck's tool API layer for controlled LLM/AI agent integration. 
 
 Add to `.env` (or use defaults):
 ```env
-JARVIS_PORT=8081
+JARVIS_PORT=8091
 JARVIS_HOST=127.0.0.1
 JARVIS_TOKEN=your-secret-token-here
 ```
@@ -23,18 +23,18 @@ JARVIS server starts automatically when VirtualDeck launches.
 
 Look for console output:
 ```
-[JARVIS Server] Listening on http://127.0.0.1:8081
-[JARVIS Server] WebSocket endpoint: ws://127.0.0.1:8081/jarvis/ws
+[JARVIS Server] Listening on http://127.0.0.1:8091
+[JARVIS Server] WebSocket endpoint: ws://127.0.0.1:8091/jarvis/ws
 ```
 
 ### 3. Test It
 
 ```bash
 # List available tools
-curl http://127.0.0.1:8081/jarvis/tools
+curl http://127.0.0.1:8091/jarvis/tools
 
 # Get stream status
-curl -X POST http://127.0.0.1:8081/jarvis/invoke \
+curl -X POST http://127.0.0.1:8091/jarvis/invoke \
   -H "Content-Type: application/json" \
   -d '{"tool": "get_stream_status", "arguments": {}}'
 ```
@@ -58,7 +58,7 @@ curl -X POST http://127.0.0.1:8081/jarvis/invoke \
 ## Example: Change Scene
 
 ```bash
-curl -X POST http://127.0.0.1:8081/jarvis/invoke \
+curl -X POST http://127.0.0.1:8091/jarvis/invoke \
   -H "Content-Type: application/json" \
   -d '{
     "tool": "change_scene",
@@ -83,7 +83,7 @@ Response:
 ## Example: Play Sound
 
 ```bash
-curl -X POST http://127.0.0.1:8081/jarvis/invoke \
+curl -X POST http://127.0.0.1:8091/jarvis/invoke \
   -H "Content-Type: application/json" \
   -d '{
     "tool": "play_sound",
@@ -96,7 +96,7 @@ curl -X POST http://127.0.0.1:8081/jarvis/invoke \
 ## Example: Send Twitch Message
 
 ```bash
-curl -X POST http://127.0.0.1:8081/jarvis/invoke \
+curl -X POST http://127.0.0.1:8091/jarvis/invoke \
   -H "Content-Type: application/json" \
   -d '{
     "tool": "send_twitch_message",
@@ -111,7 +111,7 @@ curl -X POST http://127.0.0.1:8081/jarvis/invoke \
 ### 1. Tool Discovery
 
 ```javascript
-const tools = await fetch('http://127.0.0.1:8081/jarvis/tools')
+const tools = await fetch('http://127.0.0.1:8091/jarvis/tools')
   .then(r => r.json());
 // Returns: { tools: [...], count: 11 }
 ```
@@ -119,7 +119,7 @@ const tools = await fetch('http://127.0.0.1:8081/jarvis/tools')
 ### 2. Tool Invocation
 
 ```javascript
-const result = await fetch('http://127.0.0.1:8081/jarvis/invoke', {
+const result = await fetch('http://127.0.0.1:8091/jarvis/invoke', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -152,7 +152,7 @@ Or on error:
 For streaming/real-time updates:
 
 ```javascript
-const ws = new WebSocket('ws://127.0.0.1:8081/jarvis/ws');
+const ws = new WebSocket('ws://127.0.0.1:8091/jarvis/ws');
 
 ws.onopen = () => {
   ws.send(JSON.stringify({
@@ -201,7 +201,7 @@ node examples/jarvis-client-example.js
 │   (External)    │
 └────────┬────────┘
          │ HTTP/WS
-         │ Port 8081
+         │ Port 8091
          │
 ┌────────▼────────┐
 │ JARVIS Server   │  (jarvis-server.js)
@@ -237,8 +237,8 @@ Phase 2 (Future):
 ## Troubleshooting
 
 **Server won't start**
-- Check if port 8081 is in use
-- Set `JARVIS_PORT=8082` in `.env`
+- Check if port 8091 is in use
+- Set `JARVIS_PORT=8092` in `.env`
 
 **401 Unauthorized**
 - Include `X-Jarvis-Token` header if token is set

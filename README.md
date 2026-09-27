@@ -182,7 +182,7 @@ VirtualDeck now includes **JARVIS**, a tool API layer for controlled LLM/AI agen
 
 ### What It Does
 
-JARVIS provides a localhost HTTP/WebSocket server (default port 8081) that exposes controlled tools:
+JARVIS provides a localhost HTTP/WebSocket server (default port 8091) that exposes controlled tools:
 - ✅ Launch applications
 - ✅ Switch Meld Studio scenes
 - ✅ Trigger VirtualDeck buttons/sounds
@@ -194,10 +194,10 @@ JARVIS provides a localhost HTTP/WebSocket server (default port 8081) that expos
 
 ```bash
 # List available tools
-curl http://127.0.0.1:8081/jarvis/tools
+curl http://127.0.0.1:8091/jarvis/tools
 
 # Change scene
-curl -X POST http://127.0.0.1:8081/jarvis/invoke \
+curl -X POST http://127.0.0.1:8091/jarvis/invoke \
   -H "Content-Type: application/json" \
   -d '{"tool": "change_scene", "arguments": {"sceneName": "BRB Scene"}}'
 ```
@@ -213,7 +213,7 @@ curl -X POST http://127.0.0.1:8081/jarvis/invoke \
 
 Optional `.env` configuration:
 ```env
-JARVIS_PORT=8081
+JARVIS_PORT=8091
 JARVIS_HOST=127.0.0.1
 JARVIS_TOKEN=your-secret-token-here
 ```

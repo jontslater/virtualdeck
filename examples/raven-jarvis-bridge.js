@@ -19,11 +19,11 @@ const http = require('http');
 class RavenJarvisBridge {
   /**
    * @param {object} options
-   * @param {string} options.baseUrl - JARVIS API base URL (default: http://127.0.0.1:8081)
+   * @param {string} options.baseUrl - JARVIS API base URL (default: http://127.0.0.1:8091)
    * @param {string} options.token - Auth token (auto-loaded from .vd-auth-token if not provided)
    */
   constructor(options = {}) {
-    this.baseUrl = options.baseUrl || process.env.JARVIS_URL || 'http://127.0.0.1:8081';
+    this.baseUrl = options.baseUrl || process.env.JARVIS_URL || 'http://127.0.0.1:8091';
     
     // Auto-load token from .vd-auth-token if not provided
     if (options.token) {

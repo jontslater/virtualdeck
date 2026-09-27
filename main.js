@@ -1140,7 +1140,7 @@ function startOverlayServer() {
 // Start JARVIS tool server
 async function startJarvisServer() {
   try {
-    const jarvisPort = process.env.JARVIS_PORT || 8081;
+    const jarvisPort = process.env.JARVIS_PORT || 8091;
     const jarvisHost = process.env.JARVIS_HOST || '127.0.0.1';
     
     // Use JARVIS_TOKEN env var if set, otherwise fall back to shared .vd-auth-token
