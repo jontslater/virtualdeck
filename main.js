@@ -770,7 +770,8 @@ function startOverlayServer() {
     
     // Check if this is a control/API endpoint that requires auth
     const requiresAuth = req.url && (
-      req.url.startsWith('/api/vtuber/') && req.method !== 'GET' // Only protect write operations
+      (req.url.startsWith('/api/vtuber/') && req.method !== 'GET') || // Only protect write operations
+      req.url.startsWith('/api/ai/') // Protect all AI config endpoints (includes GET /api/ai/voices)
     );
     
     // Validate token for protected endpoints

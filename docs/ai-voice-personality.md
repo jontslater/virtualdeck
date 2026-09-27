@@ -82,23 +82,34 @@ Expand the "Advanced: Raw Prompt" section to enter a custom system prompt that o
 
 VirtualDeck provides the following HTTP API endpoints on port 8080:
 
-- `GET /api/ai/voices` - Fetch available voices from ElevenLabs
-- `POST /api/ai/voice` - Save selected voice ID
+**All endpoints require authentication** via one of:
+- `X-VD-Auth: <token>` header
+- `Authorization: Bearer <token>` header
+- `?token=<token>` query parameter
+
+Token is stored in `.vd-auth-token` in user data folder.
+
+**Endpoints:**
+
+- `GET /api/ai/voices` - Fetch available voices from ElevenLabs (requires auth to protect API quota)
+- `POST /api/ai/voice` - Save selected voice ID (requires auth)
   - Body: `{ "voiceId": "...", "voiceName": "..." }`
-- `GET /api/ai/personality` - Get saved personality config
-- `POST /api/ai/personality` - Save personality settings
+- `GET /api/ai/personality` - Get saved personality config (requires auth)
+- `POST /api/ai/personality` - Save personality settings (requires auth)
   - Body: `{ "personality": {...}, "prompt": "..." }`
 
 ### Configuration Storage
 
-All settings are persisted to `raven.env` in the user data directory:
+All settings are persisted to `raven.env` in the user data directory.
+
+**Safe Writing**: Values containing spaces, newlines, or special characters are automatically quoted and escaped to prevent env file corruption. Multi-line personality prompts are stored as single-line escaped strings.
 
 ```env
 # Voice configuration
 TTS_VOICE_ID=abc123...
 
-# Personality configuration
-AI_PERSONALITY_PROMPT=You are friendly and warm...
+# Personality configuration (quoted/escaped if contains special chars)
+AI_PERSONALITY_PROMPT="You are friendly and warm, maintaining a balanced energy level.\nYou use moderate humor to keep things fun."
 # AI_PERSONALITY_CONFIG={"tone":"friendly","energy":"medium",...}
 ```
 
@@ -150,10 +161,15 @@ If Raven needs updates to honor these settings:
 
 ### Security
 
+- **Authentication required**: All `/api/ai/*` endpoints require `.vd-auth-token` authentication
+  - Protects against unauthorized config changes
+  - Protects ElevenLabs API quota (GET `/api/ai/voices` requires auth)
 - API keys are **never** hardcoded or bundled
 - Users must provide their own keys (BYOK)
 - `TTS_API_KEY` is read from user data folder only
 - Voice API requests go through VirtualDeck backend (keys not exposed to frontend)
+- Frontend uses `electronAPI.getAuthToken()` to retrieve token securely
+- Same auth mechanism as other VirtualDeck overlay/API endpoints
 
 ### Future Enhancements
 

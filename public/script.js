@@ -7147,6 +7147,22 @@ function setupOverlayWidget() {
     const voiceStatus = document.getElementById('ai-voice-status');
     const VOICE_CONFIG_KEY = 'VD_AI_VOICE_CONFIG';
 
+    // Helper: Get auth headers for AI config API calls
+    async function getAIConfigAuthHeaders() {
+      try {
+        if (window.electronAPI && window.electronAPI.getAuthToken) {
+          const token = await window.electronAPI.getAuthToken();
+          return {
+            'Content-Type': 'application/json',
+            'X-VD-Auth': token
+          };
+        }
+      } catch (err) {
+        console.warn('Could not get auth token:', err);
+      }
+      return { 'Content-Type': 'application/json' };
+    }
+
     function readSavedVoice() {
       try {
         return JSON.parse(localStorage.getItem(VOICE_CONFIG_KEY) || '{}') || {};
@@ -7155,18 +7171,21 @@ function setupOverlayWidget() {
       }
     }
 
-    function saveVoiceChoice(voiceId, voiceName) {
+    async function saveVoiceChoice(voiceId, voiceName) {
       const payload = { voiceId: voiceId || '', voiceName: voiceName || '' };
       try { localStorage.setItem(VOICE_CONFIG_KEY, JSON.stringify(payload)); } catch (e) {}
       
-      // Send to backend API to update raven.env (uses VirtualDeck overlay server)
-      fetch('http://localhost:8080/api/ai/voice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voiceId: voiceId || '', voiceName: voiceName || '' }),
-      }).catch((err) => {
+      // Send to backend API to update raven.env (uses VirtualDeck overlay server with auth)
+      try {
+        const headers = await getAIConfigAuthHeaders();
+        await fetch('http://localhost:8080/api/ai/voice', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({ voiceId: voiceId || '', voiceName: voiceName || '' }),
+        });
+      } catch (err) {
         console.warn('Failed to save voice to backend:', err);
-      });
+      }
     }
 
     async function loadVoices(opts) {
@@ -7178,8 +7197,12 @@ function setupOverlayWidget() {
       if (voiceStatus && !quiet) voiceStatus.textContent = 'Fetching voices from ElevenLabs…';
       
       try {
-        // Use VirtualDeck overlay server API (port 8080)
-        const res = await fetch('http://localhost:8080/api/ai/voices');
+        // Use VirtualDeck overlay server API (port 8080) with auth
+        const headers = await getAIConfigAuthHeaders();
+        const res = await fetch('http://localhost:8080/api/ai/voices', {
+          method: 'GET',
+          headers: headers
+        });
         if (!res.ok) {
           const raw = await res.text().catch(() => '');
           throw new Error(raw || `HTTP ${res.status}`);
@@ -7346,10 +7369,11 @@ function setupOverlayWidget() {
       const finalPrompt = config.rawPrompt || composePersonalityPrompt(config.tone, config.energy, config.humor, config.role);
       
       try {
-        // Use VirtualDeck overlay server API (port 8080)
+        // Use VirtualDeck overlay server API (port 8080) with auth
+        const headers = await getAIConfigAuthHeaders();
         const res = await fetch('http://localhost:8080/api/ai/personality', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: headers,
           body: JSON.stringify({ 
             personality: config,
             prompt: finalPrompt
