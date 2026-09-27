@@ -46,7 +46,8 @@ A **macro** is a named sequence of allowlisted JARVIS tool steps that execute in
 **Phrase:** "raven we are going live"  
 **Steps:**
 1. **change_scene** → `sceneName: "Starting Soon"`
-2. **discord_announce_live** → `includeStreamInfo: true`
+2. **refresh_browser_sources** → `waitForSceneName: "Starting Soon"` (waits for scene change to complete)
+3. **discord_announce_live** → `includeStreamInfo: true`
 
 ### Example: Post Clip Macro
 
@@ -63,6 +64,7 @@ Macros can use these allowlisted JARVIS tools:
 | Tool | Description | Arguments |
 |------|-------------|-----------|
 | `change_scene` | Switch Meld/OBS scene | `sceneName` |
+| `refresh_browser_sources` | Refresh browser sources in current Meld scene | `layerName` (optional) |
 | `play_sound` | Play a sound | `name` |
 | `send_twitch_message` | Send Twitch chat message | `text` |
 | `discord_send_message` | Send Discord message | `message` |
@@ -72,6 +74,75 @@ Macros can use these allowlisted JARVIS tools:
 | `launch_app` | Launch an application | `nameOrPath` |
 | `get_scenes` | Get list of scenes (data only) | none |
 | `get_stream_status` | Get stream status (data only) | none |
+
+## Meld Studio Integration
+
+### `refresh_browser_sources`
+
+Refreshes browser sources in the current Meld Studio scene by toggling their visibility (hide then show). This is useful for forcing browser sources to reload their content, such as overlays, web dashboards, or dynamic widgets.
+
+**Arguments:**
+- `layerName` (optional): Name of a specific browser source layer to refresh. If not provided, all browser sources in the current scene will be refreshed.
+- `waitForSceneName` (optional): Scene name to wait for before refreshing. Use this when calling after `change_scene` to ensure the scene change completes before refreshing. Will poll up to 3 seconds for the scene to become active.
+
+**How it works:**
+- Connects to Meld Studio via WebChannel API
+- If `waitForSceneName` is provided, polls until the specified scene is active (avoids race condition with scene changes)
+- Identifies all layers with a `url` property (browser sources) in the current scene
+- Toggles each layer's visibility off, then back on after a brief delay
+- This forces the browser source to reload
+
+**Example: Refresh all browser sources**
+```json
+{
+  "tool": "refresh_browser_sources",
+  "arguments": {}
+}
+```
+
+**Example: Refresh specific browser source**
+```json
+{
+  "tool": "refresh_browser_sources",
+  "arguments": {
+    "layerName": "Chat Overlay"
+  }
+}
+```
+
+**Example: Wait for scene change then refresh**
+```json
+{
+  "tool": "refresh_browser_sources",
+  "arguments": {
+    "waitForSceneName": "Starting Soon"
+  }
+}
+```
+
+**Important: Using with `change_scene`**
+
+When using `refresh_browser_sources` immediately after `change_scene` in a macro, always include `waitForSceneName` to avoid a race condition where the refresh targets the old scene's browser sources instead of the new scene:
+
+```json
+{
+  "steps": [
+    { "tool": "change_scene", "arguments": { "sceneName": "Starting Soon" } },
+    { "tool": "refresh_browser_sources", "arguments": { "waitForSceneName": "Starting Soon" } }
+  ]
+}
+```
+
+**Requirements:**
+- Meld Studio must be running and connected to VirtualDeck
+- Browser sources must exist in the current scene
+- WebChannel API must be available (Meld Studio 1.0+)
+
+**Use Cases:**
+- Refresh chat overlays when going live
+- Reload event list widgets before stream starts
+- Update dynamic overlays with new data
+- Force browser sources to reconnect after network issues
 
 ## Discord Integration
 

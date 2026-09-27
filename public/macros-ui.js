@@ -8,6 +8,7 @@ let availableTools = [];
 // List of JARVIS tools that can be used in macros
 const ALLOWLISTED_TOOLS = [
   { name: 'change_scene', label: 'Change Scene', args: ['sceneName'] },
+  { name: 'refresh_browser_sources', label: 'Refresh Browser Sources', args: ['layerName'] },
   { name: 'play_sound', label: 'Play Sound', args: ['name'] },
   { name: 'send_twitch_message', label: 'Send Twitch Message', args: ['text'] },
   { name: 'discord_send_message', label: 'Send Discord Message', args: ['message'] },
