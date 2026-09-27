@@ -16284,6 +16284,18 @@ function loadPreferences() {
   
   // Update checkboxes
   document.getElementById('auto-update-checkbox').checked = preferences.autoUpdate !== false; // default to true
+  
+  // Load auth token path
+  if (window.electronAPI && window.electronAPI.getAuthTokenPath) {
+    window.electronAPI.getAuthTokenPath().then(tokenPath => {
+      const tokenPathInput = document.getElementById('auth-token-path');
+      if (tokenPathInput) {
+        tokenPathInput.value = tokenPath;
+      }
+    }).catch(err => {
+      console.error('Failed to load auth token path:', err);
+    });
+  }
 }
 
 function savePreferences() {
@@ -16346,6 +16358,27 @@ function initializePreferencesModal() {
   const checkUpdatesBtn = document.getElementById('check-updates-button');
   if (checkUpdatesBtn) {
     checkUpdatesBtn.addEventListener('click', checkForUpdatesFromPreferences);
+  }
+
+  // Copy token path button
+  const copyTokenPathBtn = document.getElementById('copy-token-path');
+  if (copyTokenPathBtn) {
+    copyTokenPathBtn.addEventListener('click', async () => {
+      const tokenPathInput = document.getElementById('auth-token-path');
+      if (tokenPathInput && tokenPathInput.value) {
+        try {
+          await navigator.clipboard.writeText(tokenPathInput.value);
+          if (window.notificationManager) {
+            window.notificationManager.show('Token path copied to clipboard!', 'success');
+          }
+        } catch (err) {
+          console.error('Failed to copy token path:', err);
+          if (window.notificationManager) {
+            window.notificationManager.show('Failed to copy token path', 'error');
+          }
+        }
+      }
+    });
   }
 
   // Twitch Setup button
