@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   disableHotkeys: () => ipcRenderer.send('disable-hotkeys'),
   enableHotkeys: () => ipcRenderer.send('enable-hotkeys'),
   onTriggerMedia: (callback) => ipcRenderer.on('trigger-media', (event, mediaId) => callback(mediaId)),
+  onPlayAiTts: (callback) => ipcRenderer.on('play-ai-tts', (event, payload) => callback(payload)),
   onRefreshUI: (callback) => ipcRenderer.on('refresh-ui', (event) => callback()),
   getConfig: async () => ipcRenderer.invoke('get-config'),
   saveConfig: async (config) => ipcRenderer.invoke('save-config', config),

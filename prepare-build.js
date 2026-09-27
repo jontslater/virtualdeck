@@ -13,6 +13,19 @@ const publicPath = path.join(__dirname, 'public');
 
 console.log('🔧 Preparing VirtualDeck for build...');
 
+const ravenExtra = path.join(__dirname, 'extra', 'raven');
+if (!fs.existsSync(path.join(ravenExtra, 'sidecar.js'))) {
+  fse.ensureDirSync(ravenExtra);
+  const keep = path.join(ravenExtra, 'README.txt');
+  if (!fs.existsSync(keep)) {
+    fs.writeFileSync(
+      keep,
+      'Raven voice AI was not staged. From VirtualDeck run: npm run stage-raven\n'
+    );
+  }
+  console.log('⚠️  extra/raven has no sidecar yet — run npm run stage-raven for the combined installer.');
+}
+
 // Ensure userData directory exists
 fse.ensureDirSync(userDataPath);
 

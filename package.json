@@ -6,8 +6,10 @@
   "scripts": {
     "start": "electron .",
     "prepare-build": "node prepare-build.js",
+    "stage-raven": "powershell -ExecutionPolicy Bypass -File E:\\AIChatBot\\scripts\\stage-raven-runtime.ps1",
     "dist": "npm run prepare-build && electron-builder",
-    "build:win": "npm run prepare-build && electron-builder --win"
+    "build:win": "npm run prepare-build && electron-builder --win",
+    "build:win:with-raven": "npm run stage-raven && npm run build:win"
   },
   "keywords": [
     "electron",
@@ -31,12 +33,22 @@
     "files": [
       "main.js",
       "preload.js",
+      "raven-host.js",
+      "vtuber-manager.js",
+      "streamlabs-tcp.js",
       "config.json",
       "public/**/*",
+      "!public/*.meld-backup",
       "overlays/**/*",
       "skins/**/*",
       "TwitchConnected/**/*",
       "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "extra/raven",
+        "to": "raven"
+      }
     ],
     "mac": {
       "target": []
@@ -62,9 +74,12 @@
     }
   },
   "dependencies": {
+    "dotenv": "^16.4.5",
     "electron-updater": "^6.6.2",
     "fs-extra": "^11.3.0",
+    "node-fetch": "^2.7.0",
     "tmi.js": "^1.8.5",
-    "windows-shortcuts": "^0.1.6"
+    "windows-shortcuts": "^0.1.6",
+    "ws": "^8.18.0"
   }
 }
