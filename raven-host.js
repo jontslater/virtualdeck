@@ -112,6 +112,8 @@ function ensureEnv() {
           'TTS_PROVIDER=elevenlabs',
           'TTS_API_KEY=',
           'TTS_VOICE_ID=',
+          'JARVIS_BASE_URL=http://127.0.0.1:8091',
+          'VIRTUALDECK_JARVIS_URL=http://127.0.0.1:8091',
         ].join('\n') + '\n',
         'utf8',
       );
@@ -141,6 +143,54 @@ function ensureEnv() {
   return dest;
 }
 
+function checkApiKeys() {
+  const envPath = envFile();
+  if (!fs.existsSync(envPath)) return false;
+  
+  const env = parseEnv(fs.readFileSync(envPath, 'utf8'));
+  const llmKey = String(env.LLM_API_KEY || '').trim();
+  const ttsKey = String(env.TTS_API_KEY || '').trim();
+  
+  return llmKey.length > 0 && ttsKey.length > 0;
+}
+
+function showFirstRunDialog() {
+  const result = dialog.showMessageBoxSync({
+    type: 'info',
+    title: 'Raven AI - API Keys Required',
+    message: 'Welcome to Raven Voice AI!',
+    detail: 
+      'To use Raven, you need to provide your own API keys:\n\n' +
+      '1. LLM Provider (OpenAI, etc.) - for AI conversation\n' +
+      '2. TTS Provider (ElevenLabs, etc.) - for voice synthesis\n\n' +
+      'Click "Open Settings" to add your API keys now.\n\n' +
+      'You can also access this later via:\n' +
+      'VirtualDeck menu → Open Raven settings (raven.env)',
+    buttons: ['Open Settings', 'Skip for Now'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  
+  if (result === 0) {
+    openEnvFile();
+    
+    dialog.showMessageBoxSync({
+      type: 'info',
+      title: 'Raven AI - Next Steps',
+      message: 'Fill in your API keys and restart Raven',
+      detail:
+        'After adding your API keys:\n\n' +
+        '1. Save the file and close your editor\n' +
+        '2. Go to VirtualDeck menu → Stop Raven AI\n' +
+        '3. Then → Start Raven AI\n\n' +
+        'Raven will now use your API keys for AI features.',
+      buttons: ['OK'],
+    });
+  }
+  
+  return result === 0;
+}
+
 function isRunning() {
   return Boolean(ravenProc && !ravenProc.killed);
 }
@@ -164,6 +214,13 @@ function startRaven() {
   }
 
   const envPath = ensureEnv();
+  
+  if (app.isPackaged && !checkApiKeys()) {
+    console.log('[Raven] First run detected - API keys not configured');
+    showFirstRunDialog();
+    return;
+  }
+  
   const bundledNode = path.join(root, 'node', 'node.exe');
   const nodeExe = fs.existsSync(bundledNode) ? bundledNode : 'node';
   const ffmpegDir = path.join(root, 'ffmpeg');
