@@ -11,6 +11,7 @@ const userDataPath = process.env.APPDATA
 
 const publicPath = path.join(__dirname, 'public');
 const SKIP_RAVEN = process.env.SKIP_RAVEN === '1';
+const BUNDLE_KEYS = process.env.RAVEN_BUNDLE_KEYS === '1';
 
 const SECRET_KEY_PATTERN =
   /^\s*(LLM_API_KEY|TTS_API_KEY|OPENAI_API_KEY|ELEVENLABS_API_KEY)\s*[ \t]*=\s*[ \t]*(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s#;\r\n][^\r\n]*))?/m;
@@ -108,9 +109,10 @@ function extraResourcesRoots() {
   return roots;
 }
 
-function scanDirectoryForCredentialFiles(rootDir) {
+function scanDirectoryForCredentialFiles(rootDir, options = {}) {
   const hits = [];
   if (!fs.existsSync(rootDir)) return hits;
+  const allowBundledEnvDefaults = Boolean(options.allowBundledEnvDefaults);
 
   const walk = (dir) => {
     for (const name of fs.readdirSync(dir)) {
@@ -125,6 +127,9 @@ function scanDirectoryForCredentialFiles(rootDir) {
         hits.push(path.relative(__dirname, full));
       }
       if (name === 'env.defaults' || name.endsWith('.env')) {
+        if (allowBundledEnvDefaults && name === 'env.defaults') {
+          continue;
+        }
         const content = fs.readFileSync(full, 'utf8');
         if (envTextHasPopulatedSecrets(content)) {
           hits.push(`${path.relative(__dirname, full)} (populated API keys)`);
@@ -140,6 +145,15 @@ function scanDirectoryForCredentialFiles(rootDir) {
 function runPrepareBuild() {
 console.log('🔧 Preparing VirtualDeck for build...');
 console.log('🔒 Running security checks...');
+
+if (BUNDLE_KEYS) {
+  console.warn('');
+  console.warn('**********************************************************************');
+  console.warn('** PERSONAL BUILD (RAVEN_BUNDLE_KEYS=1): INSTALLER CONTAINS SECRETS **');
+  console.warn('** Do NOT share this installer. For Jonathan-only local use.        **');
+  console.warn('**********************************************************************');
+  console.warn('');
+}
 
 const rootCredentialFiles = ['.env', 'raven.env', 'twitch-oauth-config.js'];
 let securityFailed = false;
@@ -166,13 +180,17 @@ if (!SKIP_RAVEN) {
     console.error('   Or set SKIP_RAVEN=1 to build VirtualDeck without Raven.');
     securityFailed = true;
   } else {
-    const ravenHits = scanDirectoryForCredentialFiles(ravenExtra);
+    const ravenHits = scanDirectoryForCredentialFiles(ravenExtra, {
+      allowBundledEnvDefaults: BUNDLE_KEYS,
+    });
     if (ravenHits.length) {
       console.error('❌ SECURITY ERROR: staged Raven bundle contains credential material:');
       for (const hit of ravenHits) {
         console.error(`   - ${hit}`);
       }
       securityFailed = true;
+    } else if (BUNDLE_KEYS) {
+      console.log('⚠️  Personal build: env.defaults may contain bundled keys (check skipped by policy)');
     } else {
       console.log('✅ Raven staged and no API keys detected in extra/raven');
     }
@@ -196,7 +214,9 @@ if (!SKIP_RAVEN) {
 for (const extraRoot of extraResourcesRoots()) {
   const rel = path.relative(__dirname, extraRoot) || path.basename(extraRoot);
   if (fs.existsSync(extraRoot) && rel.startsWith('extra')) {
-    const hits = scanDirectoryForCredentialFiles(extraRoot);
+    const hits = scanDirectoryForCredentialFiles(extraRoot, {
+      allowBundledEnvDefaults: BUNDLE_KEYS,
+    });
     if (hits.length) {
       console.error(`❌ SECURITY ERROR: extraResources source "${rel}" contains secrets:`);
       for (const hit of hits) {
@@ -267,6 +287,7 @@ module.exports = {
   envTextHasPopulatedSecrets,
   wouldElectronBuilderInclude,
   patternMatchesFile,
+  scanDirectoryForCredentialFiles,
   runPrepareBuild,
 };
 

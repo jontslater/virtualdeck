@@ -7,14 +7,17 @@
 # - Node.js on PATH (or AITuber\runtime\node\node.exe for portable bundle)
 # - ffmpeg + ffplay real binaries (not Chocolatey shims), or $env:FFMPEG_DIR
 #
-# SECURITY: Never copies .env / raven.env with keys. env.defaults is blank placeholders only.
+# SECURITY: Default staging never copies AITuber .env. Use -BundleKeys only for personal builds.
 
 param(
     [string]$AITuberRoot = $env:AITUBER_ROOT,
-    [switch]$Clean = $false
+    [switch]$Clean = $false,
+    [switch]$BundleKeys = $false
 )
 
 $ErrorActionPreference = "Stop"
+
+$Script:BundleKeys = $BundleKeys -or ($env:RAVEN_BUNDLE_KEYS -eq '1')
 
 $Script:SecretKeyNames = 'LLM_API_KEY|TTS_API_KEY|OPENAI_API_KEY|ELEVENLABS_API_KEY'
 $Script:PlaceholderValues = @(
@@ -662,36 +665,159 @@ function Install-StagedProductionDeps {
     }
 }
 
+function Parse-DotEnvFile {
+    param([string]$Path)
+    $map = @{}
+    if (-not (Test-Path -LiteralPath $Path)) { return $map }
+    foreach ($raw in (Get-Content -LiteralPath $Path)) {
+        $line = $raw.Trim()
+        if (-not $line -or $line.StartsWith('#')) { continue }
+        $eq = $line.IndexOf('=')
+        if ($eq -lt 1) { continue }
+        $key = $line.Substring(0, $eq).Trim()
+        $val = $line.Substring($eq + 1).Trim()
+        $hash = $val.IndexOf(' #')
+        if ($hash -ge 0) { $val = $val.Substring(0, $hash).Trim() }
+        if ($val.Length -ge 2) {
+            if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
+                $val = $val.Substring(1, $val.Length - 2)
+            }
+        }
+        $map[$key] = $val
+    }
+    return $map
+}
+
+function Get-TemplateEnvKeys([string]$TemplateText) {
+    $keys = New-Object System.Collections.Generic.List[string]
+    foreach ($line in ($TemplateText -split "`r?`n")) {
+        if ($line -match '^\s*#' -or -not $line.Trim()) { continue }
+        if ($line -match '^\s*([^=\s#]+)\s*=') {
+            $keys.Add($Matches[1])
+        }
+    }
+    return $keys
+}
+
+function Format-EnvValueForFile([string]$Value) {
+    if ($null -eq $Value) { return '' }
+    if ($Value -match '[\s#;"\\]' -or $Value -match '^\s|\s$') {
+        $escaped = $Value -replace '\\', '\\\\' -replace '"', '\"'
+        return "`"$escaped`""
+    }
+    return $Value
+}
+
+function Merge-EnvDefaultsWithAituberDotenv {
+    param(
+        [string]$TemplateText,
+        [hashtable]$SourceMap
+    )
+    $templateKeys = Get-TemplateEnvKeys -TemplateText $TemplateText
+    $overlay = @{}
+    foreach ($key in $templateKeys) {
+        if ($SourceMap.ContainsKey($key) -and [string]::IsNullOrWhiteSpace($SourceMap[$key]) -eq $false) {
+            $overlay[$key] = $SourceMap[$key]
+        }
+    }
+    $extraKeys = @('OPENAI_API_KEY', 'ELEVENLABS_API_KEY')
+    foreach ($alias in $extraKeys) {
+        if ($SourceMap.ContainsKey($alias) -and -not [string]::IsNullOrWhiteSpace($SourceMap[$alias])) {
+            if ($alias -eq 'OPENAI_API_KEY' -and -not $overlay.ContainsKey('LLM_API_KEY')) {
+                $overlay['LLM_API_KEY'] = $SourceMap[$alias]
+            }
+            if ($alias -eq 'ELEVENLABS_API_KEY' -and -not $overlay.ContainsKey('TTS_API_KEY')) {
+                $overlay['TTS_API_KEY'] = $SourceMap[$alias]
+            }
+        }
+    }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($raw in ($TemplateText -split "`r?`n")) {
+        if (-not $raw.Trim() -or $raw.Trim().StartsWith('#') -or $raw.IndexOf('=') -lt 1) {
+            $lines.Add($raw)
+            continue
+        }
+        $eq = $raw.IndexOf('=')
+        $key = $raw.Substring(0, $eq).Trim()
+        if ($overlay.ContainsKey($key)) {
+            $lines.Add("$key=$(Format-EnvValueForFile $overlay[$key])")
+        } else {
+            $lines.Add($raw)
+        }
+    }
+    return ($lines -join "`n").TrimEnd() + "`n"
+}
+
 function Write-EnvDefaultsTemplate {
     param(
         [string]$StageDir,
-        [string]$RepoRoot
+        [string]$RepoRoot,
+        [string]$AITuberRoot
     )
     $EnvDefaultsPath = Join-Path $StageDir 'env.defaults'
     $TemplateInRepo = Join-Path $RepoRoot 'extra\raven\env.defaults'
+    $BackupPath = Join-Path $StageDir '.env.defaults.template.backup'
 
+    $templateText = $null
     if (Test-Path -LiteralPath $TemplateInRepo) {
-        $srcFull = (Resolve-Path -LiteralPath $TemplateInRepo).Path
-        $destFull = [IO.Path]::GetFullPath($EnvDefaultsPath)
-        if ($srcFull -ieq $destFull) {
-            Write-Ok 'env.defaults template already at destination (skipped copy)'
-            return
+        $templateText = Get-Content -LiteralPath $TemplateInRepo -Raw
+    } else {
+        $templateText = @(
+            '# Raven Voice AI - fill API keys after install (never ship real keys)',
+            'RAVEN_VOICE_ONLY=1',
+            'LLM_PROVIDER=openai',
+            'LLM_API_KEY=',
+            'TTS_PROVIDER=elevenlabs',
+            'TTS_API_KEY=',
+            'TTS_VOICE_ID=',
+            'JARVIS_BASE_URL=http://127.0.0.1:8091',
+            'VIRTUALDECK_JARVIS_URL=http://127.0.0.1:8091'
+        ) -join "`n"
+    }
+
+    Set-Content -LiteralPath $BackupPath -Value $templateText -Encoding UTF8 -NoNewline
+    if (-not $templateText.EndsWith("`n")) {
+        Add-Content -LiteralPath $BackupPath -Value '' -Encoding UTF8
+    }
+    Write-Ok 'Saved committed env.defaults template backup (.env.defaults.template.backup)'
+
+    if ($Script:BundleKeys) {
+        $dotenvPath = Join-Path $AITuberRoot '.env'
+        if (-not (Test-Path -LiteralPath $dotenvPath)) {
+            throw "BundleKeys enabled but AITuber .env not found at $dotenvPath"
         }
-        Copy-Item -LiteralPath $TemplateInRepo -Destination $EnvDefaultsPath -Force
+        $sourceMap = Parse-DotEnvFile -Path $dotenvPath
+        $merged = Merge-EnvDefaultsWithAituberDotenv -TemplateText $templateText -SourceMap $sourceMap
+        Set-Content -LiteralPath $EnvDefaultsPath -Value $merged -Encoding UTF8 -NoNewline
+        if (-not $merged.EndsWith("`n")) {
+            Add-Content -LiteralPath $EnvDefaultsPath -Value '' -Encoding UTF8
+        }
+        $templateKeys = Get-TemplateEnvKeys -TemplateText $templateText
+        foreach ($key in $templateKeys) {
+            if ($sourceMap.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace($sourceMap[$key])) {
+                Write-Ok "Bundled env key $key (length $($sourceMap[$key].Length))"
+            }
+        }
+        if ($sourceMap.ContainsKey('OPENAI_API_KEY') -and $sourceMap['OPENAI_API_KEY']) {
+            Write-Ok "Bundled env key OPENAI_API_KEY (length $($sourceMap['OPENAI_API_KEY'].Length))"
+        }
+        if ($sourceMap.ContainsKey('ELEVENLABS_API_KEY') -and $sourceMap['ELEVENLABS_API_KEY']) {
+            Write-Ok "Bundled env key ELEVENLABS_API_KEY (length $($sourceMap['ELEVENLABS_API_KEY'].Length))"
+        }
         return
     }
 
-    @(
-        '# Raven Voice AI - fill API keys after install (never ship real keys)',
-        'RAVEN_VOICE_ONLY=1',
-        'LLM_PROVIDER=openai',
-        'LLM_API_KEY=',
-        'TTS_PROVIDER=elevenlabs',
-        'TTS_API_KEY=',
-        'TTS_VOICE_ID=',
-        'JARVIS_BASE_URL=http://127.0.0.1:8091',
-        'VIRTUALDECK_JARVIS_URL=http://127.0.0.1:8091'
-    ) | Set-Content -Path $EnvDefaultsPath -Encoding ASCII
+    $srcFull = (Resolve-Path -LiteralPath $TemplateInRepo -ErrorAction SilentlyContinue)
+    $destFull = [IO.Path]::GetFullPath($EnvDefaultsPath)
+    if ($srcFull -and $srcFull.Path -ieq $destFull) {
+        Write-Ok 'env.defaults template already at destination (skipped copy)'
+        return
+    }
+    Set-Content -LiteralPath $EnvDefaultsPath -Value $templateText -Encoding UTF8 -NoNewline
+    if (-not $templateText.EndsWith("`n")) {
+        Add-Content -LiteralPath $EnvDefaultsPath -Value '' -Encoding UTF8
+    }
 }
 
 # --- Main ---
@@ -776,7 +902,16 @@ foreach ($pair in @(
 }
 
 Write-Step 'Creating env.defaults (blank API key placeholders only)...'
-Write-EnvDefaultsTemplate -StageDir $StageDir -RepoRoot $RepoRoot
+Write-EnvDefaultsTemplate -StageDir $StageDir -RepoRoot $RepoRoot -AITuberRoot $AITuberRoot
+
+if ($Script:BundleKeys) {
+    Write-Host ''
+    Write-Host '**********************************************************************' -ForegroundColor Red
+    Write-Host '** PERSONAL BUILD: staged env.defaults CONTAINS API KEYS              **' -ForegroundColor Red
+    Write-Host '** Do NOT share this installer or commit extra/raven/env.defaults.  **' -ForegroundColor Red
+    Write-Host '**********************************************************************' -ForegroundColor Red
+    Write-Host ''
+}
 
 Write-Step 'Running security checks...'
 $dangerousNames = @('.env', 'raven.env', 'twitch-oauth-config.js')
@@ -791,9 +926,11 @@ foreach ($name in $dangerousNames) {
 
 $EnvDefaultsPath = Join-Path $StageDir 'env.defaults'
 $defaultsText = Get-Content -LiteralPath $EnvDefaultsPath -Raw
-if (Test-EnvTextHasPopulatedSecrets $defaultsText) {
-    Write-Fail '  ERROR: env.defaults contains non-placeholder API key values.'
-    $foundDangerous = $true
+if (-not $Script:BundleKeys) {
+    if (Test-EnvTextHasPopulatedSecrets $defaultsText) {
+        Write-Fail '  ERROR: env.defaults contains non-placeholder API key values.'
+        $foundDangerous = $true
+    }
 }
 
 Get-ChildItem -LiteralPath $StageDir -Recurse -File -Force -ErrorAction SilentlyContinue |

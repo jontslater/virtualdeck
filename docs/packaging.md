@@ -48,7 +48,7 @@ The staging script targets Jonathan's AITuber checkout:
 7. Verifies `app/apps/controller/dist/index.js` and `app/packages/integrations/virtualdeck/dist/bridge-server.js` exist
 8. Bundles `node.exe` (early, for bridge npm) and ffmpeg/ffplay
 9. Writes `env.defaults` from the VirtualDeck template (empty API keys only)
-9. Fails if node, ffmpeg, sidecar, controller `dist`, security checks, or dependency install fail
+10. Fails if node, ffmpeg, sidecar, controller `dist`, security checks, or dependency install fail
 
 Legacy layouts (`sidecar.js` at repo root, or scripts layout with `app/`) are still supported for older checkouts.
 
@@ -61,9 +61,21 @@ npm install
 # Stage Raven from AITuber (requires AITUBER_ROOT, pnpm, ffmpeg)
 npm run stage-raven
 
-# Full installer with Raven
+# Full installer with Raven (keyless, safe to share)
 npm run build:win:with-raven
 ```
+
+**Jonathan-only personal installer** (bundles API keys from `%AITUBER_ROOT%\.env` into staged `env.defaults`):
+
+```powershell
+npm run build:win:personal
+```
+
+- Uses `stage-raven -BundleKeys` (or `RAVEN_BUNDLE_KEYS=1`)
+- Logs only key names and value lengths (never secret values)
+- Skips populated-key checks for `env.defaults`; prints loud warnings
+- Restores committed `extra/raven/env.defaults` after the build via `restore-raven-env-defaults`
+- On first launch, packaged `env.defaults` is copied to `%APPDATA%\VirtualDeck\raven.env` if that file does not exist; an existing `raven.env` is not overwritten (empty fields may be filled from bundled defaults)
 
 **VirtualDeck-only installer** (no Raven bundle):
 
@@ -84,6 +96,7 @@ This sets `SKIP_RAVEN=1` during `prepare-build` so a missing `extra/raven/sideca
 | `PNPM_CMD` | pnpm invocation (default `npx --yes pnpm@9.15.0`) |
 | `RAVEN_CONTROLLER_FILTER` | Override pnpm path filter (default `./apps/controller`) |
 | `RAVEN_CONTROLLER_PACKAGE` | Override controller package name for `pnpm install --filter` (default read from `apps/controller/package.json`, e.g. `@ai-streamer/controller`) |
+| `RAVEN_BUNDLE_KEYS=1` | Personal build: allow bundled keys in `env.defaults` (used by `build:win:personal`) |
 | `SKIP_RAVEN=1` | Allow build without staged Raven (`prepare-build:no-raven`) |
 
 ## Security model

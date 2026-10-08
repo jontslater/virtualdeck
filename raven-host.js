@@ -97,6 +97,8 @@ function writeEnvFromTemplate(dest, templateText, overlay) {
 function ensureEnv() {
   const dest = envFile();
   const bundled = bundledEnvPath();
+  // First run: copy bundled env.defaults (keyless or personal build) to userData/raven.env.
+  // Existing raven.env is never replaced wholesale; merge below only fills empty keys.
   if (!fs.existsSync(dest)) {
     if (bundled) {
       fs.copyFileSync(bundled, dest);

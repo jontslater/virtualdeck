@@ -64,6 +64,8 @@ jspm_packages/
 extra/raven/
 !extra/raven/env.defaults
 !extra/raven/README.md
+extra/raven/.env.defaults.template.backup
+extra/raven/env.defaults.bundled
 
 # Electron build artifacts
 dist_electron/

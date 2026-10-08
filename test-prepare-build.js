@@ -8,7 +8,11 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { envTextHasPopulatedSecrets, wouldElectronBuilderInclude } = require('./prepare-build');
+const {
+  envTextHasPopulatedSecrets,
+  wouldElectronBuilderInclude,
+  scanDirectoryForCredentialFiles,
+} = require('./prepare-build');
 
 const template = `
 LLM_API_KEY=
@@ -34,6 +38,21 @@ assert.strictEqual(
 );
 
 assert.strictEqual(wouldElectronBuilderInclude('.env'), false, '.env must not be in files list');
+const tmpDir = path.join(__dirname, '.tmp-prepare-build-test');
+fs.rmSync(tmpDir, { recursive: true, force: true });
+fs.mkdirSync(tmpDir, { recursive: true });
+fs.writeFileSync(
+  path.join(tmpDir, 'env.defaults'),
+  'LLM_API_KEY=sk-secret-key-should-fail\n',
+);
+assert.strictEqual(scanDirectoryForCredentialFiles(tmpDir).length, 1, 'populated env.defaults should fail scan');
+assert.strictEqual(
+  scanDirectoryForCredentialFiles(tmpDir, { allowBundledEnvDefaults: true }).length,
+  0,
+  'personal build should skip env.defaults secret scan',
+);
+fs.rmSync(tmpDir, { recursive: true, force: true });
+
 assert.strictEqual(wouldElectronBuilderInclude('main.js'), true, 'main.js is bundled');
 assert.strictEqual(
   wouldElectronBuilderInclude('twitch-oauth-config.js'),
