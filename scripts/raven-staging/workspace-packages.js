@@ -194,12 +194,21 @@ function buildDepRewrites(repoRoot, packageRel, closureRels) {
   return rewrites;
 }
 
+function readClosureListFromFile(filePath) {
+  const parsed = JSON.parse(readFileUtf8(filePath));
+  if (!Array.isArray(parsed)) {
+    throw new Error(`closure list file must contain a JSON array: ${filePath}`);
+  }
+  return parsed;
+}
+
 module.exports = {
   scanWorkspacePackages,
   workspaceClosure,
   workspaceFileSpec,
   buildDepRewrites,
   orderClosureForStaging,
+  readClosureListFromFile,
   SKIP_DIR_NAMES,
 };
 
@@ -228,12 +237,12 @@ if (require.main === module) {
   }
   if (cmd === 'rewrites') {
     const packageRel = process.argv[4];
-    const closureJson = process.argv[5];
-    if (!packageRel || !closureJson) {
-      console.error('Usage: node workspace-packages.js rewrites <repoRoot> <packageRel> <closureJson>');
+    const closureFile = process.argv[5];
+    if (!packageRel || !closureFile) {
+      console.error('Usage: node workspace-packages.js rewrites <repoRoot> <packageRel> <closureListFile>');
       process.exit(1);
     }
-    const closureRels = JSON.parse(closureJson);
+    const closureRels = readClosureListFromFile(closureFile);
     const rewrites = buildDepRewrites(repoRoot, packageRel, closureRels);
     process.stdout.write(`${JSON.stringify(rewrites)}\n`);
     process.exit(0);

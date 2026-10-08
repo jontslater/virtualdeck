@@ -163,6 +163,34 @@ assert.deepStrictEqual(ordered[0], 'packages/shared', 'shared must stage before 
 const rewrites = buildDepRewrites(wsTmp, 'apps/controller', closureRels);
 assert.strictEqual(rewrites['@ai-streamer/shared'], 'file:../../packages/shared');
 assert.strictEqual(rewrites['@ai-streamer/director'], 'file:../../packages/director');
+const closureListFile = path.join(wsTmp, 'closure-list.json');
+fs.writeFileSync(closureListFile, `\uFEFF${JSON.stringify(closureRels)}`);
+const rewritesCli = execSync(
+  `node "${path.join(__dirname, 'scripts/raven-staging/workspace-packages.js')}" rewrites "${wsTmp}" apps/controller "${closureListFile}"`,
+  { encoding: 'utf8' },
+).trim();
+const fromFile = JSON.parse(rewritesCli);
+assert.strictEqual(fromFile['@ai-streamer/shared'], 'file:../../packages/shared');
 fs.rmSync(wsTmp, { recursive: true, force: true });
+
+const stagePs1 = fs.readFileSync(stageScript, 'utf8');
+const nativeJsonArgPatterns = [
+  /&\s+\$NodeExe[^\n`]*ConvertTo-Json/i,
+  /&\s+\$node[^\n`]*ConvertTo-Json/i,
+  /workspace-packages\.js\s+'rewrites'[^\n]*ClosureJson/i,
+  /'rewrites'[^\n]*\$ClosureJson/i,
+];
+for (const pattern of nativeJsonArgPatterns) {
+  assert.ok(!pattern.test(stagePs1), `stage-raven-runtime.ps1 must not pass JSON to native node (${pattern})`);
+}
+const nativeNodeLines = stagePs1.split(/\r?\n/).filter((line) => /&\s+\$(NodeExe|node)\b/.test(line));
+for (const line of nativeNodeLines) {
+  if (line.includes('workspace-packages.js') && line.includes('rewrites')) {
+    assert.ok(
+      line.includes('ClosureFilePath') || line.includes('$ClosureFilePath'),
+      'rewrites must use closure file path, not inline JSON',
+    );
+  }
+}
 
 console.log('✅ test-prepare-build.js passed');

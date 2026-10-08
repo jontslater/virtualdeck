@@ -561,7 +561,7 @@ function Stage-BuiltPackageManual {
     Invoke-NpmProductionInstall -Dir $DestDir -NodeExe $NodeExe
 }
 
-function Get-ControllerWorkspacePackageRels {
+function New-RavenWorkspaceClosureListFile {
     param(
         [string]$Root,
         [string]$NodeExe
@@ -576,10 +576,21 @@ function Get-ControllerWorkspacePackageRels {
     if (-not $json) {
         throw 'workspace-packages.js returned empty closure'
     }
-    if (-not $json) {
-        throw 'workspace-packages.js returned empty closure'
+    $closureFile = Join-Path $env:TEMP ("virtualdeck-raven-closure-" + [Guid]::NewGuid().ToString() + '.json')
+    Write-TextFileUtf8NoBom -Path $closureFile -Content $json
+    return $closureFile
+}
+
+function Read-RavenWorkspaceClosureRelsFromFile {
+    param([string]$ClosureFilePath)
+    if (-not (Test-Path -LiteralPath $ClosureFilePath)) {
+        throw "Workspace closure file missing: $ClosureFilePath"
     }
-    return @($json | ConvertFrom-Json)
+    $text = [System.IO.File]::ReadAllText($ClosureFilePath)
+    if ($text.Length -gt 0 -and [int][char]$text[0] -eq 0xFEFF) {
+        $text = $text.Substring(1)
+    }
+    return @($text | ConvertFrom-Json)
 }
 
 function Get-WorkspacePackageDepRewrites {
@@ -587,10 +598,10 @@ function Get-WorkspacePackageDepRewrites {
         [string]$Root,
         [string]$NodeExe,
         [string]$PackageRel,
-        [string]$ClosureJson
+        [string]$ClosureFilePath
     )
     $helper = Get-RavenStagingHelperPath -FileName 'workspace-packages.js'
-    $output = & $NodeExe $helper 'rewrites' $Root $PackageRel $ClosureJson
+    $output = & $NodeExe $helper 'rewrites' $Root $PackageRel $ClosureFilePath
     if ($LASTEXITCODE -ne 0) {
         throw "workspace-packages.js rewrites failed for $PackageRel"
     }
@@ -609,7 +620,7 @@ function Stage-WorkspacePackageManual {
         [string]$StageDir,
         [string]$NodeExe,
         [string]$PackageRel,
-        [string]$ClosureJson
+        [string]$ClosureFilePath
     )
     $posix = $PackageRel.Replace('/', '\')
     $sourceDir = Join-Path $Root $posix
@@ -628,7 +639,7 @@ function Stage-WorkspacePackageManual {
         }
     }
     $destDir = Join-Path $StageDir ('app\' + $posix)
-    $rewrites = Get-WorkspacePackageDepRewrites -Root $Root -NodeExe $NodeExe -PackageRel ($PackageRel.Replace('\', '/')) -ClosureJson $ClosureJson
+    $rewrites = Get-WorkspacePackageDepRewrites -Root $Root -NodeExe $NodeExe -PackageRel ($PackageRel.Replace('\', '/')) -ClosureFilePath $ClosureFilePath
     Stage-BuiltPackageManual -SourceDir $sourceDir -DestDir $destDir -NodeExe $NodeExe -DepRewrites $rewrites
     Write-Ok "Staged workspace package $PackageRel"
 }
@@ -637,19 +648,18 @@ function Stage-ControllerWorkspacePackages {
     param(
         [string]$Root,
         [string]$StageDir,
-        [string]$NodeExe
+        [string]$NodeExe,
+        [string]$ClosureFilePath
     )
-    $rels = Get-ControllerWorkspacePackageRels -Root $Root -NodeExe $NodeExe
+    $rels = Read-RavenWorkspaceClosureRelsFromFile -ClosureFilePath $ClosureFilePath
     if ($rels.Count -eq 0) {
         throw 'No workspace packages to stage for controller (expected packages/shared at minimum)'
     }
-    $closureJson = ($rels | ConvertTo-Json -Compress)
     Write-Step "Staging $($rels.Count) workspace package(s) for controller..."
     foreach ($rel in $rels) {
         $relPosix = [string]$rel
-        Stage-WorkspacePackageManual -Root $Root -StageDir $StageDir -NodeExe $NodeExe -PackageRel $relPosix -ClosureJson $closureJson
+        Stage-WorkspacePackageManual -Root $Root -StageDir $StageDir -NodeExe $NodeExe -PackageRel $relPosix -ClosureFilePath $ClosureFilePath
     }
-    return $closureJson
 }
 
 function Stage-ControllerPackage {
@@ -657,12 +667,12 @@ function Stage-ControllerPackage {
         [string]$Root,
         [string]$StageDir,
         [string]$NodeExe,
-        [string]$ClosureJson
+        [string]$ClosureFilePath
     )
     $controllerSrc = Join-Path $Root 'apps\controller'
     $controllerDest = Join-Path $StageDir 'app\apps\controller'
     $controllerRel = 'apps/controller'
-    $rewrites = Get-WorkspacePackageDepRewrites -Root $Root -NodeExe $NodeExe -PackageRel $controllerRel -ClosureJson $ClosureJson
+    $rewrites = Get-WorkspacePackageDepRewrites -Root $Root -NodeExe $NodeExe -PackageRel $controllerRel -ClosureFilePath $ClosureFilePath
     Stage-BuiltPackageManual -SourceDir $controllerSrc -DestDir $controllerDest -NodeExe $NodeExe -DepRewrites $rewrites
 
     $entry = Join-Path $controllerDest 'dist\index.js'
@@ -926,10 +936,15 @@ function Stage-MonorepoLayout {
         Invoke-TscForPackageDirectory -PackageDir $controllerSrc -Root $Root -NodeExe $NodeExe
     }
 
-    $closureJson = Stage-ControllerWorkspacePackages -Root $Root -StageDir $StageDir -NodeExe $NodeExe
+    $closureFile = New-RavenWorkspaceClosureListFile -Root $Root -NodeExe $NodeExe
+    try {
+        Stage-ControllerWorkspacePackages -Root $Root -StageDir $StageDir -NodeExe $NodeExe -ClosureFilePath $closureFile
 
-    Write-Step 'Staging apps/controller...'
-    Stage-ControllerPackage -Root $Root -StageDir $StageDir -NodeExe $NodeExe -ClosureJson $closureJson
+        Write-Step 'Staging apps/controller...'
+        Stage-ControllerPackage -Root $Root -StageDir $StageDir -NodeExe $NodeExe -ClosureFilePath $closureFile
+    } finally {
+        Remove-Item -LiteralPath $closureFile -Force -ErrorAction SilentlyContinue
+    }
 
     Write-Step 'Building and staging VirtualDeck bridge (outside pnpm workspace)...'
     Stage-VirtualDeckBridge -Root $Root -StageDir $StageDir -NodeExe $NodeExe
