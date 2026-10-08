@@ -3737,6 +3737,78 @@ const recentChatUserState = new Map();
 // Track users who have chatted this session (for walk-on alerts)
 const firstTimeChatters = new Set();
 
+const TWITCH_PROFILE_IMAGE_CACHE_TTL_MS = 30 * 60 * 1000;
+const twitchProfileImageCache = new Map();
+
+function twitchProfileCacheKey({ userId, login }) {
+  if (userId) return `id:${userId}`;
+  if (login) return `login:${String(login).toLowerCase()}`;
+  return null;
+}
+
+function sanitizeTwitchProfileImageUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'static-cdn.jtvnw.net') {
+      return null;
+    }
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
+
+async function lookupTwitchProfileImage({ userId, login }) {
+  const cacheKey = twitchProfileCacheKey({ userId, login });
+  if (!cacheKey) return null;
+
+  const now = Date.now();
+  const cached = twitchProfileImageCache.get(cacheKey);
+  if (cached && (now - cached.ts) < TWITCH_PROFILE_IMAGE_CACHE_TTL_MS) {
+    return cached.profileImageUrl;
+  }
+
+  if (!twitchClientId || !twitchToken) {
+    twitchProfileImageCache.set(cacheKey, { profileImageUrl: null, ts: now });
+    return null;
+  }
+
+  try {
+    if (!twitchUserId) await getUserId();
+    let helixUrl = 'https://api.twitch.tv/helix/users?';
+    if (userId) {
+      helixUrl += `id=${encodeURIComponent(userId)}`;
+    } else {
+      helixUrl += `login=${encodeURIComponent(String(login).toLowerCase())}`;
+    }
+
+    const resp = await fetch(helixUrl, {
+      headers: {
+        'Client-ID': twitchClientId,
+        'Authorization': `Bearer ${twitchToken}`,
+      },
+    });
+    const data = await resp.json();
+    const user = data.data && data.data[0];
+    const profileImageUrl = sanitizeTwitchProfileImageUrl(user?.profile_image_url);
+
+    twitchProfileImageCache.set(cacheKey, { profileImageUrl, ts: now });
+    if (user?.id) {
+      twitchProfileImageCache.set(`id:${user.id}`, { profileImageUrl, ts: now });
+    }
+    if (user?.login) {
+      twitchProfileImageCache.set(`login:${user.login.toLowerCase()}`, { profileImageUrl, ts: now });
+    }
+
+    return profileImageUrl;
+  } catch (err) {
+    console.error('[Walk On] Twitch profile image lookup failed:', err);
+    twitchProfileImageCache.set(cacheKey, { profileImageUrl: null, ts: now });
+    return null;
+  }
+}
+
 // Function to reset first-time chatters (useful when restarting stream)
 function resetFirstTimeChatters() {
   firstTimeChatters.clear();
@@ -3751,6 +3823,16 @@ ipcMain.handle('reset-first-time-chatters', async () => {
   } catch (error) {
     console.error('Error resetting first-time chatters:', error);
     return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-twitch-profile-image', async (_event, { userId, login } = {}) => {
+  try {
+    const profileImageUrl = await lookupTwitchProfileImage({ userId, login });
+    return { success: true, profileImageUrl };
+  } catch (error) {
+    console.error('Error fetching Twitch profile image:', error);
+    return { success: false, profileImageUrl: null, error: error.message };
   }
 });
 

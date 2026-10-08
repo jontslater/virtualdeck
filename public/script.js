@@ -11127,6 +11127,9 @@ function setupAlertWidget() {
           username: u.username,
           display_name: u.display_name
         })) : [],
+        walkonShowProfilePicture: type === 'first-chat-walkon'
+          ? (document.getElementById('alert-walkon-show-profile')?.checked ?? true)
+          : undefined,
         variations: [],
         randomMode: false,
         createdAt: new Date().toISOString()
@@ -11356,6 +11359,8 @@ function setupAlertWidget() {
       selectedWalkonUsers = [];
       if (alertWalkonSelected) renderWalkonSelected();
       if (alertWalkonSearch) alertWalkonSearch.value = '';
+      const walkonShowProfileCheckbox = document.getElementById('alert-walkon-show-profile');
+      if (walkonShowProfileCheckbox) walkonShowProfileCheckbox.checked = true;
       if (alertWalkonFollowerList) {
         alertWalkonFollowerList.innerHTML = '';
         alertWalkonFollowerList.style.display = 'none';
@@ -11725,6 +11730,12 @@ function setupAlertWidget() {
         renderWalkonFollowerList();
       }
       console.log('Loaded walk-on users for editing:', selectedWalkonUsers.length);
+    }
+    if (alertToEdit.type === 'first-chat-walkon') {
+      const walkonShowProfileCheckbox = document.getElementById('alert-walkon-show-profile');
+      if (walkonShowProfileCheckbox) {
+        walkonShowProfileCheckbox.checked = alertToEdit.walkonShowProfilePicture !== false;
+      }
     }
     
     // Store the alert ID and existing media for editing
@@ -12314,6 +12325,35 @@ let alertQueue = {
           payload.centerMedia.push(videoItem);
         } else {
           console.warn('🎬 Unknown video file format:', alertData.videoFile);
+        }
+      }
+
+      if (
+        alertData.type === 'first-chat-walkon' &&
+        alertData.walkonShowProfilePicture !== false &&
+        userData &&
+        window.electronAPI &&
+        typeof window.electronAPI.getTwitchProfileImage === 'function'
+      ) {
+        const profileUserId = userData.user_id || userData.id;
+        const profileLogin =
+          userData.username || userData.user_name || userData.user_login;
+        try {
+          const profileResult = await window.electronAPI.getTwitchProfileImage({
+            userId: profileUserId,
+            login: profileLogin,
+          });
+          if (profileResult?.profileImageUrl) {
+            payload.centerMedia.push({
+              type: 'image',
+              src: profileResult.profileImageUrl,
+              alt: 'Twitch profile',
+              walkonProfile: true,
+            });
+            console.log('👤 Added walk-on Twitch profile image to overlay');
+          }
+        } catch (profileErr) {
+          console.warn('Walk-on profile image lookup failed:', profileErr);
         }
       }
       
