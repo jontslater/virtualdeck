@@ -11127,6 +11127,9 @@ function setupAlertWidget() {
           username: u.username,
           display_name: u.display_name
         })) : [],
+        walkonShowProfilePicture: type === 'first-chat-walkon'
+          ? (document.getElementById('alert-walkon-show-profile')?.checked ?? true)
+          : undefined,
         variations: [],
         randomMode: false,
         createdAt: new Date().toISOString()
@@ -11356,6 +11359,8 @@ function setupAlertWidget() {
       selectedWalkonUsers = [];
       if (alertWalkonSelected) renderWalkonSelected();
       if (alertWalkonSearch) alertWalkonSearch.value = '';
+      const walkonShowProfileCheckbox = document.getElementById('alert-walkon-show-profile');
+      if (walkonShowProfileCheckbox) walkonShowProfileCheckbox.checked = true;
       if (alertWalkonFollowerList) {
         alertWalkonFollowerList.innerHTML = '';
         alertWalkonFollowerList.style.display = 'none';
@@ -11725,6 +11730,12 @@ function setupAlertWidget() {
         renderWalkonFollowerList();
       }
       console.log('Loaded walk-on users for editing:', selectedWalkonUsers.length);
+    }
+    if (alertToEdit.type === 'first-chat-walkon') {
+      const walkonShowProfileCheckbox = document.getElementById('alert-walkon-show-profile');
+      if (walkonShowProfileCheckbox) {
+        walkonShowProfileCheckbox.checked = alertToEdit.walkonShowProfilePicture !== false;
+      }
     }
     
     // Store the alert ID and existing media for editing
@@ -12316,6 +12327,47 @@ let alertQueue = {
           console.warn('🎬 Unknown video file format:', alertData.videoFile);
         }
       }
+
+      if (
+        alertData.type === 'first-chat-walkon' &&
+        alertData.walkonShowProfilePicture !== false &&
+        userData &&
+        window.electronAPI &&
+        typeof window.electronAPI.getTwitchProfileImage === 'function'
+      ) {
+        const rawUserId = userData.user_id || userData.id;
+        const profileUserId =
+          rawUserId && /^\d{1,20}$/.test(String(rawUserId)) ? String(rawUserId) : undefined;
+        const rawLogin = userData.username || userData.user_name || userData.user_login;
+        const profileLogin =
+          rawLogin && /^[a-zA-Z0-9_]{1,25}$/.test(String(rawLogin)) ? String(rawLogin) : undefined;
+        const WALKON_PROFILE_LOOKUP_MS = 2500;
+        try {
+          const profileResult = await Promise.race([
+            window.electronAPI.getTwitchProfileImage({
+              userId: profileUserId,
+              login: profileLogin,
+            }),
+            new Promise((resolve) => {
+              setTimeout(() => resolve({ profileImageUrl: null, timedOut: true }), WALKON_PROFILE_LOOKUP_MS);
+            }),
+          ]);
+          if (profileResult?.timedOut) {
+            console.warn('Walk-on profile image lookup timed out after', WALKON_PROFILE_LOOKUP_MS, 'ms');
+          }
+          if (profileResult?.profileImageUrl) {
+            payload.centerMedia.push({
+              type: 'image',
+              src: profileResult.profileImageUrl,
+              alt: 'Twitch profile',
+              walkonProfile: true,
+            });
+            console.log('👤 Added walk-on Twitch profile image to overlay');
+          }
+        } catch (profileErr) {
+          console.warn('Walk-on profile image lookup failed:', profileErr);
+        }
+      }
       
       // Log payload summary instead of full object to avoid base64 spam
       const payloadSummary = {
@@ -12651,26 +12703,24 @@ window.resetWalkonTest = async function(skipConfirm = false) {
 // Usage: 
 //   testFirstChatWalkon('Iflewthetardis')
 //   testFirstChatWalkon('deathblade', 'DeathBlade', '87654321')
-//   testFirstChatWalkon('TestUser')  // Uses default TestUser
+//   testFirstChatWalkon('TestUser')  // Login-only lookup (no random user id)
 window.testFirstChatWalkon = function(username = 'TestUser', displayName = null, userId = null) {
   console.log('🧪 Testing first-chat walk-on event for:', username);
-  
-  // Generate a random user ID if not provided
-  if (!userId) {
-    userId = Math.floor(Math.random() * 100000000).toString();
-  }
   
   const display = displayName || (username.charAt(0).toUpperCase() + username.slice(1));
   const userLower = username.toLowerCase();
   
   // Simulate the event data that would come from main.js chat handler
+  const event = {
+    user_name: userLower,
+    display_name: display,
+  };
+  if (userId && /^\d{1,20}$/.test(String(userId))) {
+    event.user_id = String(userId);
+  }
   const eventData = {
     type: 'first-chat-walkon',
-    event: {
-      user_id: userId,
-      user_name: userLower,
-      display_name: display
-    }
+    event,
   };
   
   console.log('🧪 Simulating first-chat-walkon event:', eventData);
@@ -12679,9 +12729,8 @@ window.testFirstChatWalkon = function(username = 'TestUser', displayName = null,
   const userData = {
     username: userLower,
     display_name: display,
-    user_id: userId,
     user_name: userLower,
-    ...eventData.event
+    ...eventData.event,
   };
   
   // Trigger through the same path as real events - directly call alertSystem

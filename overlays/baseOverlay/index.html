@@ -82,6 +82,23 @@
             display: none;
         }
 
+        .walkon-profile-image {
+            position: absolute;
+            left: 50%;
+            top: 42%;
+            transform: translate(-50%, -50%);
+            width: 220px;
+            height: 220px;
+            max-width: 22vw;
+            max-height: 22vw;
+            object-fit: cover;
+            border-radius: 50%;
+            border: 4px solid rgba(255, 255, 255, 0.95);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65);
+            z-index: 2;
+            animation: zoomIn 0.6s ease-out;
+        }
+
         /* Text Elements */
         .text-element {
             position: absolute;
@@ -524,31 +541,51 @@
             document.querySelector('.overlay-content').appendChild(textDiv);
         }
 
+        function isAllowedWalkonProfileImageSrc(src) {
+            if (!src || typeof src !== 'string') return false;
+            try {
+                const parsed = new URL(src);
+                return parsed.protocol === 'https:' && parsed.hostname === 'static-cdn.jtvnw.net';
+            } catch (e) {
+                return false;
+            }
+        }
+
         // Handle image
         function handleImage(payload) {
+            const src = payload.src || payload.url || '';
+            if (payload.walkonProfile && !isAllowedWalkonProfileImageSrc(src)) {
+                console.warn('🚫 Blocked walk-on profile image URL (Twitch CDN only):', src);
+                return;
+            }
+
             const img = document.createElement('img');
-            img.className = 'media-element';
-            img.src = payload.src || payload.url || '';
-            img.style.cssText = `
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100vw;
-                height: 100vh;
-                object-fit: contain;
-                animation: fadeIn 0.5s ease-in-out;
-                filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
-                border-radius: 8px;
-                z-index: 1;
-            `;
+            img.className = payload.walkonProfile ? 'walkon-profile-image' : 'media-element';
+            img.src = src;
+            if (!payload.walkonProfile) {
+                img.style.cssText = `
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100vw;
+                    height: 100vh;
+                    object-fit: contain;
+                    animation: fadeIn 0.5s ease-in-out;
+                    filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
+                    border-radius: 8px;
+                    z-index: 1;
+                `;
+            }
             
             img.onload = () => {
                 console.log('🖼️ Image loaded successfully:', img.src);
                 console.log('🖼️ Image dimensions:', img.naturalWidth, 'x', img.naturalHeight);
                 console.log('🖼️ Image display size:', img.offsetWidth, 'x', img.offsetHeight);
-                // Force image to stay behind text when it loads
-                img.style.setProperty('z-index', '1', 'important');
-                console.log('🎯 Image z-index forced to 1 on load');
+                if (!payload.walkonProfile) {
+                    // Force image to stay behind text when it loads
+                    img.style.setProperty('z-index', '1', 'important');
+                    console.log('🎯 Image z-index forced to 1 on load');
+                }
                 
                 // Also ensure all text elements are brought to front
                 const textElements = document.querySelectorAll('.text-element');

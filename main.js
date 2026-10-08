@@ -3737,6 +3737,137 @@ const recentChatUserState = new Map();
 // Track users who have chatted this session (for walk-on alerts)
 const firstTimeChatters = new Set();
 
+const TWITCH_PROFILE_IMAGE_CACHE_TTL_MS = 30 * 60 * 1000;
+const TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS = 60 * 1000;
+const TWITCH_PROFILE_HELIX_TIMEOUT_MS = 2500;
+const TWITCH_USER_ID_PATTERN = /^\d{1,20}$/;
+const TWITCH_LOGIN_PATTERN = /^[a-zA-Z0-9_]{1,25}$/;
+const twitchProfileImageCache = new Map();
+
+function twitchProfileCacheKey({ userId, login }) {
+  if (userId) return `id:${userId}`;
+  if (login) return `login:${String(login).toLowerCase()}`;
+  return null;
+}
+
+function getCachedTwitchProfileImage(cacheKey) {
+  const cached = twitchProfileImageCache.get(cacheKey);
+  if (!cached) return undefined;
+  const ttlMs = cached.ttlMs ?? TWITCH_PROFILE_IMAGE_CACHE_TTL_MS;
+  if (Date.now() - cached.ts >= ttlMs) return undefined;
+  return cached.profileImageUrl;
+}
+
+function setCachedTwitchProfileImage(cacheKey, profileImageUrl, ttlMs = TWITCH_PROFILE_IMAGE_CACHE_TTL_MS) {
+  twitchProfileImageCache.set(cacheKey, {
+    profileImageUrl,
+    ts: Date.now(),
+    ttlMs,
+  });
+}
+
+function cacheTwitchProfileLookupResult(user, profileImageUrl) {
+  const ttlMs = TWITCH_PROFILE_IMAGE_CACHE_TTL_MS;
+  if (user?.id) {
+    setCachedTwitchProfileImage(`id:${user.id}`, profileImageUrl, ttlMs);
+  }
+  if (user?.login) {
+    setCachedTwitchProfileImage(`login:${user.login.toLowerCase()}`, profileImageUrl, ttlMs);
+  }
+}
+
+function sanitizeTwitchProfileImageUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'static-cdn.jtvnw.net') {
+      return null;
+    }
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
+
+async function helixFetchTwitchUser({ userId, login, signal }) {
+  let helixUrl = 'https://api.twitch.tv/helix/users?';
+  if (userId) {
+    helixUrl += `id=${encodeURIComponent(userId)}`;
+  } else {
+    helixUrl += `login=${encodeURIComponent(String(login).toLowerCase())}`;
+  }
+
+  const resp = await fetch(helixUrl, {
+    headers: {
+      'Client-ID': twitchClientId,
+      'Authorization': `Bearer ${twitchToken}`,
+    },
+    signal,
+  });
+  const data = await resp.json().catch(() => ({}));
+  return { resp, data };
+}
+
+async function lookupTwitchProfileImage({ userId, login }) {
+  const cacheKey = twitchProfileCacheKey({ userId, login });
+  if (!cacheKey) return null;
+
+  const cached = getCachedTwitchProfileImage(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  if (!twitchClientId || !twitchToken) {
+    setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
+    return null;
+  }
+
+  const signal = AbortSignal.timeout(TWITCH_PROFILE_HELIX_TIMEOUT_MS);
+
+  try {
+    let user = null;
+
+    if (userId) {
+      const { resp, data } = await helixFetchTwitchUser({ userId, signal });
+      if (!resp.ok) {
+        setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
+        console.warn('[Walk On] Helix users lookup failed:', resp.status);
+        return null;
+      }
+      user = data.data && data.data[0];
+      if (!user && login) {
+        const fallback = await helixFetchTwitchUser({ login, signal });
+        if (!fallback.resp.ok) {
+          setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
+          console.warn('[Walk On] Helix users login fallback failed:', fallback.resp.status);
+          return null;
+        }
+        user = fallback.data.data && fallback.data.data[0];
+      }
+    } else if (login) {
+      const { resp, data } = await helixFetchTwitchUser({ login, signal });
+      if (!resp.ok) {
+        setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
+        console.warn('[Walk On] Helix users lookup failed:', resp.status);
+        return null;
+      }
+      user = data.data && data.data[0];
+    }
+
+    const profileImageUrl = sanitizeTwitchProfileImageUrl(user?.profile_image_url);
+    setCachedTwitchProfileImage(cacheKey, profileImageUrl, TWITCH_PROFILE_IMAGE_CACHE_TTL_MS);
+    if (user) {
+      cacheTwitchProfileLookupResult(user, profileImageUrl);
+    }
+    return profileImageUrl;
+  } catch (err) {
+    const isTimeout = err && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    console.error('[Walk On] Twitch profile image lookup failed:', isTimeout ? 'timed out' : err);
+    setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
+    return null;
+  }
+}
+
 // Function to reset first-time chatters (useful when restarting stream)
 function resetFirstTimeChatters() {
   firstTimeChatters.clear();
@@ -3751,6 +3882,42 @@ ipcMain.handle('reset-first-time-chatters', async () => {
   } catch (error) {
     console.error('Error resetting first-time chatters:', error);
     return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-twitch-profile-image', async (_event, params) => {
+  const input = params && typeof params === 'object' ? params : {};
+  let userId = input.userId;
+  let login = input.login;
+
+  if (userId != null && userId !== '') {
+    userId = String(userId);
+    if (!TWITCH_USER_ID_PATTERN.test(userId)) {
+      return { success: false, profileImageUrl: null, error: 'Invalid userId' };
+    }
+  } else {
+    userId = undefined;
+  }
+
+  if (login != null && login !== '') {
+    login = String(login);
+    if (!TWITCH_LOGIN_PATTERN.test(login)) {
+      return { success: false, profileImageUrl: null, error: 'Invalid login' };
+    }
+  } else {
+    login = undefined;
+  }
+
+  if (!userId && !login) {
+    return { success: false, profileImageUrl: null, error: 'userId or login required' };
+  }
+
+  try {
+    const profileImageUrl = await lookupTwitchProfileImage({ userId, login });
+    return { success: true, profileImageUrl };
+  } catch (error) {
+    console.error('Error fetching Twitch profile image:', error);
+    return { success: false, profileImageUrl: null, error: error.message };
   }
 });
 
