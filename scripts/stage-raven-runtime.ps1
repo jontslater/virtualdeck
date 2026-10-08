@@ -12,12 +12,14 @@
 param(
     [string]$AITuberRoot = $env:AITUBER_ROOT,
     [switch]$Clean = $false,
-    [switch]$BundleKeys = $false
+    [switch]$BundleKeys = $false,
+    [string]$KeysFrom = $env:RAVEN_KEYS_FROM
 )
 
 $ErrorActionPreference = "Stop"
 
 $Script:BundleKeys = $BundleKeys -or ($env:RAVEN_BUNDLE_KEYS -eq '1')
+$Script:KeysFromPath = $KeysFrom
 
 $Script:SecretKeyNames = 'LLM_API_KEY|TTS_API_KEY|OPENAI_API_KEY|ELEVENLABS_API_KEY'
 $Script:PlaceholderValues = @(
@@ -83,8 +85,8 @@ function Invoke-WithContinueOnNativeError {
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        & $ScriptBlock
-        return $LASTEXITCODE
+        & $ScriptBlock | Out-Host
+        return [int]$LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previous
     }
@@ -439,17 +441,9 @@ function Invoke-NpmProductionInstall {
         [string]$Dir,
         [string]$NodeExe
     )
-    $npmCli = Get-NpmCliPath
-    Push-Location $Dir
-    try {
-        $exitCode = Invoke-WithContinueOnNativeError -ScriptBlock {
-            & $NodeExe $npmCli install --omit=dev --no-optional
-        }
-        if ($exitCode -ne 0) {
-            throw "npm install --omit=dev failed in $Dir (exit $exitCode)"
-        }
-    } finally {
-        Pop-Location
+    $exitCode = Invoke-NpmCli -NodeExe $NodeExe -NpmArgs @('install', '--omit=dev', '--no-optional') -WorkingDirectory $Dir
+    if ($exitCode -ne 0) {
+        throw "npm install --omit=dev failed in $Dir (exit $exitCode)"
     }
 }
 
@@ -469,7 +463,6 @@ function Invoke-TscForPackageDirectory {
         (Join-Path $PackageDir 'node_modules\typescript\bin\tsc')
     )
     $tsc = $tscCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-    $npmCli = Get-NpmCliPath
     Push-Location $PackageDir
     try {
         $exitCode = 0
@@ -478,14 +471,7 @@ function Invoke-TscForPackageDirectory {
                 & $NodeExe $tsc -p $tsconfig
             }
         } else {
-            Push-Location $Root
-            try {
-                $exitCode = Invoke-WithContinueOnNativeError -ScriptBlock {
-                    & $NodeExe $npmCli exec -- tsc -p $tsconfig
-                }
-            } finally {
-                Pop-Location
-            }
+            $exitCode = Invoke-NpmCli -NodeExe $NodeExe -NpmArgs @('exec', '--', 'tsc', '-p', $tsconfig) -WorkingDirectory $Root
         }
         if ($exitCode -ne 0) {
             throw "tsc exited with code $exitCode for $PackageDir"
@@ -627,12 +613,62 @@ function Stage-ControllerPackage {
     Write-Ok 'Controller resolves @ai-streamer/shared from staged layout'
 }
 
-function Get-NpmCliPath {
-    $npm = Get-Command npm -ErrorAction SilentlyContinue
-    if (-not $npm -or -not $npm.Source) {
-        throw 'npm CLI not found on PATH (needed to install bridge production dependencies).'
+function Get-NpmCliJsPath {
+    param([string]$NodeExe)
+    $searchRoots = New-Object System.Collections.Generic.List[string]
+    if ($NodeExe -and (Test-Path -LiteralPath $NodeExe)) {
+        $nodeDir = Split-Path -Parent $NodeExe
+        $searchRoots.Add($nodeDir)
+        $parent = Split-Path -Parent $nodeDir
+        if ($parent) { $searchRoots.Add($parent) }
     }
-    return $npm.Source
+    $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+    if ($npmCmd -and $npmCmd.Source) {
+        $searchRoots.Add((Split-Path -Parent $npmCmd.Source))
+    }
+    foreach ($root in ($searchRoots | Select-Object -Unique)) {
+        if (-not $root) { continue }
+        $cli = Join-Path $root 'node_modules\npm\bin\npm-cli.js'
+        if (Test-Path -LiteralPath $cli) {
+            return (Resolve-Path -LiteralPath $cli).Path
+        }
+    }
+    return $null
+}
+
+function Invoke-NpmCli {
+    param(
+        [string]$NodeExe,
+        [string[]]$NpmArgs,
+        [string]$WorkingDirectory
+    )
+    Push-Location $WorkingDirectory
+    try {
+        $npmCliJs = Get-NpmCliJsPath -NodeExe $NodeExe
+        if ($npmCliJs) {
+            $node = $NodeExe
+            if (-not $node -or -not (Test-Path -LiteralPath $node)) {
+                $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+                if (-not $nodeCmd) { throw 'node.exe not found for npm-cli.js invocation' }
+                $node = $nodeCmd.Source
+            }
+            return (Invoke-WithContinueOnNativeError -ScriptBlock {
+                & $node $npmCliJs @NpmArgs
+            })
+        }
+        $npmExe = (Get-Command npm.cmd -ErrorAction SilentlyContinue).Source
+        if (-not $npmExe) {
+            $npmExe = (Get-Command npm -ErrorAction SilentlyContinue).Source
+        }
+        if (-not $npmExe) {
+            throw 'npm CLI not found on PATH (needed for production dependency install)'
+        }
+        return (Invoke-WithContinueOnNativeError -ScriptBlock {
+            & $npmExe @NpmArgs
+        })
+    } finally {
+        Pop-Location
+    }
 }
 
 function Initialize-BundledNode {
@@ -694,7 +730,6 @@ function Stage-VirtualDeckBridge {
             (Join-Path $bridgeDir 'node_modules\typescript\bin\tsc')
         )
         $tsc = $tscCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-        $npmCli = Get-NpmCliPath
         try {
             Push-Location $bridgeDir
             $tscExit = 0
@@ -703,14 +738,7 @@ function Stage-VirtualDeckBridge {
                     & $NodeExe $tsc -p $tsconfig
                 }
             } else {
-                Push-Location $Root
-                try {
-                    $tscExit = Invoke-WithContinueOnNativeError -ScriptBlock {
-                        & $NodeExe $npmCli exec -- tsc -p $tsconfig
-                    }
-                } finally {
-                    Pop-Location
-                }
+                $tscExit = Invoke-NpmCli -NodeExe $NodeExe -NpmArgs @('exec', '--', 'tsc', '-p', $tsconfig) -WorkingDirectory $Root
             }
             if ($tscExit -ne 0) {
                 throw "tsc exited with code $tscExit"
@@ -748,17 +776,9 @@ function Stage-VirtualDeckBridge {
     Copy-TreeAsRealFiles -Source (Join-Path $bridgeDir 'dist') -Destination (Join-Path $bridgeStage 'dist')
 
     Write-Step 'Installing VirtualDeck bridge production dependencies (npm)...'
-    $npmCli = Get-NpmCliPath
-    Push-Location $bridgeStage
-    try {
-        $npmExit = Invoke-WithContinueOnNativeError -ScriptBlock {
-            & $NodeExe $npmCli install --omit=dev --no-optional
-        }
-        if ($npmExit -ne 0) {
-            throw "npm install in VirtualDeck bridge failed (exit $npmExit)"
-        }
-    } finally {
-        Pop-Location
+    $npmExit = Invoke-NpmCli -NodeExe $NodeExe -NpmArgs @('install', '--omit=dev', '--no-optional') -WorkingDirectory $bridgeStage
+    if ($npmExit -ne 0) {
+        throw "npm install in VirtualDeck bridge failed (exit $npmExit)"
     }
 
     if (-not (Test-ModuleResolvableFromDirectory -NodeExe $NodeExe -Dir $bridgeStage -ModuleName '@ai-streamer/shared')) {
@@ -941,17 +961,10 @@ function Install-StagedProductionDeps {
     Write-Step 'Installing production dependencies in staged sidecar root...'
     Push-Location $StageDir
     try {
-        $npmExit = 0
         if ($NodeExe -and (Test-Path -LiteralPath $NodeExe)) {
-            $npmCli = (Get-Command npm -ErrorAction SilentlyContinue).Source
-            if (-not $npmCli) { throw 'npm CLI not found on PATH (needed for staged dependency install)' }
-            $npmExit = Invoke-WithContinueOnNativeError -ScriptBlock {
-                & $NodeExe $npmCli install --omit=dev --no-optional
-            }
+            $npmExit = Invoke-NpmCli -NodeExe $NodeExe -NpmArgs @('install', '--omit=dev', '--no-optional') -WorkingDirectory $StageDir
         } else {
-            $npmExit = Invoke-WithContinueOnNativeError -ScriptBlock {
-                npm install --omit=dev --no-optional
-            }
+            $npmExit = Invoke-NpmCli -NodeExe $null -NpmArgs @('install', '--omit=dev', '--no-optional') -WorkingDirectory $StageDir
         }
         if ($npmExit -ne 0) {
             throw "npm install in staged directory failed (exit $npmExit)"
@@ -983,6 +996,70 @@ function Parse-DotEnvFile {
         $map[$key] = $val
     }
     return $map
+}
+
+function Test-DotEnvMapHasBundleableKeys {
+    param(
+        [hashtable]$Map,
+        [string]$TemplateText
+    )
+    $keys = Get-TemplateEnvKeys -TemplateText $TemplateText
+    foreach ($key in $keys) {
+        if ($Map.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace([string]$Map[$key])) {
+            return $true
+        }
+    }
+    if ($Map.ContainsKey('OPENAI_API_KEY') -and -not [string]::IsNullOrWhiteSpace([string]$Map['OPENAI_API_KEY'])) {
+        return $true
+    }
+    if ($Map.ContainsKey('ELEVENLABS_API_KEY') -and -not [string]::IsNullOrWhiteSpace([string]$Map['ELEVENLABS_API_KEY'])) {
+        return $true
+    }
+    return $false
+}
+
+function Resolve-BundleKeysSource {
+    param(
+        [string]$AITuberRoot,
+        [string]$TemplateText
+    )
+    $aituberEnv = Join-Path $AITuberRoot '.env'
+    if (Test-Path -LiteralPath $aituberEnv) {
+        $aituberMap = Parse-DotEnvFile -Path $aituberEnv
+        if (Test-DotEnvMapHasBundleableKeys -Map $aituberMap -TemplateText $TemplateText) {
+            Write-Ok "Bundling API keys from: $aituberEnv"
+            return @{
+                Map = $aituberMap
+                Label = $aituberEnv
+            }
+        }
+    }
+
+    $fallback = $null
+    if ($Script:KeysFromPath -and $Script:KeysFromPath.Trim()) {
+        $fallback = $Script:KeysFromPath.Trim()
+    } elseif ($env:APPDATA) {
+        $fallback = Join-Path $env:APPDATA 'VirtualDeck\raven.env'
+    }
+
+    if (-not $fallback -or -not (Test-Path -LiteralPath $fallback)) {
+        throw @"
+BundleKeys enabled but no populated API keys were found.
+Checked AITuber .env at: $aituberEnv
+Fallback (RAVEN_KEYS_FROM or %APPDATA%\VirtualDeck\raven.env): $fallback
+"@
+    }
+
+    $fallbackMap = Parse-DotEnvFile -Path $fallback
+    if (-not (Test-DotEnvMapHasBundleableKeys -Map $fallbackMap -TemplateText $TemplateText)) {
+        throw "BundleKeys fallback file has no populated Raven API keys: $fallback"
+    }
+
+    Write-Ok "Bundling API keys from fallback file: $fallback"
+    return @{
+        Map = $fallbackMap
+        Label = $fallback
+    }
 }
 
 function Get-TemplateEnvKeys([string]$TemplateText) {
@@ -1093,11 +1170,11 @@ function Write-EnvDefaultsTemplate {
 
     if ($Script:BundleKeys) {
         Save-EnvDefaultsTemplateBackupOutsideStage -RepoRoot $RepoRoot -TemplateText $templateText
-        $dotenvPath = Join-Path $AITuberRoot '.env'
-        if (-not (Test-Path -LiteralPath $dotenvPath)) {
-            throw "BundleKeys enabled but AITuber .env not found at $dotenvPath"
+        $resolved = Resolve-BundleKeysSource -AITuberRoot $AITuberRoot -TemplateText $templateText
+        $sourceMap = $resolved.Map
+        if ($resolved.Label) {
+            Write-Ok "Bundling API keys from: $($resolved.Label)"
         }
-        $sourceMap = Parse-DotEnvFile -Path $dotenvPath
         $merged = Merge-EnvDefaultsWithAituberDotenv -TemplateText $templateText -SourceMap $sourceMap
         Set-Content -LiteralPath $EnvDefaultsPath -Value $merged -Encoding UTF8 -NoNewline
         if (-not $merged.EndsWith("`n")) {

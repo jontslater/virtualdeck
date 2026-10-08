@@ -73,6 +73,7 @@ npm run build:win:personal
 ```
 
 - Uses `stage-raven -BundleKeys` (or `RAVEN_BUNDLE_KEYS=1`)
+- Key source: AITuber `.env` when it has values; otherwise `%APPDATA%\VirtualDeck\raven.env` (override with `-KeysFrom` / `RAVEN_KEYS_FROM`)
 - Logs only key names and value lengths (never secret values)
 - Skips populated-key checks for `env.defaults`; prints loud warnings
 - Restores committed `extra/raven/env.defaults` after the build (even on failure) via `scripts/build-win-personal.js` + `restore-raven-env-defaults`
@@ -99,6 +100,7 @@ This sets `SKIP_RAVEN=1` during `prepare-build` so a missing `extra/raven/sideca
 | `RAVEN_CONTROLLER_FILTER` | Override pnpm path filter (default `./apps/controller`) |
 | `RAVEN_CONTROLLER_PACKAGE` | Override controller package name for `pnpm install --filter` (default read from `apps/controller/package.json`, e.g. `@ai-streamer/controller`) |
 | `RAVEN_BUNDLE_KEYS=1` | Personal build: allow bundled keys in `env.defaults` (used by `build:win:personal`) |
+| `RAVEN_KEYS_FROM` | Personal build: explicit path to a `.env` file when AITuber `.env` is empty (default fallback: `%APPDATA%\VirtualDeck\raven.env`) |
 | `SKIP_RAVEN=1` | Allow build without staged Raven (`prepare-build:no-raven`) |
 
 ## Security model
