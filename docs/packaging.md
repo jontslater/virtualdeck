@@ -14,7 +14,7 @@ The VirtualDeck installer can package VirtualDeck and Raven into a single NSIS i
 ## Prerequisites (Windows build PC)
 
 1. **Node.js** (v18+) on PATH
-2. **pnpm** (for the AITuber monorepo)
+2. **pnpm 9.15.0** via `npx --yes pnpm@9.15.0` (override with `$env:PNPM_CMD` if needed; avoids corepack keyid issues on Node 20.18.x)
 3. **AITuber** clone: https://github.com/jontslater/AITuber  
    - Default path: `E:\AIChatBot`  
    - Or: `$env:AITUBER_ROOT = "C:\path\to\AITuber"`
@@ -39,12 +39,12 @@ The staging script targets Jonathan's AITuber checkout:
 
 **What `npm run stage-raven` does for the monorepo:**
 
-1. `pnpm install` at the AITuber root
-2. `pnpm --filter ./apps/controller run build`
-3. Builds `packages/*` that define a `build` script
-4. `pnpm --filter ./apps/controller deploy --prod <tmpdir>` → copied to `extra/raven/app/` as real files (no workspace symlinks)
-5. Copies `packages/` (excluding `node_modules`) for bridge/runtime imports
-6. Copies `scripts/raven-sidecar.js` → `sidecar.js`
+1. `pnpm install --frozen-lockfile` at the AITuber root (does not rewrite the lockfile)
+2. Builds all `packages/**` with a `build` script (nested packages included); failures are **warnings** if `dist/` already exists (e.g. `tts-piper` typecheck issues)
+3. `pnpm --filter ./apps/controller run build`
+4. `pnpm deploy --prod` into `extra/raven/app/apps/controller` and `extra/raven/app/packages/integrations/virtualdeck` (paths expected by `sidecar.js`)
+5. Copies `scripts/raven-sidecar.js` → `sidecar.js`
+6. Verifies `app/apps/controller/dist/index.js` and `app/packages/integrations/virtualdeck/dist/bridge-server.js` exist
 7. Bundles `node.exe` and ffmpeg/ffplay
 8. Writes `env.defaults` from the VirtualDeck template (empty API keys only)
 9. Fails if node, ffmpeg, sidecar, controller `dist`, security checks, or dependency install fail
@@ -80,6 +80,7 @@ This sets `SKIP_RAVEN=1` during `prepare-build` so a missing `extra/raven/sideca
 |----------|---------|
 | `AITUBER_ROOT` | Path to AITuber clone (default `E:\AIChatBot`) |
 | `FFMPEG_DIR` | Directory with `ffmpeg.exe` and `ffplay.exe` |
+| `PNPM_CMD` | pnpm invocation (default `npx --yes pnpm@9.15.0`) |
 | `RAVEN_CONTROLLER_FILTER` | Override pnpm filter (default `./apps/controller`) |
 | `SKIP_RAVEN=1` | Allow build without staged Raven (`prepare-build:no-raven`) |
 

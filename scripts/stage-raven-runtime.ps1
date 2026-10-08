@@ -2,8 +2,8 @@
 # Prepares the Raven voice AI sidecar from the AITuber repo for bundling with VirtualDeck.
 #
 # REQUIREMENTS (Windows build PC):
-# - AITuber clone (https://github.com/jontslater/AITuber) — default E:\AIChatBot or $env:AITUBER_ROOT
-# - pnpm (monorepo layout: apps/controller, packages/*, scripts/raven-sidecar.js)
+# - AITuber clone (https://github.com/jontslater/AITuber) - default E:\AIChatBot or $env:AITUBER_ROOT
+# - pnpm via npx (default: npx --yes pnpm@9.15.0) or $env:PNPM_CMD
 # - Node.js on PATH (or AITuber\runtime\node\node.exe for portable bundle)
 # - ffmpeg + ffplay real binaries (not Chocolatey shims), or $env:FFMPEG_DIR
 #
@@ -21,6 +21,10 @@ $Script:PlaceholderValues = @(
     '', 'changeme', 'change-me', 'your-api-key', 'your-key-here', 'your_key_here',
     'placeholder', 'todo', 'tbd', 'none', 'null', 'sk-your', 'sk-your-key-here'
 )
+
+$Script:SidecarControllerEntry = 'app\apps\controller\dist\index.js'
+$Script:SidecarBridgeEntry = 'app\packages\integrations\virtualdeck\dist\bridge-server.js'
+$Script:BridgePackageFilter = './packages/integrations/virtualdeck'
 
 function Write-Step([string]$Message) {
     Write-Host $Message -ForegroundColor Cyan
@@ -40,12 +44,13 @@ function Write-Fail([string]$Message) {
 
 function Test-EnvTextHasPopulatedSecrets([string]$Text) {
     if (-not $Text) { return $false }
-    $pattern = "(?m)^\s*($($Script:SecretKeyNames))\s*[ \t]*=\s*[ \t]*(?:`"([^`"\r\n]*)`"|'([^'\r\n]*)'|([^\s#;\r\n][^\r\n]*))?"
-    foreach ($match in [regex]::Matches($Text, $pattern)) {
+    $linePattern = "^\s*($($Script:SecretKeyNames))\s*[ \t]*=\s*(?:`"([^`"]*)`"|'([^']*)'|([^\s#;]*))?\s*$"
+    foreach ($line in ($Text -split "`r?`n")) {
+        if (-not ($line -match $linePattern)) { continue }
         $val = ''
-        if ($match.Groups[2].Success -and $match.Groups[2].Value) { $val = $match.Groups[2].Value }
-        elseif ($match.Groups[3].Success -and $match.Groups[3].Value) { $val = $match.Groups[3].Value }
-        elseif ($match.Groups[4].Success -and $match.Groups[4].Value) { $val = $match.Groups[4].Value }
+        if ($Matches[2]) { $val = $Matches[2] }
+        elseif ($Matches[3]) { $val = $Matches[3] }
+        elseif ($Matches[4]) { $val = $Matches[4] }
         $val = $val.Trim()
         if (-not $val) { continue }
         $lower = $val.ToLower()
@@ -56,34 +61,102 @@ function Test-EnvTextHasPopulatedSecrets([string]$Text) {
     return $false
 }
 
+function Get-PnpmInvocation {
+    if ($env:PNPM_CMD -and $env:PNPM_CMD.Trim()) {
+        return @($env:PNPM_CMD.Trim().Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries))
+    }
+    return @('npx', '--yes', 'pnpm@9.15.0')
+}
+
+function Invoke-Pnpm {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$PnpmArgs,
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory
+    )
+    $pnpm = Get-PnpmInvocation
+    Push-Location $WorkingDirectory
+    try {
+        Write-Host "  $($pnpm -join ' ') $($PnpmArgs -join ' ')" -ForegroundColor DarkGray
+        & $pnpm[0] @($pnpm[1..($pnpm.Length - 1)]) @PnpmArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "$($pnpm -join ' ') $($PnpmArgs -join ' ') failed with exit code $LASTEXITCODE"
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
+function Test-ReparsePoint([System.IO.FileSystemInfo]$Item) {
+    return ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq [IO.FileAttributes]::ReparsePoint
+}
+
+function Resolve-ReparseTarget([string]$Path) {
+    $item = Get-Item -LiteralPath $Path -Force
+    if (-not (Test-ReparsePoint $item)) {
+        return $item.FullName
+    }
+    $target = $null
+    if ($item.PSObject.Properties.Match('Target').Count -gt 0 -and $item.Target) {
+        if ($item.Target -is [Array]) { $target = $item.Target[0] }
+        else { $target = [string]$item.Target }
+    }
+    if (-not $target) {
+        throw "Could not resolve reparse point target for: $Path"
+    }
+    if (-not [IO.Path]::IsPathRooted($target)) {
+        $target = Join-Path $item.Parent.FullName $target
+    }
+    return (Resolve-Path -LiteralPath $target).Path
+}
+
 function Copy-TreeAsRealFiles {
     param(
         [Parameter(Mandatory = $true)][string]$Source,
         [Parameter(Mandatory = $true)][string]$Destination,
-        [string[]]$ExcludeDirNames = @('node_modules', '.git', '.turbo', '.cache')
+        [string[]]$ExcludeDirNames = @('.git', '.turbo', '.cache')
     )
     if (-not (Test-Path -LiteralPath $Source)) {
         throw "Copy source not found: $Source"
     }
+    $resolvedSource = (Resolve-Path -LiteralPath $Source).Path
     New-Item -ItemType Directory -Path $Destination -Force | Out-Null
-    if (Get-Command robocopy -ErrorAction SilentlyContinue) {
-        $xd = @()
-        foreach ($name in $ExcludeDirNames) { $xd += '/XD'; $xd += $name }
-        $null = robocopy $Source $Destination /E /COPY:DAT /DCOPY:DAT /SL /XJ /R:2 /W:2 /NFL /NDL /NJH /NJS @xd
-        if ($LASTEXITCODE -ge 8) {
-            throw "robocopy failed ($LASTEXITCODE) copying $Source -> $Destination"
+
+    function Copy-Recursive {
+        param([string]$Src, [string]$Dst)
+        $item = Get-Item -LiteralPath $Src -Force
+        if (Test-ReparsePoint $item) {
+            $real = Resolve-ReparseTarget $Src
+            $realItem = Get-Item -LiteralPath $real -Force
+            if ($realItem.PSIsContainer) {
+                New-Item -ItemType Directory -Path $Dst -Force | Out-Null
+                foreach ($child in Get-ChildItem -LiteralPath $real -Force) {
+                    Copy-Recursive -Src $child.FullName -Dst (Join-Path $Dst $child.Name)
+                }
+            } else {
+                $parent = Split-Path -Parent $Dst
+                if (-not (Test-Path -LiteralPath $parent)) {
+                    New-Item -ItemType Directory -Path $parent -Force | Out-Null
+                }
+                Copy-Item -LiteralPath $real -Destination $Dst -Force
+            }
+            return
         }
-        return
-    }
-    Get-ChildItem -LiteralPath $Source -Force | ForEach-Object {
-        $destItem = Join-Path $Destination $_.Name
-        if ($_.PSIsContainer) {
-            if ($ExcludeDirNames -contains $_.Name) { return }
-            Copy-TreeAsRealFiles -Source $_.FullName -Destination $destItem -ExcludeDirNames $ExcludeDirNames
-        } else {
-            Copy-Item -LiteralPath $_.FullName -Destination $destItem -Force
+        if ($item.PSIsContainer) {
+            if ($ExcludeDirNames -contains $item.Name) { return }
+            New-Item -ItemType Directory -Path $Dst -Force | Out-Null
+            foreach ($child in Get-ChildItem -LiteralPath $Src -Force) {
+                Copy-Recursive -Src $child.FullName -Dst (Join-Path $Dst $child.Name)
+            }
+            return
         }
+        $parent = Split-Path -Parent $Dst
+        if ($parent -and -not (Test-Path -LiteralPath $parent)) {
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }
+        Copy-Item -LiteralPath $Src -Destination $Dst -Force
     }
+
+    Copy-Recursive -Src $resolvedSource -Dst $Destination
 }
 
 function Resolve-RealFilePath([string]$Path) {
@@ -145,21 +218,6 @@ function Resolve-FfmpegBinary([string]$ExeName) {
     return $null
 }
 
-function Assert-ControllerDistPresent([string]$AppDir) {
-    $markers = @(
-        (Join-Path $AppDir 'dist\index.js'),
-        (Join-Path $AppDir 'dist\main.js'),
-        (Join-Path $AppDir 'dist\server.js'),
-        (Join-Path $AppDir 'index.js')
-    )
-    foreach ($m in $markers) {
-        if (Test-Path -LiteralPath $m) { return $m }
-    }
-    $anyDistJs = Get-ChildItem -Path (Join-Path $AppDir 'dist') -Filter '*.js' -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($anyDistJs) { return $anyDistJs.FullName }
-    return $null
-}
-
 function Get-ControllerFilter([string]$Root) {
     if ($env:RAVEN_CONTROLLER_FILTER) { return $env:RAVEN_CONTROLLER_FILTER }
     $controllerDir = Join-Path $Root 'apps\controller'
@@ -167,18 +225,88 @@ function Get-ControllerFilter([string]$Root) {
     return $null
 }
 
-function Invoke-Pnpm {
-    param([string[]]$Args, [string]$WorkingDirectory)
-    Push-Location $WorkingDirectory
-    try {
-        Write-Host "  pnpm $($Args -join ' ')" -ForegroundColor DarkGray
-        & pnpm @Args
-        if ($LASTEXITCODE -ne 0) {
-            throw "pnpm $($Args -join ' ') failed with exit code $LASTEXITCODE"
-        }
-    } finally {
-        Pop-Location
+function Get-WorkspacePackageFilters([string]$Root) {
+    $filters = New-Object System.Collections.Generic.List[string]
+    $packagesRoot = Join-Path $Root 'packages'
+    if (-not (Test-Path -LiteralPath $packagesRoot)) { return @() }
+    Get-ChildItem -LiteralPath $packagesRoot -Recurse -Filter 'package.json' -File | ForEach-Object {
+        $rel = $_.DirectoryName.Substring($Root.Length).TrimStart('\', '/').Replace('\', '/')
+        $filters.Add("./$rel")
     }
+    return $filters | Sort-Object -Unique
+}
+
+function Get-PackageDirectoryFromFilter([string]$Root, [string]$Filter) {
+    $rel = $Filter -replace '^\./', '' -replace '/', '\'
+    return Join-Path $Root $rel
+}
+
+function Test-PackageHasBuiltOutput([string]$PackageDir) {
+    $dist = Join-Path $PackageDir 'dist'
+    if (-not (Test-Path -LiteralPath $dist)) { return $false }
+    $js = Get-ChildItem -LiteralPath $dist -Filter '*.js' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    return $null -ne $js
+}
+
+function Invoke-PackageBuildOptional {
+    param(
+        [string]$Root,
+        [string]$Filter
+    )
+    $pkgDir = Get-PackageDirectoryFromFilter -Root $Root -Filter $Filter
+    $pkgJson = Join-Path $pkgDir 'package.json'
+    if (-not (Test-Path -LiteralPath $pkgJson)) { return }
+    $pkg = Get-Content -LiteralPath $pkgJson -Raw | ConvertFrom-Json
+    if (-not ($pkg.scripts -and $pkg.scripts.build)) { return }
+
+    $hasDist = Test-PackageHasBuiltOutput -PackageDir $pkgDir
+    try {
+        Write-Host "  building $Filter"
+        Invoke-Pnpm -PnpmArgs @('--filter', $Filter, 'run', 'build') -WorkingDirectory $Root
+    } catch {
+        if ($hasDist) {
+            Write-Warn "Build failed for $Filter but dist/ already exists - continuing ($($_.Exception.Message))"
+        } else {
+            throw
+        }
+    }
+}
+
+function Invoke-PnpmInstallFrozen([string]$Root) {
+    try {
+        Invoke-Pnpm -PnpmArgs @('install', '--frozen-lockfile') -WorkingDirectory $Root
+    } catch {
+        throw @"
+pnpm install --frozen-lockfile failed. The AITuber lockfile must match node_modules without being rewritten.
+Run 'pnpm install' in the AITuber repo on the dev PC, commit pnpm-lock.yaml if needed, then re-run stage-raven.
+Original error: $($_.Exception.Message)
+"@
+    }
+}
+
+function Invoke-PnpmDeployPackage {
+    param(
+        [string]$Root,
+        [string]$Filter,
+        [string]$Destination
+    )
+    if (Test-Path -LiteralPath $Destination) {
+        Remove-Item -LiteralPath $Destination -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    Invoke-Pnpm -PnpmArgs @('--filter', $Filter, 'deploy', '--prod', $Destination) -WorkingDirectory $Root
+}
+
+function Assert-SidecarLayoutPresent([string]$StageDir) {
+    $controller = Join-Path $StageDir $Script:SidecarControllerEntry
+    $bridge = Join-Path $StageDir $Script:SidecarBridgeEntry
+    $missing = @()
+    if (-not (Test-Path -LiteralPath $controller)) { $missing += $Script:SidecarControllerEntry }
+    if (-not (Test-Path -LiteralPath $bridge)) { $missing += $Script:SidecarBridgeEntry }
+    if ($missing.Count -gt 0) {
+        throw "Staged layout missing sidecar entrypoints: $($missing -join ', ')"
+    }
+    Write-Ok "Sidecar entrypoints present (controller + VirtualDeck bridge)"
 }
 
 function Stage-MonorepoLayout {
@@ -192,71 +320,39 @@ function Stage-MonorepoLayout {
         throw 'Monorepo layout detected but apps/controller is missing (set RAVEN_CONTROLLER_FILTER if needed).'
     }
 
-    if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
-        throw 'pnpm is required to build AITuber apps/controller. Install pnpm and re-run stage-raven.'
-    }
-
     $sidecarSrc = Join-Path $Root 'scripts\raven-sidecar.js'
     if (-not (Test-Path -LiteralPath $sidecarSrc)) {
         throw "Missing scripts/raven-sidecar.js under $Root"
     }
 
-    Write-Step 'Building AITuber controller (pnpm monorepo)...'
-    Invoke-Pnpm -Args @('install') -WorkingDirectory $Root
-    Invoke-Pnpm -Args @('--filter', $controllerFilter, 'run', 'build') -WorkingDirectory $Root
+    Write-Step 'Installing AITuber workspace (frozen lockfile)...'
+    Invoke-PnpmInstallFrozen -Root $Root
 
-    $packagesDir = Join-Path $Root 'packages'
-    if (Test-Path -LiteralPath $packagesDir) {
-        Write-Step 'Building workspace packages (when build script exists)...'
-        Get-ChildItem -LiteralPath $packagesDir -Directory | ForEach-Object {
-            $pkgJsonPath = Join-Path $_.FullName 'package.json'
-            if (-not (Test-Path -LiteralPath $pkgJsonPath)) { return }
-            $pkg = Get-Content -LiteralPath $pkgJsonPath -Raw | ConvertFrom-Json
-            if ($pkg.scripts -and $pkg.scripts.build) {
-                $filter = "./packages/$($_.Name)"
-                Write-Host "  building $filter"
-                Invoke-Pnpm -Args @('--filter', $filter, 'run', 'build') -WorkingDirectory $Root
-            }
-        }
+    Write-Step 'Building workspace packages (nested packages included)...'
+    $packageFilters = Get-WorkspacePackageFilters -Root $Root
+    foreach ($filter in $packageFilters) {
+        Invoke-PackageBuildOptional -Root $Root -Filter $filter
     }
 
-    Write-Step 'Deploying controller production bundle (real files, no workspace symlinks)...'
-    $deployRoot = Join-Path $StageDir '.deploy-tmp'
-    if (Test-Path -LiteralPath $deployRoot) {
-        Remove-Item -LiteralPath $deployRoot -Recurse -Force
-    }
-    New-Item -ItemType Directory -Path $deployRoot -Force | Out-Null
-    Invoke-Pnpm -Args @('--filter', $controllerFilter, 'deploy', '--prod', $deployRoot) -WorkingDirectory $Root
+    Write-Step 'Building apps/controller...'
+    Invoke-Pnpm -PnpmArgs @('--filter', $controllerFilter, 'run', 'build') -WorkingDirectory $Root
 
-    $appDir = Join-Path $StageDir 'app'
-    if (Test-Path -LiteralPath $appDir) { Remove-Item -LiteralPath $appDir -Recurse -Force }
-    Copy-TreeAsRealFiles -Source $deployRoot -Destination $appDir
-    Remove-Item -LiteralPath $deployRoot -Recurse -Force -ErrorAction SilentlyContinue
-
-    $distMarker = Assert-ControllerDistPresent $appDir
-    if (-not $distMarker) {
-        throw "Controller deploy succeeded but no dist/*.js found under $appDir"
+    $bridgeFilter = $Script:BridgePackageFilter
+    $bridgeDir = Get-PackageDirectoryFromFilter -Root $Root -Filter $bridgeFilter
+    if (-not (Test-Path -LiteralPath $bridgeDir)) {
+        throw "Missing VirtualDeck bridge package at packages/integrations/virtualdeck"
     }
-    Write-Ok "Controller dist: $distMarker"
+
+    Write-Step 'Deploying controller and VirtualDeck bridge (monorepo paths under app/)...'
+    $controllerStage = Join-Path $StageDir 'app\apps\controller'
+    $bridgeStage = Join-Path $StageDir 'app\packages\integrations\virtualdeck'
+    Invoke-PnpmDeployPackage -Root $Root -Filter $controllerFilter -Destination $controllerStage
+    Invoke-PnpmDeployPackage -Root $Root -Filter $bridgeFilter -Destination $bridgeStage
+
+    Assert-SidecarLayoutPresent -StageDir $StageDir
 
     Write-Step 'Copying Raven sidecar entrypoint...'
     Copy-Item -LiteralPath $sidecarSrc -Destination (Join-Path $StageDir 'sidecar.js') -Force
-
-    if (Test-Path -LiteralPath $packagesDir) {
-        Write-Step 'Copying packages/* (sources + dist, excluding node_modules)...'
-        $destPackages = Join-Path $StageDir 'packages'
-        if (Test-Path -LiteralPath $destPackages) { Remove-Item -LiteralPath $destPackages -Recurse -Force }
-        Copy-TreeAsRealFiles -Source $packagesDir -Destination $destPackages
-    }
-
-    $bridgeNames = @('virtualdeck-bridge', 'virtual-deck-bridge', 'vd-bridge', 'virtualdeck')
-    foreach ($name in $bridgeNames) {
-        $bridgePath = Join-Path $packagesDir $name
-        if (Test-Path -LiteralPath $bridgePath) {
-            Write-Ok "VirtualDeck bridge package present: packages/$name"
-            break
-        }
-    }
 
     $sidecarPkg = Join-Path $Root 'package.json'
     if (Test-Path -LiteralPath $sidecarPkg) {
@@ -266,7 +362,7 @@ function Stage-MonorepoLayout {
             name = 'raven-sidecar-staged'
             private = $true
             type = 'commonjs'
-        } | ConvertTo-Json | Set-Content -Path (Join-Path $StageDir 'package.json') -Encoding UTF8
+        } | ConvertTo-Json | Set-Content -Path (Join-Path $StageDir 'package.json') -Encoding ASCII
     }
 }
 
@@ -324,14 +420,20 @@ function Install-StagedProductionDeps {
         [string]$StageDir,
         [string]$NodeExe
     )
+    $modulesCandidates = @(
+        (Join-Path $StageDir 'app\apps\controller\node_modules'),
+        (Join-Path $StageDir 'app\packages\integrations\virtualdeck\node_modules'),
+        (Join-Path $StageDir 'app\node_modules')
+    )
+    foreach ($mod in $modulesCandidates) {
+        if (Test-Path -LiteralPath $mod) {
+            Write-Ok "Using production node_modules from pnpm deploy ($mod)"
+            return
+        }
+    }
+
     $pkg = Join-Path $StageDir 'package.json'
     if (-not (Test-Path -LiteralPath $pkg)) { return }
-
-    $appModules = Join-Path $StageDir 'app\node_modules'
-    if (Test-Path -LiteralPath $appModules) {
-        Write-Ok 'Using production node_modules from pnpm deploy (app/node_modules)'
-        return
-    }
 
     Write-Step 'Installing production dependencies in staged sidecar root...'
     Push-Location $StageDir
@@ -350,6 +452,38 @@ function Install-StagedProductionDeps {
     } finally {
         Pop-Location
     }
+}
+
+function Write-EnvDefaultsTemplate {
+    param(
+        [string]$StageDir,
+        [string]$RepoRoot
+    )
+    $EnvDefaultsPath = Join-Path $StageDir 'env.defaults'
+    $TemplateInRepo = Join-Path $RepoRoot 'extra\raven\env.defaults'
+
+    if (Test-Path -LiteralPath $TemplateInRepo) {
+        $srcFull = (Resolve-Path -LiteralPath $TemplateInRepo).Path
+        $destFull = [IO.Path]::GetFullPath($EnvDefaultsPath)
+        if ($srcFull -ieq $destFull) {
+            Write-Ok 'env.defaults template already at destination (skipped copy)'
+            return
+        }
+        Copy-Item -LiteralPath $TemplateInRepo -Destination $EnvDefaultsPath -Force
+        return
+    }
+
+    @(
+        '# Raven Voice AI - fill API keys after install (never ship real keys)',
+        'RAVEN_VOICE_ONLY=1',
+        'LLM_PROVIDER=openai',
+        'LLM_API_KEY=',
+        'TTS_PROVIDER=elevenlabs',
+        'TTS_API_KEY=',
+        'TTS_VOICE_ID=',
+        'JARVIS_BASE_URL=http://127.0.0.1:8091',
+        'VIRTUALDECK_JARVIS_URL=http://127.0.0.1:8091'
+    ) | Set-Content -Path $EnvDefaultsPath -Encoding ASCII
 }
 
 # --- Main ---
@@ -372,7 +506,7 @@ $StageDir = Join-Path $RepoRoot 'extra\raven'
 
 if ($Clean -and (Test-Path -LiteralPath $StageDir)) {
     Write-Warn "Cleaning existing stage: $StageDir"
-    Get-ChildItem -LiteralPath $StageDir -Force | Where-Object { $_.Name -notin @('README.md') } | Remove-Item -Recurse -Force
+    Get-ChildItem -LiteralPath $StageDir -Force | Where-Object { $_.Name -notin @('README.md', 'env.defaults') } | Remove-Item -Recurse -Force
 }
 
 New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
@@ -411,7 +545,7 @@ $PortableNode = Join-Path $AITuberRoot 'runtime\node\node.exe'
 $BundledNodeExe = Join-Path $NodeDir 'node.exe'
 if (Test-Path -LiteralPath $PortableNode) {
     Write-Ok 'Using portable node from AITuber runtime/node'
-    Copy-TreeAsRealFiles -Source (Join-Path $AITuberRoot 'runtime\node') -Destination $NodeDir -ExcludeDirNames @()
+    Copy-TreeAsRealFiles -Source (Join-Path $AITuberRoot 'runtime\node') -Destination $NodeDir
 } else {
     $systemNode = (Get-Command node -ErrorAction SilentlyContinue).Path
     if (-not $systemNode) {
@@ -442,7 +576,7 @@ foreach ($pair in @(
     )) {
     $len = (Get-Item -LiteralPath $pair.Src -Force).Length
     if ($len -lt 1MB) {
-        Write-Fail "ERROR: $($pair.Name) at $($pair.Src) is only $len bytes — likely a shim, not the real binary."
+        Write-Fail "ERROR: $($pair.Name) at $($pair.Src) is only $len bytes - likely a shim, not the real binary."
         exit 1
     }
     Copy-Item -LiteralPath $pair.Src -Destination (Join-Path $FfmpegDir $pair.Name) -Force
@@ -450,23 +584,7 @@ foreach ($pair in @(
 }
 
 Write-Step 'Creating env.defaults (blank API key placeholders only)...'
-$EnvDefaultsPath = Join-Path $StageDir 'env.defaults'
-$TemplateInRepo = Join-Path $RepoRoot 'extra\raven\env.defaults'
-if (Test-Path -LiteralPath $TemplateInRepo) {
-    Copy-Item -LiteralPath $TemplateInRepo -Destination $EnvDefaultsPath -Force
-} else {
-    @(
-        '# Raven Voice AI — fill API keys after install (never ship real keys)',
-        'RAVEN_VOICE_ONLY=1',
-        'LLM_PROVIDER=openai',
-        'LLM_API_KEY=',
-        'TTS_PROVIDER=elevenlabs',
-        'TTS_API_KEY=',
-        'TTS_VOICE_ID=',
-        'JARVIS_BASE_URL=http://127.0.0.1:8091',
-        'VIRTUALDECK_JARVIS_URL=http://127.0.0.1:8091'
-    ) | Set-Content -Path $EnvDefaultsPath -Encoding UTF8
-}
+Write-EnvDefaultsTemplate -StageDir $StageDir -RepoRoot $RepoRoot
 
 Write-Step 'Running security checks...'
 $dangerousNames = @('.env', 'raven.env', 'twitch-oauth-config.js')
@@ -479,6 +597,7 @@ foreach ($name in $dangerousNames) {
     }
 }
 
+$EnvDefaultsPath = Join-Path $StageDir 'env.defaults'
 $defaultsText = Get-Content -LiteralPath $EnvDefaultsPath -Raw
 if (Test-EnvTextHasPopulatedSecrets $defaultsText) {
     Write-Fail '  ERROR: env.defaults contains non-placeholder API key values.'
@@ -505,11 +624,12 @@ if (-not (Test-Path -LiteralPath (Join-Path $StageDir 'sidecar.js'))) {
     Write-Fail 'ERROR: sidecar.js missing after dependency install.'
     exit 1
 }
-$appDirFinal = Join-Path $StageDir 'app'
-if (Test-Path -LiteralPath $appDirFinal) {
-    $dist = Assert-ControllerDistPresent $appDirFinal
-    if (-not $dist) {
-        Write-Fail "ERROR: controller app/ has no dist entrypoint under $appDirFinal"
+
+if ($isMonorepo -and $hasScriptsSidecar) {
+    try {
+        Assert-SidecarLayoutPresent -StageDir $StageDir
+    } catch {
+        Write-Fail $_.Exception.Message
         exit 1
     }
 }
