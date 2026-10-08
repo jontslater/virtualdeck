@@ -541,23 +541,11 @@
             document.querySelector('.overlay-content').appendChild(textDiv);
         }
 
-        function isAllowedOverlayImageSrc(src) {
+        function isAllowedWalkonProfileImageSrc(src) {
             if (!src || typeof src !== 'string') return false;
-            if (src.startsWith('blob:') || src.startsWith('data:image/')) return true;
             try {
                 const parsed = new URL(src);
-                if (
-                    parsed.protocol === 'http:' &&
-                    (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') &&
-                    parsed.port === '8080' &&
-                    parsed.pathname.startsWith('/media/')
-                ) {
-                    return true;
-                }
-                if (parsed.protocol === 'https:' && parsed.hostname === 'static-cdn.jtvnw.net') {
-                    return true;
-                }
-                return false;
+                return parsed.protocol === 'https:' && parsed.hostname === 'static-cdn.jtvnw.net';
             } catch (e) {
                 return false;
             }
@@ -566,8 +554,8 @@
         // Handle image
         function handleImage(payload) {
             const src = payload.src || payload.url || '';
-            if (!isAllowedOverlayImageSrc(src)) {
-                console.warn('🚫 Blocked overlay image URL (not allowed):', src);
+            if (payload.walkonProfile && !isAllowedWalkonProfileImageSrc(src)) {
+                console.warn('🚫 Blocked walk-on profile image URL (Twitch CDN only):', src);
                 return;
             }
 

@@ -12335,14 +12335,26 @@ let alertQueue = {
         window.electronAPI &&
         typeof window.electronAPI.getTwitchProfileImage === 'function'
       ) {
-        const profileUserId = userData.user_id || userData.id;
+        const rawUserId = userData.user_id || userData.id;
+        const profileUserId =
+          rawUserId && /^\d{1,20}$/.test(String(rawUserId)) ? String(rawUserId) : undefined;
+        const rawLogin = userData.username || userData.user_name || userData.user_login;
         const profileLogin =
-          userData.username || userData.user_name || userData.user_login;
+          rawLogin && /^[a-zA-Z0-9_]{1,25}$/.test(String(rawLogin)) ? String(rawLogin) : undefined;
+        const WALKON_PROFILE_LOOKUP_MS = 2500;
         try {
-          const profileResult = await window.electronAPI.getTwitchProfileImage({
-            userId: profileUserId,
-            login: profileLogin,
-          });
+          const profileResult = await Promise.race([
+            window.electronAPI.getTwitchProfileImage({
+              userId: profileUserId,
+              login: profileLogin,
+            }),
+            new Promise((resolve) => {
+              setTimeout(() => resolve({ profileImageUrl: null, timedOut: true }), WALKON_PROFILE_LOOKUP_MS);
+            }),
+          ]);
+          if (profileResult?.timedOut) {
+            console.warn('Walk-on profile image lookup timed out after', WALKON_PROFILE_LOOKUP_MS, 'ms');
+          }
           if (profileResult?.profileImageUrl) {
             payload.centerMedia.push({
               type: 'image',
@@ -12691,26 +12703,24 @@ window.resetWalkonTest = async function(skipConfirm = false) {
 // Usage: 
 //   testFirstChatWalkon('Iflewthetardis')
 //   testFirstChatWalkon('deathblade', 'DeathBlade', '87654321')
-//   testFirstChatWalkon('TestUser')  // Uses default TestUser
+//   testFirstChatWalkon('TestUser')  // Login-only lookup (no random user id)
 window.testFirstChatWalkon = function(username = 'TestUser', displayName = null, userId = null) {
   console.log('🧪 Testing first-chat walk-on event for:', username);
-  
-  // Generate a random user ID if not provided
-  if (!userId) {
-    userId = Math.floor(Math.random() * 100000000).toString();
-  }
   
   const display = displayName || (username.charAt(0).toUpperCase() + username.slice(1));
   const userLower = username.toLowerCase();
   
   // Simulate the event data that would come from main.js chat handler
+  const event = {
+    user_name: userLower,
+    display_name: display,
+  };
+  if (userId && /^\d{1,20}$/.test(String(userId))) {
+    event.user_id = String(userId);
+  }
   const eventData = {
     type: 'first-chat-walkon',
-    event: {
-      user_id: userId,
-      user_name: userLower,
-      display_name: display
-    }
+    event,
   };
   
   console.log('🧪 Simulating first-chat-walkon event:', eventData);
@@ -12719,9 +12729,8 @@ window.testFirstChatWalkon = function(username = 'TestUser', displayName = null,
   const userData = {
     username: userLower,
     display_name: display,
-    user_id: userId,
     user_name: userLower,
-    ...eventData.event
+    ...eventData.event,
   };
   
   // Trigger through the same path as real events - directly call alertSystem

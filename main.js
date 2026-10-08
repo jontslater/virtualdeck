@@ -3738,12 +3738,42 @@ const recentChatUserState = new Map();
 const firstTimeChatters = new Set();
 
 const TWITCH_PROFILE_IMAGE_CACHE_TTL_MS = 30 * 60 * 1000;
+const TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS = 60 * 1000;
+const TWITCH_PROFILE_HELIX_TIMEOUT_MS = 2500;
+const TWITCH_USER_ID_PATTERN = /^\d{1,20}$/;
+const TWITCH_LOGIN_PATTERN = /^[a-zA-Z0-9_]{1,25}$/;
 const twitchProfileImageCache = new Map();
 
 function twitchProfileCacheKey({ userId, login }) {
   if (userId) return `id:${userId}`;
   if (login) return `login:${String(login).toLowerCase()}`;
   return null;
+}
+
+function getCachedTwitchProfileImage(cacheKey) {
+  const cached = twitchProfileImageCache.get(cacheKey);
+  if (!cached) return undefined;
+  const ttlMs = cached.ttlMs ?? TWITCH_PROFILE_IMAGE_CACHE_TTL_MS;
+  if (Date.now() - cached.ts >= ttlMs) return undefined;
+  return cached.profileImageUrl;
+}
+
+function setCachedTwitchProfileImage(cacheKey, profileImageUrl, ttlMs = TWITCH_PROFILE_IMAGE_CACHE_TTL_MS) {
+  twitchProfileImageCache.set(cacheKey, {
+    profileImageUrl,
+    ts: Date.now(),
+    ttlMs,
+  });
+}
+
+function cacheTwitchProfileLookupResult(user, profileImageUrl) {
+  const ttlMs = TWITCH_PROFILE_IMAGE_CACHE_TTL_MS;
+  if (user?.id) {
+    setCachedTwitchProfileImage(`id:${user.id}`, profileImageUrl, ttlMs);
+  }
+  if (user?.login) {
+    setCachedTwitchProfileImage(`login:${user.login.toLowerCase()}`, profileImageUrl, ttlMs);
+  }
 }
 
 function sanitizeTwitchProfileImageUrl(url) {
@@ -3759,52 +3789,81 @@ function sanitizeTwitchProfileImageUrl(url) {
   }
 }
 
+async function helixFetchTwitchUser({ userId, login, signal }) {
+  let helixUrl = 'https://api.twitch.tv/helix/users?';
+  if (userId) {
+    helixUrl += `id=${encodeURIComponent(userId)}`;
+  } else {
+    helixUrl += `login=${encodeURIComponent(String(login).toLowerCase())}`;
+  }
+
+  const resp = await fetch(helixUrl, {
+    headers: {
+      'Client-ID': twitchClientId,
+      'Authorization': `Bearer ${twitchToken}`,
+    },
+    signal,
+  });
+  const data = await resp.json().catch(() => ({}));
+  return { resp, data };
+}
+
 async function lookupTwitchProfileImage({ userId, login }) {
   const cacheKey = twitchProfileCacheKey({ userId, login });
   if (!cacheKey) return null;
 
-  const now = Date.now();
-  const cached = twitchProfileImageCache.get(cacheKey);
-  if (cached && (now - cached.ts) < TWITCH_PROFILE_IMAGE_CACHE_TTL_MS) {
-    return cached.profileImageUrl;
+  const cached = getCachedTwitchProfileImage(cacheKey);
+  if (cached !== undefined) {
+    return cached;
   }
 
   if (!twitchClientId || !twitchToken) {
-    twitchProfileImageCache.set(cacheKey, { profileImageUrl: null, ts: now });
+    setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
     return null;
   }
 
+  const signal = AbortSignal.timeout(TWITCH_PROFILE_HELIX_TIMEOUT_MS);
+
   try {
-    if (!twitchUserId) await getUserId();
-    let helixUrl = 'https://api.twitch.tv/helix/users?';
+    let user = null;
+
     if (userId) {
-      helixUrl += `id=${encodeURIComponent(userId)}`;
-    } else {
-      helixUrl += `login=${encodeURIComponent(String(login).toLowerCase())}`;
+      const { resp, data } = await helixFetchTwitchUser({ userId, signal });
+      if (!resp.ok) {
+        setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
+        console.warn('[Walk On] Helix users lookup failed:', resp.status);
+        return null;
+      }
+      user = data.data && data.data[0];
+      if (!user && login) {
+        const fallback = await helixFetchTwitchUser({ login, signal });
+        if (!fallback.resp.ok) {
+          setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
+          console.warn('[Walk On] Helix users login fallback failed:', fallback.resp.status);
+          return null;
+        }
+        user = fallback.data.data && fallback.data.data[0];
+      }
+    } else if (login) {
+      const { resp, data } = await helixFetchTwitchUser({ login, signal });
+      if (!resp.ok) {
+        setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
+        console.warn('[Walk On] Helix users lookup failed:', resp.status);
+        return null;
+      }
+      user = data.data && data.data[0];
     }
 
-    const resp = await fetch(helixUrl, {
-      headers: {
-        'Client-ID': twitchClientId,
-        'Authorization': `Bearer ${twitchToken}`,
-      },
-    });
-    const data = await resp.json();
-    const user = data.data && data.data[0];
     const profileImageUrl = sanitizeTwitchProfileImageUrl(user?.profile_image_url);
-
-    twitchProfileImageCache.set(cacheKey, { profileImageUrl, ts: now });
-    if (user?.id) {
-      twitchProfileImageCache.set(`id:${user.id}`, { profileImageUrl, ts: now });
+    setCachedTwitchProfileImage(cacheKey, profileImageUrl, TWITCH_PROFILE_IMAGE_CACHE_TTL_MS);
+    if (user) {
+      cacheTwitchProfileLookupResult(user, profileImageUrl);
     }
-    if (user?.login) {
-      twitchProfileImageCache.set(`login:${user.login.toLowerCase()}`, { profileImageUrl, ts: now });
-    }
-
     return profileImageUrl;
   } catch (err) {
-    console.error('[Walk On] Twitch profile image lookup failed:', err);
-    twitchProfileImageCache.set(cacheKey, { profileImageUrl: null, ts: now });
+    const isTimeout = err && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    console.error('[Walk On] Twitch profile image lookup failed:', isTimeout ? 'timed out' : err);
+    setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
     return null;
   }
 }
@@ -3826,7 +3885,33 @@ ipcMain.handle('reset-first-time-chatters', async () => {
   }
 });
 
-ipcMain.handle('get-twitch-profile-image', async (_event, { userId, login } = {}) => {
+ipcMain.handle('get-twitch-profile-image', async (_event, params) => {
+  const input = params && typeof params === 'object' ? params : {};
+  let userId = input.userId;
+  let login = input.login;
+
+  if (userId != null && userId !== '') {
+    userId = String(userId);
+    if (!TWITCH_USER_ID_PATTERN.test(userId)) {
+      return { success: false, profileImageUrl: null, error: 'Invalid userId' };
+    }
+  } else {
+    userId = undefined;
+  }
+
+  if (login != null && login !== '') {
+    login = String(login);
+    if (!TWITCH_LOGIN_PATTERN.test(login)) {
+      return { success: false, profileImageUrl: null, error: 'Invalid login' };
+    }
+  } else {
+    login = undefined;
+  }
+
+  if (!userId && !login) {
+    return { success: false, profileImageUrl: null, error: 'userId or login required' };
+  }
+
   try {
     const profileImageUrl = await lookupTwitchProfileImage({ userId, login });
     return { success: true, profileImageUrl };
