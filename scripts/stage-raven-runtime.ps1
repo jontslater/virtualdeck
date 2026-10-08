@@ -28,6 +28,8 @@ $Script:PlaceholderValues = @(
 $Script:SidecarControllerEntry = 'app\apps\controller\dist\index.js'
 $Script:SidecarBridgeEntry = 'app\packages\integrations\virtualdeck\dist\bridge-server.js'
 $Script:BridgeSourceRel = 'packages\integrations\virtualdeck'
+$Script:SharedSourceRel = 'packages\shared'
+$Script:SharedStageRel = 'app\packages\shared'
 
 function Write-Step([string]$Message) {
     Write-Host $Message -ForegroundColor Cyan
@@ -338,22 +340,299 @@ function Invoke-PackageBuildOptional {
     }
 }
 
-function Invoke-PnpmInstallFrozenForRaven {
+function Test-ModuleResolvableFromDirectory {
+    param(
+        [string]$NodeExe,
+        [string]$Dir,
+        [string]$ModuleName
+    )
+    if (-not (Test-Path -LiteralPath $Dir)) { return $false }
+    $helper = @'
+const path = require("path");
+const cwd = process.argv[1];
+const mod = process.argv[2];
+const search = [
+  cwd,
+  path.join(cwd, ".."),
+  path.join(cwd, "..", ".."),
+  path.join(cwd, "..", "..", ".."),
+  path.join(cwd, "..", "..", "..", ".."),
+];
+require.resolve(mod, { paths: search });
+'@
+    & $NodeExe -e $helper $Dir $ModuleName 2>$null | Out-Null
+    return $LASTEXITCODE -eq 0
+}
+
+function Test-ControllerDepsResolvable {
     param(
         [string]$Root,
+        [string]$NodeExe
+    )
+    $controllerDir = Join-Path $Root 'apps\controller'
+    if (-not (Test-Path -LiteralPath (Join-Path $controllerDir 'package.json'))) {
+        return $false
+    }
+    $rootModules = Join-Path $Root 'node_modules'
+    if (-not (Test-Path -LiteralPath $rootModules)) {
+        return $false
+    }
+    $helper = @'
+const fs = require("fs");
+const path = require("path");
+const root = process.argv[1];
+const controllerDir = process.argv[2];
+process.chdir(controllerDir);
+const pkg = JSON.parse(fs.readFileSync(path.join(controllerDir, "package.json"), "utf8"));
+const deps = Object.assign({}, pkg.dependencies || {}, pkg.optionalDependencies || {});
+const search = [controllerDir, root, path.join(root, "node_modules")];
+for (const name of Object.keys(deps)) {
+  const spec = deps[name];
+  if (typeof spec === "string" && spec.startsWith("file:")) continue;
+  try {
+    require.resolve(name, { paths: search });
+  } catch (e) {
+    process.exit(2);
+  }
+}
+try {
+  require.resolve("@ai-streamer/shared", { paths: search });
+} catch (e) {
+  process.exit(3);
+}
+'@
+    & $NodeExe -e $helper $Root $controllerDir 2>$null | Out-Null
+    return $LASTEXITCODE -eq 0
+}
+
+function Ensure-RavenPnpmDependencies {
+    param(
+        [string]$Root,
+        [string]$NodeExe,
         [string]$ControllerPackageName
     )
+    if (Test-ControllerDepsResolvable -Root $Root -NodeExe $NodeExe) {
+        Write-Ok 'AITuber node_modules already satisfy controller deps; skipping pnpm install'
+        return
+    }
+
     $filter = "${ControllerPackageName}..."
+    Write-Warn "Controller dependencies not fully resolved; trying pnpm install --frozen-lockfile --filter $filter"
+    $installFailed = $false
     try {
         Invoke-Pnpm -PnpmArgs @('install', '--frozen-lockfile', '--filter', $filter) -WorkingDirectory $Root
     } catch {
-        throw @"
-pnpm install --frozen-lockfile --filter $filter failed.
-Only the controller dependency subtree is installed so unrelated workspace apps (e.g. apps/hud) do not block Raven staging.
-If controller dependencies changed, run 'pnpm install' in AITuber, commit pnpm-lock.yaml, then re-run stage-raven.
-Original error: $($_.Exception.Message)
-"@
+        $installFailed = $true
+        Write-Warn "pnpm install failed ($($_.Exception.Message))"
     }
+
+    if (Test-ControllerDepsResolvable -Root $Root -NodeExe $NodeExe) {
+        if ($installFailed) {
+            Write-Warn 'pnpm install failed (often lockfile vs uncommitted workspace apps) but existing node_modules are usable; continuing'
+        }
+        return
+    }
+
+    throw @"
+Could not prepare AITuber dependencies for Raven staging.
+- Existing node_modules do not resolve apps/controller dependencies (including @ai-streamer/shared).
+- pnpm install --frozen-lockfile --filter $filter also failed (pnpm 9 may still validate the full lockfile vs apps/hud).
+
+Fix: run 'pnpm install' in AITuber on the dev PC so node_modules matches the controller subtree, then re-run stage-raven without needing a successful frozen install.
+"@
+}
+
+function Invoke-NpmProductionInstall {
+    param(
+        [string]$Dir,
+        [string]$NodeExe
+    )
+    $npmCli = Get-NpmCliPath
+    Push-Location $Dir
+    try {
+        & $NodeExe $npmCli install --omit=dev --no-optional
+        if ($LASTEXITCODE -ne 0) {
+            throw "npm install --omit=dev failed in $Dir (exit $LASTEXITCODE)"
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
+function Invoke-TscForPackageDirectory {
+    param(
+        [string]$PackageDir,
+        [string]$Root,
+        [string]$NodeExe
+    )
+    $tsconfig = Join-Path $PackageDir 'tsconfig.json'
+    if (-not (Test-Path -LiteralPath $tsconfig)) {
+        $alt = Join-Path $PackageDir 'tsconfig.build.json'
+        if (Test-Path -LiteralPath $alt) { $tsconfig = $alt } else { return }
+    }
+    $tscCandidates = @(
+        (Join-Path $Root 'node_modules\typescript\bin\tsc'),
+        (Join-Path $PackageDir 'node_modules\typescript\bin\tsc')
+    )
+    $tsc = $tscCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    $npmCli = Get-NpmCliPath
+    Push-Location $PackageDir
+    try {
+        if ($tsc) {
+            & $NodeExe $tsc -p $tsconfig
+        } else {
+            Push-Location $Root
+            try {
+                & $NodeExe $npmCli exec -- tsc -p $tsconfig
+            } finally {
+                Pop-Location
+            }
+        }
+        if ($LASTEXITCODE -ne 0) {
+            throw "tsc exited with code $LASTEXITCODE for $PackageDir"
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
+function Write-StagedPackageJson {
+    param(
+        [string]$SourcePackageJson,
+        [string]$DestPackageJson,
+        [hashtable]$DepRewrites
+    )
+    $helper = @'
+const fs = require("fs");
+const src = process.argv[1];
+const dest = process.argv[2];
+const rewrites = JSON.parse(process.argv[3]);
+const pkg = JSON.parse(fs.readFileSync(src, "utf8"));
+for (const section of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+  if (!pkg[section]) continue;
+  for (const [name, spec] of Object.entries(pkg[section])) {
+    if (Object.prototype.hasOwnProperty.call(rewrites, name)) {
+      pkg[section][name] = rewrites[name];
+      continue;
+    }
+    if (typeof spec === "string" && spec.startsWith("workspace:")) {
+      if (Object.prototype.hasOwnProperty.call(rewrites, name)) {
+        pkg[section][name] = rewrites[name];
+      }
+    }
+  }
+}
+fs.writeFileSync(dest, JSON.stringify(pkg, null, 2) + "\n");
+'@
+    $jsonRewrites = '{}' 
+    if ($DepRewrites.Count -gt 0) {
+        $jsonRewrites = ($DepRewrites.GetEnumerator() | ForEach-Object {
+            """$($_.Key)"":""$($_.Value)"""
+        }) -join ','
+        $jsonRewrites = "{ $jsonRewrites }"
+    }
+    & node -e $helper $SourcePackageJson $DestPackageJson $jsonRewrites
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to write staged package.json for $SourcePackageJson"
+    }
+}
+
+function Stage-BuiltPackageManual {
+    param(
+        [string]$SourceDir,
+        [string]$DestDir,
+        [string]$NodeExe,
+        [hashtable]$DepRewrites = @{}
+    )
+    if (Test-Path -LiteralPath $DestDir) {
+        Remove-Item -LiteralPath $DestDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
+
+    $distSrc = Join-Path $SourceDir 'dist'
+    if (-not (Test-Path -LiteralPath $distSrc)) {
+        throw "Manual stage requires dist/ under $SourceDir"
+    }
+    Copy-TreeAsRealFiles -Source $distSrc -Destination (Join-Path $DestDir 'dist')
+
+    $srcPkg = Join-Path $SourceDir 'package.json'
+    $destPkg = Join-Path $DestDir 'package.json'
+    if ($DepRewrites.Count -gt 0) {
+        Write-StagedPackageJson -SourcePackageJson $srcPkg -DestPackageJson $destPkg -DepRewrites $DepRewrites
+    } else {
+        Copy-Item -LiteralPath $srcPkg -Destination $destPkg -Force
+    }
+
+    Invoke-NpmProductionInstall -Dir $DestDir -NodeExe $NodeExe
+}
+
+function Stage-SharedPackage {
+    param(
+        [string]$Root,
+        [string]$StageDir,
+        [string]$NodeExe
+    )
+    $sharedSrc = Join-Path $Root $Script:SharedSourceRel
+    if (-not (Test-Path -LiteralPath $sharedSrc)) {
+        throw "Missing required package at $($Script:SharedSourceRel)"
+    }
+
+    Write-Step 'Building and staging @ai-streamer/shared...'
+    Invoke-PackageBuildOptional -Root $Root -Filter './packages/shared'
+    try {
+        Invoke-TscForPackageDirectory -PackageDir $sharedSrc -Root $Root -NodeExe $NodeExe
+    } catch {
+        if (Test-PackageHasBuiltOutput -PackageDir $sharedSrc) {
+            Write-Warn "shared tsc failed but dist exists - continuing ($($_.Exception.Message))"
+        } else {
+            throw
+        }
+    }
+
+    $sharedDest = Join-Path $StageDir $Script:SharedStageRel
+    Stage-BuiltPackageManual -SourceDir $sharedSrc -DestDir $sharedDest -NodeExe $NodeExe
+
+    $zodOk = Test-ModuleResolvableFromDirectory -NodeExe $NodeExe -Dir $sharedDest -ModuleName 'zod'
+    if (-not $zodOk) {
+        Write-Warn 'zod did not resolve from staged shared package (may be optional depending on build)'
+    } else {
+        Write-Ok 'shared production deps resolve (zod)'
+    }
+    Write-Ok "Staged shared package at $($Script:SharedStageRel)"
+}
+
+function Stage-ControllerPackage {
+    param(
+        [string]$Root,
+        [string]$StageDir,
+        [string]$NodeExe,
+        [string]$ControllerFilter
+    )
+    $controllerSrc = Join-Path $Root 'apps\controller'
+    $controllerDest = Join-Path $StageDir 'app\apps\controller'
+    $depRewrites = @{
+        '@ai-streamer/shared' = 'file:../../packages/shared'
+    }
+
+    $deployFailed = $false
+    try {
+        Invoke-PnpmDeployPackage -Root $Root -Filter $ControllerFilter -Destination $controllerDest
+        Write-Ok 'Controller staged via pnpm deploy'
+    } catch {
+        $deployFailed = $true
+        Write-Warn "pnpm deploy failed ($($_.Exception.Message)); copying controller dist manually"
+        Stage-BuiltPackageManual -SourceDir $controllerSrc -DestDir $controllerDest -NodeExe $NodeExe -DepRewrites $depRewrites
+    }
+
+    $entry = Join-Path $controllerDest 'dist\index.js'
+    if (-not (Test-Path -LiteralPath $entry)) {
+        throw "Controller entry missing at $entry after staging"
+    }
+
+    if (-not (Test-ModuleResolvableFromDirectory -NodeExe $NodeExe -Dir $controllerDest -ModuleName '@ai-streamer/shared')) {
+        throw 'Staged controller cannot resolve @ai-streamer/shared (stage app/packages/shared first)'
+    }
+    Write-Ok 'Controller resolves @ai-streamer/shared from staged layout'
 }
 
 function Get-NpmCliPath {
@@ -455,6 +734,11 @@ function Stage-VirtualDeckBridge {
         throw 'VirtualDeck bridge dist/bridge-server.js is missing after compile'
     }
 
+    $sharedStage = Join-Path $StageDir $Script:SharedStageRel
+    if (-not (Test-Path -LiteralPath (Join-Path $sharedStage 'package.json'))) {
+        throw 'VirtualDeck bridge requires staged app/packages/shared (file:../../shared dependency)'
+    }
+
     $pkgJson = Join-Path $bridgeDir 'package.json'
     if (-not (Test-Path -LiteralPath $pkgJson)) {
         throw 'VirtualDeck bridge package.json is missing'
@@ -473,6 +757,11 @@ function Stage-VirtualDeckBridge {
     } finally {
         Pop-Location
     }
+
+    if (-not (Test-ModuleResolvableFromDirectory -NodeExe $NodeExe -Dir $bridgeStage -ModuleName '@ai-streamer/shared')) {
+        throw 'Staged VirtualDeck bridge cannot resolve @ai-streamer/shared (check app/packages/shared)'
+    }
+    Write-Ok 'VirtualDeck bridge resolves @ai-streamer/shared'
 
     Assert-BridgeWsResolvable -BridgeStage $bridgeStage -NodeExe $NodeExe
     Write-Ok 'VirtualDeck bridge staged with production node_modules'
@@ -540,22 +829,30 @@ function Stage-MonorepoLayout {
         throw "Missing scripts/raven-sidecar.js under $Root"
     }
 
-    Write-Step "Installing Raven pnpm subtree (frozen lockfile, filter $controllerPackageName...)..."
-    Invoke-PnpmInstallFrozenForRaven -Root $Root -ControllerPackageName $controllerPackageName
+    Write-Step 'Checking AITuber dependencies for Raven (install only if needed)...'
+    Ensure-RavenPnpmDependencies -Root $Root -NodeExe $NodeExe -ControllerPackageName $controllerPackageName
 
     Write-Step 'Building workspace packages (pnpm workspace only, excludes node_modules)...'
     $packageFilters = Get-WorkspacePackageFilters -Root $Root
     foreach ($filter in $packageFilters) {
-        if ($filter -replace '^\./', '' -eq $Script:BridgeSourceRel.Replace('\', '/')) { continue }
+        $rel = $filter -replace '^\./', ''
+        if ($rel -eq $Script:BridgeSourceRel.Replace('\', '/')) { continue }
         Invoke-PackageBuildOptional -Root $Root -Filter $filter
     }
 
     Write-Step 'Building apps/controller...'
-    Invoke-Pnpm -PnpmArgs @('--filter', $controllerFilter, 'run', 'build') -WorkingDirectory $Root
+    try {
+        Invoke-Pnpm -PnpmArgs @('--filter', $controllerFilter, 'run', 'build') -WorkingDirectory $Root
+    } catch {
+        Write-Warn "pnpm controller build failed; trying tsc in apps/controller ($($_.Exception.Message))"
+        $controllerSrc = Join-Path $Root 'apps\controller'
+        Invoke-TscForPackageDirectory -PackageDir $controllerSrc -Root $Root -NodeExe $NodeExe
+    }
 
-    Write-Step 'Deploying controller to app/apps/controller...'
-    $controllerStage = Join-Path $StageDir 'app\apps\controller'
-    Invoke-PnpmDeployPackage -Root $Root -Filter $controllerFilter -Destination $controllerStage
+    Stage-SharedPackage -Root $Root -StageDir $StageDir -NodeExe $NodeExe
+
+    Write-Step 'Staging apps/controller...'
+    Stage-ControllerPackage -Root $Root -StageDir $StageDir -NodeExe $NodeExe -ControllerFilter $controllerFilter
 
     Write-Step 'Building and staging VirtualDeck bridge (outside pnpm workspace)...'
     Stage-VirtualDeckBridge -Root $Root -StageDir $StageDir -NodeExe $NodeExe

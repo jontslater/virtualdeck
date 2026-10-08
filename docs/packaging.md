@@ -39,16 +39,17 @@ The staging script targets Jonathan's AITuber checkout:
 
 **What `npm run stage-raven` does for the monorepo:**
 
-1. `pnpm install --frozen-lockfile --filter @<controller-package-name>...` (only the controller subtree; unrelated apps like `apps/hud` do not block staging)
+1. Uses existing AITuber `node_modules` when `apps/controller` deps resolve (skips `pnpm install`; pnpm 9 may still validate the whole lockfile on install). Otherwise tries `pnpm install --frozen-lockfile --filter <controller>...`, and continues if install fails but deps still resolve.
 2. Builds all `packages/**` with a `build` script (nested packages included); failures are **warnings** if `dist/` already exists (e.g. `tts-piper` typecheck issues)
 3. `pnpm --filter ./apps/controller run build`
-4. `pnpm deploy --prod` into `extra/raven/app/apps/controller`
-5. VirtualDeck bridge (`packages/integrations/virtualdeck`, not in pnpm workspace): `tsc -p`, copy `dist` + `package.json`, `npm install --omit=dev` with bundled `node.exe`, verify `require.resolve('ws')`
-6. Copies `scripts/raven-sidecar.js` -> `sidecar.js`
-7. Verifies `app/apps/controller/dist/index.js` and `app/packages/integrations/virtualdeck/dist/bridge-server.js` exist
-8. Bundles `node.exe` (early, for bridge npm) and ffmpeg/ffplay
-9. Writes `env.defaults` from the VirtualDeck template (empty API keys only)
-10. Fails if node, ffmpeg, sidecar, controller `dist`, security checks, or dependency install fail
+4. Stages `packages/shared` to `extra/raven/app/packages/shared` (`npm install --omit=dev` for prod deps such as `zod`)
+5. `pnpm deploy --prod` into `extra/raven/app/apps/controller`, or manual `dist` + `package.json` + `npm install` if deploy hits lockfile validation
+6. VirtualDeck bridge (`packages/integrations/virtualdeck`, not in pnpm workspace): `tsc -p`, copy `dist` + `package.json` (file dep on `../../shared`), `npm install --omit=dev`, verify `ws` and `@ai-streamer/shared`
+7. Copies `scripts/raven-sidecar.js` -> `sidecar.js`
+8. Verifies `app/apps/controller/dist/index.js` and `app/packages/integrations/virtualdeck/dist/bridge-server.js` exist
+9. Bundles `node.exe` (early, for bridge npm) and ffmpeg/ffplay
+10. Writes `env.defaults` from the VirtualDeck template (empty API keys only)
+11. Fails if node, ffmpeg, sidecar, controller `dist`, security checks, or dependency install fail
 
 Legacy layouts (`sidecar.js` at repo root, or scripts layout with `app/`) are still supported for older checkouts.
 
