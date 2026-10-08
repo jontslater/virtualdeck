@@ -6,10 +6,12 @@
   "scripts": {
     "start": "electron .",
     "prepare-build": "node prepare-build.js",
+    "prepare-build:no-raven": "node -e \"process.env.SKIP_RAVEN='1'; require('./prepare-build').runPrepareBuild()\"",
+    "test:prepare-build": "node test-prepare-build.js",
     "stage-raven": "powershell -ExecutionPolicy Bypass -File scripts/stage-raven-runtime.ps1",
-    "dist": "npm run prepare-build && electron-builder",
-    "build:win": "npm run prepare-build && electron-builder --win",
-    "build:win:with-raven": "npm run stage-raven && npm run build:win"
+    "dist": "npm run prepare-build:no-raven && electron-builder",
+    "build:win": "npm run prepare-build:no-raven && electron-builder --win",
+    "build:win:with-raven": "npm run stage-raven && npm run prepare-build && electron-builder --win"
   },
   "keywords": [
     "electron",

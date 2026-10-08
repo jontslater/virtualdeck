@@ -6,14 +6,13 @@ This directory is used to stage the Raven voice AI sidecar for bundling with Vir
 
 When you run `npm run stage-raven`, this directory is populated with:
 
-1. **sidecar.js** - Main Raven entry point
-2. **app/** - Raven application code (bridge, controller, TTS, etc.)
-3. **scripts/** - Helper scripts (raven-sidecar.js, etc.)
-4. **node/** - Portable Node.js runtime (node.exe)
-5. **ffmpeg/** - ffmpeg binaries for audio playback (ffmpeg.exe, ffplay.exe)
-6. **env.defaults** - Configuration template (NO API KEYS)
-7. **package.json** - Node.js dependencies
-8. **node_modules/** - Installed dependencies
+1. **sidecar.js** — from AITuber `scripts/raven-sidecar.js`
+2. **app/** — production deploy of `apps/controller` (`dist/` + prod `node_modules`, real files)
+3. **packages/** — workspace packages (VirtualDeck bridge, shared libs)
+4. **node/** — portable `node.exe`
+5. **ffmpeg/** — `ffmpeg.exe` and `ffplay.exe` (full binaries)
+6. **env.defaults** — blank API key placeholders only
+7. **package.json** — sidecar metadata from AITuber root when present
 
 ## Security
 
