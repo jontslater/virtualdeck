@@ -187,10 +187,15 @@ for (const pattern of nativeJsonArgPatterns) {
 const {
   mergeEnvDefaultsWithSource,
   parseDotEnvText,
+  parseEnvLikeRavenHost,
+  unescapeQuotedEnvValue,
   dotEnvMapHasBundleableKeys,
   shouldIncludePersonalEnvEntry,
   getSkipReasonForEntry,
 } = require('./scripts/raven-staging/merge-env-defaults');
+
+assert.strictEqual(unescapeQuotedEnvValue('a\\nb'), 'a\nb', '\\n becomes newline in unescape helper');
+assert.strictEqual(unescapeQuotedEnvValue('\\x'), 'x', '\\x becomes x');
 
 const mergeTemplate = `# header
 LLM_API_KEY=
@@ -200,29 +205,28 @@ LLM_MODEL=gpt-4
 
 const denyRoots = ['E:\\AIChatBot', 'C:\\Users\\dev\\AppData\\Local\\Temp'];
 
+const bulkSource = [
+  'NEWS_API_KEY=news-secret',
+  'OPENWEATHER_API_KEY=wx-secret',
+  'OMDB_API_KEY=omdb-secret',
+  'LLM_API_KEY=llm-secret',
+  'PERSONA_SPEAKING_STYLE=dry wit',
+  'LLM_MODEL_FAST=gpt-4o-mini',
+  'TTS_OUTPUT_DEVICE=Speakers',
+  'COMPUTERNAME=SHOULD-NOT-BUNDLE',
+  'PATH=C:\\Windows\\System32',
+  'RAVEN_ENV_PATH=C:\\secret\\raven.env',
+  'EMPTY_KEY=',
+].join('\n');
+
 const { merged: mergedExtra, skipped: skippedExtra } = mergeEnvDefaultsWithSource(
   mergeTemplate,
-  {
-    NEWS_API_KEY: 'news-secret',
-    OPENWEATHER_API_KEY: 'wx-secret',
-    OMDB_API_KEY: 'omdb-secret',
-    LLM_API_KEY: 'llm-secret',
-    PERSONA_SPEAKING_STYLE: 'dry wit',
-    LLM_MODEL_FAST: 'gpt-4o-mini',
-    TTS_OUTPUT_DEVICE: 'Speakers',
-    COMPUTERNAME: 'SHOULD-NOT-BUNDLE',
-    PATH: 'C:\\Windows\\System32',
-    RAVEN_ENV_PATH: 'C:\\secret\\raven.env',
-    EMPTY_KEY: '',
-  },
+  `${bulkSource}\n`,
   { denyPathRoots: denyRoots },
 );
 assert.ok(mergedExtra.includes('LLM_API_KEY=llm-secret'), 'template LLM_API_KEY should be overridden');
 assert.ok(mergedExtra.includes('NEWS_API_KEY=news-secret'), 'extra NEWS_API_KEY should be appended');
-assert.ok(
-  mergedExtra.includes('PERSONA_SPEAKING_STYLE="dry wit"'),
-  'persona settings should be appended',
-);
+assert.ok(mergedExtra.includes('PERSONA_SPEAKING_STYLE=dry wit'), 'persona settings should be appended verbatim');
 assert.ok(mergedExtra.includes('LLM_MODEL_FAST=gpt-4o-mini'), 'model overrides should be bundled');
 assert.ok(!mergedExtra.includes('COMPUTERNAME'), 'machine env keys should be excluded');
 assert.ok(!mergedExtra.includes('PATH='), 'PATH should be excluded');
@@ -234,36 +238,87 @@ assert.ok(
 );
 assert.ok(mergedExtra.indexOf('# header') < mergedExtra.indexOf('LLM_API_KEY=llm-secret'), 'template order preserved');
 
-const { merged: mergedAlias } = mergeEnvDefaultsWithSource(mergeTemplate, { OPENAI_API_KEY: 'openai-alias' });
+const aliasSource = 'OPENAI_API_KEY=openai-alias\n';
+const { merged: mergedAlias } = mergeEnvDefaultsWithSource(mergeTemplate, aliasSource);
 assert.ok(mergedAlias.includes('LLM_API_KEY=openai-alias'), 'OPENAI_API_KEY should map to LLM_API_KEY');
 assert.ok(!mergedAlias.includes('OPENAI_API_KEY='), 'alias should not be duplicated at end');
+
+const roundTripSource = [
+  'LLM_API_KEY=sk-test',
+  'AI_PERSONALITY_PROMPT="Be kind # not sarcastic"',
+  "SINGLE_QUOTED='say # quietly'",
+  'WIN_PATH=D:\\Music',
+  'SAY_HI=say "hi"',
+  'ESCAPED_INLINE="a\\nb"',
+  'MULTILINE_BLOCK="line one',
+  'line two"',
+].join('\n');
+
+const roundTripTmp = path.join(__dirname, '.tmp-merge-roundtrip');
+fs.rmSync(roundTripTmp, { recursive: true, force: true });
+fs.mkdirSync(roundTripTmp, { recursive: true });
+const roundTripSourcePath = path.join(roundTripTmp, 'source.env');
+const roundTripOutPath = path.join(roundTripTmp, 'merged.env');
+fs.writeFileSync(roundTripSourcePath, `${roundTripSource}\n`, 'utf8');
+
+const { merged: mergedRoundTrip, warnings: multilineWarnings } = mergeEnvDefaultsWithSource(
+  mergeTemplate,
+  fs.readFileSync(roundTripSourcePath, 'utf8'),
+  { denyPathRoots: [] },
+);
+fs.writeFileSync(roundTripOutPath, mergedRoundTrip, 'utf8');
+
+const sourceParsed = parseEnvLikeRavenHost(fs.readFileSync(roundTripSourcePath, 'utf8'));
+const mergedParsed = parseEnvLikeRavenHost(fs.readFileSync(roundTripOutPath, 'utf8'));
+for (const key of [
+  'LLM_API_KEY',
+  'AI_PERSONALITY_PROMPT',
+  'SINGLE_QUOTED',
+  'WIN_PATH',
+  'SAY_HI',
+  'ESCAPED_INLINE',
+]) {
+  assert.strictEqual(
+    mergedParsed[key],
+    sourceParsed[key],
+    `raven-host parseEnv round-trip for ${key}`,
+  );
+}
+assert.ok(
+  mergedRoundTrip.includes('WIN_PATH=D:\\Music'),
+  'Windows paths must not gain extra backslashes',
+);
+assert.ok(
+  mergedRoundTrip.includes('AI_PERSONALITY_PROMPT="Be kind # not sarcastic"'),
+  'quoted hash prompt copied verbatim',
+);
+assert.ok(mergedRoundTrip.includes('MULTILINE_BLOCK="line one'), 'multiline block copied verbatim');
+assert.ok(
+  multilineWarnings.some((w) => w.key === 'MULTILINE_BLOCK'),
+  'multiline keys should emit warnings',
+);
+fs.rmSync(roundTripTmp, { recursive: true, force: true });
 
 const quotedSource = 'AI_PERSONALITY_PROMPT="Be kind # not sarcastic"\nMULTILINE_PROMPT="line one\nline two"\n';
 const parsedQuoted = parseDotEnvText(quotedSource);
 assert.strictEqual(
   parsedQuoted.AI_PERSONALITY_PROMPT,
   'Be kind # not sarcastic',
-  'hash inside double quotes should be preserved',
+  'hash inside double quotes should be preserved in parseDotEnvText',
 );
-assert.strictEqual(parsedQuoted.MULTILINE_PROMPT, 'line one\nline two', 'multiline double-quoted values should parse');
-
-const { merged: mergedRoundTrip } = mergeEnvDefaultsWithSource(
-  'LLM_API_KEY=\n',
-  parsedQuoted,
+assert.strictEqual(
+  parsedQuoted.MULTILINE_PROMPT,
+  'line one\nline two',
+  'multiline double-quoted values should parse in parseDotEnvText',
 );
-assert.ok(
-  mergedRoundTrip.includes('AI_PERSONALITY_PROMPT="Be kind # not sarcastic"'),
-  'quoted prompt with hash should round-trip',
-);
-assert.ok(mergedRoundTrip.includes('MULTILINE_PROMPT="line one\\nline two"'), 'multiline prompt should round-trip escaped');
 
 assert.strictEqual(
-  dotEnvMapHasBundleableKeys({ PERSONA_NAME: 'Raven' }, mergeTemplate),
+  dotEnvMapHasBundleableKeys('PERSONA_NAME=Raven\n', mergeTemplate),
   true,
   'personal settings detection includes persona fields',
 );
 assert.strictEqual(
-  dotEnvMapHasBundleableKeys({ COMPUTERNAME: 'PC' }, mergeTemplate),
+  dotEnvMapHasBundleableKeys('COMPUTERNAME=PC\n', mergeTemplate),
   false,
   'personal settings detection ignores denied machine vars',
 );

@@ -1214,10 +1214,11 @@ function Merge-EnvDefaultsWithAituberDotenv {
         $outFile = Join-Path $tempDir 'merged.env'
         $skippedFile = Join-Path $tempDir 'skipped.tsv'
         $bundledFile = Join-Path $tempDir 'bundled.tsv'
+        $warningsFile = Join-Path $tempDir 'warnings.tsv'
         $denyFile = Join-Path $tempDir 'deny-paths.txt'
         Write-TextFileUtf8NoBom -Path $templateFile -Content $TemplateText
         Write-DenyPathRootsFile -Path $denyFile -Roots $DenyPathRoots
-        & $node $mergeHelper 'merge' $templateFile $SourceFilePath $outFile $skippedFile $denyFile $bundledFile
+        & $node $mergeHelper 'merge' $templateFile $SourceFilePath $outFile $skippedFile $denyFile $bundledFile $warningsFile
         if ($LASTEXITCODE -ne 0) {
             throw "merge-env-defaults.js failed with exit code $LASTEXITCODE"
         }
@@ -1227,6 +1228,14 @@ function Merge-EnvDefaultsWithAituberDotenv {
                 $parts = $raw.Split([char]9)
                 $skipKey = $parts[0]
                 Write-Warn "Skipped bundling env var $skipKey"
+            }
+        }
+        if (Test-Path -LiteralPath $warningsFile) {
+            foreach ($raw in (Get-Content -LiteralPath $warningsFile)) {
+                if (-not $raw.Trim()) { continue }
+                $parts = $raw.Split([char]9)
+                $warnKey = $parts[0]
+                Write-Warn "Multiline env var $warnKey copied verbatim; Raven loaders may not parse it"
             }
         }
         if (Test-Path -LiteralPath $bundledFile) {

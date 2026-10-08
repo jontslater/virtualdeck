@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Merge personal-build settings into extra/raven/env.defaults template.
- * Used by stage-raven-runtime.ps1 (-BundleKeys) and test-prepare-build.js.
+ * Copies raw KEY=VALUE lines from the source file verbatim (no re-serialization).
  */
 
 const fs = require('fs');
@@ -74,6 +74,27 @@ function isSecretEnvKeyName(key) {
   return SECRET_KEY_NAME_RE.test(key);
 }
 
+/**
+ * Same logic as raven-host.js parseEnv (line-based, strip outer quotes, no unescape).
+ */
+function parseEnvLikeRavenHost(text) {
+  const map = {};
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq < 1) continue;
+    let val = line.slice(eq + 1).trim();
+    const hash = val.indexOf(' #');
+    if (hash >= 0) val = val.slice(0, hash).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    map[line.slice(0, eq).trim()] = val;
+  }
+  return map;
+}
+
 function loadDenyPathRoots(filePath) {
   if (!filePath || !fs.existsSync(filePath)) return [];
   return fs
@@ -129,157 +150,208 @@ function isBundleableEnvKey(key) {
   return shouldIncludePersonalEnvEntry(key, '1', []);
 }
 
-function formatEnvValueForFile(value) {
-  if (value === null || value === undefined) return '';
-  const str = String(value);
-  if (/[\s#;"\\]/.test(str) || /^\s|\s$/.test(str) || str.includes('\n') || str.includes('\r')) {
-    const escaped = str
-      .replace(/\\/g, '\\\\')
-      .replace(/"/g, '\\"')
-      .replace(/\r\n/g, '\\n')
-      .replace(/\n/g, '\\n')
-      .replace(/\r/g, '\\n');
-    return `"${escaped}"`;
-  }
-  return str;
-}
-
 function unescapeQuotedEnvValue(content) {
-  return content
-    .replace(/\\n/g, '\n')
-    .replace(/\\r/g, '\r')
-    .replace(/\\"/g, '"')
-    .replace(/\\\\/g, '\\');
-}
-
-function parseInlineQuotedDouble(valuePart) {
-  const trimmed = valuePart.trimStart();
-  if (!trimmed.startsWith('"')) return null;
-  let i = 1;
   let out = '';
-  while (i < trimmed.length) {
-    const ch = trimmed[i];
-    if (ch === '\\' && i + 1 < trimmed.length) {
-      out += trimmed[i + 1];
+  let i = 0;
+  while (i < content.length) {
+    if (content[i] === '\\' && i + 1 < content.length) {
+      const next = content[i + 1];
+      if (next === 'n') {
+        out += '\n';
+        i += 2;
+        continue;
+      }
+      if (next === 'r') {
+        out += '\r';
+        i += 2;
+        continue;
+      }
+      if (next === '"') {
+        out += '"';
+        i += 2;
+        continue;
+      }
+      if (next === '\\') {
+        out += '\\';
+        i += 2;
+        continue;
+      }
+      out += next;
       i += 2;
       continue;
     }
-    if (ch === '"') {
-      return { value: unescapeQuotedEnvValue(out), rest: trimmed.slice(i + 1) };
-    }
-    out += ch;
+    out += content[i];
     i += 1;
   }
-  return { value: unescapeQuotedEnvValue(out), rest: '', open: true };
+  return out;
 }
 
-/**
- * Parse .env text the way raven-host parseEnv does, plus multiline double-quoted values.
- */
-function parseDotEnvText(text) {
-  const map = {};
-  const lines = String(text || '').split(/\r?\n/);
-  let i = 0;
-  while (i < lines.length) {
-    const raw = lines[i];
+function isDoubleQuotedStringClosed(text) {
+  const t = text.trimStart();
+  if (!t.startsWith('"')) return true;
+  let i = 1;
+  while (i < t.length) {
+    if (t[i] === '\\') {
+      i += 2;
+      continue;
+    }
+    if (t[i] === '"') return true;
     i += 1;
-    const line = raw.trim();
-    if (!line || line.startsWith('#')) continue;
-    const eq = line.indexOf('=');
-    if (eq < 1) continue;
-    const key = line.slice(0, eq).trim();
-    let valuePart = line.slice(eq + 1);
-
-    const inlineQuote = parseInlineQuotedDouble(valuePart);
-    if (inlineQuote) {
-      if (!inlineQuote.open) {
-        map[key] = inlineQuote.value;
-        continue;
-      }
-      let content = valuePart.trimStart().slice(1);
-      while (i < lines.length) {
-        const combined = parseInlineQuotedDouble(`"${content}`);
-        if (combined && !combined.open) {
-          map[key] = combined.value;
-          break;
-        }
-        content += `\n${lines[i]}`;
-        i += 1;
-      }
-      if (!Object.prototype.hasOwnProperty.call(map, key)) {
-        map[key] = unescapeQuotedEnvValue(content);
-      }
-      continue;
-    }
-
-    let val = valuePart.trim();
-    if (val.startsWith("'") && val.endsWith("'") && val.length >= 2) {
-      map[key] = val.slice(1, -1);
-      continue;
-    }
-    const hash = val.indexOf(' #');
-    if (hash >= 0) val = val.slice(0, hash).trim();
-    if (val.startsWith('"') && val.endsWith('"') && val.length >= 2) {
-      val = unescapeQuotedEnvValue(val.slice(1, -1));
-    }
-    map[key] = val;
-  }
-  return map;
-}
-
-function dotEnvMapHasBundleableKeys(sourceMap, templateText, denyRoots = []) {
-  for (const [key, val] of Object.entries(sourceMap || {})) {
-    if (shouldIncludePersonalEnvEntry(key, val, denyRoots)) return true;
   }
   return false;
 }
 
-function collectPersonalEnvOverlay(sourceMap, templateText, denyRoots = []) {
+function valueSuffixFromRawLines(rawLines) {
+  const first = rawLines[0];
+  const eq = first.indexOf('=');
+  let suffix = first.slice(eq + 1);
+  for (let j = 1; j < rawLines.length; j += 1) {
+    suffix += `\n${rawLines[j]}`;
+  }
+  return suffix;
+}
+
+function recordHasNonEmptyValue(record, parsedValues) {
+  const suffix = valueSuffixFromRawLines(record.rawLines).trim();
+  if (record.multiline) {
+    return suffix.length > 0;
+  }
+  const val = parsedValues[record.key];
+  if (!isBlank(val)) return true;
+  return suffix.length > 0;
+}
+
+/**
+ * @returns {Map<string, { key: string, rawLines: string[], multiline: boolean }>}
+ */
+function parseSourceEnvRecords(sourceText) {
+  const records = new Map();
+  const lines = String(sourceText || '').split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length) {
+    const raw = lines[i];
+    i += 1;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq < 1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const rawLines = [raw];
+    let valueSuffix = valueSuffixFromRawLines(rawLines);
+    while (
+      valueSuffix.trimStart().startsWith('"') &&
+      !isDoubleQuotedStringClosed(valueSuffix)
+    ) {
+      if (i >= lines.length) break;
+      rawLines.push(lines[i]);
+      i += 1;
+      valueSuffix = valueSuffixFromRawLines(rawLines);
+    }
+    const multiline = rawLines.length > 1;
+    records.set(key, { key, rawLines, multiline });
+  }
+  return records;
+}
+
+function renameEnvRecord(record, newKey) {
+  const eq = record.rawLines[0].indexOf('=');
+  const first = `${newKey}=${record.rawLines[0].slice(eq + 1)}`;
+  return {
+    key: newKey,
+    rawLines: [first, ...record.rawLines.slice(1)],
+    multiline: record.multiline,
+  };
+}
+
+function dotEnvMapHasBundleableKeys(sourceText, templateText, denyRoots = []) {
+  const parsed = parseEnvLikeRavenHost(sourceText);
+  const records = parseSourceEnvRecords(sourceText);
+  for (const record of records.values()) {
+    const val = parsed[record.key];
+    const checkVal = record.multiline ? valueSuffixFromRawLines(record.rawLines).trim() : val;
+    if (shouldIncludePersonalEnvEntry(record.key, checkVal, denyRoots)) return true;
+  }
+  return false;
+}
+
+function collectPersonalEnvOverlay(sourceText, templateText, denyRoots = []) {
   const templateKeys = getTemplateEnvKeys(templateText);
   const templateKeySet = new Set(templateKeys);
-  const overlay = {};
+  const parsed = parseEnvLikeRavenHost(sourceText);
+  const records = parseSourceEnvRecords(sourceText);
+  const included = new Map();
   const skipped = [];
+  const warnings = [];
+  const overlayValues = {};
+
+  function tryInclude(key, record) {
+    if (!record) return;
+    const val = parsed[key];
+    const suffix = valueSuffixFromRawLines(record.rawLines).trim();
+    const effectiveVal = !isBlank(val) ? val : suffix;
+    if (!recordHasNonEmptyValue(record, parsed)) return;
+    const reason = getSkipReasonForEntry(
+      key,
+      record.multiline ? suffix : effectiveVal,
+      denyRoots,
+    );
+    if (reason) {
+      skipped.push({ key, reason });
+      return;
+    }
+    if (record.multiline) {
+      warnings.push({ key, reason: 'multiline-unsupported' });
+    }
+    included.set(key, record);
+    overlayValues[key] = record.multiline ? suffix : effectiveVal;
+  }
 
   for (const [alias, target] of Object.entries(ENV_KEY_ALIASES)) {
-    if (!isBlank(sourceMap[alias])) {
-      const reason = getSkipReasonForEntry(alias, sourceMap[alias], denyRoots);
-      if (reason) {
-        skipped.push({ key: alias, reason });
-      } else if (isBlank(sourceMap[target])) {
-        overlay[target] = sourceMap[alias];
-      }
+    const aliasRec = records.get(alias);
+    if (!aliasRec) continue;
+    if (isBlank(parsed[target]) && recordHasNonEmptyValue(aliasRec, parsed)) {
+      tryInclude(target, renameEnvRecord(aliasRec, target));
     }
   }
 
   for (const key of templateKeys) {
-    if (!isBlank(sourceMap[key])) {
-      const reason = getSkipReasonForEntry(key, sourceMap[key], denyRoots);
-      if (reason) skipped.push({ key, reason });
-      else overlay[key] = sourceMap[key];
-    }
+    tryInclude(key, records.get(key));
   }
 
   const extraKeys = [];
-  for (const key of Object.keys(sourceMap || {}).sort()) {
+  for (const key of [...records.keys()].sort()) {
     if (templateKeySet.has(key)) continue;
     if (Object.prototype.hasOwnProperty.call(ENV_KEY_ALIASES, key)) continue;
-    if (isBlank(sourceMap[key])) continue;
-    const reason = getSkipReasonForEntry(key, sourceMap[key], denyRoots);
+    if (included.has(key)) continue;
+    const record = records.get(key);
+    if (!recordHasNonEmptyValue(record, parsed)) continue;
+    const val = parsed[key];
+    const reason = getSkipReasonForEntry(
+      key,
+      record.multiline ? valueSuffixFromRawLines(record.rawLines).trim() : val,
+      denyRoots,
+    );
     if (reason) {
       skipped.push({ key, reason });
       continue;
     }
+    if (record.multiline) {
+      warnings.push({ key, reason: 'multiline-unsupported' });
+    }
     extraKeys.push(key);
-    overlay[key] = sourceMap[key];
+    included.set(key, record);
+    overlayValues[key] = record.multiline
+      ? valueSuffixFromRawLines(record.rawLines).trim()
+      : val;
   }
 
-  return { overlay, extraKeys, skipped };
+  return { included, extraKeys, skipped, warnings, overlayValues };
 }
 
-function mergeEnvDefaultsWithSource(templateText, sourceMap, options = {}) {
+function mergeEnvDefaultsWithSource(templateText, sourceText, options = {}) {
   const denyRoots = options.denyPathRoots || [];
-  const { overlay, extraKeys, skipped } = collectPersonalEnvOverlay(
-    sourceMap,
+  const { included, extraKeys, skipped, warnings, overlayValues } = collectPersonalEnvOverlay(
+    sourceText,
     templateText,
     denyRoots,
   );
@@ -292,8 +364,10 @@ function mergeEnvDefaultsWithSource(templateText, sourceMap, options = {}) {
     }
     const eq = raw.indexOf('=');
     const key = raw.slice(0, eq).trim();
-    if (Object.prototype.hasOwnProperty.call(overlay, key)) {
-      lines.push(`${key}=${formatEnvValueForFile(overlay[key])}`);
+    if (included.has(key)) {
+      for (const srcLine of included.get(key).rawLines) {
+        lines.push(srcLine);
+      }
     } else {
       lines.push(raw);
     }
@@ -305,17 +379,25 @@ function mergeEnvDefaultsWithSource(templateText, sourceMap, options = {}) {
     }
     lines.push('# ===== Additional bundled settings (personal build) =====');
     for (const key of extraKeys) {
-      lines.push(`${key}=${formatEnvValueForFile(overlay[key])}`);
+      for (const srcLine of included.get(key).rawLines) {
+        lines.push(srcLine);
+      }
     }
   }
 
   const merged = lines.join('\n').replace(/\n+$/, '') + '\n';
-  return { merged, skipped, overlay };
+  return { merged, skipped, warnings, overlay: overlayValues };
 }
 
 function writeSkippedManifest(filePath, skipped) {
   if (!filePath) return;
   const body = skipped.map((s) => `${s.key}\t${s.reason}`).join('\n');
+  fs.writeFileSync(filePath, body ? `${body}\n` : '', 'utf8');
+}
+
+function writeWarningsManifest(filePath, warnings) {
+  if (!filePath) return;
+  const body = warnings.map((w) => `${w.key}\t${w.reason}`).join('\n');
   fs.writeFileSync(filePath, body ? `${body}\n` : '', 'utf8');
 }
 
@@ -336,6 +418,52 @@ function readUtf8(filePath) {
   return fs.readFileSync(filePath, 'utf8');
 }
 
+/** Used by tests / optional advanced parsing (not Raven runtime). */
+function parseDotEnvText(text) {
+  const map = {};
+  const lines = String(text || '').split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length) {
+    const raw = lines[i];
+    i += 1;
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq < 1) continue;
+    const key = line.slice(0, eq).trim();
+    const recordLines = [raw];
+    let valueSuffix = valueSuffixFromRawLines(recordLines);
+    while (
+      valueSuffix.trimStart().startsWith('"') &&
+      !isDoubleQuotedStringClosed(valueSuffix)
+    ) {
+      if (i >= lines.length) break;
+      recordLines.push(lines[i]);
+      i += 1;
+      valueSuffix = valueSuffixFromRawLines(recordLines);
+    }
+    const trimmedSuffix = valueSuffix.trim();
+    if (trimmedSuffix.startsWith('"') && isDoubleQuotedStringClosed(valueSuffix)) {
+      const inner = trimmedSuffix.slice(1, trimmedSuffix.lastIndexOf('"'));
+      map[key] = unescapeQuotedEnvValue(inner);
+      continue;
+    }
+    if (trimmedSuffix.startsWith("'") && trimmedSuffix.endsWith("'") && trimmedSuffix.length >= 2) {
+      map[key] = trimmedSuffix.slice(1, -1);
+      continue;
+    }
+    let val = valueSuffix.trim();
+    const hash = val.indexOf(' #');
+    if (hash >= 0) val = val.slice(0, hash).trim();
+    if (val.startsWith('"') && val.endsWith('"') && val.length >= 2) {
+      map[key] = unescapeQuotedEnvValue(val.slice(1, -1));
+    } else {
+      map[key] = val;
+    }
+  }
+  return map;
+}
+
 function main() {
   const args = process.argv.slice(2);
   const cmd = args[0];
@@ -346,23 +474,25 @@ function main() {
     const skippedPath = args[4];
     const denyPathsFile = args[5];
     const bundledManifestPath = args[6];
+    const warningsPath = args[7];
     if (!templatePath || !sourcePath) {
       console.error(
-        'Usage: merge-env-defaults.js merge <template.env> <source.env> [out.env] [skipped.tsv] [deny-paths.txt] [bundled.tsv]',
+        'Usage: merge-env-defaults.js merge <template.env> <source.env> [out.env] [skipped.tsv] [deny-paths.txt] [bundled.tsv] [warnings.tsv]',
       );
       process.exit(2);
     }
     const denyRoots = loadDenyPathRoots(denyPathsFile);
-    const sourceMap = parseDotEnvText(readUtf8(sourcePath));
-    const { merged, skipped, overlay } = mergeEnvDefaultsWithSource(
+    const sourceText = readUtf8(sourcePath);
+    const { merged, skipped, warnings, overlay } = mergeEnvDefaultsWithSource(
       readUtf8(templatePath),
-      sourceMap,
+      sourceText,
       { denyPathRoots: denyRoots },
     );
     if (outPath) fs.writeFileSync(outPath, merged, 'utf8');
     else process.stdout.write(merged);
     writeSkippedManifest(skippedPath, skipped);
     writeBundledManifest(bundledManifestPath, overlay);
+    writeWarningsManifest(warningsPath, warnings);
     return;
   }
   if (cmd === 'has-bundleable' || cmd === 'has-personal-settings') {
@@ -376,11 +506,7 @@ function main() {
       process.exit(2);
     }
     const denyRoots = loadDenyPathRoots(denyPathsFile);
-    const ok = dotEnvMapHasBundleableKeys(
-      parseDotEnvText(readUtf8(sourcePath)),
-      readUtf8(templatePath),
-      denyRoots,
-    );
+    const ok = dotEnvMapHasBundleableKeys(readUtf8(sourcePath), readUtf8(templatePath), denyRoots);
     process.exit(ok ? 0 : 1);
   }
   console.error('Unknown command. Use merge or has-personal-settings.');
@@ -398,8 +524,10 @@ module.exports = {
   getTemplateEnvKeys,
   isBundleableEnvKey,
   isSecretEnvKeyName,
-  formatEnvValueForFile,
+  parseEnvLikeRavenHost,
   parseDotEnvText,
+  unescapeQuotedEnvValue,
+  parseSourceEnvRecords,
   dotEnvMapHasBundleableKeys,
   shouldIncludePersonalEnvEntry,
   getSkipReasonForEntry,
