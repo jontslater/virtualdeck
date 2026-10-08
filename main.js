@@ -1344,11 +1344,14 @@ function handleAIConfigAPI(req, res) {
   
   try {
     if (path === '/api/ai/voices' && req.method === 'GET') {
-      // Fetch voices from ElevenLabs
-      aiConfigManager.fetchElevenLabsVoices().then(result => {
+      // Premade voices always included; merge with account when TTS_API_KEY works
+      aiConfigManager.listVoices().then(result => {
         if (result.success) {
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ voices: result.voices }));
+          res.end(JSON.stringify({
+            voices: result.voices,
+            warning: result.warning || undefined,
+          }));
         } else {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: result.error }));
