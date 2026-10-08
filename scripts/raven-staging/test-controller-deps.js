@@ -5,6 +5,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { readFileUtf8 } = require('./read-utf8');
 
 const root = process.argv[2];
 const controllerDir = process.argv[3];
@@ -23,7 +24,7 @@ if (!fs.existsSync(path.join(root, 'node_modules'))) {
   process.exit(11);
 }
 
-const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+const pkg = JSON.parse(readFileUtf8(pkgPath));
 const deps = Object.assign({}, pkg.dependencies || {}, pkg.optionalDependencies || {});
 const search = [controllerDir, root, path.join(root, 'node_modules')];
 

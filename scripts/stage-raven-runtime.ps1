@@ -80,6 +80,19 @@ function Get-RavenStagingHelperPath {
     return Join-Path $PSScriptRoot (Join-Path 'raven-staging' $FileName)
 }
 
+function Write-TextFileUtf8NoBom {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Content
+    )
+    $parent = Split-Path -Parent $Path
+    if ($parent -and -not (Test-Path -LiteralPath $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($Path, $Content, $utf8NoBom)
+}
+
 function Invoke-WithContinueOnNativeError {
     param([scriptblock]$ScriptBlock)
     $previous = $ErrorActionPreference
@@ -496,9 +509,9 @@ function Write-StagedPackageJson {
             $json[$key] = [string]$DepRewrites[$key]
         }
         if ($json.Count -eq 0) {
-            '{}' | Set-Content -LiteralPath $rewritesFile -Encoding ASCII
+            Write-TextFileUtf8NoBom -Path $rewritesFile -Content '{}'
         } else {
-            ($json | ConvertTo-Json -Compress) | Set-Content -LiteralPath $rewritesFile -Encoding UTF8
+            Write-TextFileUtf8NoBom -Path $rewritesFile -Content ($json | ConvertTo-Json -Compress)
         }
         $node = $NodeExe
         if (-not $node) {
@@ -592,13 +605,29 @@ function Stage-ControllerPackage {
         '@ai-streamer/shared' = 'file:../../packages/shared'
     }
 
-    $deployFailed = $false
+    $deployTmp = Join-Path $Root '.raven-stage-deploy-controller'
+    $stagedViaDeploy = $false
     try {
-        Invoke-PnpmDeployPackage -Root $Root -Filter $ControllerFilter -Destination $controllerDest
-        Write-Ok 'Controller staged via pnpm deploy'
+        if (Test-Path -LiteralPath $deployTmp) {
+            Remove-Item -LiteralPath $deployTmp -Recurse -Force
+        }
+        Invoke-PnpmDeployPackage -Root $Root -Filter $ControllerFilter -Destination $deployTmp
+        if (Test-Path -LiteralPath $controllerDest) {
+            Remove-Item -LiteralPath $controllerDest -Recurse -Force
+        }
+        Copy-TreeAsRealFiles -Source $deployTmp -Destination $controllerDest
+        Write-Ok 'Controller staged via pnpm deploy (same drive as AITuber, copied into extra/raven)'
+        $stagedViaDeploy = $true
     } catch {
-        $deployFailed = $true
         Write-Warn "pnpm deploy failed ($($_.Exception.Message)); copying controller dist manually"
+        Stage-BuiltPackageManual -SourceDir $controllerSrc -DestDir $controllerDest -NodeExe $NodeExe -DepRewrites $depRewrites
+    } finally {
+        if (Test-Path -LiteralPath $deployTmp) {
+            Remove-Item -LiteralPath $deployTmp -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    if (-not $stagedViaDeploy -and -not (Test-Path -LiteralPath (Join-Path $controllerDest 'dist\index.js'))) {
         Stage-BuiltPackageManual -SourceDir $controllerSrc -DestDir $controllerDest -NodeExe $NodeExe -DepRewrites $depRewrites
     }
 
@@ -1135,9 +1164,9 @@ function Save-EnvDefaultsTemplateBackupOutsideStage {
     if (-not $normalized.EndsWith("`n")) {
         $normalized = $normalized + "`n"
     }
-    Set-Content -LiteralPath $backupFile -Value $normalized -Encoding UTF8
+    Write-TextFileUtf8NoBom -Path $backupFile -Content $normalized
     $pointerFile = Join-Path $RepoRoot 'scripts\.raven-env-defaults-backup-path'
-    Set-Content -LiteralPath $pointerFile -Value $backupFile -Encoding ASCII
+    Write-TextFileUtf8NoBom -Path $pointerFile -Content $backupFile
     $env:RAVEN_ENV_DEFAULTS_BACKUP = $backupFile
     Write-Ok 'Saved env.defaults template backup outside extra/raven (TEMP)'
 }
@@ -1176,10 +1205,7 @@ function Write-EnvDefaultsTemplate {
             Write-Ok "Bundling API keys from: $($resolved.Label)"
         }
         $merged = Merge-EnvDefaultsWithAituberDotenv -TemplateText $templateText -SourceMap $sourceMap
-        Set-Content -LiteralPath $EnvDefaultsPath -Value $merged -Encoding UTF8 -NoNewline
-        if (-not $merged.EndsWith("`n")) {
-            Add-Content -LiteralPath $EnvDefaultsPath -Value '' -Encoding UTF8
-        }
+        Write-TextFileUtf8NoBom -Path $EnvDefaultsPath -Content $merged
         $templateKeys = Get-TemplateEnvKeys -TemplateText $templateText
         foreach ($key in $templateKeys) {
             if ($sourceMap.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace($sourceMap[$key])) {
@@ -1201,10 +1227,11 @@ function Write-EnvDefaultsTemplate {
         Write-Ok 'env.defaults template already at destination (skipped copy)'
         return
     }
-    Set-Content -LiteralPath $EnvDefaultsPath -Value $templateText -Encoding UTF8 -NoNewline
-    if (-not $templateText.EndsWith("`n")) {
-        Add-Content -LiteralPath $EnvDefaultsPath -Value '' -Encoding UTF8
+    $normalizedTemplate = $templateText
+    if (-not $normalizedTemplate.EndsWith("`n")) {
+        $normalizedTemplate = $normalizedTemplate + "`n"
     }
+    Write-TextFileUtf8NoBom -Path $EnvDefaultsPath -Content $normalizedTemplate
 }
 
 # --- Main ---

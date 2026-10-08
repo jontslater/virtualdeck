@@ -229,7 +229,7 @@ for (const extraRoot of extraResourcesRoots()) {
 
 if (securityFailed) {
   console.error('\n❌ Build aborted to prevent credential leakage.');
-  process.exit(1);
+  throw new Error('Build aborted to prevent credential leakage.');
 }
 
 console.log('✅ Packaging security checks passed');

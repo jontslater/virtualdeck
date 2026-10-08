@@ -94,4 +94,30 @@ if (parsed) {
   console.log('ℹ️  Skipping PowerShell Parser::ParseFile (pwsh/powershell not available in this environment)');
 }
 
+const { stripBom, readFileUtf8 } = require('./scripts/raven-staging/read-utf8');
+assert.strictEqual(stripBom('\uFEFFhello'), 'hello', 'stripBom removes leading BOM');
+assert.strictEqual(stripBom('plain'), 'plain', 'stripBom leaves plain text');
+assert.strictEqual(stripBom(''), '', 'stripBom handles empty string');
+
+const bomTmp = path.join(__dirname, '.tmp-raven-staging-bom');
+fs.rmSync(bomTmp, { recursive: true, force: true });
+fs.mkdirSync(bomTmp, { recursive: true });
+const bomRewrites = path.join(bomTmp, 'rewrites.json');
+const srcPkg = path.join(bomTmp, 'package.json');
+const destPkg = path.join(bomTmp, 'out.json');
+fs.writeFileSync(srcPkg, JSON.stringify({ name: 'x', dependencies: { lodash: '1.0.0' } }, null, 2));
+fs.writeFileSync(bomRewrites, `\uFEFF${JSON.stringify({ lodash: 'file:./lodash' })}`);
+assert.deepStrictEqual(
+  JSON.parse(readFileUtf8(bomRewrites)),
+  { lodash: 'file:./lodash' },
+  'readFileUtf8 parses BOM-prefixed JSON',
+);
+execSync(
+  `node "${path.join(__dirname, 'scripts/raven-staging/write-staged-package-json.js')}" "${srcPkg}" "${destPkg}" "${bomRewrites}"`,
+  { stdio: 'pipe' },
+);
+const outPkg = JSON.parse(fs.readFileSync(destPkg, 'utf8'));
+assert.strictEqual(outPkg.dependencies.lodash, 'file:./lodash', 'write-staged-package-json reads BOM rewrites');
+fs.rmSync(bomTmp, { recursive: true, force: true });
+
 console.log('✅ test-prepare-build.js passed');

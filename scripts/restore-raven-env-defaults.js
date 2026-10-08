@@ -12,13 +12,14 @@ const repoRoot = path.join(__dirname, '..');
 const envDefaults = path.join(repoRoot, 'extra', 'raven', 'env.defaults');
 const pointerFile = path.join(__dirname, '.raven-env-defaults-backup-path');
 const seed = path.join(__dirname, 'raven-env.defaults.template');
+const { stripBom } = require('./raven-staging/read-utf8');
 
 function readBackupPath() {
   if (process.env.RAVEN_ENV_DEFAULTS_BACKUP && fs.existsSync(process.env.RAVEN_ENV_DEFAULTS_BACKUP)) {
     return process.env.RAVEN_ENV_DEFAULTS_BACKUP;
   }
   if (fs.existsSync(pointerFile)) {
-    const p = fs.readFileSync(pointerFile, 'utf8').trim();
+    const p = stripBom(fs.readFileSync(pointerFile, 'utf8')).trim();
     if (p && fs.existsSync(p)) return p;
   }
   const tempDefault = path.join(os.tmpdir(), 'virtualdeck-raven-env-backup', 'env.defaults.template');

@@ -4,6 +4,7 @@
  * Usage: node write-staged-package-json.js <srcPackageJson> <destPackageJson> <rewritesJsonFile>
  */
 const fs = require('fs');
+const { readFileUtf8 } = require('./read-utf8');
 
 const src = process.argv[2];
 const dest = process.argv[3];
@@ -14,8 +15,8 @@ if (!src || !dest || !rewritesFile) {
   process.exit(1);
 }
 
-const rewrites = JSON.parse(fs.readFileSync(rewritesFile, 'utf8'));
-const pkg = JSON.parse(fs.readFileSync(src, 'utf8'));
+const rewrites = JSON.parse(readFileUtf8(rewritesFile));
+const pkg = JSON.parse(readFileUtf8(src));
 
 for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
   if (!pkg[section]) continue;
