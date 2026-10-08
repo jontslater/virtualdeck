@@ -1076,22 +1076,27 @@ function Parse-DotEnvFile {
     return $map
 }
 
+function Test-IsBundleableEnvKey {
+    param(
+        [string]$Key,
+        [string[]]$TemplateKeys
+    )
+    if ($TemplateKeys -contains $Key) { return $true }
+    if ($Key -match '(_API_KEY|_SECRET|_TOKEN|_ID|_KEY)$') { return $true }
+    return $false
+}
+
 function Test-DotEnvMapHasBundleableKeys {
     param(
         [hashtable]$Map,
         [string]$TemplateText
     )
-    $keys = Get-TemplateEnvKeys -TemplateText $TemplateText
-    foreach ($key in $keys) {
-        if ($Map.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace([string]$Map[$key])) {
+    $templateKeys = Get-TemplateEnvKeys -TemplateText $TemplateText
+    foreach ($key in $Map.Keys) {
+        if ([string]::IsNullOrWhiteSpace([string]$Map[$key])) { continue }
+        if (Test-IsBundleableEnvKey -Key $key -TemplateKeys $templateKeys) {
             return $true
         }
-    }
-    if ($Map.ContainsKey('OPENAI_API_KEY') -and -not [string]::IsNullOrWhiteSpace([string]$Map['OPENAI_API_KEY'])) {
-        return $true
-    }
-    if ($Map.ContainsKey('ELEVENLABS_API_KEY') -and -not [string]::IsNullOrWhiteSpace([string]$Map['ELEVENLABS_API_KEY'])) {
-        return $true
     }
     return $false
 }
@@ -1160,45 +1165,55 @@ function Format-EnvValueForFile([string]$Value) {
     return $Value
 }
 
+function Write-DotEnvMapToFile {
+    param(
+        [hashtable]$Map,
+        [string]$Path
+    )
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($key in ($Map.Keys | Sort-Object)) {
+        $val = $Map[$key]
+        if ($null -eq $val) { $val = '' }
+        $lines.Add("$key=$(Format-EnvValueForFile $val)")
+    }
+    Write-TextFileUtf8NoBom -Path $Path -Content (($lines -join "`n") + "`n")
+}
+
+function Resolve-MergeEnvNodeExe {
+    param([string]$NodeExe)
+    if ($NodeExe -and (Test-Path -LiteralPath $NodeExe)) { return $NodeExe }
+    $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+    if ($nodeCmd) { return $nodeCmd.Source }
+    return $null
+}
+
 function Merge-EnvDefaultsWithAituberDotenv {
     param(
         [string]$TemplateText,
-        [hashtable]$SourceMap
+        [hashtable]$SourceMap,
+        [string]$NodeExe
     )
-    $templateKeys = Get-TemplateEnvKeys -TemplateText $TemplateText
-    $overlay = @{}
-    foreach ($key in $templateKeys) {
-        if ($SourceMap.ContainsKey($key) -and [string]::IsNullOrWhiteSpace($SourceMap[$key]) -eq $false) {
-            $overlay[$key] = $SourceMap[$key]
-        }
+    $mergeHelper = Get-RavenStagingHelperPath 'merge-env-defaults.js'
+    $node = Resolve-MergeEnvNodeExe -NodeExe $NodeExe
+    if (-not $node) {
+        throw 'node.exe is required to merge env.defaults for personal builds'
     }
-    $extraKeys = @('OPENAI_API_KEY', 'ELEVENLABS_API_KEY')
-    foreach ($alias in $extraKeys) {
-        if ($SourceMap.ContainsKey($alias) -and -not [string]::IsNullOrWhiteSpace($SourceMap[$alias])) {
-            if ($alias -eq 'OPENAI_API_KEY' -and -not $overlay.ContainsKey('LLM_API_KEY')) {
-                $overlay['LLM_API_KEY'] = $SourceMap[$alias]
-            }
-            if ($alias -eq 'ELEVENLABS_API_KEY' -and -not $overlay.ContainsKey('TTS_API_KEY')) {
-                $overlay['TTS_API_KEY'] = $SourceMap[$alias]
-            }
+    $tempDir = Join-Path $env:TEMP ("vd-merge-env-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+    try {
+        $templateFile = Join-Path $tempDir 'template.env'
+        $sourceFile = Join-Path $tempDir 'source.env'
+        $outFile = Join-Path $tempDir 'merged.env'
+        Write-TextFileUtf8NoBom -Path $templateFile -Content $TemplateText
+        Write-DotEnvMapToFile -Map $SourceMap -Path $sourceFile
+        & $node $mergeHelper 'merge' $templateFile $sourceFile $outFile
+        if ($LASTEXITCODE -ne 0) {
+            throw "merge-env-defaults.js failed with exit code $LASTEXITCODE"
         }
+        return Get-Content -LiteralPath $outFile -Raw
+    } finally {
+        Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
     }
-
-    $lines = New-Object System.Collections.Generic.List[string]
-    foreach ($raw in ($TemplateText -split "`r?`n")) {
-        if (-not $raw.Trim() -or $raw.Trim().StartsWith('#') -or $raw.IndexOf('=') -lt 1) {
-            $lines.Add($raw)
-            continue
-        }
-        $eq = $raw.IndexOf('=')
-        $key = $raw.Substring(0, $eq).Trim()
-        if ($overlay.ContainsKey($key)) {
-            $lines.Add("$key=$(Format-EnvValueForFile $overlay[$key])")
-        } else {
-            $lines.Add($raw)
-        }
-    }
-    return ($lines -join "`n").TrimEnd() + "`n"
 }
 
 function Save-EnvDefaultsTemplateBackupOutsideStage {
@@ -1224,7 +1239,8 @@ function Write-EnvDefaultsTemplate {
     param(
         [string]$StageDir,
         [string]$RepoRoot,
-        [string]$AITuberRoot
+        [string]$AITuberRoot,
+        [string]$NodeExe
     )
     $EnvDefaultsPath = Join-Path $StageDir 'env.defaults'
     $TemplateInRepo = Join-Path $RepoRoot 'extra\raven\env.defaults'
@@ -1253,19 +1269,14 @@ function Write-EnvDefaultsTemplate {
         if ($resolved.Label) {
             Write-Ok "Bundling API keys from: $($resolved.Label)"
         }
-        $merged = Merge-EnvDefaultsWithAituberDotenv -TemplateText $templateText -SourceMap $sourceMap
+        $merged = Merge-EnvDefaultsWithAituberDotenv -TemplateText $templateText -SourceMap $sourceMap -NodeExe $NodeExe
         Write-TextFileUtf8NoBom -Path $EnvDefaultsPath -Content $merged
         $templateKeys = Get-TemplateEnvKeys -TemplateText $templateText
-        foreach ($key in $templateKeys) {
-            if ($sourceMap.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace($sourceMap[$key])) {
+        foreach ($key in ($sourceMap.Keys | Sort-Object)) {
+            if ([string]::IsNullOrWhiteSpace([string]$sourceMap[$key])) { continue }
+            if (Test-IsBundleableEnvKey -Key $key -TemplateKeys $templateKeys) {
                 Write-Ok "Bundled env key $key (length $($sourceMap[$key].Length))"
             }
-        }
-        if ($sourceMap.ContainsKey('OPENAI_API_KEY') -and $sourceMap['OPENAI_API_KEY']) {
-            Write-Ok "Bundled env key OPENAI_API_KEY (length $($sourceMap['OPENAI_API_KEY'].Length))"
-        }
-        if ($sourceMap.ContainsKey('ELEVENLABS_API_KEY') -and $sourceMap['ELEVENLABS_API_KEY']) {
-            Write-Ok "Bundled env key ELEVENLABS_API_KEY (length $($sourceMap['ELEVENLABS_API_KEY'].Length))"
         }
         return
     }
@@ -1365,7 +1376,7 @@ foreach ($pair in @(
 }
 
 Write-Step 'Creating env.defaults (blank API key placeholders only)...'
-Write-EnvDefaultsTemplate -StageDir $StageDir -RepoRoot $RepoRoot -AITuberRoot $AITuberRoot
+Write-EnvDefaultsTemplate -StageDir $StageDir -RepoRoot $RepoRoot -AITuberRoot $AITuberRoot -NodeExe $BundledNodeExe
 
 if ($Script:BundleKeys) {
     Write-Host ''
