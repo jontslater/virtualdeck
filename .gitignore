@@ -64,6 +64,7 @@ jspm_packages/
 extra/raven/
 !extra/raven/env.defaults
 !extra/raven/README.md
+scripts/.raven-env-defaults-backup-path
 
 # Electron build artifacts
 dist_electron/

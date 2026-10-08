@@ -89,12 +89,12 @@ Or add query param: `http://localhost:8080/api/vtuber/state?token=YOUR_TOKEN`
 
 ### Important: Never Ship API Keys
 
-The build script (`prepare-build.js`) now validates:
-- No `.env` with keys
-- No `raven.env` with populated OpenAI/ElevenLabs keys
-- No credential files in the bundle
+The build script (`prepare-build.js`) validates packaging, not your local gitignored dev files:
+- Root `.env` / `twitch-oauth-config.js` may exist locally; build fails only if `electron-builder` `files` would bundle them
+- Staged `extra/raven/` is scanned for `.env`, `raven.env`, and populated API keys in `env.defaults`
+- `build:win:with-raven` requires `extra/raven/sidecar.js` (use `SKIP_RAVEN=1` / `build:win` for VirtualDeck-only)
 
-If detected, build fails with clear error.
+If a secret would ship in the installer, the build fails with a clear error.
 
 **For paid JARVIS features later:**
 - Users MUST provide their own API keys (BYOK)
