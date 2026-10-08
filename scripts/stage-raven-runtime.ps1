@@ -73,6 +73,23 @@ function Get-PnpmInvocation {
     return @('npx', '--yes', 'pnpm@9.15.0')
 }
 
+function Get-RavenStagingHelperPath {
+    param([string]$FileName)
+    return Join-Path $PSScriptRoot (Join-Path 'raven-staging' $FileName)
+}
+
+function Invoke-WithContinueOnNativeError {
+    param([scriptblock]$ScriptBlock)
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $ScriptBlock
+        return $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
 function Invoke-Pnpm {
     param(
         [Parameter(Mandatory = $true)][string[]]$PnpmArgs,
@@ -82,9 +99,11 @@ function Invoke-Pnpm {
     Push-Location $WorkingDirectory
     try {
         Write-Host "  $($pnpm -join ' ') $($PnpmArgs -join ' ')" -ForegroundColor DarkGray
-        & $pnpm[0] @($pnpm[1..($pnpm.Length - 1)]) @PnpmArgs
-        if ($LASTEXITCODE -ne 0) {
-            throw "$($pnpm -join ' ') $($PnpmArgs -join ' ') failed with exit code $LASTEXITCODE"
+        $exitCode = Invoke-WithContinueOnNativeError -ScriptBlock {
+            & $pnpm[0] @($pnpm[1..($pnpm.Length - 1)]) @PnpmArgs
+        }
+        if ($exitCode -ne 0) {
+            throw "$($pnpm -join ' ') $($PnpmArgs -join ' ') failed with exit code $exitCode"
         }
     } finally {
         Pop-Location
@@ -252,13 +271,17 @@ function Invoke-PnpmCapture {
     )
     $pnpm = Get-PnpmInvocation
     Push-Location $WorkingDirectory
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     try {
         $output = & $pnpm[0] @($pnpm[1..($pnpm.Length - 1)]) @PnpmArgs 2>&1 | Out-String
-        if ($LASTEXITCODE -ne 0) {
-            throw "$($pnpm -join ' ') $($PnpmArgs -join ' ') failed with exit code $LASTEXITCODE`n$output"
+        $exitCode = $LASTEXITCODE
+        if ($exitCode -ne 0) {
+            throw "$($pnpm -join ' ') $($PnpmArgs -join ' ') failed with exit code $exitCode`n$output"
         }
         return $output
     } finally {
+        $ErrorActionPreference = $previous
         Pop-Location
     }
 }
@@ -347,21 +370,11 @@ function Test-ModuleResolvableFromDirectory {
         [string]$ModuleName
     )
     if (-not (Test-Path -LiteralPath $Dir)) { return $false }
-    $helper = @'
-const path = require("path");
-const cwd = process.argv[1];
-const mod = process.argv[2];
-const search = [
-  cwd,
-  path.join(cwd, ".."),
-  path.join(cwd, "..", ".."),
-  path.join(cwd, "..", "..", ".."),
-  path.join(cwd, "..", "..", "..", ".."),
-];
-require.resolve(mod, { paths: search });
-'@
-    & $NodeExe -e $helper $Dir $ModuleName 2>$null | Out-Null
-    return $LASTEXITCODE -eq 0
+    $helper = Get-RavenStagingHelperPath -FileName 'resolve-module.js'
+    $exitCode = Invoke-WithContinueOnNativeError -ScriptBlock {
+        & $NodeExe $helper $Dir $ModuleName | Out-Null
+    }
+    return $exitCode -eq 0
 }
 
 function Test-ControllerDepsResolvable {
@@ -377,32 +390,11 @@ function Test-ControllerDepsResolvable {
     if (-not (Test-Path -LiteralPath $rootModules)) {
         return $false
     }
-    $helper = @'
-const fs = require("fs");
-const path = require("path");
-const root = process.argv[1];
-const controllerDir = process.argv[2];
-process.chdir(controllerDir);
-const pkg = JSON.parse(fs.readFileSync(path.join(controllerDir, "package.json"), "utf8"));
-const deps = Object.assign({}, pkg.dependencies || {}, pkg.optionalDependencies || {});
-const search = [controllerDir, root, path.join(root, "node_modules")];
-for (const name of Object.keys(deps)) {
-  const spec = deps[name];
-  if (typeof spec === "string" && spec.startsWith("file:")) continue;
-  try {
-    require.resolve(name, { paths: search });
-  } catch (e) {
-    process.exit(2);
-  }
-}
-try {
-  require.resolve("@ai-streamer/shared", { paths: search });
-} catch (e) {
-  process.exit(3);
-}
-'@
-    & $NodeExe -e $helper $Root $controllerDir 2>$null | Out-Null
-    return $LASTEXITCODE -eq 0
+    $helper = Get-RavenStagingHelperPath -FileName 'test-controller-deps.js'
+    $exitCode = Invoke-WithContinueOnNativeError -ScriptBlock {
+        & $NodeExe $helper $Root $controllerDir | Out-Null
+    }
+    return $exitCode -eq 0
 }
 
 function Ensure-RavenPnpmDependencies {
@@ -450,9 +442,11 @@ function Invoke-NpmProductionInstall {
     $npmCli = Get-NpmCliPath
     Push-Location $Dir
     try {
-        & $NodeExe $npmCli install --omit=dev --no-optional
-        if ($LASTEXITCODE -ne 0) {
-            throw "npm install --omit=dev failed in $Dir (exit $LASTEXITCODE)"
+        $exitCode = Invoke-WithContinueOnNativeError -ScriptBlock {
+            & $NodeExe $npmCli install --omit=dev --no-optional
+        }
+        if ($exitCode -ne 0) {
+            throw "npm install --omit=dev failed in $Dir (exit $exitCode)"
         }
     } finally {
         Pop-Location
@@ -478,18 +472,23 @@ function Invoke-TscForPackageDirectory {
     $npmCli = Get-NpmCliPath
     Push-Location $PackageDir
     try {
+        $exitCode = 0
         if ($tsc) {
-            & $NodeExe $tsc -p $tsconfig
+            $exitCode = Invoke-WithContinueOnNativeError -ScriptBlock {
+                & $NodeExe $tsc -p $tsconfig
+            }
         } else {
             Push-Location $Root
             try {
-                & $NodeExe $npmCli exec -- tsc -p $tsconfig
+                $exitCode = Invoke-WithContinueOnNativeError -ScriptBlock {
+                    & $NodeExe $npmCli exec -- tsc -p $tsconfig
+                }
             } finally {
                 Pop-Location
             }
         }
-        if ($LASTEXITCODE -ne 0) {
-            throw "tsc exited with code $LASTEXITCODE for $PackageDir"
+        if ($exitCode -ne 0) {
+            throw "tsc exited with code $exitCode for $PackageDir"
         }
     } finally {
         Pop-Location
@@ -500,40 +499,33 @@ function Write-StagedPackageJson {
     param(
         [string]$SourcePackageJson,
         [string]$DestPackageJson,
+        [string]$NodeExe,
         [hashtable]$DepRewrites
     )
-    $helper = @'
-const fs = require("fs");
-const src = process.argv[1];
-const dest = process.argv[2];
-const rewrites = JSON.parse(process.argv[3]);
-const pkg = JSON.parse(fs.readFileSync(src, "utf8"));
-for (const section of ["dependencies", "optionalDependencies", "peerDependencies"]) {
-  if (!pkg[section]) continue;
-  for (const [name, spec] of Object.entries(pkg[section])) {
-    if (Object.prototype.hasOwnProperty.call(rewrites, name)) {
-      pkg[section][name] = rewrites[name];
-      continue;
-    }
-    if (typeof spec === "string" && spec.startsWith("workspace:")) {
-      if (Object.prototype.hasOwnProperty.call(rewrites, name)) {
-        pkg[section][name] = rewrites[name];
-      }
-    }
-  }
-}
-fs.writeFileSync(dest, JSON.stringify(pkg, null, 2) + "\n");
-'@
-    $jsonRewrites = '{}' 
-    if ($DepRewrites.Count -gt 0) {
-        $jsonRewrites = ($DepRewrites.GetEnumerator() | ForEach-Object {
-            """$($_.Key)"":""$($_.Value)"""
-        }) -join ','
-        $jsonRewrites = "{ $jsonRewrites }"
-    }
-    & node -e $helper $SourcePackageJson $DestPackageJson $jsonRewrites
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to write staged package.json for $SourcePackageJson"
+    $helper = Get-RavenStagingHelperPath -FileName 'write-staged-package-json.js'
+    $rewritesFile = [IO.Path]::GetTempFileName()
+    try {
+        $json = @{}
+        foreach ($key in $DepRewrites.Keys) {
+            $json[$key] = [string]$DepRewrites[$key]
+        }
+        if ($json.Count -eq 0) {
+            '{}' | Set-Content -LiteralPath $rewritesFile -Encoding ASCII
+        } else {
+            ($json | ConvertTo-Json -Compress) | Set-Content -LiteralPath $rewritesFile -Encoding UTF8
+        }
+        $node = $NodeExe
+        if (-not $node) {
+            $node = (Get-Command node -ErrorAction SilentlyContinue).Path
+        }
+        $exitCode = Invoke-WithContinueOnNativeError -ScriptBlock {
+            & $node $helper $SourcePackageJson $DestPackageJson $rewritesFile
+        }
+        if ($exitCode -ne 0) {
+            throw "Failed to write staged package.json for $SourcePackageJson"
+        }
+    } finally {
+        Remove-Item -LiteralPath $rewritesFile -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -558,7 +550,7 @@ function Stage-BuiltPackageManual {
     $srcPkg = Join-Path $SourceDir 'package.json'
     $destPkg = Join-Path $DestDir 'package.json'
     if ($DepRewrites.Count -gt 0) {
-        Write-StagedPackageJson -SourcePackageJson $srcPkg -DestPackageJson $destPkg -DepRewrites $DepRewrites
+        Write-StagedPackageJson -SourcePackageJson $srcPkg -DestPackageJson $destPkg -NodeExe $NodeExe -DepRewrites $DepRewrites
     } else {
         Copy-Item -LiteralPath $srcPkg -Destination $destPkg -Force
     }
@@ -705,14 +697,23 @@ function Stage-VirtualDeckBridge {
         $npmCli = Get-NpmCliPath
         try {
             Push-Location $bridgeDir
+            $tscExit = 0
             if ($tsc) {
-                & $NodeExe $tsc -p $tsconfig
+                $tscExit = Invoke-WithContinueOnNativeError -ScriptBlock {
+                    & $NodeExe $tsc -p $tsconfig
+                }
             } else {
                 Push-Location $Root
-                & $NodeExe $npmCli exec -- tsc -p $tsconfig
+                try {
+                    $tscExit = Invoke-WithContinueOnNativeError -ScriptBlock {
+                        & $NodeExe $npmCli exec -- tsc -p $tsconfig
+                    }
+                } finally {
+                    Pop-Location
+                }
             }
-            if ($LASTEXITCODE -ne 0) {
-                throw "tsc exited with code $LASTEXITCODE"
+            if ($tscExit -ne 0) {
+                throw "tsc exited with code $tscExit"
             }
             $hasDist = Test-Path -LiteralPath $entrySrc
         } catch {
@@ -750,9 +751,11 @@ function Stage-VirtualDeckBridge {
     $npmCli = Get-NpmCliPath
     Push-Location $bridgeStage
     try {
-        & $NodeExe $npmCli install --omit=dev --no-optional
-        if ($LASTEXITCODE -ne 0) {
-            throw "npm install in VirtualDeck bridge failed (exit $LASTEXITCODE)"
+        $npmExit = Invoke-WithContinueOnNativeError -ScriptBlock {
+            & $NodeExe $npmCli install --omit=dev --no-optional
+        }
+        if ($npmExit -ne 0) {
+            throw "npm install in VirtualDeck bridge failed (exit $npmExit)"
         }
     } finally {
         Pop-Location
@@ -772,18 +775,10 @@ function Assert-BridgeWsResolvable {
         [string]$BridgeStage,
         [string]$NodeExe
     )
-    Push-Location $BridgeStage
-    try {
-        $resolveScript = "try { console.log(require.resolve('ws')); process.exit(0); } catch (e) { console.error(e.message); process.exit(1); }"
-        & $NodeExe -e $resolveScript
-        if ($LASTEXITCODE -ne 0) {
-            throw "require.resolve('ws') failed from VirtualDeck bridge directory"
-        }
-        $wsPath = & $NodeExe -e "console.log(require.resolve('ws'))"
-        Write-Ok "ws resolves from VirtualDeck bridge ($wsPath)"
-    } finally {
-        Pop-Location
+    if (-not (Test-ModuleResolvableFromDirectory -NodeExe $NodeExe -Dir $BridgeStage -ModuleName 'ws')) {
+        throw "require.resolve('ws') failed from VirtualDeck bridge directory"
     }
+    Write-Ok 'ws resolves from VirtualDeck bridge'
 }
 
 function Invoke-PnpmDeployPackage {
@@ -946,15 +941,20 @@ function Install-StagedProductionDeps {
     Write-Step 'Installing production dependencies in staged sidecar root...'
     Push-Location $StageDir
     try {
+        $npmExit = 0
         if ($NodeExe -and (Test-Path -LiteralPath $NodeExe)) {
             $npmCli = (Get-Command npm -ErrorAction SilentlyContinue).Source
             if (-not $npmCli) { throw 'npm CLI not found on PATH (needed for staged dependency install)' }
-            & $NodeExe $npmCli install --omit=dev --no-optional
+            $npmExit = Invoke-WithContinueOnNativeError -ScriptBlock {
+                & $NodeExe $npmCli install --omit=dev --no-optional
+            }
         } else {
-            npm install --omit=dev --no-optional
+            $npmExit = Invoke-WithContinueOnNativeError -ScriptBlock {
+                npm install --omit=dev --no-optional
+            }
         }
-        if ($LASTEXITCODE -ne 0) {
-            throw "npm install in staged directory failed (exit $LASTEXITCODE)"
+        if ($npmExit -ne 0) {
+            throw "npm install in staged directory failed (exit $npmExit)"
         }
         Write-Ok 'Dependencies installed'
     } finally {
@@ -1046,6 +1046,25 @@ function Merge-EnvDefaultsWithAituberDotenv {
     return ($lines -join "`n").TrimEnd() + "`n"
 }
 
+function Save-EnvDefaultsTemplateBackupOutsideStage {
+    param(
+        [string]$RepoRoot,
+        [string]$TemplateText
+    )
+    $backupDir = Join-Path $env:TEMP 'virtualdeck-raven-env-backup'
+    New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+    $backupFile = Join-Path $backupDir 'env.defaults.template'
+    $normalized = $TemplateText
+    if (-not $normalized.EndsWith("`n")) {
+        $normalized = $normalized + "`n"
+    }
+    Set-Content -LiteralPath $backupFile -Value $normalized -Encoding UTF8
+    $pointerFile = Join-Path $RepoRoot 'scripts\.raven-env-defaults-backup-path'
+    Set-Content -LiteralPath $pointerFile -Value $backupFile -Encoding ASCII
+    $env:RAVEN_ENV_DEFAULTS_BACKUP = $backupFile
+    Write-Ok 'Saved env.defaults template backup outside extra/raven (TEMP)'
+}
+
 function Write-EnvDefaultsTemplate {
     param(
         [string]$StageDir,
@@ -1054,7 +1073,6 @@ function Write-EnvDefaultsTemplate {
     )
     $EnvDefaultsPath = Join-Path $StageDir 'env.defaults'
     $TemplateInRepo = Join-Path $RepoRoot 'extra\raven\env.defaults'
-    $BackupPath = Join-Path $StageDir '.env.defaults.template.backup'
 
     $templateText = $null
     if (Test-Path -LiteralPath $TemplateInRepo) {
@@ -1073,13 +1091,8 @@ function Write-EnvDefaultsTemplate {
         ) -join "`n"
     }
 
-    Set-Content -LiteralPath $BackupPath -Value $templateText -Encoding UTF8 -NoNewline
-    if (-not $templateText.EndsWith("`n")) {
-        Add-Content -LiteralPath $BackupPath -Value '' -Encoding UTF8
-    }
-    Write-Ok 'Saved committed env.defaults template backup (.env.defaults.template.backup)'
-
     if ($Script:BundleKeys) {
+        Save-EnvDefaultsTemplateBackupOutsideStage -RepoRoot $RepoRoot -TemplateText $templateText
         $dotenvPath = Join-Path $AITuberRoot '.env'
         if (-not (Test-Path -LiteralPath $dotenvPath)) {
             throw "BundleKeys enabled but AITuber .env not found at $dotenvPath"

@@ -6,15 +6,30 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const os = require('os');
 
 const repoRoot = path.join(__dirname, '..');
 const envDefaults = path.join(repoRoot, 'extra', 'raven', 'env.defaults');
-const backup = path.join(repoRoot, 'extra', 'raven', '.env.defaults.template.backup');
+const pointerFile = path.join(__dirname, '.raven-env-defaults-backup-path');
 const seed = path.join(__dirname, 'raven-env.defaults.template');
 
-if (fs.existsSync(backup)) {
+function readBackupPath() {
+  if (process.env.RAVEN_ENV_DEFAULTS_BACKUP && fs.existsSync(process.env.RAVEN_ENV_DEFAULTS_BACKUP)) {
+    return process.env.RAVEN_ENV_DEFAULTS_BACKUP;
+  }
+  if (fs.existsSync(pointerFile)) {
+    const p = fs.readFileSync(pointerFile, 'utf8').trim();
+    if (p && fs.existsSync(p)) return p;
+  }
+  const tempDefault = path.join(os.tmpdir(), 'virtualdeck-raven-env-backup', 'env.defaults.template');
+  if (fs.existsSync(tempDefault)) return tempDefault;
+  return null;
+}
+
+const backup = readBackupPath();
+if (backup) {
   fs.copyFileSync(backup, envDefaults);
-  console.log('Restored extra/raven/env.defaults from .env.defaults.template.backup');
+  console.log('Restored extra/raven/env.defaults from temp backup');
   process.exit(0);
 }
 

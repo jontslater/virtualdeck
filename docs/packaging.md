@@ -75,7 +75,8 @@ npm run build:win:personal
 - Uses `stage-raven -BundleKeys` (or `RAVEN_BUNDLE_KEYS=1`)
 - Logs only key names and value lengths (never secret values)
 - Skips populated-key checks for `env.defaults`; prints loud warnings
-- Restores committed `extra/raven/env.defaults` after the build via `restore-raven-env-defaults`
+- Restores committed `extra/raven/env.defaults` after the build (even on failure) via `scripts/build-win-personal.js` + `restore-raven-env-defaults`
+- Template backup lives under `%TEMP%\virtualdeck-raven-env-backup` (never under `extra/raven`, which is packaged)
 - On first launch, packaged `env.defaults` is copied to `%APPDATA%\VirtualDeck\raven.env` if that file does not exist; an existing `raven.env` is not overwritten (empty fields may be filled from bundled defaults)
 
 **VirtualDeck-only installer** (no Raven bundle):

@@ -14,7 +14,7 @@
     "dist": "npm run prepare-build:no-raven && electron-builder",
     "build:win": "npm run prepare-build:no-raven && electron-builder --win",
     "build:win:with-raven": "npm run stage-raven && npm run prepare-build && electron-builder --win",
-    "build:win:personal": "npm run stage-raven:personal && node -e \"process.env.RAVEN_BUNDLE_KEYS='1'; require('./prepare-build').runPrepareBuild()\" && electron-builder --win && npm run restore-raven-env-defaults"
+    "build:win:personal": "node scripts/build-win-personal.js"
   },
   "keywords": [
     "electron",
