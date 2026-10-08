@@ -42,11 +42,11 @@ The staging script targets Jonathan's AITuber checkout:
 1. Uses existing AITuber `node_modules` when `apps/controller` deps resolve (skips `pnpm install`; pnpm 9 may still validate the whole lockfile on install). Otherwise tries `pnpm install --frozen-lockfile --filter <controller>...`, and continues if install fails but deps still resolve.
 2. Builds all `packages/**` with a `build` script (nested packages included); failures are **warnings** if `dist/` already exists (e.g. `tts-piper` typecheck issues)
 3. `pnpm --filter ./apps/controller run build`
-4. Stages `packages/shared` to `extra/raven/app/packages/shared` (`npm install --omit=dev` for prod deps such as `zod`)
-5. `pnpm deploy --prod` into `extra/raven/app/apps/controller`, or manual `dist` + `package.json` + `npm install` if deploy hits lockfile validation
-6. VirtualDeck bridge (`packages/integrations/virtualdeck`, not in pnpm workspace): `tsc -p`, copy `dist` + `package.json` (file dep on `../../shared`), `npm install --omit=dev`, verify `ws` and `@ai-streamer/shared`
+4. Stages every workspace package the controller needs (e.g. `shared`, `director`, `llm`, `trivia`, `tts-piper`) under `extra/raven/app/packages/**` in dependency order: `dist` + rewritten `package.json` + `npm install --omit=dev --install-links` (real copies, no dangling symlinks)
+5. Stages `apps/controller` the same way with `file:` rewrites for all local `@ai-streamer/*` deps
+6. VirtualDeck bridge (`packages/integrations/virtualdeck`, not in pnpm workspace): `tsc -p`, copy `dist` + `package.json` (file dep on `../../shared`), `npm install --omit=dev --install-links`, verify `ws` and `@ai-streamer/shared`
 7. Copies `scripts/raven-sidecar.js` -> `sidecar.js`
-8. Verifies `app/apps/controller/dist/index.js` and `app/packages/integrations/virtualdeck/dist/bridge-server.js` exist
+8. Verifies controller `package.json` dependencies resolve from `app/apps/controller`, walks `app/` for broken symlinks, and checks `app/apps/controller/dist/index.js` + `app/packages/integrations/virtualdeck/dist/bridge-server.js`
 9. Bundles `node.exe` (early, for bridge npm) and ffmpeg/ffplay
 10. Writes `env.defaults` from the VirtualDeck template (empty API keys only)
 11. Fails if node, ffmpeg, sidecar, controller `dist`, security checks, or dependency install fail

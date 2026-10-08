@@ -120,4 +120,49 @@ const outPkg = JSON.parse(fs.readFileSync(destPkg, 'utf8'));
 assert.strictEqual(outPkg.dependencies.lodash, 'file:./lodash', 'write-staged-package-json reads BOM rewrites');
 fs.rmSync(bomTmp, { recursive: true, force: true });
 
+const {
+  workspaceClosure,
+  buildDepRewrites,
+  orderClosureForStaging,
+} = require('./scripts/raven-staging/workspace-packages');
+const wsTmp = path.join(__dirname, '.tmp-workspace-packages');
+fs.rmSync(wsTmp, { recursive: true, force: true });
+fs.mkdirSync(path.join(wsTmp, 'apps/controller'), { recursive: true });
+fs.mkdirSync(path.join(wsTmp, 'packages/shared'), { recursive: true });
+fs.mkdirSync(path.join(wsTmp, 'packages/director'), { recursive: true });
+fs.writeFileSync(
+  path.join(wsTmp, 'packages/shared/package.json'),
+  JSON.stringify({ name: '@ai-streamer/shared', version: '0.0.0', dependencies: {} }),
+);
+fs.writeFileSync(
+  path.join(wsTmp, 'packages/director/package.json'),
+  JSON.stringify({
+    name: '@ai-streamer/director',
+    version: '0.0.0',
+    dependencies: { '@ai-streamer/shared': 'workspace:*' },
+  }),
+);
+fs.writeFileSync(
+  path.join(wsTmp, 'apps/controller/package.json'),
+  JSON.stringify({
+    name: '@ai-streamer/controller',
+    version: '0.0.0',
+    dependencies: {
+      '@ai-streamer/director': 'workspace:*',
+      '@ai-streamer/shared': 'workspace:*',
+    },
+  }),
+);
+const controllerDir = path.join(wsTmp, 'apps/controller');
+const { closureRels } = workspaceClosure(wsTmp, controllerDir, {
+  omitFromResult: ['apps/controller', 'packages/integrations/virtualdeck'],
+});
+assert.deepStrictEqual(closureRels, ['packages/shared', 'packages/director']);
+const ordered = orderClosureForStaging(wsTmp, closureRels);
+assert.deepStrictEqual(ordered[0], 'packages/shared', 'shared must stage before director');
+const rewrites = buildDepRewrites(wsTmp, 'apps/controller', closureRels);
+assert.strictEqual(rewrites['@ai-streamer/shared'], 'file:../../packages/shared');
+assert.strictEqual(rewrites['@ai-streamer/director'], 'file:../../packages/director');
+fs.rmSync(wsTmp, { recursive: true, force: true });
+
 console.log('✅ test-prepare-build.js passed');

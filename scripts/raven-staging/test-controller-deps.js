@@ -58,17 +58,18 @@ function depInstalled(name) {
 for (const name of Object.keys(deps)) {
   const spec = deps[name];
   if (typeof spec === 'string' && spec.startsWith('file:')) {
+    const raw = spec.slice('file:'.length);
+    const target = path.resolve(controllerDir, raw);
+    if (!fs.existsSync(path.join(target, 'package.json'))) {
+      console.error('missing file dependency:', name, 'at', target);
+      process.exit(2);
+    }
     continue;
   }
   if (!depInstalled(name)) {
     console.error('missing dependency:', name);
     process.exit(2);
   }
-}
-
-if (!depInstalled('@ai-streamer/shared')) {
-  console.error('missing dependency: @ai-streamer/shared');
-  process.exit(3);
 }
 
 process.exit(0);

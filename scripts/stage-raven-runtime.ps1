@@ -152,7 +152,7 @@ function Copy-TreeAsRealFiles {
     param(
         [Parameter(Mandatory = $true)][string]$Source,
         [Parameter(Mandatory = $true)][string]$Destination,
-        [string[]]$ExcludeDirNames = @('.git', '.turbo', '.cache')
+        [string[]]$ExcludeDirNames = @('.git', '.turbo', '.cache', '.pnpm', '.ignored')
     )
     if (-not (Test-Path -LiteralPath $Source)) {
         throw "Copy source not found: $Source"
@@ -165,6 +165,10 @@ function Copy-TreeAsRealFiles {
         $item = Get-Item -LiteralPath $Src -Force
         if (Test-ReparsePoint $item) {
             $real = Resolve-ReparseTarget $Src
+            $realNorm = $real.Replace('/', '\')
+            if ($realNorm -match '\\node_modules\\\.pnpm\\' -or $realNorm -match '\\\.ignored(\\|$)') {
+                return
+            }
             $realItem = Get-Item -LiteralPath $real -Force
             if ($realItem.PSIsContainer) {
                 New-Item -ItemType Directory -Path $Dst -Force | Out-Null
@@ -454,7 +458,7 @@ function Invoke-NpmProductionInstall {
         [string]$Dir,
         [string]$NodeExe
     )
-    $exitCode = Invoke-NpmCli -NodeExe $NodeExe -NpmArgs @('install', '--omit=dev', '--no-optional') -WorkingDirectory $Dir
+    $exitCode = Invoke-NpmCli -NodeExe $NodeExe -NpmArgs @('install', '--omit=dev', '--no-optional', '--install-links') -WorkingDirectory $Dir
     if ($exitCode -ne 0) {
         throw "npm install --omit=dev failed in $Dir (exit $exitCode)"
     }
@@ -557,39 +561,95 @@ function Stage-BuiltPackageManual {
     Invoke-NpmProductionInstall -Dir $DestDir -NodeExe $NodeExe
 }
 
-function Stage-SharedPackage {
+function Get-ControllerWorkspacePackageRels {
+    param(
+        [string]$Root,
+        [string]$NodeExe
+    )
+    $helper = Get-RavenStagingHelperPath -FileName 'workspace-packages.js'
+    $controllerDir = Join-Path $Root 'apps\controller'
+    $output = & $NodeExe $helper 'closure' $Root $controllerDir
+    if ($LASTEXITCODE -ne 0) {
+        throw 'workspace-packages.js closure failed (cannot resolve controller workspace deps)'
+    }
+    $json = ($output | Out-String).Trim()
+    if (-not $json) {
+        throw 'workspace-packages.js returned empty closure'
+    }
+    if (-not $json) {
+        throw 'workspace-packages.js returned empty closure'
+    }
+    return @($json | ConvertFrom-Json)
+}
+
+function Get-WorkspacePackageDepRewrites {
+    param(
+        [string]$Root,
+        [string]$NodeExe,
+        [string]$PackageRel,
+        [string]$ClosureJson
+    )
+    $helper = Get-RavenStagingHelperPath -FileName 'workspace-packages.js'
+    $output = & $NodeExe $helper 'rewrites' $Root $PackageRel $ClosureJson
+    if ($LASTEXITCODE -ne 0) {
+        throw "workspace-packages.js rewrites failed for $PackageRel"
+    }
+    $json = ($output | Out-String).Trim()
+    $obj = $json | ConvertFrom-Json
+    $table = @{}
+    if ($obj) {
+        $obj.PSObject.Properties | ForEach-Object { $table[$_.Name] = [string]$_.Value }
+    }
+    return $table
+}
+
+function Stage-WorkspacePackageManual {
+    param(
+        [string]$Root,
+        [string]$StageDir,
+        [string]$NodeExe,
+        [string]$PackageRel,
+        [string]$ClosureJson
+    )
+    $posix = $PackageRel.Replace('/', '\')
+    $sourceDir = Join-Path $Root $posix
+    if (-not (Test-Path -LiteralPath $sourceDir)) {
+        throw "Workspace package missing at $PackageRel"
+    }
+    $filter = './' + ($PackageRel.Replace('\', '/'))
+    Invoke-PackageBuildOptional -Root $Root -Filter $filter
+    try {
+        Invoke-TscForPackageDirectory -PackageDir $sourceDir -Root $Root -NodeExe $NodeExe
+    } catch {
+        if (Test-PackageHasBuiltOutput -PackageDir $sourceDir) {
+            Write-Warn "tsc failed for $PackageRel but dist exists - continuing ($($_.Exception.Message))"
+        } else {
+            throw
+        }
+    }
+    $destDir = Join-Path $StageDir ('app\' + $posix)
+    $rewrites = Get-WorkspacePackageDepRewrites -Root $Root -NodeExe $NodeExe -PackageRel ($PackageRel.Replace('\', '/')) -ClosureJson $ClosureJson
+    Stage-BuiltPackageManual -SourceDir $sourceDir -DestDir $destDir -NodeExe $NodeExe -DepRewrites $rewrites
+    Write-Ok "Staged workspace package $PackageRel"
+}
+
+function Stage-ControllerWorkspacePackages {
     param(
         [string]$Root,
         [string]$StageDir,
         [string]$NodeExe
     )
-    $sharedSrc = Join-Path $Root $Script:SharedSourceRel
-    if (-not (Test-Path -LiteralPath $sharedSrc)) {
-        throw "Missing required package at $($Script:SharedSourceRel)"
+    $rels = Get-ControllerWorkspacePackageRels -Root $Root -NodeExe $NodeExe
+    if ($rels.Count -eq 0) {
+        throw 'No workspace packages to stage for controller (expected packages/shared at minimum)'
     }
-
-    Write-Step 'Building and staging @ai-streamer/shared...'
-    Invoke-PackageBuildOptional -Root $Root -Filter './packages/shared'
-    try {
-        Invoke-TscForPackageDirectory -PackageDir $sharedSrc -Root $Root -NodeExe $NodeExe
-    } catch {
-        if (Test-PackageHasBuiltOutput -PackageDir $sharedSrc) {
-            Write-Warn "shared tsc failed but dist exists - continuing ($($_.Exception.Message))"
-        } else {
-            throw
-        }
+    $closureJson = ($rels | ConvertTo-Json -Compress)
+    Write-Step "Staging $($rels.Count) workspace package(s) for controller..."
+    foreach ($rel in $rels) {
+        $relPosix = [string]$rel
+        Stage-WorkspacePackageManual -Root $Root -StageDir $StageDir -NodeExe $NodeExe -PackageRel $relPosix -ClosureJson $closureJson
     }
-
-    $sharedDest = Join-Path $StageDir $Script:SharedStageRel
-    Stage-BuiltPackageManual -SourceDir $sharedSrc -DestDir $sharedDest -NodeExe $NodeExe
-
-    $zodOk = Test-ModuleResolvableFromDirectory -NodeExe $NodeExe -Dir $sharedDest -ModuleName 'zod'
-    if (-not $zodOk) {
-        Write-Warn 'zod did not resolve from staged shared package (may be optional depending on build)'
-    } else {
-        Write-Ok 'shared production deps resolve (zod)'
-    }
-    Write-Ok "Staged shared package at $($Script:SharedStageRel)"
+    return $closureJson
 }
 
 function Stage-ControllerPackage {
@@ -597,49 +657,35 @@ function Stage-ControllerPackage {
         [string]$Root,
         [string]$StageDir,
         [string]$NodeExe,
-        [string]$ControllerFilter
+        [string]$ClosureJson
     )
     $controllerSrc = Join-Path $Root 'apps\controller'
     $controllerDest = Join-Path $StageDir 'app\apps\controller'
-    $depRewrites = @{
-        '@ai-streamer/shared' = 'file:../../packages/shared'
-    }
-
-    $deployTmp = Join-Path $Root '.raven-stage-deploy-controller'
-    $stagedViaDeploy = $false
-    try {
-        if (Test-Path -LiteralPath $deployTmp) {
-            Remove-Item -LiteralPath $deployTmp -Recurse -Force
-        }
-        Invoke-PnpmDeployPackage -Root $Root -Filter $ControllerFilter -Destination $deployTmp
-        if (Test-Path -LiteralPath $controllerDest) {
-            Remove-Item -LiteralPath $controllerDest -Recurse -Force
-        }
-        Copy-TreeAsRealFiles -Source $deployTmp -Destination $controllerDest
-        Write-Ok 'Controller staged via pnpm deploy (same drive as AITuber, copied into extra/raven)'
-        $stagedViaDeploy = $true
-    } catch {
-        Write-Warn "pnpm deploy failed ($($_.Exception.Message)); copying controller dist manually"
-        Stage-BuiltPackageManual -SourceDir $controllerSrc -DestDir $controllerDest -NodeExe $NodeExe -DepRewrites $depRewrites
-    } finally {
-        if (Test-Path -LiteralPath $deployTmp) {
-            Remove-Item -LiteralPath $deployTmp -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
-
-    if (-not $stagedViaDeploy -and -not (Test-Path -LiteralPath (Join-Path $controllerDest 'dist\index.js'))) {
-        Stage-BuiltPackageManual -SourceDir $controllerSrc -DestDir $controllerDest -NodeExe $NodeExe -DepRewrites $depRewrites
-    }
+    $controllerRel = 'apps/controller'
+    $rewrites = Get-WorkspacePackageDepRewrites -Root $Root -NodeExe $NodeExe -PackageRel $controllerRel -ClosureJson $ClosureJson
+    Stage-BuiltPackageManual -SourceDir $controllerSrc -DestDir $controllerDest -NodeExe $NodeExe -DepRewrites $rewrites
 
     $entry = Join-Path $controllerDest 'dist\index.js'
     if (-not (Test-Path -LiteralPath $entry)) {
         throw "Controller entry missing at $entry after staging"
     }
+    Write-Ok 'Controller staged (dist + production node_modules with install-links)'
+}
 
-    if (-not (Test-ModuleResolvableFromDirectory -NodeExe $NodeExe -Dir $controllerDest -ModuleName '@ai-streamer/shared')) {
-        throw 'Staged controller cannot resolve @ai-streamer/shared (stage app/packages/shared first)'
+function Assert-StagedAppLayout {
+    param(
+        [string]$StageDir,
+        [string]$NodeExe
+    )
+    $appRoot = Join-Path $StageDir 'app'
+    $helper = Get-RavenStagingHelperPath -FileName 'verify-staged-layout.js'
+    $exitCode = Invoke-WithContinueOnNativeError -ScriptBlock {
+        & $NodeExe $helper $appRoot | Out-Null
     }
-    Write-Ok 'Controller resolves @ai-streamer/shared from staged layout'
+    if ($exitCode -ne 0) {
+        throw 'Staged app layout verification failed (missing controller deps or broken symlinks under app/)'
+    }
+    Write-Ok 'Staged app layout verified (controller deps + no dangling links)'
 }
 
 function Get-NpmCliJsPath {
@@ -805,7 +851,7 @@ function Stage-VirtualDeckBridge {
     Copy-TreeAsRealFiles -Source (Join-Path $bridgeDir 'dist') -Destination (Join-Path $bridgeStage 'dist')
 
     Write-Step 'Installing VirtualDeck bridge production dependencies (npm)...'
-    $npmExit = Invoke-NpmCli -NodeExe $NodeExe -NpmArgs @('install', '--omit=dev', '--no-optional') -WorkingDirectory $bridgeStage
+    $npmExit = Invoke-NpmCli -NodeExe $NodeExe -NpmArgs @('install', '--omit=dev', '--no-optional', '--install-links') -WorkingDirectory $bridgeStage
     if ($npmExit -ne 0) {
         throw "npm install in VirtualDeck bridge failed (exit $npmExit)"
     }
@@ -828,19 +874,6 @@ function Assert-BridgeWsResolvable {
         throw "require.resolve('ws') failed from VirtualDeck bridge directory"
     }
     Write-Ok 'ws resolves from VirtualDeck bridge'
-}
-
-function Invoke-PnpmDeployPackage {
-    param(
-        [string]$Root,
-        [string]$Filter,
-        [string]$Destination
-    )
-    if (Test-Path -LiteralPath $Destination) {
-        Remove-Item -LiteralPath $Destination -Recurse -Force
-    }
-    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
-    Invoke-Pnpm -PnpmArgs @('--filter', $Filter, 'deploy', '--prod', $Destination) -WorkingDirectory $Root
 }
 
 function Assert-SidecarLayoutPresent([string]$StageDir) {
@@ -893,14 +926,15 @@ function Stage-MonorepoLayout {
         Invoke-TscForPackageDirectory -PackageDir $controllerSrc -Root $Root -NodeExe $NodeExe
     }
 
-    Stage-SharedPackage -Root $Root -StageDir $StageDir -NodeExe $NodeExe
+    $closureJson = Stage-ControllerWorkspacePackages -Root $Root -StageDir $StageDir -NodeExe $NodeExe
 
     Write-Step 'Staging apps/controller...'
-    Stage-ControllerPackage -Root $Root -StageDir $StageDir -NodeExe $NodeExe -ControllerFilter $controllerFilter
+    Stage-ControllerPackage -Root $Root -StageDir $StageDir -NodeExe $NodeExe -ClosureJson $closureJson
 
     Write-Step 'Building and staging VirtualDeck bridge (outside pnpm workspace)...'
     Stage-VirtualDeckBridge -Root $Root -StageDir $StageDir -NodeExe $NodeExe
 
+    Assert-StagedAppLayout -StageDir $StageDir -NodeExe $NodeExe
     Assert-SidecarLayoutPresent -StageDir $StageDir
 
     Write-Step 'Copying Raven sidecar entrypoint...'
@@ -979,7 +1013,7 @@ function Install-StagedProductionDeps {
     )
     foreach ($mod in $modulesCandidates) {
         if (Test-Path -LiteralPath $mod) {
-            Write-Ok "Using production node_modules from pnpm deploy ($mod)"
+            Write-Ok "Using production node_modules from staged packages ($mod)"
             return
         }
     }
