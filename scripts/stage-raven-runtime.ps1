@@ -1076,43 +1076,71 @@ function Parse-DotEnvFile {
     return $map
 }
 
-function Test-IsBundleableEnvKey {
-    param(
-        [string]$Key,
-        [string[]]$TemplateKeys
-    )
-    if ($TemplateKeys -contains $Key) { return $true }
-    if ($Key -match '(_API_KEY|_SECRET|_TOKEN|_ID|_KEY)$') { return $true }
-    return $false
+function Resolve-MergeEnvNodeExe {
+    param([string]$NodeExe)
+    if ($NodeExe -and (Test-Path -LiteralPath $NodeExe)) { return $NodeExe }
+    $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+    if ($nodeCmd) { return $nodeCmd.Source }
+    return $null
 }
 
-function Test-DotEnvMapHasBundleableKeys {
+function Write-DenyPathRootsFile {
     param(
-        [hashtable]$Map,
-        [string]$TemplateText
+        [string]$Path,
+        [string[]]$Roots
     )
-    $templateKeys = Get-TemplateEnvKeys -TemplateText $TemplateText
-    foreach ($key in $Map.Keys) {
-        if ([string]::IsNullOrWhiteSpace([string]$Map[$key])) { continue }
-        if (Test-IsBundleableEnvKey -Key $key -TemplateKeys $templateKeys) {
-            return $true
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($root in $Roots) {
+        if ($root -and $root.Trim()) {
+            $lines.Add($root.Trim())
         }
     }
-    return $false
+    $content = ''
+    if ($lines.Count -gt 0) {
+        $content = ($lines -join "`n") + "`n"
+    }
+    Write-TextFileUtf8NoBom -Path $Path -Content $content
+}
+
+function Test-SourceEnvHasPersonalSettings {
+    param(
+        [string]$SourcePath,
+        [string]$TemplateText,
+        [string]$NodeExe,
+        [string[]]$DenyPathRoots
+    )
+    $mergeHelper = Get-RavenStagingHelperPath 'merge-env-defaults.js'
+    $node = Resolve-MergeEnvNodeExe -NodeExe $NodeExe
+    if (-not $node) {
+        throw 'node.exe is required to validate personal env settings'
+    }
+    $tempDir = Join-Path $env:TEMP ("vd-merge-env-check-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+    try {
+        $templateFile = Join-Path $tempDir 'template.env'
+        $denyFile = Join-Path $tempDir 'deny-paths.txt'
+        Write-TextFileUtf8NoBom -Path $templateFile -Content $TemplateText
+        Write-DenyPathRootsFile -Path $denyFile -Roots $DenyPathRoots
+        & $node $mergeHelper 'has-personal-settings' $SourcePath $templateFile $denyFile
+        return ($LASTEXITCODE -eq 0)
+    } finally {
+        Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Resolve-BundleKeysSource {
     param(
         [string]$AITuberRoot,
-        [string]$TemplateText
+        [string]$TemplateText,
+        [string]$NodeExe,
+        [string[]]$DenyPathRoots
     )
     $aituberEnv = Join-Path $AITuberRoot '.env'
     if (Test-Path -LiteralPath $aituberEnv) {
-        $aituberMap = Parse-DotEnvFile -Path $aituberEnv
-        if (Test-DotEnvMapHasBundleableKeys -Map $aituberMap -TemplateText $TemplateText) {
-            Write-Ok "Bundling API keys from: $aituberEnv"
+        if (Test-SourceEnvHasPersonalSettings -SourcePath $aituberEnv -TemplateText $TemplateText -NodeExe $NodeExe -DenyPathRoots $DenyPathRoots) {
+            Write-Ok "Bundling personal settings from: $aituberEnv"
             return @{
-                Map = $aituberMap
+                SourcePath = $aituberEnv
                 Label = $aituberEnv
             }
         }
@@ -1127,20 +1155,19 @@ function Resolve-BundleKeysSource {
 
     if (-not $fallback -or -not (Test-Path -LiteralPath $fallback)) {
         throw @"
-BundleKeys enabled but no populated API keys were found.
+BundleKeys enabled but no populated personal settings were found.
 Checked AITuber .env at: $aituberEnv
 Fallback (RAVEN_KEYS_FROM or %APPDATA%\VirtualDeck\raven.env): $fallback
 "@
     }
 
-    $fallbackMap = Parse-DotEnvFile -Path $fallback
-    if (-not (Test-DotEnvMapHasBundleableKeys -Map $fallbackMap -TemplateText $TemplateText)) {
-        throw "BundleKeys fallback file has no populated Raven API keys: $fallback"
+    if (-not (Test-SourceEnvHasPersonalSettings -SourcePath $fallback -TemplateText $TemplateText -NodeExe $NodeExe -DenyPathRoots $DenyPathRoots)) {
+        throw "BundleKeys fallback file has no populated Raven settings to bundle: $fallback"
     }
 
-    Write-Ok "Bundling API keys from fallback file: $fallback"
+    Write-Ok "Bundling personal settings from fallback file: $fallback"
     return @{
-        Map = $fallbackMap
+        SourcePath = $fallback
         Label = $fallback
     }
 }
@@ -1165,52 +1192,60 @@ function Format-EnvValueForFile([string]$Value) {
     return $Value
 }
 
-function Write-DotEnvMapToFile {
-    param(
-        [hashtable]$Map,
-        [string]$Path
-    )
-    $lines = New-Object System.Collections.Generic.List[string]
-    foreach ($key in ($Map.Keys | Sort-Object)) {
-        $val = $Map[$key]
-        if ($null -eq $val) { $val = '' }
-        $lines.Add("$key=$(Format-EnvValueForFile $val)")
-    }
-    Write-TextFileUtf8NoBom -Path $Path -Content (($lines -join "`n") + "`n")
-}
-
-function Resolve-MergeEnvNodeExe {
-    param([string]$NodeExe)
-    if ($NodeExe -and (Test-Path -LiteralPath $NodeExe)) { return $NodeExe }
-    $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
-    if ($nodeCmd) { return $nodeCmd.Source }
-    return $null
-}
-
 function Merge-EnvDefaultsWithAituberDotenv {
     param(
         [string]$TemplateText,
-        [hashtable]$SourceMap,
-        [string]$NodeExe
+        [string]$SourceFilePath,
+        [string]$NodeExe,
+        [string[]]$DenyPathRoots
     )
     $mergeHelper = Get-RavenStagingHelperPath 'merge-env-defaults.js'
     $node = Resolve-MergeEnvNodeExe -NodeExe $NodeExe
     if (-not $node) {
         throw 'node.exe is required to merge env.defaults for personal builds'
     }
+    if (-not $SourceFilePath -or -not (Test-Path -LiteralPath $SourceFilePath)) {
+        throw "Personal env source file not found: $SourceFilePath"
+    }
     $tempDir = Join-Path $env:TEMP ("vd-merge-env-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
     try {
         $templateFile = Join-Path $tempDir 'template.env'
-        $sourceFile = Join-Path $tempDir 'source.env'
         $outFile = Join-Path $tempDir 'merged.env'
+        $skippedFile = Join-Path $tempDir 'skipped.tsv'
+        $bundledFile = Join-Path $tempDir 'bundled.tsv'
+        $denyFile = Join-Path $tempDir 'deny-paths.txt'
         Write-TextFileUtf8NoBom -Path $templateFile -Content $TemplateText
-        Write-DotEnvMapToFile -Map $SourceMap -Path $sourceFile
-        & $node $mergeHelper 'merge' $templateFile $sourceFile $outFile
+        Write-DenyPathRootsFile -Path $denyFile -Roots $DenyPathRoots
+        & $node $mergeHelper 'merge' $templateFile $SourceFilePath $outFile $skippedFile $denyFile $bundledFile
         if ($LASTEXITCODE -ne 0) {
             throw "merge-env-defaults.js failed with exit code $LASTEXITCODE"
         }
-        return Get-Content -LiteralPath $outFile -Raw
+        if (Test-Path -LiteralPath $skippedFile) {
+            foreach ($raw in (Get-Content -LiteralPath $skippedFile)) {
+                if (-not $raw.Trim()) { continue }
+                $parts = $raw.Split([char]9)
+                $skipKey = $parts[0]
+                Write-Warn "Skipped bundling env var $skipKey"
+            }
+        }
+        if (Test-Path -LiteralPath $bundledFile) {
+            foreach ($raw in (Get-Content -LiteralPath $bundledFile)) {
+                if (-not $raw.Trim()) { continue }
+                $parts = $raw.Split([char]9)
+                $bundleKey = $parts[0]
+                if ($parts.Length -ge 2 -and $parts[1] -eq 'secret' -and $parts.Length -ge 3) {
+                    Write-Ok "Bundled env key $bundleKey (length $($parts[2]))"
+                } else {
+                    Write-Ok "Bundled env setting $bundleKey"
+                }
+            }
+        }
+        return @{
+            MergedText = (Get-Content -LiteralPath $outFile -Raw)
+            SkippedFile = $skippedFile
+            BundledFile = $bundledFile
+        }
     } finally {
         Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -1264,20 +1299,10 @@ function Write-EnvDefaultsTemplate {
 
     if ($Script:BundleKeys) {
         Save-EnvDefaultsTemplateBackupOutsideStage -RepoRoot $RepoRoot -TemplateText $templateText
-        $resolved = Resolve-BundleKeysSource -AITuberRoot $AITuberRoot -TemplateText $templateText
-        $sourceMap = $resolved.Map
-        if ($resolved.Label) {
-            Write-Ok "Bundling API keys from: $($resolved.Label)"
-        }
-        $merged = Merge-EnvDefaultsWithAituberDotenv -TemplateText $templateText -SourceMap $sourceMap -NodeExe $NodeExe
-        Write-TextFileUtf8NoBom -Path $EnvDefaultsPath -Content $merged
-        $templateKeys = Get-TemplateEnvKeys -TemplateText $templateText
-        foreach ($key in ($sourceMap.Keys | Sort-Object)) {
-            if ([string]::IsNullOrWhiteSpace([string]$sourceMap[$key])) { continue }
-            if (Test-IsBundleableEnvKey -Key $key -TemplateKeys $templateKeys) {
-                Write-Ok "Bundled env key $key (length $($sourceMap[$key].Length))"
-            }
-        }
+        $denyPathRoots = @($RepoRoot, $AITuberRoot, $env:TEMP)
+        $resolved = Resolve-BundleKeysSource -AITuberRoot $AITuberRoot -TemplateText $templateText -NodeExe $NodeExe -DenyPathRoots $denyPathRoots
+        $mergeResult = Merge-EnvDefaultsWithAituberDotenv -TemplateText $templateText -SourceFilePath $resolved.SourcePath -NodeExe $NodeExe -DenyPathRoots $denyPathRoots
+        Write-TextFileUtf8NoBom -Path $EnvDefaultsPath -Content $mergeResult.MergedText
         return
     }
 

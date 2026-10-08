@@ -74,8 +74,8 @@ npm run build:win:personal
 
 - Uses `stage-raven -BundleKeys` (or `RAVEN_BUNDLE_KEYS=1`)
 - Key source: AITuber `.env` when it has values; otherwise `%APPDATA%\VirtualDeck\raven.env` (override with `-KeysFrom` / `RAVEN_KEYS_FROM`)
-- Merges every non-empty bundleable key from the source into staged `env.defaults`: template lines keep their comments and order (source values override placeholders), and extra keys (e.g. `NEWS_API_KEY`, `OPENWEATHER_API_KEY` / `WEATHER_API_KEY`, `OMDB_API_KEY`) are appended at the end. Only keys that already appear in the template or match `*_KEY`, `*_API_KEY`, `*_TOKEN`, `*_SECRET`, or `*_ID` are copied; unrelated machine variables are skipped. `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` still map to `LLM_API_KEY` / `TTS_API_KEY` when those are empty.
-- Logs only key names and value lengths (never secret values)
+- Merges **every** non-empty `KEY=VALUE` from the source into staged `env.defaults` so a personal install matches the dev machine (persona fields, model names, TTS device, dev-user lists, API keys, etc.). Template lines keep their comments and order; source values override placeholders; keys not in the template are appended at the end. A small denylist skips machine-only vars (`PATH`, `APPDATA`, `USERPROFILE`, …), `RAVEN_ENV_PATH` / `RAVEN_ENV_FILE`, and absolute paths under the build PC’s temp or workspace roots (`AITUBER_ROOT`, repo root, `%TEMP%`). Skipped names are logged; secret-like keys log name + length only.
+- `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` still map to `LLM_API_KEY` / `TTS_API_KEY` when those are empty. Quoted and multiline values (e.g. persona prompts containing `#`) are parsed like Raven’s env loader.
 - Skips populated-key checks for `env.defaults`; prints loud warnings
 - Restores committed `extra/raven/env.defaults` after the build (even on failure) via `scripts/build-win-personal.js` + `restore-raven-env-defaults`
 - Template backup lives under `%TEMP%\virtualdeck-raven-env-backup` (never under `extra/raven`, which is packaged)
