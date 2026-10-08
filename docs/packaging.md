@@ -39,14 +39,15 @@ The staging script targets Jonathan's AITuber checkout:
 
 **What `npm run stage-raven` does for the monorepo:**
 
-1. `pnpm install --frozen-lockfile` at the AITuber root (does not rewrite the lockfile)
+1. `pnpm install --frozen-lockfile --filter @<controller-package-name>...` (only the controller subtree; unrelated apps like `apps/hud` do not block staging)
 2. Builds all `packages/**` with a `build` script (nested packages included); failures are **warnings** if `dist/` already exists (e.g. `tts-piper` typecheck issues)
 3. `pnpm --filter ./apps/controller run build`
-4. `pnpm deploy --prod` into `extra/raven/app/apps/controller` and `extra/raven/app/packages/integrations/virtualdeck` (paths expected by `sidecar.js`)
-5. Copies `scripts/raven-sidecar.js` → `sidecar.js`
-6. Verifies `app/apps/controller/dist/index.js` and `app/packages/integrations/virtualdeck/dist/bridge-server.js` exist
-7. Bundles `node.exe` and ffmpeg/ffplay
-8. Writes `env.defaults` from the VirtualDeck template (empty API keys only)
+4. `pnpm deploy --prod` into `extra/raven/app/apps/controller`
+5. VirtualDeck bridge (`packages/integrations/virtualdeck`, not in pnpm workspace): `tsc -p`, copy `dist` + `package.json`, `npm install --omit=dev` with bundled `node.exe`, verify `require.resolve('ws')`
+6. Copies `scripts/raven-sidecar.js` -> `sidecar.js`
+7. Verifies `app/apps/controller/dist/index.js` and `app/packages/integrations/virtualdeck/dist/bridge-server.js` exist
+8. Bundles `node.exe` (early, for bridge npm) and ffmpeg/ffplay
+9. Writes `env.defaults` from the VirtualDeck template (empty API keys only)
 9. Fails if node, ffmpeg, sidecar, controller `dist`, security checks, or dependency install fail
 
 Legacy layouts (`sidecar.js` at repo root, or scripts layout with `app/`) are still supported for older checkouts.
@@ -81,7 +82,8 @@ This sets `SKIP_RAVEN=1` during `prepare-build` so a missing `extra/raven/sideca
 | `AITUBER_ROOT` | Path to AITuber clone (default `E:\AIChatBot`) |
 | `FFMPEG_DIR` | Directory with `ffmpeg.exe` and `ffplay.exe` |
 | `PNPM_CMD` | pnpm invocation (default `npx --yes pnpm@9.15.0`) |
-| `RAVEN_CONTROLLER_FILTER` | Override pnpm filter (default `./apps/controller`) |
+| `RAVEN_CONTROLLER_FILTER` | Override pnpm path filter (default `./apps/controller`) |
+| `RAVEN_CONTROLLER_PACKAGE` | Override controller package name for `pnpm install --filter` (default read from `apps/controller/package.json`, e.g. `@ai-streamer/controller`) |
 | `SKIP_RAVEN=1` | Allow build without staged Raven (`prepare-build:no-raven`) |
 
 ## Security model

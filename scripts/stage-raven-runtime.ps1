@@ -24,7 +24,7 @@ $Script:PlaceholderValues = @(
 
 $Script:SidecarControllerEntry = 'app\apps\controller\dist\index.js'
 $Script:SidecarBridgeEntry = 'app\packages\integrations\virtualdeck\dist\bridge-server.js'
-$Script:BridgePackageFilter = './packages/integrations/virtualdeck'
+$Script:BridgeSourceRel = 'packages\integrations\virtualdeck'
 
 function Write-Step([string]$Message) {
     Write-Host $Message -ForegroundColor Cyan
@@ -225,14 +225,77 @@ function Get-ControllerFilter([string]$Root) {
     return $null
 }
 
+function Get-ControllerPackageName([string]$Root) {
+    if ($env:RAVEN_CONTROLLER_PACKAGE -and $env:RAVEN_CONTROLLER_PACKAGE.Trim()) {
+        return $env:RAVEN_CONTROLLER_PACKAGE.Trim()
+    }
+    $pkgJson = Join-Path $Root 'apps\controller\package.json'
+    if (-not (Test-Path -LiteralPath $pkgJson)) {
+        throw 'apps/controller/package.json not found (cannot resolve controller package name).'
+    }
+    $pkg = Get-Content -LiteralPath $pkgJson -Raw | ConvertFrom-Json
+    if (-not $pkg.name) {
+        throw 'apps/controller/package.json is missing a "name" field.'
+    }
+    return [string]$pkg.name
+}
+
+function Invoke-PnpmCapture {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$PnpmArgs,
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory
+    )
+    $pnpm = Get-PnpmInvocation
+    Push-Location $WorkingDirectory
+    try {
+        $output = & $pnpm[0] @($pnpm[1..($pnpm.Length - 1)]) @PnpmArgs 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) {
+            throw "$($pnpm -join ' ') $($PnpmArgs -join ' ') failed with exit code $LASTEXITCODE`n$output"
+        }
+        return $output
+    } finally {
+        Pop-Location
+    }
+}
+
+function Test-PathUnderNodeModules([string]$FullPath) {
+    $normalized = $FullPath.Replace('/', '\')
+    return $normalized -match '\\node_modules(\\|$)'
+}
+
 function Get-WorkspacePackageFilters([string]$Root) {
     $filters = New-Object System.Collections.Generic.List[string]
-    $packagesRoot = Join-Path $Root 'packages'
-    if (-not (Test-Path -LiteralPath $packagesRoot)) { return @() }
-    Get-ChildItem -LiteralPath $packagesRoot -Recurse -Filter 'package.json' -File | ForEach-Object {
-        $rel = $_.DirectoryName.Substring($Root.Length).TrimStart('\', '/').Replace('\', '/')
-        $filters.Add("./$rel")
+    $rootFull = (Resolve-Path -LiteralPath $Root).Path
+
+    try {
+        $jsonText = Invoke-PnpmCapture -PnpmArgs @('ls', '-r', '--depth', '-1', '--json') -WorkingDirectory $Root
+        $entries = $jsonText | ConvertFrom-Json
+        if ($entries -isnot [Array]) { $entries = @($entries) }
+        foreach ($entry in $entries) {
+            if (-not $entry.path) { continue }
+            $pkgPath = [IO.Path]::GetFullPath([string]$entry.path)
+            if (Test-PathUnderNodeModules $pkgPath) { continue }
+            if ($pkgPath -notlike "$rootFull*") { continue }
+            $rel = $pkgPath.Substring($rootFull.Length).TrimStart('\', '/').Replace('\', '/')
+            if ($rel -notmatch '^packages/') { continue }
+            $filters.Add("./$rel")
+        }
+    } catch {
+        Write-Warn "pnpm ls -r --json failed; falling back to filesystem package scan ($($_.Exception.Message))"
     }
+
+    if ($filters.Count -eq 0) {
+        $packagesRoot = Join-Path $Root 'packages'
+        if (Test-Path -LiteralPath $packagesRoot) {
+            Get-ChildItem -LiteralPath $packagesRoot -Recurse -Filter 'package.json' -File -ErrorAction SilentlyContinue |
+                Where-Object { -not (Test-PathUnderNodeModules $_.DirectoryName) } |
+                ForEach-Object {
+                    $rel = $_.DirectoryName.Substring($rootFull.Length).TrimStart('\', '/').Replace('\', '/')
+                    if ($rel -match '^packages/') { $filters.Add("./$rel") }
+                }
+        }
+    }
+
     return $filters | Sort-Object -Unique
 }
 
@@ -272,15 +335,162 @@ function Invoke-PackageBuildOptional {
     }
 }
 
-function Invoke-PnpmInstallFrozen([string]$Root) {
+function Invoke-PnpmInstallFrozenForRaven {
+    param(
+        [string]$Root,
+        [string]$ControllerPackageName
+    )
+    $filter = "${ControllerPackageName}..."
     try {
-        Invoke-Pnpm -PnpmArgs @('install', '--frozen-lockfile') -WorkingDirectory $Root
+        Invoke-Pnpm -PnpmArgs @('install', '--frozen-lockfile', '--filter', $filter) -WorkingDirectory $Root
     } catch {
         throw @"
-pnpm install --frozen-lockfile failed. The AITuber lockfile must match node_modules without being rewritten.
-Run 'pnpm install' in the AITuber repo on the dev PC, commit pnpm-lock.yaml if needed, then re-run stage-raven.
+pnpm install --frozen-lockfile --filter $filter failed.
+Only the controller dependency subtree is installed so unrelated workspace apps (e.g. apps/hud) do not block Raven staging.
+If controller dependencies changed, run 'pnpm install' in AITuber, commit pnpm-lock.yaml, then re-run stage-raven.
 Original error: $($_.Exception.Message)
 "@
+    }
+}
+
+function Get-NpmCliPath {
+    $npm = Get-Command npm -ErrorAction SilentlyContinue
+    if (-not $npm -or -not $npm.Source) {
+        throw 'npm CLI not found on PATH (needed to install bridge production dependencies).'
+    }
+    return $npm.Source
+}
+
+function Initialize-BundledNode {
+    param(
+        [string]$AITuberRoot,
+        [string]$StageDir
+    )
+    Write-Step 'Bundling Node.js runtime (needed before bridge npm install)...'
+    $NodeDir = Join-Path $StageDir 'node'
+    New-Item -ItemType Directory -Path $NodeDir -Force | Out-Null
+    $PortableNode = Join-Path $AITuberRoot 'runtime\node\node.exe'
+    $BundledNodeExe = Join-Path $NodeDir 'node.exe'
+    if (Test-Path -LiteralPath $PortableNode) {
+        Write-Ok 'Using portable node from AITuber runtime/node'
+        Copy-TreeAsRealFiles -Source (Join-Path $AITuberRoot 'runtime\node') -Destination $NodeDir
+    } else {
+        $systemNode = (Get-Command node -ErrorAction SilentlyContinue).Path
+        if (-not $systemNode) {
+            throw "node.exe not found. Install Node.js or place portable node under $PortableNode"
+        }
+        Write-Ok "Using system Node.js: $systemNode"
+        Copy-Item -LiteralPath $systemNode -Destination $BundledNodeExe -Force
+    }
+    if (-not (Test-Path -LiteralPath $BundledNodeExe)) {
+        throw 'Bundled node.exe is missing after copy.'
+    }
+    return $BundledNodeExe
+}
+
+function Stage-VirtualDeckBridge {
+    param(
+        [string]$Root,
+        [string]$StageDir,
+        [string]$NodeExe
+    )
+    $bridgeDir = Join-Path $Root $Script:BridgeSourceRel
+    if (-not (Test-Path -LiteralPath $bridgeDir)) {
+        throw "Missing VirtualDeck bridge at $Script:BridgeSourceRel"
+    }
+
+    $bridgeStage = Join-Path $StageDir 'app\packages\integrations\virtualdeck'
+    if (Test-Path -LiteralPath $bridgeStage) {
+        Remove-Item -LiteralPath $bridgeStage -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $bridgeStage -Force | Out-Null
+
+    $entrySrc = Join-Path $bridgeDir 'dist\bridge-server.js'
+    $tsconfig = Join-Path $bridgeDir 'tsconfig.json'
+    if (-not (Test-Path -LiteralPath $tsconfig)) {
+        $alt = Join-Path $bridgeDir 'tsconfig.build.json'
+        if (Test-Path -LiteralPath $alt) { $tsconfig = $alt }
+    }
+
+    $hasDist = Test-Path -LiteralPath $entrySrc
+    if (Test-Path -LiteralPath $tsconfig) {
+        Write-Host "  compiling VirtualDeck bridge: tsc -p $tsconfig" -ForegroundColor DarkGray
+        $tscCandidates = @(
+            (Join-Path $Root 'node_modules\typescript\bin\tsc'),
+            (Join-Path $bridgeDir 'node_modules\typescript\bin\tsc')
+        )
+        $tsc = $tscCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+        $npmCli = Get-NpmCliPath
+        try {
+            Push-Location $bridgeDir
+            if ($tsc) {
+                & $NodeExe $tsc -p $tsconfig
+            } else {
+                Push-Location $Root
+                & $NodeExe $npmCli exec -- tsc -p $tsconfig
+            }
+            if ($LASTEXITCODE -ne 0) {
+                throw "tsc exited with code $LASTEXITCODE"
+            }
+            $hasDist = Test-Path -LiteralPath $entrySrc
+        } catch {
+            if ($hasDist) {
+                Write-Warn "VirtualDeck bridge tsc failed but dist/bridge-server.js exists - using existing dist ($($_.Exception.Message))"
+            } else {
+                throw
+            }
+        } finally {
+            Pop-Location
+        }
+    } elseif (-not $hasDist) {
+        throw 'VirtualDeck bridge has no tsconfig.json and no dist/bridge-server.js'
+    } else {
+        Write-Warn 'VirtualDeck bridge: no tsconfig.json; using existing dist/bridge-server.js'
+    }
+
+    if (-not (Test-Path -LiteralPath $entrySrc)) {
+        throw 'VirtualDeck bridge dist/bridge-server.js is missing after compile'
+    }
+
+    $pkgJson = Join-Path $bridgeDir 'package.json'
+    if (-not (Test-Path -LiteralPath $pkgJson)) {
+        throw 'VirtualDeck bridge package.json is missing'
+    }
+    Copy-Item -LiteralPath $pkgJson -Destination (Join-Path $bridgeStage 'package.json') -Force
+    Copy-TreeAsRealFiles -Source (Join-Path $bridgeDir 'dist') -Destination (Join-Path $bridgeStage 'dist')
+
+    Write-Step 'Installing VirtualDeck bridge production dependencies (npm)...'
+    $npmCli = Get-NpmCliPath
+    Push-Location $bridgeStage
+    try {
+        & $NodeExe $npmCli install --omit=dev --no-optional
+        if ($LASTEXITCODE -ne 0) {
+            throw "npm install in VirtualDeck bridge failed (exit $LASTEXITCODE)"
+        }
+    } finally {
+        Pop-Location
+    }
+
+    Assert-BridgeWsResolvable -BridgeStage $bridgeStage -NodeExe $NodeExe
+    Write-Ok 'VirtualDeck bridge staged with production node_modules'
+}
+
+function Assert-BridgeWsResolvable {
+    param(
+        [string]$BridgeStage,
+        [string]$NodeExe
+    )
+    Push-Location $BridgeStage
+    try {
+        $resolveScript = "try { console.log(require.resolve('ws')); process.exit(0); } catch (e) { console.error(e.message); process.exit(1); }"
+        & $NodeExe -e $resolveScript
+        if ($LASTEXITCODE -ne 0) {
+            throw "require.resolve('ws') failed from VirtualDeck bridge directory"
+        }
+        $wsPath = & $NodeExe -e "console.log(require.resolve('ws'))"
+        Write-Ok "ws resolves from VirtualDeck bridge ($wsPath)"
+    } finally {
+        Pop-Location
     }
 }
 
@@ -312,42 +522,40 @@ function Assert-SidecarLayoutPresent([string]$StageDir) {
 function Stage-MonorepoLayout {
     param(
         [string]$Root,
-        [string]$StageDir
+        [string]$StageDir,
+        [string]$NodeExe
     )
 
     $controllerFilter = Get-ControllerFilter $Root
     if (-not $controllerFilter) {
         throw 'Monorepo layout detected but apps/controller is missing (set RAVEN_CONTROLLER_FILTER if needed).'
     }
+    $controllerPackageName = Get-ControllerPackageName -Root $Root
 
     $sidecarSrc = Join-Path $Root 'scripts\raven-sidecar.js'
     if (-not (Test-Path -LiteralPath $sidecarSrc)) {
         throw "Missing scripts/raven-sidecar.js under $Root"
     }
 
-    Write-Step 'Installing AITuber workspace (frozen lockfile)...'
-    Invoke-PnpmInstallFrozen -Root $Root
+    Write-Step "Installing Raven pnpm subtree (frozen lockfile, filter $controllerPackageName...)..."
+    Invoke-PnpmInstallFrozenForRaven -Root $Root -ControllerPackageName $controllerPackageName
 
-    Write-Step 'Building workspace packages (nested packages included)...'
+    Write-Step 'Building workspace packages (pnpm workspace only, excludes node_modules)...'
     $packageFilters = Get-WorkspacePackageFilters -Root $Root
     foreach ($filter in $packageFilters) {
+        if ($filter -replace '^\./', '' -eq $Script:BridgeSourceRel.Replace('\', '/')) { continue }
         Invoke-PackageBuildOptional -Root $Root -Filter $filter
     }
 
     Write-Step 'Building apps/controller...'
     Invoke-Pnpm -PnpmArgs @('--filter', $controllerFilter, 'run', 'build') -WorkingDirectory $Root
 
-    $bridgeFilter = $Script:BridgePackageFilter
-    $bridgeDir = Get-PackageDirectoryFromFilter -Root $Root -Filter $bridgeFilter
-    if (-not (Test-Path -LiteralPath $bridgeDir)) {
-        throw "Missing VirtualDeck bridge package at packages/integrations/virtualdeck"
-    }
-
-    Write-Step 'Deploying controller and VirtualDeck bridge (monorepo paths under app/)...'
+    Write-Step 'Deploying controller to app/apps/controller...'
     $controllerStage = Join-Path $StageDir 'app\apps\controller'
-    $bridgeStage = Join-Path $StageDir 'app\packages\integrations\virtualdeck'
     Invoke-PnpmDeployPackage -Root $Root -Filter $controllerFilter -Destination $controllerStage
-    Invoke-PnpmDeployPackage -Root $Root -Filter $bridgeFilter -Destination $bridgeStage
+
+    Write-Step 'Building and staging VirtualDeck bridge (outside pnpm workspace)...'
+    Stage-VirtualDeckBridge -Root $Root -StageDir $StageDir -NodeExe $NodeExe
 
     Assert-SidecarLayoutPresent -StageDir $StageDir
 
@@ -516,10 +724,12 @@ $isMonorepo = (Test-Path -LiteralPath (Join-Path $AITuberRoot 'pnpm-workspace.ya
 $hasRootSidecar = Test-Path -LiteralPath (Join-Path $AITuberRoot 'sidecar.js')
 $hasScriptsSidecar = Test-Path -LiteralPath (Join-Path $AITuberRoot 'scripts\raven-sidecar.js')
 
+$BundledNodeExe = Initialize-BundledNode -AITuberRoot $AITuberRoot -StageDir $StageDir
+
 Write-Step 'Copying Raven sidecar application...'
 if ($isMonorepo -and $hasScriptsSidecar) {
     Write-Ok 'Detected AITuber pnpm monorepo (apps/controller + scripts/raven-sidecar.js)'
-    Stage-MonorepoLayout -Root $AITuberRoot -StageDir $StageDir
+    Stage-MonorepoLayout -Root $AITuberRoot -StageDir $StageDir -NodeExe $BundledNodeExe
 } elseif ($hasRootSidecar) {
     Write-Ok 'Detected legacy root sidecar.js layout'
     Stage-LegacyRootLayout -Root $AITuberRoot -StageDir $StageDir
@@ -538,26 +748,8 @@ if (-not (Test-Path -LiteralPath (Join-Path $StageDir 'sidecar.js'))) {
     exit 1
 }
 
-Write-Step 'Bundling Node.js runtime...'
-$NodeDir = Join-Path $StageDir 'node'
-New-Item -ItemType Directory -Path $NodeDir -Force | Out-Null
-$PortableNode = Join-Path $AITuberRoot 'runtime\node\node.exe'
-$BundledNodeExe = Join-Path $NodeDir 'node.exe'
-if (Test-Path -LiteralPath $PortableNode) {
-    Write-Ok 'Using portable node from AITuber runtime/node'
-    Copy-TreeAsRealFiles -Source (Join-Path $AITuberRoot 'runtime\node') -Destination $NodeDir
-} else {
-    $systemNode = (Get-Command node -ErrorAction SilentlyContinue).Path
-    if (-not $systemNode) {
-        Write-Fail "ERROR: node.exe not found. Install Node.js or place portable node under $PortableNode"
-        exit 1
-    }
-    Write-Ok "Using system Node.js: $systemNode"
-    Copy-Item -LiteralPath $systemNode -Destination $BundledNodeExe -Force
-}
-
 if (-not (Test-Path -LiteralPath $BundledNodeExe)) {
-    Write-Fail 'ERROR: Bundled node.exe is missing after staging.'
+    Write-Fail 'ERROR: Bundled node.exe is missing.'
     exit 1
 }
 
