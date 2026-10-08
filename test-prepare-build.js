@@ -183,6 +183,54 @@ const nativeJsonArgPatterns = [
 for (const pattern of nativeJsonArgPatterns) {
   assert.ok(!pattern.test(stagePs1), `stage-raven-runtime.ps1 must not pass JSON to native node (${pattern})`);
 }
+
+const {
+  mergeEnvDefaultsWithSource,
+  isBundleableEnvKey,
+  dotEnvMapHasBundleableKeys,
+  getTemplateEnvKeys,
+} = require('./scripts/raven-staging/merge-env-defaults');
+
+const mergeTemplate = `# header
+LLM_API_KEY=
+TTS_API_KEY=
+LLM_MODEL=gpt-4
+`;
+
+const mergedExtra = mergeEnvDefaultsWithSource(mergeTemplate, {
+  NEWS_API_KEY: 'news-secret',
+  OPENWEATHER_API_KEY: 'wx-secret',
+  OMDB_API_KEY: 'omdb-secret',
+  LLM_API_KEY: 'llm-secret',
+  COMPUTERNAME: 'SHOULD-NOT-BUNDLE',
+  EMPTY_KEY: '',
+});
+assert.ok(mergedExtra.includes('LLM_API_KEY=llm-secret'), 'template LLM_API_KEY should be overridden');
+assert.ok(mergedExtra.includes('NEWS_API_KEY=news-secret'), 'extra NEWS_API_KEY should be appended');
+assert.ok(mergedExtra.includes('OPENWEATHER_API_KEY=wx-secret'), 'extra OPENWEATHER_API_KEY should be appended');
+assert.ok(mergedExtra.includes('OMDB_API_KEY=omdb-secret'), 'extra OMDB_API_KEY should be appended');
+assert.ok(!mergedExtra.includes('COMPUTERNAME'), 'non-key machine vars should be excluded');
+assert.ok(!mergedExtra.includes('EMPTY_KEY'), 'blank values should be skipped');
+assert.ok(mergedExtra.indexOf('# header') < mergedExtra.indexOf('LLM_API_KEY=llm-secret'), 'template order preserved');
+const templateKeysList = getTemplateEnvKeys(mergeTemplate);
+assert.strictEqual(isBundleableEnvKey('LLM_API_KEY', templateKeysList), true, 'template keys are bundleable');
+assert.strictEqual(isBundleableEnvKey('NEWS_API_KEY', templateKeysList), true, 'NEWS_API_KEY suffix matches');
+assert.strictEqual(isBundleableEnvKey('WEATHER_API_KEY', templateKeysList), true, 'WEATHER_API_KEY suffix matches');
+assert.strictEqual(isBundleableEnvKey('RANDOM_HOST', templateKeysList), false, 'unrelated vars excluded');
+assert.strictEqual(
+  dotEnvMapHasBundleableKeys({ NEWS_API_KEY: 'x' }, mergeTemplate),
+  true,
+  'bundleable detection includes extra template keys',
+);
+assert.strictEqual(
+  dotEnvMapHasBundleableKeys({ COMPUTERNAME: 'PC' }, mergeTemplate),
+  false,
+  'bundleable detection ignores unrelated vars',
+);
+
+const mergedAlias = mergeEnvDefaultsWithSource(mergeTemplate, { OPENAI_API_KEY: 'openai-alias' });
+assert.ok(mergedAlias.includes('LLM_API_KEY=openai-alias'), 'OPENAI_API_KEY should map to LLM_API_KEY');
+assert.ok(!mergedAlias.includes('OPENAI_API_KEY='), 'alias should not be duplicated at end');
 const nativeNodeLines = stagePs1.split(/\r?\n/).filter((line) => /&\s+\$(NodeExe|node)\b/.test(line));
 for (const line of nativeNodeLines) {
   if (line.includes('workspace-packages.js') && line.includes('rewrites')) {
