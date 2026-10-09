@@ -13,7 +13,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { app, shell, dialog } = require('electron');
-const { stripBom } = require('./scripts/raven-staging/read-utf8');
+const { stripBom } = require('./lib/read-utf8');
 
 let ravenProc = null;
 

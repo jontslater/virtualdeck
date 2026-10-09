@@ -94,7 +94,7 @@ if (parsed) {
   console.log('ℹ️  Skipping PowerShell Parser::ParseFile (pwsh/powershell not available in this environment)');
 }
 
-const { stripBom, readFileUtf8 } = require('./scripts/raven-staging/read-utf8');
+const { stripBom, readFileUtf8 } = require('./lib/read-utf8');
 assert.strictEqual(stripBom('\uFEFFhello'), 'hello', 'stripBom removes leading BOM');
 assert.strictEqual(stripBom('plain'), 'plain', 'stripBom leaves plain text');
 assert.strictEqual(stripBom(''), '', 'stripBom handles empty string');
@@ -383,6 +383,58 @@ for (const line of nativeNodeLines) {
       'rewrites must use closure file path, not inline JSON',
     );
   }
+}
+
+const LOCAL_REQUIRE_RE = /require\s*\(\s*['"](\.[^'"]+)['"]\s*\)/g;
+
+function resolveLocalModule(fromFile, spec) {
+  const base = path.resolve(path.dirname(fromFile), spec);
+  const candidates = [base, `${base}.js`, path.join(base, 'index.js')];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function collectTransitiveLocalRequires(entryFile) {
+  const repoRoot = path.resolve(__dirname);
+  const seen = new Set();
+  const files = [];
+  const queue = [path.resolve(entryFile)];
+  while (queue.length > 0) {
+    const file = queue.shift();
+    if (!file || seen.has(file)) continue;
+    seen.add(file);
+    assert.ok(fs.existsSync(file), `main process require graph references missing file: ${file}`);
+    files.push(file);
+    const text = fs.readFileSync(file, 'utf8');
+    LOCAL_REQUIRE_RE.lastIndex = 0;
+    let match = LOCAL_REQUIRE_RE.exec(text);
+    while (match) {
+      const resolved = resolveLocalModule(file, match[1]);
+      if (
+        resolved &&
+        resolved.startsWith(`${repoRoot}${path.sep}`) &&
+        !resolved.includes(`${path.sep}node_modules${path.sep}`)
+      ) {
+        queue.push(resolved);
+      }
+      match = LOCAL_REQUIRE_RE.exec(text);
+    }
+  }
+  return files;
+}
+
+const mainProcessGraph = collectTransitiveLocalRequires(path.join(__dirname, 'main.js'));
+for (const absPath of mainProcessGraph) {
+  const rel = path.relative(__dirname, absPath).replace(/\\/g, '/');
+  assert.ok(
+    wouldElectronBuilderInclude(rel),
+    `main process dependency must match package.json build.files: ${rel}`,
+  );
+  assert.ok(!rel.startsWith('scripts/'), `main process must not require scripts/: ${rel}`);
 }
 
 console.log('✅ test-prepare-build.js passed');
