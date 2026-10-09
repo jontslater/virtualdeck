@@ -115,6 +115,7 @@ function ensureEnv() {
           'TTS_PROVIDER=elevenlabs',
           'TTS_API_KEY=',
           'TTS_VOICE_ID=',
+          'HOST_WAKE_NAMES=Raven',
           'JARVIS_BASE_URL=http://127.0.0.1:8091',
           'VIRTUALDECK_JARVIS_URL=http://127.0.0.1:8091',
         ].join('\n') + '\n',

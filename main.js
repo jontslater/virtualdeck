@@ -35,6 +35,8 @@ const SecurityManager = require('./lib/security');
 const { JarvisServer } = require('./jarvis-server');
 const { registry: jarvisRegistry } = require('./jarvis-tools');
 const { AIConfigManager } = require('./lib/ai-config');
+const { fetchVoicePreviewAudio, validateVoicePreviewRequest } = require('./lib/ai-voice-preview');
+const { WAKE_NAMES_REQUIRE_RAVEN_RESTART } = require('./lib/wake-names');
 const { copyTreeSync, copyFileSyncSafe } = require('./lib/copy-tree-sync');
 
 process.on('unhandledRejection', (reason) => {
@@ -1435,6 +1437,35 @@ function handleAIConfigAPI(req, res) {
       const personality = aiConfigManager.getPersonality();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ personality: personality || null }));
+    } else if (path === '/api/ai/wake-names' && req.method === 'GET') {
+      const wake = aiConfigManager.getWakeNames();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        names: wake.names,
+        primary: wake.primary,
+        envValue: wake.envValue,
+        requiresRavenRestart: WAKE_NAMES_REQUIRE_RAVEN_RESTART,
+      }));
+    } else if (path === '/api/ai/wake-names' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk.toString(); });
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          const raw = data.wakeNames != null ? data.wakeNames : data.envValue;
+          const result = aiConfigManager.setWakeNames(raw);
+          if (result.success) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(result));
+          } else {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: result.error }));
+          }
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
     } else {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
@@ -5518,6 +5549,27 @@ app.whenReady().then(() => {
   // Get auth token file path
   ipcMain.handle('get-auth-token-path', async () => {
     return securityManager.tokenPath;
+  });
+
+  ipcMain.handle('preview-ai-voice', async (_event, payload) => {
+    try {
+      if (!aiConfigManager) {
+        return { success: false, error: 'AI configuration is not available' };
+      }
+      const validated = validateVoicePreviewRequest(payload);
+      if (!validated.ok) {
+        return { success: false, error: validated.error };
+      }
+      const config = aiConfigManager.readConfig();
+      return await fetchVoicePreviewAudio({
+        voiceId: validated.voiceId,
+        previewUrl: validated.previewUrl,
+        apiKey: aiConfigManager.getTTSApiKey(),
+        configMap: config,
+      });
+    } catch (err) {
+      return { success: false, error: err && err.message ? err.message : 'Preview failed' };
+    }
   });
 
   // Handle preferences save from renderer

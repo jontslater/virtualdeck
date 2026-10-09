@@ -19,6 +19,9 @@ TTS_PROVIDER=elevenlabs
 TTS_API_KEY=
 TTS_VOICE_ID=
 
+# Wake phrase: say "Hey <name>" (first name is primary; optional aliases comma-separated)
+HOST_WAKE_NAMES=Raven
+
 # ===== VirtualDeck JARVIS Integration =====
 # This connects Raven to VirtualDeck's tool server (already running on port 8091)
 # DO NOT CHANGE unless you modify VirtualDeck's JARVIS port

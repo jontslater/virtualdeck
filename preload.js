@@ -150,4 +150,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveMacro: async (id, macro) => ipcRenderer.invoke('save-macro', { id, macro }),
   deleteMacro: async (id) => ipcRenderer.invoke('delete-macro', id),
   executeMacro: async (id) => ipcRenderer.invoke('execute-macro', id),
+  previewAiVoice: async (payload) => ipcRenderer.invoke('preview-ai-voice', payload),
 });
