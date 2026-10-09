@@ -61,6 +61,7 @@
         <div class="menu-dropdown-content">
           <button id="menu-tools-overlay" class="menu-dropdown-item" role="menuitem">Overlay Controls</button>
           <button id="menu-tools-alerts" class="menu-dropdown-item" role="menuitem">Alert Widget</button>
+          <button id="menu-tools-raid-favorites" class="menu-dropdown-item" role="menuitem">Raid Favorites</button>
           <div class="menu-divider"></div>
           <button id="menu-tools-devtools" class="menu-dropdown-item" role="menuitem">Developer Tools</button>
           <button id="menu-tools-reload" class="menu-dropdown-item" role="menuitem">Reload Application</button>
@@ -1521,6 +1522,40 @@
     </div>
   </div>
 
+  <!-- Raid Favorites Modal -->
+  <div id="raid-favorites-modal" class="hidden">
+    <div class="modal-content preferences-modal-content raid-favorites-modal">
+      <div class="modal-header">
+        <h2>Raid Favorites</h2>
+        <button id="raid-favorites-modal-close" class="modal-close" type="button">✕</button>
+      </div>
+      <div id="raid-scope-banner" class="raid-scope-banner hidden" role="status"></div>
+      <div class="raid-favorites-layout">
+        <section class="raid-section">
+          <h3>Favorites</h3>
+          <div class="raid-add-form">
+            <input type="text" id="raid-favorites-add-login" placeholder="Twitch login" maxlength="25" />
+            <input type="text" id="raid-favorites-add-note" placeholder="Optional note" />
+            <button type="button" id="raid-favorites-add-btn" class="preference-button primary">Add</button>
+          </div>
+          <div id="raid-favorites-list" class="raid-favorites-list"></div>
+        </section>
+        <section class="raid-section">
+          <div class="raid-section-header">
+            <h3>Who is live?</h3>
+            <button type="button" id="raid-live-refresh-btn" class="preference-button">Refresh</button>
+            <button type="button" id="raid-cancel-btn" class="preference-button">Cancel raid</button>
+          </div>
+          <div id="raid-live-panel" class="raid-live-panel"></div>
+        </section>
+        <section class="raid-section">
+          <h3>Previously raided</h3>
+          <div id="raid-history-list" class="raid-history-list"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
   <!-- Macros Manager Modal -->
   <div id="macros-modal" class="hidden">
     <div class="modal-content preferences-modal-content">
@@ -2557,6 +2592,7 @@
   <script src="AddEditButtonForm.js"></script>
   <script src="script.js"></script>
   <script src="macros-ui.js"></script>
+  <script src="raid-favorites-ui.js"></script>
   <script src="../TwitchConnected/tc.js"></script>
 </body>
 </html> 

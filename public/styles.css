@@ -5239,3 +5239,144 @@ body.resizing-chat * {
 .preference-button.danger:hover {
   background: #dc2626;
 }
+
+/* Raid Favorites */
+.raid-favorites-modal {
+  max-width: 960px;
+  width: 95%;
+}
+.raid-favorites-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .raid-favorites-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.raid-section h3 {
+  margin: 0 0 10px 0;
+  font-size: 1rem;
+  color: var(--accent, #a6f34a);
+}
+.raid-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.raid-section-header h3 {
+  margin: 0;
+  flex: 1;
+}
+.raid-add-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.raid-add-form input {
+  flex: 1;
+  min-width: 120px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #444);
+  background: var(--bg-secondary, #2a2a2a);
+  color: var(--text-primary, #fff);
+}
+.raid-fav-row,
+.raid-history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 6px;
+  background: var(--bg-secondary, #2a2a2a);
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #333);
+}
+.raid-fav-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.raid-note-input {
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #444);
+  background: var(--bg-primary, #1a1a1a);
+  color: var(--text-secondary, #ccc);
+}
+.raid-drag-handle {
+  cursor: grab;
+  opacity: 0.5;
+  user-select: none;
+}
+.raid-live-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.raid-live-card {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #333);
+  background: var(--bg-secondary, #2a2a2a);
+}
+.raid-live-card.is-live {
+  border-color: #9147ff;
+}
+.raid-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.raid-avatar-placeholder {
+  background: #444;
+}
+.raid-live-body {
+  flex: 1;
+  min-width: 0;
+}
+.raid-live-meta {
+  font-size: 12px;
+  margin-top: 4px;
+}
+.raid-muted {
+  color: var(--text-secondary, #aaa);
+  font-size: 12px;
+}
+.raid-error {
+  color: #f87171;
+  font-size: 13px;
+}
+.raid-scope-banner {
+  margin: 0 0 12px 0;
+  padding: 10px 12px;
+  background: rgba(145, 71, 255, 0.15);
+  border: 1px solid #9147ff;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.raid-link-btn {
+  margin-left: 8px;
+  background: transparent;
+  border: none;
+  color: var(--accent, #a6f34a);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.raid-live-foot {
+  margin-top: 4px;
+}
