@@ -14,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const { app, shell, dialog } = require('electron');
 const { stripBom } = require('./lib/read-utf8');
+const { migrateRavenEnvFile } = require('./lib/raven-env-migrate');
 
 let ravenProc = null;
 
@@ -96,6 +97,13 @@ function writeEnvFromTemplate(dest, templateText, overlay) {
 }
 
 function ensureEnv() {
+  const dest = ensureEnvFile();
+  // Fix legacy VIRTUALDECK_HTTP_URL=8080 (overlay server, auth-protected) -> Raven bridge on 3000.
+  migrateRavenEnvFile(dest);
+  return dest;
+}
+
+function ensureEnvFile() {
   const dest = envFile();
   const bundled = bundledEnvPath();
   // First run: copy bundled env.defaults (keyless or personal build) to userData/raven.env.
