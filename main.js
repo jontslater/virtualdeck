@@ -38,6 +38,11 @@ const { AIConfigManager } = require('./lib/ai-config');
 const { fetchVoicePreviewAudio, validateVoicePreviewRequest } = require('./lib/ai-voice-preview');
 const { WAKE_NAMES_REQUIRE_RAVEN_RESTART } = require('./lib/wake-names');
 const { copyTreeSync, copyFileSyncSafe } = require('./lib/copy-tree-sync');
+const RaidFavoritesStore = require('./lib/raid-favorites-store');
+const { RaidHelixClient } = require('./lib/raid-helix');
+const { buildTwitchAuthorizeUrl } = require('./lib/twitch-oauth');
+const { isValidTwitchLogin, normalizeTwitchLogin } = require('./lib/twitch-login');
+const { sanitizeTwitchProfileImageUrl: sanitizeTwitchProfileImageUrlLib } = require('./lib/twitch-profile-image');
 
 process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection]', reason);
@@ -103,12 +108,22 @@ try {
 // Initialize Macro Manager
 const MacroManager = require('./lib/macro-manager');
 let macroManager;
+let raidFavoritesStore;
 try {
   macroManager = new MacroManager(userDataPath);
+  raidFavoritesStore = new RaidFavoritesStore(userDataPath);
   console.log('✅ Macro Manager initialized');
 } catch (err) {
   console.error('❌ Error initializing Macro Manager:', err);
   macroManager = null;
+}
+if (!raidFavoritesStore) {
+  try {
+    raidFavoritesStore = new RaidFavoritesStore(userDataPath);
+  } catch (err) {
+    console.error('❌ Error initializing Raid Favorites store:', err);
+    raidFavoritesStore = null;
+  }
 }
 
 // Initialize AI Config Manager
@@ -1229,7 +1244,8 @@ async function startJarvisServer() {
       currentActiveProfile,
       loadProfile,
       triggerButtonFn: triggerButtonWithDebounce,
-      macroManager
+      macroManager,
+      ...buildJarvisRaidContext(),
     });
 
     await jarvisServer.start();
@@ -2353,6 +2369,136 @@ ipcMain.handle('execute-macro', async (event, id) => {
     console.error('Error executing macro:', error);
     return { success: false, error: error.message };
   }
+});
+
+ipcMain.handle('raid-favorites-get', async () => {
+  if (!raidFavoritesStore) return { success: false, error: 'Raid favorites unavailable' };
+  return {
+    success: true,
+    favorites: raidFavoritesStore.listFavorites(),
+    history: raidFavoritesStore.listHistory(),
+  };
+});
+
+ipcMain.handle('raid-favorites-add', async (_event, payload) => {
+  try {
+    if (!raidFavoritesStore) return { success: false, error: 'Raid favorites unavailable' };
+    const input = payload && typeof payload === 'object' ? payload : {};
+    const entry = raidFavoritesStore.addFavorite({
+      login: input.login,
+      note: input.note,
+    });
+    return { success: true, favorite: entry };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('raid-favorites-remove', async (_event, payload) => {
+  try {
+    if (!raidFavoritesStore) return { success: false, error: 'Raid favorites unavailable' };
+    const input = payload && typeof payload === 'object' ? payload : {};
+    if (!isValidTwitchLogin(input.login)) {
+      return { success: false, error: 'Invalid Twitch login' };
+    }
+    const removed = raidFavoritesStore.removeFavorite(input.login);
+    return { success: removed };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('raid-favorites-reorder', async (_event, payload) => {
+  try {
+    if (!raidFavoritesStore) return { success: false, error: 'Raid favorites unavailable' };
+    const input = payload && typeof payload === 'object' ? payload : {};
+    if (!Array.isArray(input.orderedLogins)) {
+      return { success: false, error: 'orderedLogins must be an array' };
+    }
+    const favorites = raidFavoritesStore.reorderFavorites(input.orderedLogins);
+    return { success: true, favorites };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('raid-favorites-update-note', async (_event, payload) => {
+  try {
+    if (!raidFavoritesStore) return { success: false, error: 'Raid favorites unavailable' };
+    const input = payload && typeof payload === 'object' ? payload : {};
+    if (!isValidTwitchLogin(input.login)) {
+      return { success: false, error: 'Invalid Twitch login' };
+    }
+    const updated = raidFavoritesStore.updateFavoriteNote(input.login, input.note);
+    return { success: updated };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('raid-favorites-add-from-history', async (_event, payload) => {
+  try {
+    if (!raidFavoritesStore) return { success: false, error: 'Raid favorites unavailable' };
+    const input = payload && typeof payload === 'object' ? payload : {};
+    const entry = raidFavoritesStore.addFavorite({
+      login: input.login,
+      note: input.note || '',
+    });
+    return { success: true, favorite: entry };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('raid-favorites-live-check', async (_event, payload) => {
+  const input = payload && typeof payload === 'object' ? payload : {};
+  return await raidFavoritesListLive({ forceRefresh: !!input.forceRefresh });
+});
+
+ipcMain.handle('raid-favorites-start-raid', async (_event, payload) => {
+  const input = payload && typeof payload === 'object' ? payload : {};
+  if (!isValidTwitchLogin(input.login)) {
+    return { success: false, error: 'Invalid Twitch login' };
+  }
+  return await raidFavoritesStartRaid({ login: input.login, source: 'ui' });
+});
+
+ipcMain.handle('raid-favorites-cancel-raid', async () => {
+  try {
+    const helix = createRaidHelixClient();
+    const result = await helix.cancelRaid();
+    if (!result.ok) {
+      return {
+        success: false,
+        error: result.error,
+        needsReconnect: !!result.needsReconnect,
+        authorizeUrl: result.needsReconnect ? buildTwitchAuthorizeUrl({ forceVerify: true }) : null,
+      };
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('check-twitch-raid-scope', async () => {
+  try {
+    const helix = createRaidHelixClient();
+    const scope = await helix.validateToken();
+    return {
+      success: scope.ok,
+      hasRaidScope: !!scope.hasRaidScope,
+      scopes: scope.scopes || [],
+      authorizeUrl: scope.hasRaidScope ? null : buildTwitchAuthorizeUrl({ forceVerify: true }),
+    };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('get-twitch-oauth-authorize-url', async () => {
+  const url = buildTwitchAuthorizeUrl({ forceVerify: true });
+  return { success: !!url, authorizeUrl: url };
 });
 
 // Create media storage directory for multi-media button assets
@@ -3842,16 +3988,7 @@ function cacheTwitchProfileLookupResult(user, profileImageUrl) {
 }
 
 function sanitizeTwitchProfileImageUrl(url) {
-  if (!url || typeof url !== 'string') return null;
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'https:' || parsed.hostname !== 'static-cdn.jtvnw.net') {
-      return null;
-    }
-    return parsed.href;
-  } catch {
-    return null;
-  }
+  return sanitizeTwitchProfileImageUrlLib(url);
 }
 
 async function helixFetchTwitchUser({ userId, login, signal }) {
@@ -4280,6 +4417,124 @@ const TWITCH_CLIP_COOLDOWN_MS = 20000;
 
 function helixAccessToken() {
   return String(twitchToken || '').replace(/^oauth:/i, '').trim();
+}
+
+function createRaidHelixClient() {
+  return new RaidHelixClient({
+    fetchFn: fetch,
+    getClientId: () => twitchClientId,
+    getAccessToken: helixAccessToken,
+    getBroadcasterId: async () => {
+      if (!twitchUserId) await getUserId();
+      return twitchUserId;
+    },
+  });
+}
+
+function recordOutgoingRaidTarget({ login, displayName, source }) {
+  if (!raidFavoritesStore || !login) return null;
+  try {
+    const entry = raidFavoritesStore.recordRaid({ login, displayName });
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('raid-favorites-history-updated', { entry, source });
+    }
+    return entry;
+  } catch (err) {
+    console.warn('[Raid Favorites] Failed to record raid history:', err);
+    return null;
+  }
+}
+
+function handleRaidEventSubNotification(type, eventData) {
+  if (type !== 'channel.raid' || !eventData || !twitchUserId) return;
+  if (String(eventData.from_broadcaster_user_id) !== String(twitchUserId)) return;
+  const login = eventData.to_broadcaster_user_login || eventData.to_broadcaster_user_name;
+  if (!login) return;
+  recordOutgoingRaidTarget({
+    login,
+    displayName: eventData.to_broadcaster_user_name || login,
+    source: 'eventsub',
+  });
+}
+
+async function raidFavoritesListLive({ forceRefresh = false } = {}) {
+  if (!raidFavoritesStore) {
+    return { success: false, error: 'Raid favorites unavailable' };
+  }
+  const favorites = raidFavoritesStore.listFavorites();
+  const logins = favorites.map((f) => f.login);
+  if (logins.length === 0) {
+    return {
+      success: true,
+      favorites: [],
+      channels: [],
+      checkedAt: new Date().toISOString(),
+      hasRaidScope: false,
+    };
+  }
+  try {
+    const helix = createRaidHelixClient();
+    const { channels, checkedAt, cached } = await helix.getLiveStatusForLogins(logins, { forceRefresh });
+    const merged = favorites.map((f) => {
+      const key = normalizeTwitchLogin(f.login);
+      const live = channels.find((c) => c.login === key);
+      return { ...f, ...(live || { login: key, live: false }) };
+    });
+    merged.sort((a, b) => {
+      if (a.live !== b.live) return a.live ? -1 : 1;
+      if (a.live && b.live) return (b.viewerCount || 0) - (a.viewerCount || 0);
+      return a.login.localeCompare(b.login);
+    });
+    const scope = await helix.validateToken();
+    return {
+      success: true,
+      favorites: merged,
+      channels,
+      checkedAt,
+      cached: !!cached,
+      hasRaidScope: !!scope.hasRaidScope,
+      authorizeUrl: scope.hasRaidScope ? null : buildTwitchAuthorizeUrl({ forceVerify: true }),
+    };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+}
+
+async function raidFavoritesStartRaid({ login, source = 'ui' }) {
+  if (!raidFavoritesStore) {
+    return { success: false, error: 'Raid favorites unavailable' };
+  }
+  const normalized = normalizeTwitchLogin(login);
+  if (!isValidTwitchLogin(normalized)) {
+    return { success: false, error: 'Invalid Twitch login' };
+  }
+  if (!raidFavoritesStore.isAllowedRaidTarget(normalized)) {
+    return { success: false, error: 'Target must be in favorites or raid history' };
+  }
+  try {
+    const helix = createRaidHelixClient();
+    const result = await helix.startRaid({ toLogin: normalized });
+    if (!result.ok) {
+      return {
+        success: false,
+        error: result.error,
+        needsReconnect: !!result.needsReconnect,
+        authorizeUrl: result.needsReconnect ? buildTwitchAuthorizeUrl({ forceVerify: true }) : null,
+      };
+    }
+    recordOutgoingRaidTarget({ login: normalized, displayName: normalized, source });
+    return { success: true, login: normalized, raid: result.raid };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+}
+
+function buildJarvisRaidContext() {
+  return {
+    raidFavoritesStore,
+    raidFavoritesListLive,
+    raidFavoritesStartRaid,
+  };
 }
 
 async function sayInTwitchChat(text) {
@@ -4807,6 +5062,16 @@ function buildSubscriptionFromKey(key, userId) {
 }
 
 // Apply subscriptions for the given session id using saved tc_config topics
+async function ensureOutgoingRaidEventSub(sessionId) {
+  try {
+    if (!twitchUserId) await getUserId();
+    if (!twitchUserId || !sessionId) return;
+    await subscribeEventSub('channel.raid', { from_broadcaster_user_id: twitchUserId }, sessionId);
+  } catch (err) {
+    console.warn('[Raid Favorites] Could not subscribe to outgoing raids EventSub:', err);
+  }
+}
+
 async function applyEventSubSubscriptions(sessionId) {
   if (applyingEventSub) {
     console.log('applyEventSubSubscriptions: another apply is running; skipping');
@@ -4903,6 +5168,8 @@ async function applyEventSubSubscriptions(sessionId) {
       console.log('Applying missing EventSub for key on session welcome:', key);
       await subscribeEventSub(desiredMap[key].type, desiredMap[key].condition, sessionId);
     }
+
+    await ensureOutgoingRaidEventSub(sessionId);
   } catch (err) {
     console.error('Error applying EventSub subscriptions:', err);
   }
@@ -4963,6 +5230,7 @@ function startTwitchEventSub({ username, oauth, clientId}) {
         }
         console.log(`[EventSub] ${type}:`, eventData);
         appendAiEventSubToLog(type, eventData, msg.metadata && msg.metadata.message_id);
+        handleRaidEventSubNotification(type, eventData);
       }
     });
     eventSubWs.on('error', (err) => {
@@ -5782,7 +6050,9 @@ function updateJarvisContext() {
       config: currentProfile,
       currentActiveProfile,
       loadProfile,
-      triggerButtonFn: triggerButtonWithDebounce
+      triggerButtonFn: triggerButtonWithDebounce,
+      macroManager,
+      ...buildJarvisRaidContext(),
     });
   }
 }

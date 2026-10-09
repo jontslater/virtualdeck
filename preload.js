@@ -151,4 +151,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteMacro: async (id) => ipcRenderer.invoke('delete-macro', id),
   executeMacro: async (id) => ipcRenderer.invoke('execute-macro', id),
   previewAiVoice: async (payload) => ipcRenderer.invoke('preview-ai-voice', payload),
+  // Raid favorites
+  raidFavoritesGet: async () => ipcRenderer.invoke('raid-favorites-get'),
+  raidFavoritesAdd: async (payload) => ipcRenderer.invoke('raid-favorites-add', payload),
+  raidFavoritesRemove: async (payload) => ipcRenderer.invoke('raid-favorites-remove', payload),
+  raidFavoritesReorder: async (payload) => ipcRenderer.invoke('raid-favorites-reorder', payload),
+  raidFavoritesUpdateNote: async (payload) => ipcRenderer.invoke('raid-favorites-update-note', payload),
+  raidFavoritesAddFromHistory: async (payload) => ipcRenderer.invoke('raid-favorites-add-from-history', payload),
+  raidFavoritesLiveCheck: async (payload) => ipcRenderer.invoke('raid-favorites-live-check', payload),
+  raidFavoritesStartRaid: async (payload) => ipcRenderer.invoke('raid-favorites-start-raid', payload),
+  raidFavoritesCancelRaid: async () => ipcRenderer.invoke('raid-favorites-cancel-raid'),
+  checkTwitchRaidScope: async () => ipcRenderer.invoke('check-twitch-raid-scope'),
+  getTwitchOAuthAuthorizeUrl: async () => ipcRenderer.invoke('get-twitch-oauth-authorize-url'),
+  onRaidFavoritesHistoryUpdated: (callback) => ipcRenderer.on('raid-favorites-history-updated', (_event, data) => callback(data)),
 });

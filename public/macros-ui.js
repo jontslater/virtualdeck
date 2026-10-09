@@ -17,7 +17,9 @@ const ALLOWLISTED_TOOLS = [
   { name: 'trigger_button', label: 'Trigger Button', args: ['label'] },
   { name: 'launch_app', label: 'Launch Application', args: ['nameOrPath'] },
   { name: 'get_scenes', label: 'Get Scenes (data only)', args: [] },
-  { name: 'get_stream_status', label: 'Get Stream Status (data only)', args: [] }
+  { name: 'get_stream_status', label: 'Get Stream Status (data only)', args: [] },
+  { name: 'list_live_raid_favorites', label: 'List live raid favorites', args: [] },
+  { name: 'start_raid', label: 'Start Twitch raid', args: ['login', 'confirmed'] }
 ];
 
 /**

@@ -53,7 +53,7 @@ function showTwitchConfigModal() {
         <ol style="margin:0; padding-left:20px; line-height:2; font-size:13px; color:#222;">
           <li>Visit <a href="https://twitchtokengenerator.com" target="_blank" style="color:#9147ff; text-decoration:underline;">twitchtokengenerator.com</a> in your browser</li>
           <li>Select <strong>Custom Token</strong> from the token options</li>
-          <li><strong>Important:</strong> Scroll to "Available Token Scopes" and select <strong>ALL permissions</strong> (check the box at the top)</li>
+          <li><strong>Important:</strong> Scroll to "Available Token Scopes" and select <strong>ALL permissions</strong> (check the box at the top), including <strong>channel:manage:raids</strong> for Raid Favorites</li>
           <li>Click <strong>Generate Token</strong> and log in with your Twitch account</li>
           <li>Copy your three credentials:
             <ul style="margin-top:5px; padding-left:20px;">

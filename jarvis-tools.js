@@ -8,6 +8,7 @@
 const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { normalizeTwitchLogin, isValidTwitchLogin } = require('./lib/twitch-login');
 
 class JarvisToolRegistry {
   constructor() {
@@ -860,6 +861,76 @@ registry.register(
       channelId
     });
   }
+);
+
+// Tool: list_live_raid_favorites
+registry.register(
+  'list_live_raid_favorites',
+  {
+    description: 'List raid favorites with live status (title, game, viewers). Live channels first.',
+    parameters: {
+      type: 'object',
+      properties: {
+        forceRefresh: {
+          type: 'boolean',
+          description: 'Bypass the 60s live-check cache',
+          default: false,
+        },
+      },
+    },
+  },
+  async (args, context) => {
+    const { raidFavoritesListLive } = context;
+    if (!raidFavoritesListLive) {
+      return { success: false, error: 'Raid favorites are not available' };
+    }
+    return await raidFavoritesListLive({
+      forceRefresh: !!args.forceRefresh,
+    });
+  },
+);
+
+// Tool: start_raid
+registry.register(
+  'start_raid',
+  {
+    description:
+      'Start a Twitch raid to a channel (must be in favorites or raid history). Requires confirmed: true.',
+    parameters: {
+      type: 'object',
+      properties: {
+        login: {
+          type: 'string',
+          description: 'Target Twitch channel login',
+        },
+        confirmed: {
+          type: 'boolean',
+          description: 'Must be true to execute the raid (safety confirmation)',
+          default: false,
+        },
+      },
+      required: ['login'],
+    },
+  },
+  async (args, context) => {
+    const { raidFavoritesStartRaid } = context;
+    const login = normalizeTwitchLogin(args.login);
+    if (!isValidTwitchLogin(login)) {
+      return { success: false, error: 'Invalid Twitch login' };
+    }
+    if (!args.confirmed) {
+      return {
+        success: false,
+        needsConfirmation: true,
+        login,
+        message: `Confirm raid to ${login} by calling start_raid again with confirmed: true`,
+      };
+    }
+    if (!raidFavoritesStartRaid) {
+      return { success: false, error: 'Raid favorites are not available' };
+    }
+    return await raidFavoritesStartRaid({ login, source: 'jarvis' });
+  },
 );
 
 module.exports = { registry };

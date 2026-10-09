@@ -74,6 +74,8 @@ Macros can use these allowlisted JARVIS tools:
 | `launch_app` | Launch an application | `nameOrPath` |
 | `get_scenes` | Get list of scenes (data only) | none |
 | `get_stream_status` | Get stream status (data only) | none |
+| `list_live_raid_favorites` | List raid favorites with live status | `forceRefresh` (optional) |
+| `start_raid` | Start a Twitch raid (favorites/history only) | `login`, `confirmed: true` |
 
 ## Meld Studio Integration
 
