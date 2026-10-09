@@ -480,4 +480,245 @@ fs.rmSync(copyTmp, { recursive: true, force: true });
     `ipcMain.handle channels registered more than once in main.js: ${duplicateChannels.join('; ')}`,
   );
 }
+
+const {
+  getExtraRavenKeepRelPaths,
+  listStaleTopLevelStageEntries,
+  assertExtraRavenStageDir,
+  assertCleanStagePrereq,
+} = require('./scripts/raven-staging/extra-raven-keep-paths');
+const { rmPathRecursive } = require('./scripts/raven-staging/rm-path-recursive');
+const {
+  getControllerFileDependencyRels,
+  assertControllerFileDepsStagedBeforeInstall,
+  VIRTUALDECK_BRIDGE_REL,
+} = require('./scripts/raven-staging/workspace-packages');
+
+const keepFromGit = getExtraRavenKeepRelPaths(__dirname);
+assert.ok(keepFromGit.includes('README.md'), 'keep list should include README.md');
+assert.ok(keepFromGit.includes('env.defaults'), 'keep list should include env.defaults');
+
+const stageCleanTmp = path.join(__dirname, '.tmp-extra-raven-clean');
+fs.rmSync(stageCleanTmp, { recursive: true, force: true });
+const fakeRepo = path.join(stageCleanTmp, 'repo');
+const fakeStage = path.join(fakeRepo, 'extra', 'raven');
+fs.mkdirSync(path.join(fakeStage, 'app', 'apps', 'hud'), { recursive: true });
+fs.mkdirSync(path.join(fakeStage, 'ffmpeg'), { recursive: true });
+fs.writeFileSync(path.join(fakeStage, 'README.md'), '# tracked', 'utf8');
+fs.writeFileSync(path.join(fakeStage, 'env.defaults'), 'LLM_API_KEY=\n', 'utf8');
+fs.writeFileSync(path.join(fakeStage, 'README.txt'), 'stale', 'utf8');
+fs.writeFileSync(path.join(fakeStage, 'app', 'trivia-questions.json'), '[]', 'utf8');
+assert.throws(
+  () => assertExtraRavenStageDir(fakeStage, path.join(fakeRepo, 'extra', 'evil')),
+  /Refusing to clean outside extra\/raven/,
+);
+const stale = listStaleTopLevelStageEntries(fakeStage, keepFromGit);
+assert.deepStrictEqual(
+  stale.sort(),
+  ['app', 'ffmpeg', 'README.txt'].sort(),
+  'stale top-level entries should exclude git-tracked files only',
+);
+assert.ok(!stale.includes('README.md'));
+assert.ok(!stale.includes('env.defaults'));
+fs.rmSync(stageCleanTmp, { recursive: true, force: true });
+
+const stagePs1Clean = fs.readFileSync(path.join(__dirname, 'scripts/stage-raven-runtime.ps1'), 'utf8');
+assert.ok(
+  stagePs1Clean.includes('Clear-StaleRavenStageOutput'),
+  'stage script should clear stale output before staging',
+);
+assert.ok(
+  stagePs1Clean.includes('Assert-ExtraRavenStageDirectory'),
+  'stage clean must refuse paths outside extra/raven',
+);
+assert.ok(
+  !/robocopy/i.test(stagePs1Clean),
+  'stage script must not use robocopy for cleaning extra/raven',
+);
+assert.ok(
+  stagePs1Clean.includes('rm-path-recursive.js'),
+  'stage script should delete stale output via node fs.rmSync helper',
+);
+assert.ok(
+  stagePs1Clean.includes('Assert-ExtraRavenCleanBeforeStaging'),
+  'stage script should verify extra/raven is clean after delete',
+);
+
+const monorepoBlock = stagePs1Clean.match(/function Stage-MonorepoLayout[\s\S]*?\n\}/);
+assert.ok(monorepoBlock, 'Stage-MonorepoLayout must exist');
+const monorepoBody = monorepoBlock[0];
+const bridgeCall = monorepoBody.indexOf('Staging VirtualDeck bridge before controller install');
+const controllerCall = monorepoBody.indexOf("Write-Step 'Staging apps/controller...'");
+assert.ok(bridgeCall >= 0 && controllerCall >= 0, 'monorepo staging steps must exist');
+assert.ok(
+  bridgeCall < controllerCall,
+  'VirtualDeck bridge must be staged before controller npm install',
+);
+
+const rmTmp = path.join(__dirname, '.tmp-rm-path-recursive');
+fs.rmSync(rmTmp, { recursive: true, force: true });
+const victimDir = path.join(rmTmp, 'victim');
+const stageRmDir = path.join(rmTmp, 'repo', 'extra', 'raven', 'app');
+fs.mkdirSync(victimDir, { recursive: true });
+fs.writeFileSync(path.join(victimDir, 'keep.txt'), 'victim-data', 'utf8');
+fs.mkdirSync(stageRmDir, { recursive: true });
+const linkPath = path.join(stageRmDir, 'link');
+let symlinkCreated = false;
+try {
+  fs.symlinkSync(victimDir, linkPath, 'dir');
+  symlinkCreated = true;
+} catch {
+  // junction/symlink may require elevation on some hosts
+}
+if (symlinkCreated) {
+  rmPathRecursive(stageRmDir, { repoRoot: path.join(rmTmp, 'repo') });
+  assert.ok(fs.existsSync(victimDir), 'rmPathRecursive must not delete symlink/junction target');
+  assert.ok(fs.readFileSync(path.join(victimDir, 'keep.txt'), 'utf8') === 'victim-data');
+}
+fs.rmSync(rmTmp, { recursive: true, force: true });
+
+const cleanPrereqTmp = path.join(__dirname, '.tmp-clean-prereq');
+fs.rmSync(cleanPrereqTmp, { recursive: true, force: true });
+const cleanStage = path.join(cleanPrereqTmp, 'extra', 'raven');
+fs.mkdirSync(cleanStage, { recursive: true });
+fs.writeFileSync(path.join(cleanStage, 'README.md'), '# ok', 'utf8');
+fs.writeFileSync(path.join(cleanStage, 'env.defaults'), 'X=\n', 'utf8');
+assertCleanStagePrereq(cleanStage, cleanPrereqTmp);
+fs.mkdirSync(path.join(cleanStage, 'app'), { recursive: true });
+assert.throws(
+  () => assertCleanStagePrereq(cleanStage, cleanPrereqTmp),
+  /not clean before staging/,
+);
+fs.rmSync(cleanPrereqTmp, { recursive: true, force: true });
+
+const mockAituberTmp = path.join(__dirname, '.tmp-mock-aituber-deps');
+fs.rmSync(mockAituberTmp, { recursive: true, force: true });
+fs.mkdirSync(path.join(mockAituberTmp, 'packages', 'integrations', 'virtualdeck'), { recursive: true });
+fs.writeFileSync(
+  path.join(mockAituberTmp, 'packages', 'integrations', 'virtualdeck', 'package.json'),
+  '{"name":"@ai-streamer/virtualdeck"}',
+  'utf8',
+);
+fs.mkdirSync(path.join(mockAituberTmp, 'apps', 'controller'), { recursive: true });
+fs.writeFileSync(
+  path.join(mockAituberTmp, 'apps', 'controller', 'package.json'),
+  JSON.stringify({
+    dependencies: {
+      '@ai-streamer/virtualdeck': 'file:../../packages/integrations/virtualdeck',
+    },
+  }),
+  'utf8',
+);
+const mockDeps = getControllerFileDependencyRels(mockAituberTmp);
+assert.ok(mockDeps.includes(VIRTUALDECK_BRIDGE_REL), 'controller file: deps should include bridge path');
+fs.rmSync(mockAituberTmp, { recursive: true, force: true });
+
+const stagedPreflightTmp = path.join(__dirname, '.tmp-controller-file-deps');
+fs.rmSync(stagedPreflightTmp, { recursive: true, force: true });
+const stagedApp = path.join(stagedPreflightTmp, 'app');
+const bridgePkgDir = path.join(stagedApp, 'packages', 'integrations', 'virtualdeck');
+const controllerPkgDir = path.join(stagedApp, 'apps', 'controller');
+fs.mkdirSync(bridgePkgDir, { recursive: true });
+fs.mkdirSync(controllerPkgDir, { recursive: true });
+fs.writeFileSync(path.join(bridgePkgDir, 'package.json'), '{"name":"@ai-streamer/virtualdeck-bridge"}', 'utf8');
+fs.writeFileSync(
+  path.join(controllerPkgDir, 'package.json'),
+  JSON.stringify({
+    name: '@ai-streamer/controller',
+    dependencies: {
+      '@ai-streamer/virtualdeck': 'file:../../packages/integrations/virtualdeck',
+    },
+  }),
+  'utf8',
+);
+assertControllerFileDepsStagedBeforeInstall(stagedApp);
+fs.rmSync(path.join(bridgePkgDir, 'package.json'));
+assert.throws(
+  () => assertControllerFileDepsStagedBeforeInstall(stagedApp),
+  /file: dependencies must exist/,
+);
+fs.rmSync(stagedPreflightTmp, { recursive: true, force: true });
+
+// --- CLI-level tests: spawn helpers with the exact argv layout stage-raven-runtime.ps1 uses ---
+{
+  const { spawnSync } = require('child_process');
+  const runHelper = (script, args) =>
+    spawnSync(process.execPath, [path.join(__dirname, 'scripts', 'raven-staging', script), ...args], {
+      encoding: 'utf8',
+    });
+
+  // Pin the PowerShell call sites so tests and script cannot drift apart.
+  const ps1Cli = fs.readFileSync(path.join(__dirname, 'scripts/stage-raven-runtime.ps1'), 'utf8');
+  assert.ok(
+    /&\s*\$node\s+\$helper\s+'assert-clean'\s+\$StageDir\s+\$RepoRoot\b/.test(ps1Cli),
+    'stage-raven-runtime.ps1 must call: assert-clean $StageDir $RepoRoot',
+  );
+  assert.ok(
+    /&\s*\$node\s+\$helper\s+'assert-controller-file-deps'\s+\$Root\s+\$appRoot\b/.test(ps1Cli),
+    'stage-raven-runtime.ps1 must call: assert-controller-file-deps $Root $appRoot',
+  );
+
+  const cliTmp = path.join(__dirname, '.tmp-cli-argv');
+  fs.rmSync(cliTmp, { recursive: true, force: true });
+  try {
+    // extra-raven-keep-paths.js: assert-clean <stageDir> <repoRoot>
+    const cliRepo = path.join(cliTmp, 'repo');
+    const cliStage = path.join(cliRepo, 'extra', 'raven');
+    fs.mkdirSync(cliStage, { recursive: true });
+    fs.writeFileSync(path.join(cliStage, 'README.md'), '# tracked', 'utf8');
+    fs.writeFileSync(path.join(cliStage, 'env.defaults'), 'LLM_API_KEY=\n', 'utf8');
+    let r = runHelper('extra-raven-keep-paths.js', ['assert-clean', cliStage, cliRepo]);
+    assert.strictEqual(r.status, 0, `assert-clean CLI should pass on a clean stage: ${r.stderr}`);
+    r = runHelper('extra-raven-keep-paths.js', ['assert-clean', cliStage]);
+    assert.strictEqual(r.status, 0, `assert-clean CLI should derive repoRoot from stageDir: ${r.stderr}`);
+    r = runHelper('extra-raven-keep-paths.js', ['list-stale-top-level', cliStage, cliRepo]);
+    assert.strictEqual(r.status, 0, `list-stale-top-level CLI should run: ${r.stderr}`);
+    assert.strictEqual(r.stdout.trim(), '', 'clean stage should list no stale entries');
+    fs.mkdirSync(path.join(cliStage, 'app'), { recursive: true });
+    fs.writeFileSync(path.join(cliStage, 'README.txt'), 'stale', 'utf8');
+    r = runHelper('extra-raven-keep-paths.js', ['assert-clean', cliStage, cliRepo]);
+    assert.strictEqual(r.status, 1, 'assert-clean CLI should fail when stale output remains');
+    assert.ok(/not clean before staging/.test(r.stderr), `unexpected assert-clean error: ${r.stderr}`);
+    r = runHelper('extra-raven-keep-paths.js', ['list-stale-top-level', cliStage, cliRepo]);
+    assert.strictEqual(r.status, 0, `list-stale-top-level CLI should run: ${r.stderr}`);
+    assert.deepStrictEqual(r.stdout.trim().split(/\r?\n/).sort(), ['README.txt', 'app'].sort());
+    r = runHelper('extra-raven-keep-paths.js', ['assert-clean', cliStage, path.join(cliTmp, 'other')]);
+    assert.strictEqual(r.status, 1, 'assert-clean CLI should refuse a stageDir outside <repoRoot>/extra/raven');
+    assert.ok(/Refusing to clean outside extra\/raven/.test(r.stderr));
+
+    // workspace-packages.js: assert-controller-file-deps <repoRoot> <stagedAppRoot>
+    // The controller is NOT staged yet (this preflight runs before controller staging).
+    const srcRoot = path.join(cliTmp, 'aituber');
+    fs.mkdirSync(path.join(srcRoot, 'apps', 'controller'), { recursive: true });
+    fs.writeFileSync(
+      path.join(srcRoot, 'apps', 'controller', 'package.json'),
+      JSON.stringify({
+        name: '@ai-streamer/controller',
+        dependencies: {
+          '@ai-streamer/integrations-virtualdeck': 'file:../../packages/integrations/virtualdeck',
+          '@ai-streamer/shared': 'file:../../packages/shared',
+        },
+      }),
+      'utf8',
+    );
+    const cliApp = path.join(cliTmp, 'stage', 'app');
+    for (const rel of ['packages/integrations/virtualdeck', 'packages/shared']) {
+      const dir = path.join(cliApp, ...rel.split('/'));
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'package.json'), '{}', 'utf8');
+    }
+    assert.ok(!fs.existsSync(path.join(cliApp, 'apps', 'controller')), 'mock: controller must not be staged yet');
+    r = runHelper('workspace-packages.js', ['assert-controller-file-deps', srcRoot, cliApp]);
+    assert.strictEqual(r.status, 0, `assert-controller-file-deps CLI should pass before controller staging: ${r.stderr}`);
+    fs.rmSync(path.join(cliApp, 'packages', 'integrations', 'virtualdeck', 'package.json'));
+    r = runHelper('workspace-packages.js', ['assert-controller-file-deps', srcRoot, cliApp]);
+    assert.strictEqual(r.status, 2, 'assert-controller-file-deps CLI should fail when the bridge is not staged');
+    assert.ok(/integrations-virtualdeck/.test(r.stderr), `missing dep should be named: ${r.stderr}`);
+    r = runHelper('workspace-packages.js', ['assert-controller-file-deps', srcRoot]);
+    assert.strictEqual(r.status, 1, 'assert-controller-file-deps CLI should require both args');
+  } finally {
+    fs.rmSync(cliTmp, { recursive: true, force: true });
+  }
+}
+
 console.log('✅ test-prepare-build.js passed');

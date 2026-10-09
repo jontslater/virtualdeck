@@ -194,6 +194,64 @@ function buildDepRewrites(repoRoot, packageRel, closureRels) {
   return rewrites;
 }
 
+const CONTROLLER_REL = 'apps/controller';
+const VIRTUALDECK_BRIDGE_REL = 'packages/integrations/virtualdeck';
+
+function collectFileDependencyRels(repoRoot, packageRel) {
+  const pkgDir = path.join(repoRoot, packageRel.split('/').join(path.sep));
+  const pkgPath = path.join(pkgDir, 'package.json');
+  if (!fs.existsSync(pkgPath)) {
+    return [];
+  }
+  const pkg = JSON.parse(readFileUtf8(pkgPath));
+  const deps = collectDeps(pkg);
+  const rels = [];
+  for (const spec of Object.values(deps)) {
+    if (typeof spec !== 'string' || !spec.startsWith('file:')) continue;
+    const resolved = resolveFileDep(pkgDir, spec);
+    if (!resolved) continue;
+    rels.push(posixRel(repoRoot, resolved));
+  }
+  return rels;
+}
+
+function getControllerFileDependencyRels(repoRoot) {
+  return collectFileDependencyRels(repoRoot, CONTROLLER_REL);
+}
+
+/**
+ * Verify every controller file: dependency already exists in the staged app tree.
+ * The controller package.json is read from the SOURCE repo (<repoRoot>/apps/controller)
+ * because this preflight runs before the controller itself is staged; file: targets are
+ * resolved relative to the staged controller location (<stagedAppRoot>/apps/controller).
+ * When repoRoot is omitted, the staged controller package.json is used.
+ */
+function assertControllerFileDepsStagedBeforeInstall(stagedAppRoot, repoRoot) {
+  const controllerDir = path.join(stagedAppRoot, 'apps', 'controller');
+  const pkgPath = repoRoot
+    ? path.join(repoRoot, 'apps', 'controller', 'package.json')
+    : path.join(controllerDir, 'package.json');
+  if (!fs.existsSync(pkgPath)) {
+    throw new Error(`controller package.json missing at ${pkgPath}`);
+  }
+  const pkg = JSON.parse(readFileUtf8(pkgPath));
+  const deps = collectDeps(pkg);
+  const missing = [];
+  for (const [name, spec] of Object.entries(deps)) {
+    if (typeof spec !== 'string' || !spec.startsWith('file:')) continue;
+    const raw = spec.slice('file:'.length);
+    const target = path.resolve(controllerDir, raw);
+    if (!fs.existsSync(path.join(target, 'package.json'))) {
+      missing.push(`${name} -> ${spec}`);
+    }
+  }
+  if (missing.length) {
+    throw new Error(
+      `controller file: dependencies must exist before npm install: ${missing.join('; ')}`,
+    );
+  }
+}
+
 function readClosureListFromFile(filePath) {
   const parsed = JSON.parse(readFileUtf8(filePath));
   if (!Array.isArray(parsed)) {
@@ -209,6 +267,11 @@ module.exports = {
   buildDepRewrites,
   orderClosureForStaging,
   readClosureListFromFile,
+  collectFileDependencyRels,
+  getControllerFileDependencyRels,
+  assertControllerFileDepsStagedBeforeInstall,
+  CONTROLLER_REL,
+  VIRTUALDECK_BRIDGE_REL,
   SKIP_DIR_NAMES,
 };
 
@@ -233,6 +296,22 @@ if (require.main === module) {
       omitFromResult: omit,
     });
     process.stdout.write(`${JSON.stringify(closureRels)}\n`);
+    process.exit(0);
+  }
+  if (cmd === 'assert-controller-file-deps') {
+    // argv: [node, script, cmd, repoRoot, stagedAppRoot] (matches stage-raven-runtime.ps1)
+    const repoRoot = process.argv[3];
+    const stagedAppRoot = process.argv[4];
+    if (!repoRoot || !stagedAppRoot) {
+      console.error('Usage: node workspace-packages.js assert-controller-file-deps <repoRoot> <stagedAppRoot>');
+      process.exit(1);
+    }
+    try {
+      assertControllerFileDepsStagedBeforeInstall(stagedAppRoot, repoRoot);
+    } catch (err) {
+      console.error(err.message || err);
+      process.exit(2);
+    }
     process.exit(0);
   }
   if (cmd === 'rewrites') {
