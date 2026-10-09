@@ -39,13 +39,13 @@ The staging script targets Jonathan's AITuber checkout:
 
 **What `npm run stage-raven` does for the monorepo:**
 
-0. Clears stale generated output under `extra/raven/` (long-path-safe delete on Windows), keeping only git-tracked paths from `git ls-files extra/raven` (fallback: `README.md`, `env.defaults`). Refuses to delete outside `extra/raven`.
+0. Clears stale generated output under `extra/raven/` via Node `fs.rmSync` (long paths, does not follow junctions), keeping only git-tracked paths from `git ls-files extra/raven` (fallback: `README.md`, `env.defaults`). Verifies the folder is clean before continuing. Refuses to delete outside `extra/raven`.
 1. Uses existing AITuber `node_modules` when `apps/controller` deps resolve (skips `pnpm install`; pnpm 9 may still validate the whole lockfile on install). Otherwise tries `pnpm install --frozen-lockfile --filter <controller>...`, and continues if install fails but deps still resolve.
 2. Builds all `packages/**` with a `build` script (nested packages included); failures are **warnings** if `dist/` already exists (e.g. `tts-piper` typecheck issues)
 3. `pnpm --filter ./apps/controller run build`
 4. Stages every workspace package the controller needs (e.g. `shared`, `director`, `llm`, `trivia`, `tts-piper`) under `extra/raven/app/packages/**` in dependency order: `dist` + rewritten `package.json` + `npm install --omit=dev --install-links` (real copies, no dangling symlinks)
-5. Stages `apps/controller` the same way with `file:` rewrites for all local `@ai-streamer/*` deps
-6. VirtualDeck bridge (`packages/integrations/virtualdeck`, not in pnpm workspace): `tsc -p`, copy `dist` + `package.json` (file dep on `../../shared`), `npm install --omit=dev --install-links`, verify `ws` and `@ai-streamer/shared`
+5. Stages VirtualDeck bridge (`packages/integrations/virtualdeck`, outside pnpm workspace) **before** `apps/controller`: `tsc -p`, copy `dist` + `package.json`, `npm install --omit=dev --install-links`, verify `ws` and `@ai-streamer/shared` — so the controller’s `file:../../packages/integrations/virtualdeck` path exists for install
+6. Stages `apps/controller` with `file:` rewrites for local `@ai-streamer/*` deps (preflight asserts every controller `file:` dependency is already on disk)
 7. Copies `scripts/raven-sidecar.js` -> `sidecar.js`
 8. Verifies controller `package.json` dependencies resolve from `app/apps/controller`, walks `app/` for broken symlinks, and checks `app/apps/controller/dist/index.js` + `app/packages/integrations/virtualdeck/dist/bridge-server.js`
 9. Bundles `node.exe` (early, for bridge npm) and ffmpeg/ffplay

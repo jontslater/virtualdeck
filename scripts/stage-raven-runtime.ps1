@@ -672,6 +672,24 @@ function Stage-ControllerWorkspacePackages {
     }
 }
 
+function Assert-ControllerFileDepsStagedBeforeInstall {
+    param(
+        [string]$StageDir,
+        [string]$NodeExe,
+        [string]$Root
+    )
+    $helper = Get-RavenStagingHelperPath 'workspace-packages.js'
+    $node = Resolve-MergeEnvNodeExe -NodeExe $NodeExe
+    if (-not $node) {
+        throw 'node.exe is required to verify controller file: dependencies'
+    }
+    $appRoot = Join-Path $StageDir 'app'
+    & $node $helper 'assert-controller-file-deps' $Root $appRoot
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Controller file: dependencies must be staged before npm install --omit=dev'
+    }
+}
+
 function Stage-ControllerPackage {
     param(
         [string]$Root,
@@ -682,6 +700,11 @@ function Stage-ControllerPackage {
     $controllerSrc = Join-Path $Root 'apps\controller'
     $controllerDest = Join-Path $StageDir 'app\apps\controller'
     $controllerRel = 'apps/controller'
+    $bridgePkg = Join-Path $StageDir 'app\packages\integrations\virtualdeck\package.json'
+    if (-not (Test-Path -LiteralPath $bridgePkg)) {
+        throw 'VirtualDeck bridge package.json must exist before controller install (stage bridge first)'
+    }
+    Assert-ControllerFileDepsStagedBeforeInstall -StageDir $StageDir -NodeExe $NodeExe -Root $Root
     $rewrites = Get-WorkspacePackageDepRewrites -Root $Root -NodeExe $NodeExe -PackageRel $controllerRel -ClosureFilePath $ClosureFilePath
     Stage-BuiltPackageManual -SourceDir $controllerSrc -DestDir $controllerDest -NodeExe $NodeExe -DepRewrites $rewrites
 
@@ -950,14 +973,14 @@ function Stage-MonorepoLayout {
     try {
         Stage-ControllerWorkspacePackages -Root $Root -StageDir $StageDir -NodeExe $NodeExe -ClosureFilePath $closureFile
 
+        Write-Step 'Staging VirtualDeck bridge before controller install (file: dependency)...'
+        Stage-VirtualDeckBridge -Root $Root -StageDir $StageDir -NodeExe $NodeExe
+
         Write-Step 'Staging apps/controller...'
         Stage-ControllerPackage -Root $Root -StageDir $StageDir -NodeExe $NodeExe -ClosureFilePath $closureFile
     } finally {
         Remove-Item -LiteralPath $closureFile -Force -ErrorAction SilentlyContinue
     }
-
-    Write-Step 'Building and staging VirtualDeck bridge (outside pnpm workspace)...'
-    Stage-VirtualDeckBridge -Root $Root -StageDir $StageDir -NodeExe $NodeExe
 
     Assert-StagedAppLayout -StageDir $StageDir -NodeExe $NodeExe
     Assert-SidecarLayoutPresent -StageDir $StageDir
@@ -1338,16 +1361,6 @@ function Write-EnvDefaultsTemplate {
     Write-TextFileUtf8NoBom -Path $EnvDefaultsPath -Content $normalizedTemplate
 }
 
-function Get-WinLongPathLiteral {
-    param([string]$Path)
-    $full = [System.IO.Path]::GetFullPath($Path)
-    if ($full.StartsWith('\\?\')) { return $full }
-    if ($full.StartsWith('\\')) {
-        return '\\?\UNC\' + $full.Substring(2)
-    }
-    return '\\?\' + $full
-}
-
 function Assert-ExtraRavenStageDirectory {
     param(
         [string]$StageDir,
@@ -1385,27 +1398,42 @@ function Get-ExtraRavenKeepRelPathsFromRepo {
     return $lines
 }
 
-function Remove-PathLongSafe {
-    param([string]$TargetPath)
+function Remove-PathRecursiveSafe {
+    param(
+        [string]$TargetPath,
+        [string]$RepoRoot,
+        [string]$NodeExe
+    )
     if (-not $TargetPath -or -not (Test-Path -LiteralPath $TargetPath)) { return }
-    $onWindows = ($env:OS -eq 'Windows_NT')
-    if ($onWindows) {
-        $item = Get-Item -LiteralPath $TargetPath -Force
-        if ($item.PSIsContainer) {
-            $empty = Join-Path $env:TEMP ('vd-empty-' + [guid]::NewGuid().ToString('N'))
-            New-Item -ItemType Directory -Path $empty -Force | Out-Null
-            try {
-                $dest = Get-WinLongPathLiteral $TargetPath
-                $src = Get-WinLongPathLiteral $empty
-                $null = & robocopy $src $dest /MIR /NFL /NDL /NJH /NJS /NC /NS /NP
-            } finally {
-                Remove-Item -LiteralPath $empty -Recurse -Force -ErrorAction SilentlyContinue
-            }
-        }
-        Remove-Item -LiteralPath (Get-WinLongPathLiteral $TargetPath) -Recurse -Force -ErrorAction SilentlyContinue
-        return
+    $helper = Get-RavenStagingHelperPath 'rm-path-recursive.js'
+    $node = Resolve-MergeEnvNodeExe -NodeExe $NodeExe
+    if (-not $node) {
+        throw 'node.exe is required for safe recursive delete during Raven staging'
     }
-    Remove-Item -LiteralPath $TargetPath -Recurse -Force -ErrorAction SilentlyContinue
+    & $node $helper $TargetPath '--repo-root' $RepoRoot
+    if ($LASTEXITCODE -ne 0) {
+        throw "rm-path-recursive.js failed for $TargetPath (exit $LASTEXITCODE)"
+    }
+    if (Test-Path -LiteralPath $TargetPath) {
+        throw "Path still exists after delete: $TargetPath"
+    }
+}
+
+function Assert-ExtraRavenCleanBeforeStaging {
+    param(
+        [string]$StageDir,
+        [string]$RepoRoot,
+        [string]$NodeExe
+    )
+    $helper = Get-RavenStagingHelperPath 'extra-raven-keep-paths.js'
+    $node = Resolve-MergeEnvNodeExe -NodeExe $NodeExe
+    if (-not $node) {
+        throw 'node.exe is required to verify extra/raven is clean before staging'
+    }
+    & $node $helper 'assert-clean' $StageDir $RepoRoot
+    if ($LASTEXITCODE -ne 0) {
+        throw 'extra/raven must contain only git-tracked files before staging (stale output remains)'
+    }
 }
 
 function Clear-StaleRavenStageOutput {
@@ -1430,8 +1458,9 @@ function Clear-StaleRavenStageOutput {
     foreach ($child in (Get-ChildItem -LiteralPath $StageDir -Force)) {
         if ($keepNames.ContainsKey($child.Name.ToLowerInvariant())) { continue }
         Write-Ok "Removing stale stage output: $($child.Name)"
-        Remove-PathLongSafe -TargetPath $child.FullName
+        Remove-PathRecursiveSafe -TargetPath $child.FullName -RepoRoot $RepoRoot -NodeExe $NodeExe
     }
+    Assert-ExtraRavenCleanBeforeStaging -StageDir $StageDir -RepoRoot $RepoRoot -NodeExe $NodeExe
 }
 
 # --- Main ---

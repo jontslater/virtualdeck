@@ -69,12 +69,34 @@ function assertExtraRavenStageDir(stageDir, repoRoot) {
   }
 }
 
+function assertCleanStagePrereq(stageDir, repoRoot) {
+  assertExtraRavenStageDir(stageDir, repoRoot);
+  const keep = getExtraRavenKeepRelPaths(repoRoot);
+  const stale = listStaleTopLevelStageEntries(stageDir, keep);
+  if (stale.length > 0) {
+    throw new Error(
+      `extra/raven is not clean before staging (remove stale output first): ${stale.join(', ')}`,
+    );
+  }
+}
+
 function main() {
   const [cmd, arg1] = process.argv.slice(2);
   if (cmd === 'list-keep-paths') {
     const repoRoot = arg1 || process.cwd();
     for (const rel of getExtraRavenKeepRelPaths(repoRoot)) {
       process.stdout.write(`${rel}\n`);
+    }
+    return;
+  }
+  if (cmd === 'assert-clean') {
+    const stageDir = arg1;
+    const repoRoot = process.argv[3] || path.resolve(stageDir, '..', '..');
+    try {
+      assertCleanStagePrereq(stageDir, repoRoot);
+    } catch (err) {
+      console.error(err.message || err);
+      process.exit(1);
     }
     return;
   }
@@ -104,4 +126,5 @@ module.exports = {
   getProtectedTopLevelNames,
   listStaleTopLevelStageEntries,
   assertExtraRavenStageDir,
+  assertCleanStagePrereq,
 };

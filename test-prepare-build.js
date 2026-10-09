@@ -485,7 +485,14 @@ const {
   getExtraRavenKeepRelPaths,
   listStaleTopLevelStageEntries,
   assertExtraRavenStageDir,
+  assertCleanStagePrereq,
 } = require('./scripts/raven-staging/extra-raven-keep-paths');
+const { rmPathRecursive } = require('./scripts/raven-staging/rm-path-recursive');
+const {
+  getControllerFileDependencyRels,
+  assertControllerFileDepsStagedBeforeInstall,
+  VIRTUALDECK_BRIDGE_REL,
+} = require('./scripts/raven-staging/workspace-packages');
 
 const keepFromGit = getExtraRavenKeepRelPaths(__dirname);
 assert.ok(keepFromGit.includes('README.md'), 'keep list should include README.md');
@@ -524,5 +531,112 @@ assert.ok(
   stagePs1Clean.includes('Assert-ExtraRavenStageDirectory'),
   'stage clean must refuse paths outside extra/raven',
 );
+assert.ok(
+  !/robocopy/i.test(stagePs1Clean),
+  'stage script must not use robocopy for cleaning extra/raven',
+);
+assert.ok(
+  stagePs1Clean.includes('rm-path-recursive.js'),
+  'stage script should delete stale output via node fs.rmSync helper',
+);
+assert.ok(
+  stagePs1Clean.includes('Assert-ExtraRavenCleanBeforeStaging'),
+  'stage script should verify extra/raven is clean after delete',
+);
+
+const monorepoBlock = stagePs1Clean.match(/function Stage-MonorepoLayout[\s\S]*?\n\}/);
+assert.ok(monorepoBlock, 'Stage-MonorepoLayout must exist');
+const monorepoBody = monorepoBlock[0];
+const bridgeCall = monorepoBody.indexOf('Staging VirtualDeck bridge before controller install');
+const controllerCall = monorepoBody.indexOf("Write-Step 'Staging apps/controller...'");
+assert.ok(bridgeCall >= 0 && controllerCall >= 0, 'monorepo staging steps must exist');
+assert.ok(
+  bridgeCall < controllerCall,
+  'VirtualDeck bridge must be staged before controller npm install',
+);
+
+const rmTmp = path.join(__dirname, '.tmp-rm-path-recursive');
+fs.rmSync(rmTmp, { recursive: true, force: true });
+const victimDir = path.join(rmTmp, 'victim');
+const stageRmDir = path.join(rmTmp, 'repo', 'extra', 'raven', 'app');
+fs.mkdirSync(victimDir, { recursive: true });
+fs.writeFileSync(path.join(victimDir, 'keep.txt'), 'victim-data', 'utf8');
+fs.mkdirSync(stageRmDir, { recursive: true });
+const linkPath = path.join(stageRmDir, 'link');
+let symlinkCreated = false;
+try {
+  fs.symlinkSync(victimDir, linkPath, 'dir');
+  symlinkCreated = true;
+} catch {
+  // junction/symlink may require elevation on some hosts
+}
+if (symlinkCreated) {
+  rmPathRecursive(stageRmDir, { repoRoot: path.join(rmTmp, 'repo') });
+  assert.ok(fs.existsSync(victimDir), 'rmPathRecursive must not delete symlink/junction target');
+  assert.ok(fs.readFileSync(path.join(victimDir, 'keep.txt'), 'utf8') === 'victim-data');
+}
+fs.rmSync(rmTmp, { recursive: true, force: true });
+
+const cleanPrereqTmp = path.join(__dirname, '.tmp-clean-prereq');
+fs.rmSync(cleanPrereqTmp, { recursive: true, force: true });
+const cleanStage = path.join(cleanPrereqTmp, 'extra', 'raven');
+fs.mkdirSync(cleanStage, { recursive: true });
+fs.writeFileSync(path.join(cleanStage, 'README.md'), '# ok', 'utf8');
+fs.writeFileSync(path.join(cleanStage, 'env.defaults'), 'X=\n', 'utf8');
+assertCleanStagePrereq(cleanStage, cleanPrereqTmp);
+fs.mkdirSync(path.join(cleanStage, 'app'), { recursive: true });
+assert.throws(
+  () => assertCleanStagePrereq(cleanStage, cleanPrereqTmp),
+  /not clean before staging/,
+);
+fs.rmSync(cleanPrereqTmp, { recursive: true, force: true });
+
+const mockAituberTmp = path.join(__dirname, '.tmp-mock-aituber-deps');
+fs.rmSync(mockAituberTmp, { recursive: true, force: true });
+fs.mkdirSync(path.join(mockAituberTmp, 'packages', 'integrations', 'virtualdeck'), { recursive: true });
+fs.writeFileSync(
+  path.join(mockAituberTmp, 'packages', 'integrations', 'virtualdeck', 'package.json'),
+  '{"name":"@ai-streamer/virtualdeck"}',
+  'utf8',
+);
+fs.mkdirSync(path.join(mockAituberTmp, 'apps', 'controller'), { recursive: true });
+fs.writeFileSync(
+  path.join(mockAituberTmp, 'apps', 'controller', 'package.json'),
+  JSON.stringify({
+    dependencies: {
+      '@ai-streamer/virtualdeck': 'file:../../packages/integrations/virtualdeck',
+    },
+  }),
+  'utf8',
+);
+const mockDeps = getControllerFileDependencyRels(mockAituberTmp);
+assert.ok(mockDeps.includes(VIRTUALDECK_BRIDGE_REL), 'controller file: deps should include bridge path');
+fs.rmSync(mockAituberTmp, { recursive: true, force: true });
+
+const stagedPreflightTmp = path.join(__dirname, '.tmp-controller-file-deps');
+fs.rmSync(stagedPreflightTmp, { recursive: true, force: true });
+const stagedApp = path.join(stagedPreflightTmp, 'app');
+const bridgePkgDir = path.join(stagedApp, 'packages', 'integrations', 'virtualdeck');
+const controllerPkgDir = path.join(stagedApp, 'apps', 'controller');
+fs.mkdirSync(bridgePkgDir, { recursive: true });
+fs.mkdirSync(controllerPkgDir, { recursive: true });
+fs.writeFileSync(path.join(bridgePkgDir, 'package.json'), '{"name":"@ai-streamer/virtualdeck-bridge"}', 'utf8');
+fs.writeFileSync(
+  path.join(controllerPkgDir, 'package.json'),
+  JSON.stringify({
+    name: '@ai-streamer/controller',
+    dependencies: {
+      '@ai-streamer/virtualdeck': 'file:../../packages/integrations/virtualdeck',
+    },
+  }),
+  'utf8',
+);
+assertControllerFileDepsStagedBeforeInstall(stagedApp);
+fs.rmSync(path.join(bridgePkgDir, 'package.json'));
+assert.throws(
+  () => assertControllerFileDepsStagedBeforeInstall(stagedApp),
+  /file: dependencies must exist/,
+);
+fs.rmSync(stagedPreflightTmp, { recursive: true, force: true });
 
 console.log('✅ test-prepare-build.js passed');
