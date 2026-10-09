@@ -458,4 +458,26 @@ assert.strictEqual(
 );
 fs.rmSync(copyTmp, { recursive: true, force: true });
 
+// Each ipcMain.handle channel may be registered only once (a second handle() throws at runtime).
+{
+  const mainJsText = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
+  const handleRe = /ipcMain\.handle(?:Once)?\(\s*(['"`])([^'"`]+)\1/g;
+  const channelLines = new Map();
+  let handleMatch;
+  while ((handleMatch = handleRe.exec(mainJsText)) !== null) {
+    const line = mainJsText.slice(0, handleMatch.index).split('\n').length;
+    const list = channelLines.get(handleMatch[2]) || [];
+    list.push(line);
+    channelLines.set(handleMatch[2], list);
+  }
+  assert.ok(channelLines.size > 0, 'expected ipcMain.handle registrations in main.js');
+  const duplicateChannels = [...channelLines.entries()]
+    .filter(([, lines]) => lines.length > 1)
+    .map(([name, lines]) => `${name} (lines ${lines.join(', ')})`);
+  assert.deepStrictEqual(
+    duplicateChannels,
+    [],
+    `ipcMain.handle channels registered more than once in main.js: ${duplicateChannels.join('; ')}`,
+  );
+}
 console.log('✅ test-prepare-build.js passed');

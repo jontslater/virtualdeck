@@ -3226,12 +3226,16 @@ ipcMain.handle('report-bug', async () => {
 ipcMain.handle('get-connected-overlays', async () => {
   try {
     const connections = [];
-    // Convert overlayRegistry Map to array of connection objects
+    // Convert overlayRegistry Map to array of connection objects (OPEN sockets only).
+    // Merged from the former duplicate handler in app.whenReady: the renderer reads clientCount.
     for (const [overlayName, clientSet] of overlayRegistry.entries()) {
-      if (clientSet.size > 0) {
+      const activeClients = Array.from(clientSet).filter(client => client.readyState === WebSocket.OPEN);
+      if (activeClients.length > 0) {
         connections.push({
           name: overlayName,
-          count: clientSet.size
+          connected: true,
+          clientCount: activeClients.length,
+          count: activeClients.length
         });
       }
     }
@@ -5593,22 +5597,6 @@ app.whenReady().then(() => {
     } catch (e) { 
       console.warn('overlay-video failed', e); 
     }
-  });
-
-  // IPC handler to get connected overlays
-  ipcMain.handle('get-connected-overlays', () => {
-    const connections = [];
-    overlayRegistry.forEach((clients, overlayName) => {
-      const activeClients = Array.from(clients).filter(client => client.readyState === WebSocket.OPEN);
-      if (activeClients.length > 0) {
-        connections.push({
-          name: overlayName,
-          connected: true,
-          clientCount: activeClients.length
-        });
-      }
-    });
-    return connections;
   });
 
   // Overlay is now a browser source - no window management needed
