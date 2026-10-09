@@ -1,6 +1,9 @@
 const { app, BrowserWindow, globalShortcut, Menu, dialog, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+// Node's crypto: Electron's main process also exposes WebCrypto as globalThis.crypto,
+// which has no randomBytes(), so a missing require fails only at call time.
+const crypto = require('crypto');
 (() => {
   const envPaths = [path.join(__dirname, '.env'), path.join(process.cwd(), '.env')];
   for (const envPath of envPaths) {

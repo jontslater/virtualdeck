@@ -721,4 +721,49 @@ fs.rmSync(stagedPreflightTmp, { recursive: true, force: true });
   }
 }
 
+
+// --- Node-only crypto APIs must come from require('crypto') and never run in renderer code ---
+{
+  // Electron (Node 20+) exposes WebCrypto as globalThis.crypto in BOTH main and renderer. It has
+  // getRandomValues/subtle/randomUUID but NOT randomBytes/createHash/etc., so a missing
+  // require('crypto') only fails when the call site runs (e.g. first overlay WebSocket connect).
+  const NODE_ONLY_CRYPTO = /\bcrypto\.(randomBytes|randomFillSync|randomInt|createHash|createHmac|timingSafeEqual|createCipheriv|createDecipheriv|pbkdf2Sync|pbkdf2|scryptSync|scrypt|generateKeyPairSync|createSign|createVerify)\s*\(/;
+  const NODE_CRYPTO_REQUIRE = /\b(?:const|let|var)\s+crypto\s*=\s*require\(\s*['"](?:node:)?crypto['"]\s*\)/;
+  const isRendererFile = (rel) =>
+    /^(public|overlays|VirtualDeck_Skins|TwitchConnected)\//.test(rel) || /\.html?$/i.test(rel) || rel === 'preload.js';
+  const tracked = execSync('git ls-files -- "*.js" "*.cjs" "*.mjs" "*.html" "*.htm"', { cwd: __dirname, encoding: 'utf8' })
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter((rel) => rel && !/^(extra|dist|node_modules)\//.test(rel));
+  assert.ok(tracked.includes('main.js'), 'crypto scan should cover main.js');
+  const missingRequire = [];
+  const rendererNodeCrypto = [];
+  for (const rel of tracked) {
+    let text;
+    try {
+      text = fs.readFileSync(path.join(__dirname, rel), 'utf8');
+    } catch {
+      continue;
+    }
+    const lines = text.split(/\r?\n/);
+    const hits = [];
+    lines.forEach((line, i) => {
+      if (NODE_ONLY_CRYPTO.test(line) && !/^\s*(\/\/|\*)/.test(line)) hits.push(`${rel}:${i + 1}`);
+    });
+    if (!hits.length) continue;
+    if (isRendererFile(rel)) rendererNodeCrypto.push(...hits);
+    else if (!NODE_CRYPTO_REQUIRE.test(text)) missingRequire.push(...hits);
+  }
+  assert.deepStrictEqual(
+    missingRequire,
+    [],
+    `Node crypto API used without const crypto = require('crypto') (would hit WebCrypto globalThis.crypto): ${missingRequire.join(', ')}`,
+  );
+  assert.deepStrictEqual(
+    rendererNodeCrypto,
+    [],
+    `Node-only crypto API in renderer/preload code (use crypto.getRandomValues there): ${rendererNodeCrypto.join(', ')}`,
+  );
+}
+
 console.log('✅ test-prepare-build.js passed');
