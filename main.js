@@ -4419,8 +4419,12 @@ function helixAccessToken() {
   return String(twitchToken || '').replace(/^oauth:/i, '').trim();
 }
 
+// Reuse one client so the 60s live-check cache survives across IPC/JARVIS calls.
+// Credentials are read through getters on every request, so reconnects are picked up.
+let raidHelixClient = null;
 function createRaidHelixClient() {
-  return new RaidHelixClient({
+  if (raidHelixClient) return raidHelixClient;
+  raidHelixClient = new RaidHelixClient({
     fetchFn: fetch,
     getClientId: () => twitchClientId,
     getAccessToken: helixAccessToken,
@@ -4429,6 +4433,7 @@ function createRaidHelixClient() {
       return twitchUserId;
     },
   });
+  return raidHelixClient;
 }
 
 function recordOutgoingRaidTarget({ login, displayName, source }) {

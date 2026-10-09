@@ -918,7 +918,7 @@ registry.register(
     if (!isValidTwitchLogin(login)) {
       return { success: false, error: 'Invalid Twitch login' };
     }
-    if (!args.confirmed) {
+    if (args.confirmed !== true) {
       return {
         success: false,
         needsConfirmation: true,

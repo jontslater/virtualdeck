@@ -130,6 +130,12 @@ assert.strictEqual(listOk.result.favorites[0].login, 'target');
 const raidOk = await registry.invoke('start_raid', { login: 'target', confirmed: true });
 assert.strictEqual(raidOk.result.success, true);
 
+// Only the boolean true confirms a raid (truthy strings/numbers must not).
+for (const loose of ['yes', 'true', 1]) {
+  const r = await registry.invoke('start_raid', { login: 'target', confirmed: loose });
+  assert.strictEqual(r.result.needsConfirmation, true, `confirmed: ${JSON.stringify(loose)} must not start a raid`);
+}
+
 // --- Macro allowlist validation ---
 const macroManager = new MacroManager(tmpDir);
 const badMacro = {
@@ -145,6 +151,27 @@ const goodMacro = {
   steps: [{ tool: 'start_raid', arguments: { login: 'target', confirmed: true } }],
 };
 assert.ok(macroManager.validate(goodMacro).valid);
+assert.ok(!macroManager.validate({ name: 'Loose', steps: [{ tool: 'start_raid', arguments: { login: 'target', confirmed: 'true' } }] }).valid);
+
+// main.js must reuse one RaidHelixClient so the 60s live-check cache is effective.
+const mainSrc = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
+assert.match(mainSrc, /if \(raidHelixClient\) return raidHelixClient;/, 'createRaidHelixClient should memoize the client');
+{
+  let streamCalls = 0;
+  const shared = new RaidHelixClient({
+    fetchFn: async (url) => {
+      if (url.includes('/helix/streams')) streamCalls += 1;
+      return { ok: true, status: 200, json: async () => ({ data: [] }) };
+    },
+    getClientId: () => 'cid',
+    getAccessToken: () => 'tok',
+    getBroadcasterId: async () => '1',
+  });
+  await shared.getLiveStatusForLogins(['alpha']);
+  const second = await shared.getLiveStatusForLogins(['alpha']);
+  assert.strictEqual(streamCalls, 1);
+  assert.strictEqual(second.cached, true);
+}
 
 assert.ok(scopesIncludeRaid(['channel:manage:raids', 'chat:read']));
 assert.ok(TWITCH_OAUTH_SCOPES.includes('channel:manage:raids'));
