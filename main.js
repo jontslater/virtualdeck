@@ -32,6 +32,11 @@ const SecurityManager = require('./lib/security');
 const { JarvisServer } = require('./jarvis-server');
 const { registry: jarvisRegistry } = require('./jarvis-tools');
 const { AIConfigManager } = require('./lib/ai-config');
+const { copyTreeSync, copyFileSyncSafe } = require('./lib/copy-tree-sync');
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
 
 // Configure auto-updater
 autoUpdater.autoDownload = false; // Don't auto-download, ask user first
@@ -325,47 +330,69 @@ function getCheckinLeaderboard(showStreak = false, limit = 5) {
 
 // Ensure config and sounds exist in userData on first run
 function ensureUserData() {
-  if (!fs.existsSync(configPath)) {
-    fse.copySync(defaultConfigPath, configPath);
-  }
-  if (!fs.existsSync(userSoundsDir)) {
-    fse.ensureDirSync(userSoundsDir);
-    if (fs.existsSync(defaultSoundsDir)) {
-      fse.copySync(defaultSoundsDir, userSoundsDir);
+  try {
+    if (!fs.existsSync(configPath)) {
+      copyFileSyncSafe(defaultConfigPath, configPath);
     }
+  } catch (err) {
+    console.error('[ensureUserData] Failed to copy default config.json:', err);
   }
-  // Ensure skins directory exists
-  if (!fs.existsSync(userSkinsDir)) {
-    fse.ensureDirSync(userSkinsDir);
-    if (fs.existsSync(defaultSkinsDir)) {
-      fse.copySync(defaultSkinsDir, userSkinsDir);
+
+  try {
+    if (!fs.existsSync(userSoundsDir)) {
+      fs.mkdirSync(userSoundsDir, { recursive: true });
+      if (fs.existsSync(defaultSoundsDir)) {
+        copyTreeSync(defaultSoundsDir, userSoundsDir);
+      }
     }
+  } catch (err) {
+    console.error('[ensureUserData] Failed to seed default sounds:', err);
   }
-  // Ensure tc_config exists with default topics
-  if (!fs.existsSync(tcConfigPath)) {
-    const defaultTc = {
-      topics: [
-        'channel.channel_points_custom_reward_redemption',
-        'channel.subscribe',
-        'channel.subscription.gift',
-        'channel.subscription.message',
-        'channel.follow',
-        'channel.raid',
-        'channel.cheer',
-        'channel.ban'
-      ]
-      ,
-      // ISO string for last time we polled followers; used to detect new followers since last run
-  lastFollowerPoll: null,
-  // track subscription ids created by this app so we don't remove subscriptions we don't own
-  createdSubscriptions: []
-    };
-    fs.writeFileSync(tcConfigPath, JSON.stringify(defaultTc, null, 2));
+
+  try {
+    if (!fs.existsSync(userSkinsDir)) {
+      fs.mkdirSync(userSkinsDir, { recursive: true });
+      if (fs.existsSync(defaultSkinsDir)) {
+        copyTreeSync(defaultSkinsDir, userSkinsDir);
+      }
+    }
+  } catch (err) {
+    console.error('[ensureUserData] Failed to seed default skins:', err);
   }
-  // Run migration to backfill button ids if missing
-  ensureButtonIds();
-  // Initialize profile system
-  ensureProfiles();
+
+  try {
+    if (!fs.existsSync(tcConfigPath)) {
+      const defaultTc = {
+        topics: [
+          'channel.channel_points_custom_reward_redemption',
+          'channel.subscribe',
+          'channel.subscription.gift',
+          'channel.subscription.message',
+          'channel.follow',
+          'channel.raid',
+          'channel.cheer',
+          'channel.ban',
+        ],
+        lastFollowerPoll: null,
+        createdSubscriptions: [],
+      };
+      fs.writeFileSync(tcConfigPath, JSON.stringify(defaultTc, null, 2));
+    }
+  } catch (err) {
+    console.error('[ensureUserData] Failed to write default tc_config.json:', err);
+  }
+
+  try {
+    ensureButtonIds();
+  } catch (err) {
+    console.error('[ensureUserData] ensureButtonIds failed:', err);
+  }
+
+  try {
+    ensureProfiles();
+  } catch (err) {
+    console.error('[ensureUserData] ensureProfiles failed:', err);
+  }
 }
 
 // Ensure each button in config has a stable unique id (migration/backfill)
@@ -3199,12 +3226,16 @@ ipcMain.handle('report-bug', async () => {
 ipcMain.handle('get-connected-overlays', async () => {
   try {
     const connections = [];
-    // Convert overlayRegistry Map to array of connection objects
+    // Convert overlayRegistry Map to array of connection objects (OPEN sockets only).
+    // Merged from the former duplicate handler in app.whenReady: the renderer reads clientCount.
     for (const [overlayName, clientSet] of overlayRegistry.entries()) {
-      if (clientSet.size > 0) {
+      const activeClients = Array.from(clientSet).filter(client => client.readyState === WebSocket.OPEN);
+      if (activeClients.length > 0) {
         connections.push({
           name: overlayName,
-          count: clientSet.size
+          connected: true,
+          clientCount: activeClients.length,
+          count: activeClients.length
         });
       }
     }
@@ -5147,7 +5178,11 @@ function checkForUpdates() {
 }
 
 app.whenReady().then(() => {
-  ensureUserData();
+  try {
+    ensureUserData();
+  } catch (err) {
+    console.error('[startup] ensureUserData failed:', err);
+  }
   // Ensure AI TTS sounds directory exists
   if (!fs.existsSync(aiTtsSoundsDir)) {
     fs.mkdirSync(aiTtsSoundsDir, { recursive: true });
@@ -5562,22 +5597,6 @@ app.whenReady().then(() => {
     } catch (e) { 
       console.warn('overlay-video failed', e); 
     }
-  });
-
-  // IPC handler to get connected overlays
-  ipcMain.handle('get-connected-overlays', () => {
-    const connections = [];
-    overlayRegistry.forEach((clients, overlayName) => {
-      const activeClients = Array.from(clients).filter(client => client.readyState === WebSocket.OPEN);
-      if (activeClients.length > 0) {
-        connections.push({
-          name: overlayName,
-          connected: true,
-          clientCount: activeClients.length
-        });
-      }
-    });
-    return connections;
   });
 
   // Overlay is now a browser source - no window management needed
