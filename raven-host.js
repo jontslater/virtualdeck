@@ -13,6 +13,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { app, shell, dialog } = require('electron');
+const { stripBom } = require('./lib/read-utf8');
 
 let ravenProc = null;
 
@@ -58,7 +59,7 @@ function bundledEnvPath() {
 
 function parseEnv(text) {
   const map = {};
-  for (const raw of String(text || '').split(/\r?\n/)) {
+  for (const raw of stripBom(String(text || '')).split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
     const eq = line.indexOf('=');

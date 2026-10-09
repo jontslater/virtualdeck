@@ -94,7 +94,7 @@ if (parsed) {
   console.log('ℹ️  Skipping PowerShell Parser::ParseFile (pwsh/powershell not available in this environment)');
 }
 
-const { stripBom, readFileUtf8 } = require('./scripts/raven-staging/read-utf8');
+const { stripBom, readFileUtf8 } = require('./lib/read-utf8');
 assert.strictEqual(stripBom('\uFEFFhello'), 'hello', 'stripBom removes leading BOM');
 assert.strictEqual(stripBom('plain'), 'plain', 'stripBom leaves plain text');
 assert.strictEqual(stripBom(''), '', 'stripBom handles empty string');
@@ -174,6 +174,14 @@ assert.strictEqual(fromFile['@ai-streamer/shared'], 'file:../../packages/shared'
 fs.rmSync(wsTmp, { recursive: true, force: true });
 
 const stagePs1 = fs.readFileSync(stageScript, 'utf8');
+for (const line of stagePs1.split(/\r?\n/)) {
+  if (!/Get-Content/.test(line)) continue;
+  if (!/-Raw/.test(line)) continue;
+  assert.ok(
+    /-Encoding\s/.test(line),
+    `stage-raven-runtime.ps1 must not use Get-Content -Raw without -Encoding (use Read-TextFileUtf8NoBom): ${line.trim()}`,
+  );
+}
 const nativeJsonArgPatterns = [
   /&\s+\$NodeExe[^\n`]*ConvertTo-Json/i,
   /&\s+\$node[^\n`]*ConvertTo-Json/i,
@@ -186,10 +194,16 @@ for (const pattern of nativeJsonArgPatterns) {
 
 const {
   mergeEnvDefaultsWithSource,
-  isBundleableEnvKey,
+  parseDotEnvText,
+  parseEnvLikeRavenHost,
+  unescapeQuotedEnvValue,
   dotEnvMapHasBundleableKeys,
-  getTemplateEnvKeys,
+  shouldIncludePersonalEnvEntry,
+  getSkipReasonForEntry,
 } = require('./scripts/raven-staging/merge-env-defaults');
+
+assert.strictEqual(unescapeQuotedEnvValue('a\\nb'), 'a\nb', '\\n becomes newline in unescape helper');
+assert.strictEqual(unescapeQuotedEnvValue('\\x'), 'x', '\\x becomes x');
 
 const mergeTemplate = `# header
 LLM_API_KEY=
@@ -197,40 +211,170 @@ TTS_API_KEY=
 LLM_MODEL=gpt-4
 `;
 
-const mergedExtra = mergeEnvDefaultsWithSource(mergeTemplate, {
-  NEWS_API_KEY: 'news-secret',
-  OPENWEATHER_API_KEY: 'wx-secret',
-  OMDB_API_KEY: 'omdb-secret',
-  LLM_API_KEY: 'llm-secret',
-  COMPUTERNAME: 'SHOULD-NOT-BUNDLE',
-  EMPTY_KEY: '',
-});
+const denyRoots = ['E:\\AIChatBot', 'C:\\Users\\dev\\AppData\\Local\\Temp'];
+
+const bulkSource = [
+  'NEWS_API_KEY=news-secret',
+  'OPENWEATHER_API_KEY=wx-secret',
+  'OMDB_API_KEY=omdb-secret',
+  'LLM_API_KEY=llm-secret',
+  'PERSONA_SPEAKING_STYLE=dry wit',
+  'LLM_MODEL_FAST=gpt-4o-mini',
+  'TTS_OUTPUT_DEVICE=Speakers',
+  'COMPUTERNAME=SHOULD-NOT-BUNDLE',
+  'PATH=C:\\Windows\\System32',
+  'RAVEN_ENV_PATH=C:\\secret\\raven.env',
+  'EMPTY_KEY=',
+].join('\n');
+
+const { merged: mergedExtra, skipped: skippedExtra } = mergeEnvDefaultsWithSource(
+  mergeTemplate,
+  `${bulkSource}\n`,
+  { denyPathRoots: denyRoots },
+);
 assert.ok(mergedExtra.includes('LLM_API_KEY=llm-secret'), 'template LLM_API_KEY should be overridden');
 assert.ok(mergedExtra.includes('NEWS_API_KEY=news-secret'), 'extra NEWS_API_KEY should be appended');
-assert.ok(mergedExtra.includes('OPENWEATHER_API_KEY=wx-secret'), 'extra OPENWEATHER_API_KEY should be appended');
-assert.ok(mergedExtra.includes('OMDB_API_KEY=omdb-secret'), 'extra OMDB_API_KEY should be appended');
-assert.ok(!mergedExtra.includes('COMPUTERNAME'), 'non-key machine vars should be excluded');
+assert.ok(mergedExtra.includes('PERSONA_SPEAKING_STYLE=dry wit'), 'persona settings should be appended verbatim');
+assert.ok(mergedExtra.includes('LLM_MODEL_FAST=gpt-4o-mini'), 'model overrides should be bundled');
+assert.ok(!mergedExtra.includes('COMPUTERNAME'), 'machine env keys should be excluded');
+assert.ok(!mergedExtra.includes('PATH='), 'PATH should be excluded');
+assert.ok(!mergedExtra.includes('RAVEN_ENV_PATH'), 'RAVEN_ENV_PATH should be excluded');
 assert.ok(!mergedExtra.includes('EMPTY_KEY'), 'blank values should be skipped');
+assert.ok(
+  skippedExtra.some((s) => s.key === 'COMPUTERNAME'),
+  'skipped list should include denied machine keys',
+);
 assert.ok(mergedExtra.indexOf('# header') < mergedExtra.indexOf('LLM_API_KEY=llm-secret'), 'template order preserved');
-const templateKeysList = getTemplateEnvKeys(mergeTemplate);
-assert.strictEqual(isBundleableEnvKey('LLM_API_KEY', templateKeysList), true, 'template keys are bundleable');
-assert.strictEqual(isBundleableEnvKey('NEWS_API_KEY', templateKeysList), true, 'NEWS_API_KEY suffix matches');
-assert.strictEqual(isBundleableEnvKey('WEATHER_API_KEY', templateKeysList), true, 'WEATHER_API_KEY suffix matches');
-assert.strictEqual(isBundleableEnvKey('RANDOM_HOST', templateKeysList), false, 'unrelated vars excluded');
-assert.strictEqual(
-  dotEnvMapHasBundleableKeys({ NEWS_API_KEY: 'x' }, mergeTemplate),
-  true,
-  'bundleable detection includes extra template keys',
-);
-assert.strictEqual(
-  dotEnvMapHasBundleableKeys({ COMPUTERNAME: 'PC' }, mergeTemplate),
-  false,
-  'bundleable detection ignores unrelated vars',
-);
 
-const mergedAlias = mergeEnvDefaultsWithSource(mergeTemplate, { OPENAI_API_KEY: 'openai-alias' });
+const aliasSource = 'OPENAI_API_KEY=openai-alias\n';
+const { merged: mergedAlias } = mergeEnvDefaultsWithSource(mergeTemplate, aliasSource);
 assert.ok(mergedAlias.includes('LLM_API_KEY=openai-alias'), 'OPENAI_API_KEY should map to LLM_API_KEY');
 assert.ok(!mergedAlias.includes('OPENAI_API_KEY='), 'alias should not be duplicated at end');
+
+const roundTripSource = [
+  'LLM_API_KEY=sk-test',
+  'AI_PERSONALITY_PROMPT="Be kind # not sarcastic"',
+  "SINGLE_QUOTED='say # quietly'",
+  'WIN_PATH=D:\\Music',
+  'SAY_HI=say "hi"',
+  'ESCAPED_INLINE="a\\nb"',
+  'MULTILINE_BLOCK="line one',
+  'line two"',
+].join('\n');
+
+const roundTripTmp = path.join(__dirname, '.tmp-merge-roundtrip');
+fs.rmSync(roundTripTmp, { recursive: true, force: true });
+fs.mkdirSync(roundTripTmp, { recursive: true });
+const roundTripSourcePath = path.join(roundTripTmp, 'source.env');
+const roundTripOutPath = path.join(roundTripTmp, 'merged.env');
+fs.writeFileSync(roundTripSourcePath, `${roundTripSource}\n`, 'utf8');
+
+const { merged: mergedRoundTrip, warnings: multilineWarnings } = mergeEnvDefaultsWithSource(
+  mergeTemplate,
+  fs.readFileSync(roundTripSourcePath, 'utf8'),
+  { denyPathRoots: [] },
+);
+fs.writeFileSync(roundTripOutPath, mergedRoundTrip, 'utf8');
+
+const sourceParsed = parseEnvLikeRavenHost(fs.readFileSync(roundTripSourcePath, 'utf8'));
+const mergedParsed = parseEnvLikeRavenHost(fs.readFileSync(roundTripOutPath, 'utf8'));
+for (const key of [
+  'LLM_API_KEY',
+  'AI_PERSONALITY_PROMPT',
+  'SINGLE_QUOTED',
+  'WIN_PATH',
+  'SAY_HI',
+  'ESCAPED_INLINE',
+]) {
+  assert.strictEqual(
+    mergedParsed[key],
+    sourceParsed[key],
+    `raven-host parseEnv round-trip for ${key}`,
+  );
+}
+assert.ok(
+  mergedRoundTrip.includes('WIN_PATH=D:\\Music'),
+  'Windows paths must not gain extra backslashes',
+);
+assert.ok(
+  mergedRoundTrip.includes('AI_PERSONALITY_PROMPT="Be kind # not sarcastic"'),
+  'quoted hash prompt copied verbatim',
+);
+assert.ok(mergedRoundTrip.includes('MULTILINE_BLOCK="line one'), 'multiline block copied verbatim');
+assert.ok(
+  multilineWarnings.some((w) => w.key === 'MULTILINE_BLOCK'),
+  'multiline keys should emit warnings',
+);
+fs.rmSync(roundTripTmp, { recursive: true, force: true });
+
+const quotedSource = 'AI_PERSONALITY_PROMPT="Be kind # not sarcastic"\nMULTILINE_PROMPT="line one\nline two"\n';
+const parsedQuoted = parseDotEnvText(quotedSource);
+assert.strictEqual(
+  parsedQuoted.AI_PERSONALITY_PROMPT,
+  'Be kind # not sarcastic',
+  'hash inside double quotes should be preserved in parseDotEnvText',
+);
+assert.strictEqual(
+  parsedQuoted.MULTILINE_PROMPT,
+  'line one\nline two',
+  'multiline double-quoted values should parse in parseDotEnvText',
+);
+
+assert.strictEqual(
+  dotEnvMapHasBundleableKeys('PERSONA_NAME=Raven\n', mergeTemplate),
+  true,
+  'personal settings detection includes persona fields',
+);
+assert.strictEqual(
+  dotEnvMapHasBundleableKeys('COMPUTERNAME=PC\n', mergeTemplate),
+  false,
+  'personal settings detection ignores denied machine vars',
+);
+assert.strictEqual(
+  getSkipReasonForEntry('PATH', 'C:\\Windows', denyRoots),
+  'denied-env-key',
+);
+assert.strictEqual(
+  getSkipReasonForEntry('CUSTOM_ROOT', 'E:\\AIChatBot\\apps\\controller', denyRoots),
+  'denied-dev-path',
+);
+assert.strictEqual(
+  shouldIncludePersonalEnvEntry('STREAMER_DEV_USERS', 'jont', denyRoots),
+  true,
+);
+
+const bomMergeTmp = path.join(__dirname, '.tmp-merge-bom-utf8');
+fs.rmSync(bomMergeTmp, { recursive: true, force: true });
+fs.mkdirSync(bomMergeTmp, { recursive: true });
+const bomSourcePath = path.join(bomMergeTmp, 'source.env');
+const bomOutPath = path.join(bomMergeTmp, 'merged.env');
+const bomBody = 'RAVEN_VOICE_ONLY=1\nPERSONA_NOTE=café — naïve ✨\n';
+fs.writeFileSync(bomSourcePath, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(bomBody, 'utf8')]));
+const { merged: bomMerged } = mergeEnvDefaultsWithSource(
+  'RAVEN_VOICE_ONLY=\nPERSONA_NOTE=\n',
+  fs.readFileSync(bomSourcePath, 'utf8'),
+);
+fs.writeFileSync(bomOutPath, bomMerged, 'utf8');
+assert.ok(!bomMerged.startsWith('\uFEFF'), 'merged env.defaults must not start with BOM');
+assert.ok(bomMerged.includes('RAVEN_VOICE_ONLY=1'), 'BOM-prefixed RAVEN_VOICE_ONLY must merge');
+assert.ok(bomMerged.includes('café — naïve ✨'), 'UTF-8 persona text must survive merge');
+const bomParsed = parseEnvLikeRavenHost(bomMerged);
+assert.strictEqual(bomParsed.RAVEN_VOICE_ONLY, '1', 'RAVEN_VOICE_ONLY parsed after BOM source');
+assert.strictEqual(bomParsed.PERSONA_NOTE, 'café — naïve ✨');
+fs.rmSync(bomMergeTmp, { recursive: true, force: true });
+
+const { patchSidecarEnvBom } = require('./scripts/raven-staging/patch-sidecar-env-bom');
+const sampleSidecar = [
+  'function applyEnvFile(path) {',
+  "  const raw = fs.readFileSync(path, 'utf8');",
+  '  return raw;',
+  '}',
+  'function parseEnv(text) { return text; }',
+].join('\n');
+const patchedSidecar = patchSidecarEnvBom(sampleSidecar);
+assert.ok(patchedSidecar.includes('__vdStripEnvBom'), 'sidecar patch should inject BOM helper');
+assert.ok(patchedSidecar.includes('__vdStripEnvBom(fs.readFileSync'), 'applyEnvFile read should be wrapped');
+
 const nativeNodeLines = stagePs1.split(/\r?\n/).filter((line) => /&\s+\$(NodeExe|node)\b/.test(line));
 for (const line of nativeNodeLines) {
   if (line.includes('workspace-packages.js') && line.includes('rewrites')) {
@@ -239,6 +383,58 @@ for (const line of nativeNodeLines) {
       'rewrites must use closure file path, not inline JSON',
     );
   }
+}
+
+const LOCAL_REQUIRE_RE = /require\s*\(\s*['"](\.[^'"]+)['"]\s*\)/g;
+
+function resolveLocalModule(fromFile, spec) {
+  const base = path.resolve(path.dirname(fromFile), spec);
+  const candidates = [base, `${base}.js`, path.join(base, 'index.js')];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function collectTransitiveLocalRequires(entryFile) {
+  const repoRoot = path.resolve(__dirname);
+  const seen = new Set();
+  const files = [];
+  const queue = [path.resolve(entryFile)];
+  while (queue.length > 0) {
+    const file = queue.shift();
+    if (!file || seen.has(file)) continue;
+    seen.add(file);
+    assert.ok(fs.existsSync(file), `main process require graph references missing file: ${file}`);
+    files.push(file);
+    const text = fs.readFileSync(file, 'utf8');
+    LOCAL_REQUIRE_RE.lastIndex = 0;
+    let match = LOCAL_REQUIRE_RE.exec(text);
+    while (match) {
+      const resolved = resolveLocalModule(file, match[1]);
+      if (
+        resolved &&
+        resolved.startsWith(`${repoRoot}${path.sep}`) &&
+        !resolved.includes(`${path.sep}node_modules${path.sep}`)
+      ) {
+        queue.push(resolved);
+      }
+      match = LOCAL_REQUIRE_RE.exec(text);
+    }
+  }
+  return files;
+}
+
+const mainProcessGraph = collectTransitiveLocalRequires(path.join(__dirname, 'main.js'));
+for (const absPath of mainProcessGraph) {
+  const rel = path.relative(__dirname, absPath).replace(/\\/g, '/');
+  assert.ok(
+    wouldElectronBuilderInclude(rel),
+    `main process dependency must match package.json build.files: ${rel}`,
+  );
+  assert.ok(!rel.startsWith('scripts/'), `main process must not require scripts/: ${rel}`);
 }
 
 console.log('✅ test-prepare-build.js passed');
