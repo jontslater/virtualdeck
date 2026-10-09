@@ -93,6 +93,16 @@ function Write-TextFileUtf8NoBom {
     [System.IO.File]::WriteAllText($Path, $Content, $utf8NoBom)
 }
 
+function Read-TextFileUtf8NoBom {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    $text = [System.IO.File]::ReadAllText($Path, $utf8NoBom)
+    if ($text.Length -gt 0 -and [int][char]$text[0] -eq 0xFEFF) {
+        $text = $text.Substring(1)
+    }
+    return $text
+}
+
 function Invoke-WithContinueOnNativeError {
     param([scriptblock]$ScriptBlock)
     $previous = $ErrorActionPreference
@@ -276,7 +286,7 @@ function Get-ControllerPackageName([string]$Root) {
     if (-not (Test-Path -LiteralPath $pkgJson)) {
         throw 'apps/controller/package.json not found (cannot resolve controller package name).'
     }
-    $pkg = Get-Content -LiteralPath $pkgJson -Raw | ConvertFrom-Json
+    $pkg = Read-TextFileUtf8NoBom -Path $pkgJson | ConvertFrom-Json
     if (-not $pkg.name) {
         throw 'apps/controller/package.json is missing a "name" field.'
     }
@@ -366,7 +376,7 @@ function Invoke-PackageBuildOptional {
     $pkgDir = Get-PackageDirectoryFromFilter -Root $Root -Filter $Filter
     $pkgJson = Join-Path $pkgDir 'package.json'
     if (-not (Test-Path -LiteralPath $pkgJson)) { return }
-    $pkg = Get-Content -LiteralPath $pkgJson -Raw | ConvertFrom-Json
+    $pkg = Read-TextFileUtf8NoBom -Path $pkgJson | ConvertFrom-Json
     if (-not ($pkg.scripts -and $pkg.scripts.build)) { return }
 
     $hasDist = Test-PackageHasBuiltOutput -PackageDir $pkgDir
@@ -1057,7 +1067,7 @@ function Parse-DotEnvFile {
     param([string]$Path)
     $map = @{}
     if (-not (Test-Path -LiteralPath $Path)) { return $map }
-    foreach ($raw in (Get-Content -LiteralPath $Path)) {
+    foreach ($raw in (Read-TextFileUtf8NoBom -Path $Path).Split([string[]]@("`r`n", "`n"), [System.StringSplitOptions]::None)) {
         $line = $raw.Trim()
         if (-not $line -or $line.StartsWith('#')) { continue }
         $eq = $line.IndexOf('=')
@@ -1196,6 +1206,7 @@ function Merge-EnvDefaultsWithAituberDotenv {
     param(
         [string]$TemplateText,
         [string]$SourceFilePath,
+        [string]$DestPath,
         [string]$NodeExe,
         [string[]]$DenyPathRoots
     )
@@ -1211,19 +1222,23 @@ function Merge-EnvDefaultsWithAituberDotenv {
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
     try {
         $templateFile = Join-Path $tempDir 'template.env'
-        $outFile = Join-Path $tempDir 'merged.env'
+        $outFile = $DestPath
         $skippedFile = Join-Path $tempDir 'skipped.tsv'
         $bundledFile = Join-Path $tempDir 'bundled.tsv'
         $warningsFile = Join-Path $tempDir 'warnings.tsv'
         $denyFile = Join-Path $tempDir 'deny-paths.txt'
         Write-TextFileUtf8NoBom -Path $templateFile -Content $TemplateText
         Write-DenyPathRootsFile -Path $denyFile -Roots $DenyPathRoots
+        $destParent = Split-Path -Parent $outFile
+        if ($destParent -and -not (Test-Path -LiteralPath $destParent)) {
+            New-Item -ItemType Directory -Path $destParent -Force | Out-Null
+        }
         & $node $mergeHelper 'merge' $templateFile $SourceFilePath $outFile $skippedFile $denyFile $bundledFile $warningsFile
         if ($LASTEXITCODE -ne 0) {
             throw "merge-env-defaults.js failed with exit code $LASTEXITCODE"
         }
         if (Test-Path -LiteralPath $skippedFile) {
-            foreach ($raw in (Get-Content -LiteralPath $skippedFile)) {
+            foreach ($raw in (Read-TextFileUtf8NoBom -Path $skippedFile).Split([string[]]@("`r`n", "`n"), [System.StringSplitOptions]::None)) {
                 if (-not $raw.Trim()) { continue }
                 $parts = $raw.Split([char]9)
                 $skipKey = $parts[0]
@@ -1231,7 +1246,7 @@ function Merge-EnvDefaultsWithAituberDotenv {
             }
         }
         if (Test-Path -LiteralPath $warningsFile) {
-            foreach ($raw in (Get-Content -LiteralPath $warningsFile)) {
+            foreach ($raw in (Read-TextFileUtf8NoBom -Path $warningsFile).Split([string[]]@("`r`n", "`n"), [System.StringSplitOptions]::None)) {
                 if (-not $raw.Trim()) { continue }
                 $parts = $raw.Split([char]9)
                 $warnKey = $parts[0]
@@ -1239,7 +1254,7 @@ function Merge-EnvDefaultsWithAituberDotenv {
             }
         }
         if (Test-Path -LiteralPath $bundledFile) {
-            foreach ($raw in (Get-Content -LiteralPath $bundledFile)) {
+            foreach ($raw in (Read-TextFileUtf8NoBom -Path $bundledFile).Split([string[]]@("`r`n", "`n"), [System.StringSplitOptions]::None)) {
                 if (-not $raw.Trim()) { continue }
                 $parts = $raw.Split([char]9)
                 $bundleKey = $parts[0]
@@ -1250,11 +1265,7 @@ function Merge-EnvDefaultsWithAituberDotenv {
                 }
             }
         }
-        return @{
-            MergedText = (Get-Content -LiteralPath $outFile -Raw)
-            SkippedFile = $skippedFile
-            BundledFile = $bundledFile
-        }
+        return $true
     } finally {
         Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -1291,7 +1302,7 @@ function Write-EnvDefaultsTemplate {
 
     $templateText = $null
     if (Test-Path -LiteralPath $TemplateInRepo) {
-        $templateText = Get-Content -LiteralPath $TemplateInRepo -Raw
+        $templateText = Read-TextFileUtf8NoBom -Path $TemplateInRepo
     } else {
         $templateText = @(
             '# Raven Voice AI - fill API keys after install (never ship real keys)',
@@ -1310,8 +1321,7 @@ function Write-EnvDefaultsTemplate {
         Save-EnvDefaultsTemplateBackupOutsideStage -RepoRoot $RepoRoot -TemplateText $templateText
         $denyPathRoots = @($RepoRoot, $AITuberRoot, $env:TEMP)
         $resolved = Resolve-BundleKeysSource -AITuberRoot $AITuberRoot -TemplateText $templateText -NodeExe $NodeExe -DenyPathRoots $denyPathRoots
-        $mergeResult = Merge-EnvDefaultsWithAituberDotenv -TemplateText $templateText -SourceFilePath $resolved.SourcePath -NodeExe $NodeExe -DenyPathRoots $denyPathRoots
-        Write-TextFileUtf8NoBom -Path $EnvDefaultsPath -Content $mergeResult.MergedText
+        Merge-EnvDefaultsWithAituberDotenv -TemplateText $templateText -SourceFilePath $resolved.SourcePath -DestPath $EnvDefaultsPath -NodeExe $NodeExe -DenyPathRoots $denyPathRoots | Out-Null
         return
     }
 
@@ -1382,6 +1392,13 @@ if (-not (Test-Path -LiteralPath (Join-Path $StageDir 'sidecar.js'))) {
     exit 1
 }
 
+$sidecarJs = Join-Path $StageDir 'sidecar.js'
+$sidecarPatchHelper = Get-RavenStagingHelperPath 'patch-sidecar-env-bom.js'
+$sidecarPatchNode = Resolve-MergeEnvNodeExe -NodeExe $BundledNodeExe
+if ($sidecarPatchNode -and (Test-Path -LiteralPath $sidecarPatchHelper)) {
+    & $sidecarPatchNode $sidecarPatchHelper $sidecarJs
+}
+
 if (-not (Test-Path -LiteralPath $BundledNodeExe)) {
     Write-Fail 'ERROR: Bundled node.exe is missing.'
     exit 1
@@ -1433,7 +1450,7 @@ foreach ($name in $dangerousNames) {
 }
 
 $EnvDefaultsPath = Join-Path $StageDir 'env.defaults'
-$defaultsText = Get-Content -LiteralPath $EnvDefaultsPath -Raw
+$defaultsText = Read-TextFileUtf8NoBom -Path $EnvDefaultsPath
 if (-not $Script:BundleKeys) {
     if (Test-EnvTextHasPopulatedSecrets $defaultsText) {
         Write-Fail '  ERROR: env.defaults contains non-placeholder API key values.'

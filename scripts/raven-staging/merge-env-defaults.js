@@ -6,6 +6,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { stripBom, readFileUtf8 } = require('./read-utf8');
 
 const ENV_KEY_ALIASES = {
   OPENAI_API_KEY: 'LLM_API_KEY',
@@ -79,7 +80,7 @@ function isSecretEnvKeyName(key) {
  */
 function parseEnvLikeRavenHost(text) {
   const map = {};
-  for (const raw of String(text || '').split(/\r?\n/)) {
+  for (const raw of stripBom(String(text || '')).split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
     const eq = line.indexOf('=');
@@ -264,8 +265,9 @@ function renameEnvRecord(record, newKey) {
 }
 
 function dotEnvMapHasBundleableKeys(sourceText, templateText, denyRoots = []) {
-  const parsed = parseEnvLikeRavenHost(sourceText);
-  const records = parseSourceEnvRecords(sourceText);
+  const normalizedSource = stripBom(String(sourceText || ''));
+  const parsed = parseEnvLikeRavenHost(normalizedSource);
+  const records = parseSourceEnvRecords(normalizedSource);
   for (const record of records.values()) {
     const val = parsed[record.key];
     const checkVal = record.multiline ? valueSuffixFromRawLines(record.rawLines).trim() : val;
@@ -275,10 +277,11 @@ function dotEnvMapHasBundleableKeys(sourceText, templateText, denyRoots = []) {
 }
 
 function collectPersonalEnvOverlay(sourceText, templateText, denyRoots = []) {
+  const normalizedSource = stripBom(String(sourceText || ''));
   const templateKeys = getTemplateEnvKeys(templateText);
   const templateKeySet = new Set(templateKeys);
-  const parsed = parseEnvLikeRavenHost(sourceText);
-  const records = parseSourceEnvRecords(sourceText);
+  const parsed = parseEnvLikeRavenHost(normalizedSource);
+  const records = parseSourceEnvRecords(normalizedSource);
   const included = new Map();
   const skipped = [];
   const warnings = [];
@@ -414,8 +417,8 @@ function writeBundledManifest(filePath, overlay) {
   fs.writeFileSync(filePath, lines.length ? `${lines.join('\n')}\n` : '', 'utf8');
 }
 
-function readUtf8(filePath) {
-  return fs.readFileSync(filePath, 'utf8');
+function writeFileUtf8NoBom(filePath, content) {
+  fs.writeFileSync(filePath, content, { encoding: 'utf8' });
 }
 
 /** Used by tests / optional advanced parsing (not Raven runtime). */
@@ -482,13 +485,13 @@ function main() {
       process.exit(2);
     }
     const denyRoots = loadDenyPathRoots(denyPathsFile);
-    const sourceText = readUtf8(sourcePath);
+    const sourceText = readFileUtf8(sourcePath);
     const { merged, skipped, warnings, overlay } = mergeEnvDefaultsWithSource(
-      readUtf8(templatePath),
+      readFileUtf8(templatePath),
       sourceText,
       { denyPathRoots: denyRoots },
     );
-    if (outPath) fs.writeFileSync(outPath, merged, 'utf8');
+    if (outPath) writeFileUtf8NoBom(outPath, merged);
     else process.stdout.write(merged);
     writeSkippedManifest(skippedPath, skipped);
     writeBundledManifest(bundledManifestPath, overlay);
@@ -506,7 +509,11 @@ function main() {
       process.exit(2);
     }
     const denyRoots = loadDenyPathRoots(denyPathsFile);
-    const ok = dotEnvMapHasBundleableKeys(readUtf8(sourcePath), readUtf8(templatePath), denyRoots);
+    const ok = dotEnvMapHasBundleableKeys(
+      readFileUtf8(sourcePath),
+      readFileUtf8(templatePath),
+      denyRoots,
+    );
     process.exit(ok ? 0 : 1);
   }
   console.error('Unknown command. Use merge or has-personal-settings.');
@@ -534,4 +541,6 @@ module.exports = {
   valueContainsDeniedAbsolutePath,
   mergeEnvDefaultsWithSource,
   collectPersonalEnvOverlay,
+  stripBom,
+  writeFileUtf8NoBom,
 };

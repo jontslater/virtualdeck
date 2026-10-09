@@ -174,6 +174,14 @@ assert.strictEqual(fromFile['@ai-streamer/shared'], 'file:../../packages/shared'
 fs.rmSync(wsTmp, { recursive: true, force: true });
 
 const stagePs1 = fs.readFileSync(stageScript, 'utf8');
+for (const line of stagePs1.split(/\r?\n/)) {
+  if (!/Get-Content/.test(line)) continue;
+  if (!/-Raw/.test(line)) continue;
+  assert.ok(
+    /-Encoding\s/.test(line),
+    `stage-raven-runtime.ps1 must not use Get-Content -Raw without -Encoding (use Read-TextFileUtf8NoBom): ${line.trim()}`,
+  );
+}
 const nativeJsonArgPatterns = [
   /&\s+\$NodeExe[^\n`]*ConvertTo-Json/i,
   /&\s+\$node[^\n`]*ConvertTo-Json/i,
@@ -334,6 +342,39 @@ assert.strictEqual(
   shouldIncludePersonalEnvEntry('STREAMER_DEV_USERS', 'jont', denyRoots),
   true,
 );
+
+const bomMergeTmp = path.join(__dirname, '.tmp-merge-bom-utf8');
+fs.rmSync(bomMergeTmp, { recursive: true, force: true });
+fs.mkdirSync(bomMergeTmp, { recursive: true });
+const bomSourcePath = path.join(bomMergeTmp, 'source.env');
+const bomOutPath = path.join(bomMergeTmp, 'merged.env');
+const bomBody = 'RAVEN_VOICE_ONLY=1\nPERSONA_NOTE=café — naïve ✨\n';
+fs.writeFileSync(bomSourcePath, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(bomBody, 'utf8')]));
+const { merged: bomMerged } = mergeEnvDefaultsWithSource(
+  'RAVEN_VOICE_ONLY=\nPERSONA_NOTE=\n',
+  fs.readFileSync(bomSourcePath, 'utf8'),
+);
+fs.writeFileSync(bomOutPath, bomMerged, 'utf8');
+assert.ok(!bomMerged.startsWith('\uFEFF'), 'merged env.defaults must not start with BOM');
+assert.ok(bomMerged.includes('RAVEN_VOICE_ONLY=1'), 'BOM-prefixed RAVEN_VOICE_ONLY must merge');
+assert.ok(bomMerged.includes('café — naïve ✨'), 'UTF-8 persona text must survive merge');
+const bomParsed = parseEnvLikeRavenHost(bomMerged);
+assert.strictEqual(bomParsed.RAVEN_VOICE_ONLY, '1', 'RAVEN_VOICE_ONLY parsed after BOM source');
+assert.strictEqual(bomParsed.PERSONA_NOTE, 'café — naïve ✨');
+fs.rmSync(bomMergeTmp, { recursive: true, force: true });
+
+const { patchSidecarEnvBom } = require('./scripts/raven-staging/patch-sidecar-env-bom');
+const sampleSidecar = [
+  'function applyEnvFile(path) {',
+  "  const raw = fs.readFileSync(path, 'utf8');",
+  '  return raw;',
+  '}',
+  'function parseEnv(text) { return text; }',
+].join('\n');
+const patchedSidecar = patchSidecarEnvBom(sampleSidecar);
+assert.ok(patchedSidecar.includes('__vdStripEnvBom'), 'sidecar patch should inject BOM helper');
+assert.ok(patchedSidecar.includes('__vdStripEnvBom(fs.readFileSync'), 'applyEnvFile read should be wrapped');
+
 const nativeNodeLines = stagePs1.split(/\r?\n/).filter((line) => /&\s+\$(NodeExe|node)\b/.test(line));
 for (const line of nativeNodeLines) {
   if (line.includes('workspace-packages.js') && line.includes('rewrites')) {
