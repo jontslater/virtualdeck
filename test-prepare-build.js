@@ -639,4 +639,86 @@ assert.throws(
 );
 fs.rmSync(stagedPreflightTmp, { recursive: true, force: true });
 
+// --- CLI-level tests: spawn helpers with the exact argv layout stage-raven-runtime.ps1 uses ---
+{
+  const { spawnSync } = require('child_process');
+  const runHelper = (script, args) =>
+    spawnSync(process.execPath, [path.join(__dirname, 'scripts', 'raven-staging', script), ...args], {
+      encoding: 'utf8',
+    });
+
+  // Pin the PowerShell call sites so tests and script cannot drift apart.
+  const ps1Cli = fs.readFileSync(path.join(__dirname, 'scripts/stage-raven-runtime.ps1'), 'utf8');
+  assert.ok(
+    /&\s*\$node\s+\$helper\s+'assert-clean'\s+\$StageDir\s+\$RepoRoot\b/.test(ps1Cli),
+    'stage-raven-runtime.ps1 must call: assert-clean $StageDir $RepoRoot',
+  );
+  assert.ok(
+    /&\s*\$node\s+\$helper\s+'assert-controller-file-deps'\s+\$Root\s+\$appRoot\b/.test(ps1Cli),
+    'stage-raven-runtime.ps1 must call: assert-controller-file-deps $Root $appRoot',
+  );
+
+  const cliTmp = path.join(__dirname, '.tmp-cli-argv');
+  fs.rmSync(cliTmp, { recursive: true, force: true });
+  try {
+    // extra-raven-keep-paths.js: assert-clean <stageDir> <repoRoot>
+    const cliRepo = path.join(cliTmp, 'repo');
+    const cliStage = path.join(cliRepo, 'extra', 'raven');
+    fs.mkdirSync(cliStage, { recursive: true });
+    fs.writeFileSync(path.join(cliStage, 'README.md'), '# tracked', 'utf8');
+    fs.writeFileSync(path.join(cliStage, 'env.defaults'), 'LLM_API_KEY=\n', 'utf8');
+    let r = runHelper('extra-raven-keep-paths.js', ['assert-clean', cliStage, cliRepo]);
+    assert.strictEqual(r.status, 0, `assert-clean CLI should pass on a clean stage: ${r.stderr}`);
+    r = runHelper('extra-raven-keep-paths.js', ['assert-clean', cliStage]);
+    assert.strictEqual(r.status, 0, `assert-clean CLI should derive repoRoot from stageDir: ${r.stderr}`);
+    r = runHelper('extra-raven-keep-paths.js', ['list-stale-top-level', cliStage, cliRepo]);
+    assert.strictEqual(r.status, 0, `list-stale-top-level CLI should run: ${r.stderr}`);
+    assert.strictEqual(r.stdout.trim(), '', 'clean stage should list no stale entries');
+    fs.mkdirSync(path.join(cliStage, 'app'), { recursive: true });
+    fs.writeFileSync(path.join(cliStage, 'README.txt'), 'stale', 'utf8');
+    r = runHelper('extra-raven-keep-paths.js', ['assert-clean', cliStage, cliRepo]);
+    assert.strictEqual(r.status, 1, 'assert-clean CLI should fail when stale output remains');
+    assert.ok(/not clean before staging/.test(r.stderr), `unexpected assert-clean error: ${r.stderr}`);
+    r = runHelper('extra-raven-keep-paths.js', ['list-stale-top-level', cliStage, cliRepo]);
+    assert.strictEqual(r.status, 0, `list-stale-top-level CLI should run: ${r.stderr}`);
+    assert.deepStrictEqual(r.stdout.trim().split(/\r?\n/).sort(), ['README.txt', 'app'].sort());
+    r = runHelper('extra-raven-keep-paths.js', ['assert-clean', cliStage, path.join(cliTmp, 'other')]);
+    assert.strictEqual(r.status, 1, 'assert-clean CLI should refuse a stageDir outside <repoRoot>/extra/raven');
+    assert.ok(/Refusing to clean outside extra\/raven/.test(r.stderr));
+
+    // workspace-packages.js: assert-controller-file-deps <repoRoot> <stagedAppRoot>
+    // The controller is NOT staged yet (this preflight runs before controller staging).
+    const srcRoot = path.join(cliTmp, 'aituber');
+    fs.mkdirSync(path.join(srcRoot, 'apps', 'controller'), { recursive: true });
+    fs.writeFileSync(
+      path.join(srcRoot, 'apps', 'controller', 'package.json'),
+      JSON.stringify({
+        name: '@ai-streamer/controller',
+        dependencies: {
+          '@ai-streamer/integrations-virtualdeck': 'file:../../packages/integrations/virtualdeck',
+          '@ai-streamer/shared': 'file:../../packages/shared',
+        },
+      }),
+      'utf8',
+    );
+    const cliApp = path.join(cliTmp, 'stage', 'app');
+    for (const rel of ['packages/integrations/virtualdeck', 'packages/shared']) {
+      const dir = path.join(cliApp, ...rel.split('/'));
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'package.json'), '{}', 'utf8');
+    }
+    assert.ok(!fs.existsSync(path.join(cliApp, 'apps', 'controller')), 'mock: controller must not be staged yet');
+    r = runHelper('workspace-packages.js', ['assert-controller-file-deps', srcRoot, cliApp]);
+    assert.strictEqual(r.status, 0, `assert-controller-file-deps CLI should pass before controller staging: ${r.stderr}`);
+    fs.rmSync(path.join(cliApp, 'packages', 'integrations', 'virtualdeck', 'package.json'));
+    r = runHelper('workspace-packages.js', ['assert-controller-file-deps', srcRoot, cliApp]);
+    assert.strictEqual(r.status, 2, 'assert-controller-file-deps CLI should fail when the bridge is not staged');
+    assert.ok(/integrations-virtualdeck/.test(r.stderr), `missing dep should be named: ${r.stderr}`);
+    r = runHelper('workspace-packages.js', ['assert-controller-file-deps', srcRoot]);
+    assert.strictEqual(r.status, 1, 'assert-controller-file-deps CLI should require both args');
+  } finally {
+    fs.rmSync(cliTmp, { recursive: true, force: true });
+  }
+}
+
 console.log('✅ test-prepare-build.js passed');

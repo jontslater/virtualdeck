@@ -91,7 +91,8 @@ function main() {
   }
   if (cmd === 'assert-clean') {
     const stageDir = arg1;
-    const repoRoot = process.argv[3] || path.resolve(stageDir, '..', '..');
+    // argv: [node, script, cmd, stageDir, repoRoot] (matches stage-raven-runtime.ps1)
+    const repoRoot = process.argv[4] || path.resolve(stageDir, '..', '..');
     try {
       assertCleanStagePrereq(stageDir, repoRoot);
     } catch (err) {
@@ -102,7 +103,8 @@ function main() {
   }
   if (cmd === 'list-stale-top-level') {
     const stageDir = arg1;
-    const repoRoot = process.argv[3] || path.resolve(stageDir, '..', '..');
+    // argv: [node, script, cmd, stageDir, repoRoot] (matches stage-raven-runtime.ps1)
+    const repoRoot = process.argv[4] || path.resolve(stageDir, '..', '..');
     assertExtraRavenStageDir(stageDir, repoRoot);
     const keep = getExtraRavenKeepRelPaths(repoRoot);
     for (const name of listStaleTopLevelStageEntries(stageDir, keep)) {
@@ -111,7 +113,7 @@ function main() {
     return;
   }
   console.error('Usage: extra-raven-keep-paths.js list-keep-paths <repoRoot>');
-  console.error('       extra-raven-keep-paths.js list-stale-top-level <stageDir> --repo <repoRoot>');
+  console.error('       extra-raven-keep-paths.js list-stale-top-level <stageDir> [repoRoot]\n       extra-raven-keep-paths.js assert-clean <stageDir> [repoRoot]');
   process.exit(2);
 }
 

@@ -219,9 +219,18 @@ function getControllerFileDependencyRels(repoRoot) {
   return collectFileDependencyRels(repoRoot, CONTROLLER_REL);
 }
 
-function assertControllerFileDepsStagedBeforeInstall(stagedAppRoot) {
+/**
+ * Verify every controller file: dependency already exists in the staged app tree.
+ * The controller package.json is read from the SOURCE repo (<repoRoot>/apps/controller)
+ * because this preflight runs before the controller itself is staged; file: targets are
+ * resolved relative to the staged controller location (<stagedAppRoot>/apps/controller).
+ * When repoRoot is omitted, the staged controller package.json is used.
+ */
+function assertControllerFileDepsStagedBeforeInstall(stagedAppRoot, repoRoot) {
   const controllerDir = path.join(stagedAppRoot, 'apps', 'controller');
-  const pkgPath = path.join(controllerDir, 'package.json');
+  const pkgPath = repoRoot
+    ? path.join(repoRoot, 'apps', 'controller', 'package.json')
+    : path.join(controllerDir, 'package.json');
   if (!fs.existsSync(pkgPath)) {
     throw new Error(`controller package.json missing at ${pkgPath}`);
   }
@@ -290,13 +299,15 @@ if (require.main === module) {
     process.exit(0);
   }
   if (cmd === 'assert-controller-file-deps') {
+    // argv: [node, script, cmd, repoRoot, stagedAppRoot] (matches stage-raven-runtime.ps1)
+    const repoRoot = process.argv[3];
     const stagedAppRoot = process.argv[4];
-    if (!stagedAppRoot) {
+    if (!repoRoot || !stagedAppRoot) {
       console.error('Usage: node workspace-packages.js assert-controller-file-deps <repoRoot> <stagedAppRoot>');
       process.exit(1);
     }
     try {
-      assertControllerFileDepsStagedBeforeInstall(stagedAppRoot);
+      assertControllerFileDepsStagedBeforeInstall(stagedAppRoot, repoRoot);
     } catch (err) {
       console.error(err.message || err);
       process.exit(2);
