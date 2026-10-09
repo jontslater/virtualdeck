@@ -238,6 +238,21 @@
         </select>
       </div>
 
+      <!-- Wake name -->
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">🗣️ Wake name</div>
+        <label style="font-size: 10px; color: var(--text-tertiary); display: block; margin-bottom: 3px;">Primary (say &quot;Hey …&quot;)</label>
+        <input id="ai-wake-name-primary" class="preference-input" type="text" maxlength="32" placeholder="Raven" style="width: 100%; margin-bottom: 8px;" />
+        <label style="font-size: 10px; color: var(--text-tertiary); display: block; margin-bottom: 3px;">Extra aliases (comma-separated, optional)</label>
+        <input id="ai-wake-name-aliases" class="preference-input" type="text" placeholder="Ree, Dash" style="width: 100%; margin-bottom: 8px;" />
+        <button id="ai-wake-name-save" class="ai-management-btn" style="width: 100%; justify-content: center;" title="Save wake name to raven.env">
+          <span class="btn-icon">💾</span>
+          <span class="btn-label">Save wake name</span>
+        </button>
+        <div id="ai-wake-name-hint" style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Say &quot;Hey Raven&quot; to wake the assistant.</div>
+        <div id="ai-wake-name-status" style="margin-top: 4px; font-size: 10px; color: var(--text-secondary);"></div>
+      </div>
+
       <!-- Voice Picker -->
       <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
         <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">🎙️ AI Voice</div>
@@ -245,6 +260,10 @@
           <select id="ai-voice-selector" class="ai-management-selector" style="margin-bottom: 0; flex: 1;">
             <option value="">Loading voices…</option>
           </select>
+          <button id="ai-voice-preview" class="ai-management-btn" style="min-width: 72px; justify-content: center;" title="Play or stop voice preview">
+            <span class="btn-icon">▶️</span>
+            <span class="btn-label">Play</span>
+          </button>
           <button id="ai-voice-refresh" class="ai-management-btn" style="min-width: 72px; justify-content: center;" title="Refresh voice list">
             <span class="btn-icon">🔄</span>
             <span class="btn-label">Refresh</span>
@@ -1538,7 +1557,7 @@
         </div>
         <div class="preference-item">
           <label for="macro-phrase">Voice Trigger Phrase</label>
-          <input type="text" id="macro-phrase" class="preference-input" placeholder="raven we are going live" />
+          <input type="text" id="macro-phrase" class="preference-input" placeholder="raven we are going live" title="Voice phrase uses your configured wake name" />
           <small>The exact phrase that will trigger this macro (case-insensitive)</small>
         </div>
         <div class="preference-item">

@@ -7141,11 +7141,170 @@ function setupOverlayWidget() {
     }
     loadSpeakers();
 
+    // Wake name (HOST_WAKE_NAMES in raven.env)
+    const wakePrimaryInput = document.getElementById('ai-wake-name-primary');
+    const wakeAliasesInput = document.getElementById('ai-wake-name-aliases');
+    const wakeSaveBtn = document.getElementById('ai-wake-name-save');
+    const wakeHint = document.getElementById('ai-wake-name-hint');
+    const wakeStatus = document.getElementById('ai-wake-name-status');
+
+    function applyWakeNameUi(primary, names) {
+      const p = primary || 'Raven';
+      if (wakeHint) {
+        wakeHint.textContent = `Say "Hey ${p}" to wake the assistant.`;
+      }
+      const macroPhrase = document.getElementById('macro-phrase');
+      if (macroPhrase) {
+        macroPhrase.placeholder = `${String(p).toLowerCase()} we are going live`;
+      }
+      if (wakePrimaryInput && document.activeElement !== wakePrimaryInput) {
+        wakePrimaryInput.value = p;
+      }
+      if (wakeAliasesInput && document.activeElement !== wakeAliasesInput) {
+        const aliases = (names || []).slice(1);
+        wakeAliasesInput.value = aliases.join(', ');
+      }
+    }
+
+    async function loadWakeNames() {
+      try {
+        const headers = await getAIConfigAuthHeaders();
+        const res = await fetch('http://localhost:8080/api/ai/wake-names', {
+          method: 'GET',
+          headers,
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        applyWakeNameUi(data.primary, data.names);
+      } catch (err) {
+        console.warn('Failed to load wake names:', err);
+      }
+    }
+
+    async function saveWakeNames() {
+      if (!wakePrimaryInput) return;
+      const primary = wakePrimaryInput.value.trim();
+      const aliasRaw = wakeAliasesInput ? wakeAliasesInput.value.trim() : '';
+      const parts = [primary];
+      if (aliasRaw) {
+        aliasRaw.split(',').forEach((s) => {
+          const t = s.trim();
+          if (t) parts.push(t);
+        });
+      }
+      const wakeNames = parts.join(', ');
+      if (wakeStatus) wakeStatus.textContent = 'Saving…';
+      try {
+        const headers = await getAIConfigAuthHeaders();
+        const res = await fetch('http://localhost:8080/api/ai/wake-names', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ wakeNames }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          if (wakeStatus) wakeStatus.textContent = data.error || 'Could not save wake name.';
+          return;
+        }
+        applyWakeNameUi(data.primary, data.names);
+        if (wakeStatus) {
+          wakeStatus.textContent = data.requiresRavenRestart
+            ? 'Saved. Restart Raven to apply the new wake name.'
+            : 'Saved. Wake name will apply when Raven reloads raven.env.';
+        }
+      } catch (err) {
+        console.warn('Failed to save wake names:', err);
+        if (wakeStatus) wakeStatus.textContent = 'Could not save wake name.';
+      }
+    }
+
+    if (wakeSaveBtn) {
+      wakeSaveBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        saveWakeNames();
+      });
+    }
+    loadWakeNames();
+
     // Voice Picker - Load and select TTS voices from ElevenLabs
     const voiceSelect = document.getElementById('ai-voice-selector');
     const voiceRefreshBtn = document.getElementById('ai-voice-refresh');
+    const voicePreviewBtn = document.getElementById('ai-voice-preview');
     const voiceStatus = document.getElementById('ai-voice-status');
     const VOICE_CONFIG_KEY = 'VD_AI_VOICE_CONFIG';
+    let voicePreviewAudio = null;
+    let voicePreviewObjectUrl = null;
+
+    function setVoicePreviewButtonPlaying(playing) {
+      if (!voicePreviewBtn) return;
+      const icon = voicePreviewBtn.querySelector('.btn-icon');
+      const label = voicePreviewBtn.querySelector('.btn-label');
+      if (icon) icon.textContent = playing ? '⏹️' : '▶️';
+      if (label) label.textContent = playing ? 'Stop' : 'Play';
+      voicePreviewBtn.title = playing ? 'Stop voice preview' : 'Play voice preview';
+    }
+
+    async function stopVoicePreview() {
+      if (voicePreviewAudio) {
+        try { voicePreviewAudio.pause(); } catch (e) {}
+        voicePreviewAudio = null;
+      }
+      if (voicePreviewObjectUrl) {
+        try { URL.revokeObjectURL(voicePreviewObjectUrl); } catch (e) {}
+        voicePreviewObjectUrl = null;
+      }
+      setVoicePreviewButtonPlaying(false);
+    }
+
+    async function toggleVoicePreview() {
+      if (!voiceSelect || !voiceSelect.value) {
+        if (voiceStatus) voiceStatus.textContent = 'Select a voice to preview.';
+        return;
+      }
+      if (voicePreviewAudio && !voicePreviewAudio.paused) {
+        await stopVoicePreview();
+        if (voiceStatus) voiceStatus.textContent = 'Preview stopped.';
+        return;
+      }
+      await stopVoicePreview();
+      if (!window.electronAPI || typeof window.electronAPI.previewAiVoice !== 'function') {
+        if (voiceStatus) voiceStatus.textContent = 'Voice preview is only available in the desktop app.';
+        return;
+      }
+      const opt = voiceSelect.selectedOptions[0];
+      const previewUrl = opt && opt.dataset.previewUrl ? opt.dataset.previewUrl : null;
+      if (voiceStatus) voiceStatus.textContent = 'Loading voice preview…';
+      try {
+        const result = await window.electronAPI.previewAiVoice({
+          voiceId: voiceSelect.value,
+          previewUrl,
+        });
+        if (!result || !result.success) {
+          if (voiceStatus) voiceStatus.textContent = (result && result.error) || 'Preview failed.';
+          return;
+        }
+        const binary = atob(result.dataBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: result.mimeType || 'audio/mpeg' });
+        voicePreviewObjectUrl = URL.createObjectURL(blob);
+        voicePreviewAudio = new Audio(voicePreviewObjectUrl);
+        if (typeof window.applyVdTtsSink === 'function') {
+          await window.applyVdTtsSink(voicePreviewAudio);
+        }
+        voicePreviewAudio.onended = () => {
+          stopVoicePreview();
+          if (voiceStatus) voiceStatus.textContent = 'Preview finished.';
+        };
+        setVoicePreviewButtonPlaying(true);
+        if (voiceStatus) voiceStatus.textContent = 'Playing preview on your selected speaker (not the OBS overlay).';
+        await voicePreviewAudio.play();
+      } catch (err) {
+        console.warn('Voice preview failed:', err);
+        await stopVoicePreview();
+        if (voiceStatus) voiceStatus.textContent = 'Preview playback failed.';
+      }
+    }
 
     // Helper: Get auth headers for AI config API calls
     async function getAIConfigAuthHeaders() {
@@ -7225,6 +7384,9 @@ function setupOverlayWidget() {
           const opt = document.createElement('option');
           opt.value = voice.voice_id;
           opt.textContent = voice.name;
+          if (voice.preview_url) {
+            opt.dataset.previewUrl = voice.preview_url;
+          }
           if (saved.voiceId && saved.voiceId === voice.voice_id) opt.selected = true;
           voiceSelect.appendChild(opt);
         });
@@ -7251,9 +7413,17 @@ function setupOverlayWidget() {
         loadVoices();
       });
     }
+
+    if (voicePreviewBtn) {
+      voicePreviewBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        toggleVoicePreview();
+      });
+    }
     
     if (voiceSelect) {
       voiceSelect.addEventListener('change', () => {
+        stopVoicePreview();
         const opt = voiceSelect.selectedOptions[0];
         const voiceId = voiceSelect.value;
         const voiceName = opt ? opt.textContent : '';

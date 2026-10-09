@@ -4,6 +4,12 @@ VirtualDeck now includes UI scaffolding for configuring Raven AI's voice and per
 
 ## Features
 
+### 🗣️ Wake name
+
+Set the spoken name used to wake the assistant (`Hey <name>`), stored in `raven.env` as `HOST_WAKE_NAMES` (comma-separated; first entry is primary). Optional aliases can be added in the same field.
+
+After saving, **restart Raven** if the wake phrase does not update — the bundled Raven runtime is not shipped in this repo, and VirtualDeck does not observe Raven’s env hot-reload behavior.
+
 ### 🎙️ Voice Picker
 
 Select your preferred TTS voice from your ElevenLabs account.
@@ -18,8 +24,9 @@ Select your preferred TTS voice from your ElevenLabs account.
 **How it works:**
 1. Voice list is fetched from ElevenLabs API on startup
 2. Select a voice from the dropdown
-3. Voice ID is saved to `raven.env` as `TTS_VOICE_ID`
-4. Raven uses the selected voice for all TTS output
+3. Use **Play** to preview the voice on your normal speaker output (uses ElevenLabs `preview_url` when available, otherwise a short TTS sample via your `TTS_API_KEY` in the main process)
+4. Voice ID is saved to `raven.env` as `TTS_VOICE_ID`
+5. Raven uses the selected voice for all TTS output
 
 **Troubleshooting:**
 - If voices don't load, click the "Refresh" button
@@ -97,6 +104,14 @@ Token is stored in `.vd-auth-token` in user data folder.
 - `GET /api/ai/personality` - Get saved personality config (requires auth)
 - `POST /api/ai/personality` - Save personality settings (requires auth)
   - Body: `{ "personality": {...}, "prompt": "..." }`
+- `GET /api/ai/wake-names` - Get `HOST_WAKE_NAMES` (requires auth)
+- `POST /api/ai/wake-names` - Save wake names (requires auth)
+  - Body: `{ "wakeNames": "Raven, Ree" }`
+
+**IPC (renderer → main):**
+
+- `preview-ai-voice` - Fetch preview audio (API key never exposed to renderer)
+  - Payload: `{ "voiceId": "...", "previewUrl": "..." }` (`previewUrl` optional)
 
 ### Configuration Storage
 
@@ -175,7 +190,6 @@ If Raven needs updates to honor these settings:
 
 Potential improvements for later:
 - Live preview of personality changes
-- Voice preview/sample playback
 - More granular personality controls
 - AI mode presets that bundle voice + personality
 - Multi-profile support (different personalities per stream segment)

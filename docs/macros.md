@@ -7,7 +7,7 @@ Macros allow you to create sequences of JARVIS tool calls that can be triggered 
 A **macro** is a named sequence of allowlisted JARVIS tool steps that execute in order. Each step is a JARVIS tool call with specific arguments.
 
 **Key Features:**
-- **Voice Triggered**: Use Raven voice commands to execute macros (e.g., "Raven we are going live")
+- **Voice Triggered**: Use your configured wake name in voice commands (e.g., `"<wake name> we are going live"` — default wake name is Raven)
 - **Button Triggered**: Can also be triggered from VirtualDeck buttons (future enhancement)
 - **Sequential Execution**: Steps run in order, one after another
 - **Fail-Safe**: Execution stops on first error by default
