@@ -436,5 +436,26 @@ for (const absPath of mainProcessGraph) {
   );
   assert.ok(!rel.startsWith('scripts/'), `main process must not require scripts/: ${rel}`);
 }
+const { copyTreeSync, copyFileSyncSafe } = require('./lib/copy-tree-sync');
+const copyTmp = path.join(__dirname, '.tmp-copy-tree-sync');
+fs.rmSync(copyTmp, { recursive: true, force: true });
+const copySrcRoot = path.join(copyTmp, 'src');
+const copyDestRoot = path.join(copyTmp, 'dest');
+fs.mkdirSync(path.join(copySrcRoot, 'skins', 'nested'), { recursive: true });
+fs.writeFileSync(path.join(copySrcRoot, 'skins', 'theme.json'), '{"name":"test"}', 'utf8');
+fs.writeFileSync(path.join(copySrcRoot, 'skins', 'nested', 'note.txt'), 'hello', 'utf8');
+fs.writeFileSync(path.join(copySrcRoot, 'config.json'), '{}', 'utf8');
+copyFileSyncSafe(path.join(copySrcRoot, 'config.json'), path.join(copyDestRoot, 'config.json'));
+copyTreeSync(path.join(copySrcRoot, 'skins'), path.join(copyDestRoot, 'skins'));
+assert.ok(fs.existsSync(path.join(copyDestRoot, 'config.json')), 'copyFileSyncSafe should copy a file');
+assert.ok(
+  fs.existsSync(path.join(copyDestRoot, 'skins', 'nested', 'note.txt')),
+  'copyTreeSync should copy nested files',
+);
+assert.strictEqual(
+  fs.readFileSync(path.join(copyDestRoot, 'skins', 'nested', 'note.txt'), 'utf8'),
+  'hello',
+);
+fs.rmSync(copyTmp, { recursive: true, force: true });
 
 console.log('✅ test-prepare-build.js passed');
