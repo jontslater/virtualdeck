@@ -39,6 +39,7 @@ The staging script targets Jonathan's AITuber checkout:
 
 **What `npm run stage-raven` does for the monorepo:**
 
+0. Clears stale generated output under `extra/raven/` (long-path-safe delete on Windows), keeping only git-tracked paths from `git ls-files extra/raven` (fallback: `README.md`, `env.defaults`). Refuses to delete outside `extra/raven`.
 1. Uses existing AITuber `node_modules` when `apps/controller` deps resolve (skips `pnpm install`; pnpm 9 may still validate the whole lockfile on install). Otherwise tries `pnpm install --frozen-lockfile --filter <controller>...`, and continues if install fails but deps still resolve.
 2. Builds all `packages/**` with a `build` script (nested packages included); failures are **warnings** if `dist/` already exists (e.g. `tts-piper` typecheck issues)
 3. `pnpm --filter ./apps/controller run build`

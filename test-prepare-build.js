@@ -480,4 +480,49 @@ fs.rmSync(copyTmp, { recursive: true, force: true });
     `ipcMain.handle channels registered more than once in main.js: ${duplicateChannels.join('; ')}`,
   );
 }
+
+const {
+  getExtraRavenKeepRelPaths,
+  listStaleTopLevelStageEntries,
+  assertExtraRavenStageDir,
+} = require('./scripts/raven-staging/extra-raven-keep-paths');
+
+const keepFromGit = getExtraRavenKeepRelPaths(__dirname);
+assert.ok(keepFromGit.includes('README.md'), 'keep list should include README.md');
+assert.ok(keepFromGit.includes('env.defaults'), 'keep list should include env.defaults');
+
+const stageCleanTmp = path.join(__dirname, '.tmp-extra-raven-clean');
+fs.rmSync(stageCleanTmp, { recursive: true, force: true });
+const fakeRepo = path.join(stageCleanTmp, 'repo');
+const fakeStage = path.join(fakeRepo, 'extra', 'raven');
+fs.mkdirSync(path.join(fakeStage, 'app', 'apps', 'hud'), { recursive: true });
+fs.mkdirSync(path.join(fakeStage, 'ffmpeg'), { recursive: true });
+fs.writeFileSync(path.join(fakeStage, 'README.md'), '# tracked', 'utf8');
+fs.writeFileSync(path.join(fakeStage, 'env.defaults'), 'LLM_API_KEY=\n', 'utf8');
+fs.writeFileSync(path.join(fakeStage, 'README.txt'), 'stale', 'utf8');
+fs.writeFileSync(path.join(fakeStage, 'app', 'trivia-questions.json'), '[]', 'utf8');
+assert.throws(
+  () => assertExtraRavenStageDir(fakeStage, path.join(fakeRepo, 'extra', 'evil')),
+  /Refusing to clean outside extra\/raven/,
+);
+const stale = listStaleTopLevelStageEntries(fakeStage, keepFromGit);
+assert.deepStrictEqual(
+  stale.sort(),
+  ['app', 'ffmpeg', 'README.txt'].sort(),
+  'stale top-level entries should exclude git-tracked files only',
+);
+assert.ok(!stale.includes('README.md'));
+assert.ok(!stale.includes('env.defaults'));
+fs.rmSync(stageCleanTmp, { recursive: true, force: true });
+
+const stagePs1Clean = fs.readFileSync(path.join(__dirname, 'scripts/stage-raven-runtime.ps1'), 'utf8');
+assert.ok(
+  stagePs1Clean.includes('Clear-StaleRavenStageOutput'),
+  'stage script should clear stale output before staging',
+);
+assert.ok(
+  stagePs1Clean.includes('Assert-ExtraRavenStageDirectory'),
+  'stage clean must refuse paths outside extra/raven',
+);
+
 console.log('✅ test-prepare-build.js passed');

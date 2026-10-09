@@ -1338,6 +1338,102 @@ function Write-EnvDefaultsTemplate {
     Write-TextFileUtf8NoBom -Path $EnvDefaultsPath -Content $normalizedTemplate
 }
 
+function Get-WinLongPathLiteral {
+    param([string]$Path)
+    $full = [System.IO.Path]::GetFullPath($Path)
+    if ($full.StartsWith('\\?\')) { return $full }
+    if ($full.StartsWith('\\')) {
+        return '\\?\UNC\' + $full.Substring(2)
+    }
+    return '\\?\' + $full
+}
+
+function Assert-ExtraRavenStageDirectory {
+    param(
+        [string]$StageDir,
+        [string]$RepoRoot
+    )
+    $expected = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot 'extra\raven'))
+    $actual = [System.IO.Path]::GetFullPath($StageDir)
+    if ($actual -ne $expected) {
+        throw "Refusing to clean outside extra/raven: $actual"
+    }
+}
+
+function Get-ExtraRavenKeepRelPathsFromRepo {
+    param(
+        [string]$RepoRoot,
+        [string]$NodeExe
+    )
+    $helper = Get-RavenStagingHelperPath 'extra-raven-keep-paths.js'
+    $node = Resolve-MergeEnvNodeExe -NodeExe $NodeExe
+    if (-not $node) {
+        return @('README.md', 'env.defaults')
+    }
+    $lines = @()
+    $output = & $node $helper 'list-keep-paths' $RepoRoot
+    if ($LASTEXITCODE -ne 0) {
+        return @('README.md', 'env.defaults')
+    }
+    foreach ($raw in ($output | Out-String).Split([string[]]@("`r`n", "`n"), [System.StringSplitOptions]::RemoveEmptyEntries)) {
+        $t = $raw.Trim()
+        if ($t) { $lines += $t }
+    }
+    if ($lines.Count -lt 1) {
+        return @('README.md', 'env.defaults')
+    }
+    return $lines
+}
+
+function Remove-PathLongSafe {
+    param([string]$TargetPath)
+    if (-not $TargetPath -or -not (Test-Path -LiteralPath $TargetPath)) { return }
+    $onWindows = ($env:OS -eq 'Windows_NT')
+    if ($onWindows) {
+        $item = Get-Item -LiteralPath $TargetPath -Force
+        if ($item.PSIsContainer) {
+            $empty = Join-Path $env:TEMP ('vd-empty-' + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $empty -Force | Out-Null
+            try {
+                $dest = Get-WinLongPathLiteral $TargetPath
+                $src = Get-WinLongPathLiteral $empty
+                $null = & robocopy $src $dest /MIR /NFL /NDL /NJH /NJS /NC /NS /NP
+            } finally {
+                Remove-Item -LiteralPath $empty -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+        Remove-Item -LiteralPath (Get-WinLongPathLiteral $TargetPath) -Recurse -Force -ErrorAction SilentlyContinue
+        return
+    }
+    Remove-Item -LiteralPath $TargetPath -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+function Clear-StaleRavenStageOutput {
+    param(
+        [string]$StageDir,
+        [string]$RepoRoot,
+        [string]$NodeExe
+    )
+    Assert-ExtraRavenStageDirectory -StageDir $StageDir -RepoRoot $RepoRoot
+    if (-not (Test-Path -LiteralPath $StageDir)) {
+        New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
+        return
+    }
+    $keepPaths = Get-ExtraRavenKeepRelPathsFromRepo -RepoRoot $RepoRoot -NodeExe $NodeExe
+    $keepNames = @{}
+    foreach ($rel in $keepPaths) {
+        $top = $rel.Split([char[]]@('/', '\'), [System.StringSplitOptions]::RemoveEmptyEntries)[0]
+        if ($top) {
+            $keepNames[$top.ToLowerInvariant()] = $true
+        }
+    }
+    foreach ($child in (Get-ChildItem -LiteralPath $StageDir -Force)) {
+        if ($keepNames.ContainsKey($child.Name.ToLowerInvariant())) { continue }
+        Write-Ok "Removing stale stage output: $($child.Name)"
+        Remove-PathLongSafe -TargetPath $child.FullName
+    }
+}
+
 # --- Main ---
 
 if (-not $AITuberRoot) {
@@ -1356,9 +1452,15 @@ Write-Step "Staging Raven from: $AITuberRoot"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $StageDir = Join-Path $RepoRoot 'extra\raven'
 
-if ($Clean -and (Test-Path -LiteralPath $StageDir)) {
-    Write-Warn "Cleaning existing stage: $StageDir"
-    Get-ChildItem -LiteralPath $StageDir -Force | Where-Object { $_.Name -notin @('README.md', 'env.defaults') } | Remove-Item -Recurse -Force
+Write-Step 'Clearing stale Raven stage output (preserving git-tracked files)...'
+$preCleanNode = (Get-Command node -ErrorAction SilentlyContinue)
+if ($preCleanNode) {
+    Clear-StaleRavenStageOutput -StageDir $StageDir -RepoRoot $RepoRoot -NodeExe $preCleanNode.Source
+} else {
+    Clear-StaleRavenStageOutput -StageDir $StageDir -RepoRoot $RepoRoot -NodeExe $null
+}
+if ($Clean) {
+    Write-Ok 'Clean switch is redundant; stale output is always cleared before staging'
 }
 
 New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
