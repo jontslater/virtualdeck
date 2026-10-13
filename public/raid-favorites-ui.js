@@ -127,13 +127,18 @@ async function refreshRaidLivePanel() {
   }
 
   if (scopeBanner) {
-    if (result.hasRaidScope) {
+    const status = result.scopeStatus || (result.hasRaidScope ? 'ok' : 'unknown');
+    const needsAction = status === 'missing_scope' || status === 'invalid_token';
+    if (!needsAction) {
       scopeBanner.classList.add('hidden');
       scopeBanner.textContent = '';
     } else {
       scopeBanner.classList.remove('hidden');
-      scopeBanner.innerHTML = `Reconnect Twitch to enable raids (needs <code>channel:manage:raids</code>). 
-        <button type="button" id="raid-reconnect-twitch-btn" class="raid-link-btn">Reconnect Twitch</button>`;
+      scopeBanner.innerHTML = status === 'invalid_token'
+        ? `Your saved Twitch token has expired. Update it once in Twitch setup to start raids.
+        <button type="button" id="raid-reconnect-twitch-btn" class="raid-link-btn">Open Twitch setup</button>`
+        : `Your Twitch connection works, but its token was created without the <code>channel:manage:raids</code> permission, which Twitch requires to start a raid. Live status still works. To enable the Raid button, regenerate the token once with that permission and paste it into Twitch setup.
+        <button type="button" id="raid-reconnect-twitch-btn" class="raid-link-btn">Open Twitch setup</button>`;
       const reconnectBtn = document.getElementById('raid-reconnect-twitch-btn');
       if (reconnectBtn) {
         reconnectBtn.addEventListener('click', openTwitchReconnectForRaids);
@@ -182,15 +187,20 @@ async function refreshRaidLivePanel() {
 }
 
 async function openTwitchReconnectForRaids() {
-  if (!window.electronAPI?.getTwitchOAuthAuthorizeUrl) {
-    showCustomAlert('Configure twitch-oauth-config.js or use twitchtokengenerator.com with channel:manage:raids scope.', 'info');
-    return;
+  // Prefer the in-app OAuth flow when this build has one; otherwise reuse the existing setup screen.
+  if (window.electronAPI?.getTwitchOAuthAuthorizeUrl) {
+    try {
+      const res = await window.electronAPI.getTwitchOAuthAuthorizeUrl();
+      if (res && res.success && res.authorizeUrl) {
+        window.open(res.authorizeUrl, '_blank');
+        return;
+      }
+    } catch (_) { /* fall through to setup */ }
   }
-  const res = await window.electronAPI.getTwitchOAuthAuthorizeUrl();
-  if (res.success && res.authorizeUrl) {
-    window.open(res.authorizeUrl, '_blank');
+  if (typeof showTwitchConfigModal === 'function') {
+    showTwitchConfigModal();
   } else {
-    showCustomAlert('OAuth app not configured. Regenerate your token with the channel:manage:raids scope.', 'info');
+    showCustomAlert('Open Twitch setup and paste a token that includes the channel:manage:raids permission.', 'info');
   }
 }
 

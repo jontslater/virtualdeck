@@ -173,6 +173,25 @@ assert.match(mainSrc, /if \(raidHelixClient\) return raidHelixClient;/, 'createR
   assert.strictEqual(second.cached, true);
 }
 
+// --- Scope status classification (no false "reconnect" prompts) ---
+{
+  const mk = (fetchFn, token = 'tok') => new RaidHelixClient({
+    fetchFn, getClientId: () => 'cid', getAccessToken: () => token, getBroadcasterId: async () => '1',
+  });
+  const ok = (body) => async () => ({ ok: true, status: 200, json: async () => body });
+  assert.strictEqual((await mk(ok({ scopes: ['channel:manage:raids'] })).validateToken()).scopeStatus, 'ok');
+  assert.strictEqual((await mk(ok({ scopes: ['chat:read'] })).validateToken()).scopeStatus, 'missing_scope');
+  assert.strictEqual((await mk(ok({}), '').validateToken()).scopeStatus, 'not_connected');
+  const expired = await mk(async () => ({ ok: false, status: 401, json: async () => ({ message: 'invalid access token' }) })).validateToken();
+  assert.strictEqual(expired.scopeStatus, 'invalid_token');
+  const offline = await mk(async () => { throw new Error('ENOTFOUND'); }).validateToken();
+  assert.strictEqual(offline.scopeStatus, 'unknown');
+  assert.strictEqual(offline.hasRaidScope, false);
+  const raidBlocked = await mk(ok({ scopes: ['chat:read'] })).startRaid({ toLogin: 'alpha', toBroadcasterId: '2' });
+  assert.strictEqual(raidBlocked.ok, false);
+  assert.strictEqual(raidBlocked.needsReconnect, true);
+}
+
 assert.ok(scopesIncludeRaid(['channel:manage:raids', 'chat:read']));
 assert.ok(TWITCH_OAUTH_SCOPES.includes('channel:manage:raids'));
 
