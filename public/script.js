@@ -2648,8 +2648,7 @@ function getVisibilityMap() {
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
     'toggle-queue-control': 'queue-control-widget',
-    'toggle-profile-panel': 'profile-panel',
-    'toggle-ai-management-panel': 'ai-management-panel'
+    'toggle-profile-panel': 'profile-panel'
   };
 }
 
@@ -2945,8 +2944,7 @@ function applyVisibilityPrefs() {
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
     'toggle-queue-control': 'queue-control-widget',
-    'toggle-profile-panel': 'profile-panel',
-    'toggle-ai-management-panel': 'ai-management-panel'
+    'toggle-profile-panel': 'profile-panel'
   };
 
   let prefs = {};

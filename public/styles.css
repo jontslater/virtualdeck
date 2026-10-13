@@ -5380,3 +5380,19 @@ body.resizing-chat * {
 .raid-live-foot {
   margin-top: 4px;
 }
+
+/* AI Audio Settings modal (same overlay as Preferences / Raid Favorites) */
+#ai-audio-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 11000;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+#ai-audio-modal.hidden { display: none; }
+.ai-audio-modal-content { width: 640px; max-width: 95vw; max-height: 85vh; overflow-y: auto; }
+#ai-audio-modal .ai-management-panel { margin: 0; border: none; box-shadow: none; padding: 4px 0 0; background: transparent; }
+#ai-audio-modal .ai-management-header { display: none; }
