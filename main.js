@@ -4416,7 +4416,27 @@ let lastTwitchClipAt = 0;
 const TWITCH_CLIP_COOLDOWN_MS = 20000;
 
 function helixAccessToken() {
-  return String(twitchToken || '').replace(/^oauth:/i, '').trim();
+  let token = twitchToken;
+  if (!token) {
+    // Reuse the connection saved by Twitch setup (tc_config) instead of asking for a reconnect.
+    try {
+      const tc = loadTcConfig();
+      token = (tc && tc.accessToken) || '';
+    } catch {
+      token = '';
+    }
+  }
+  return String(token || '').replace(/^oauth:/i, '').trim();
+}
+
+function helixClientId() {
+  if (twitchClientId) return twitchClientId;
+  try {
+    const tc = loadTcConfig();
+    return (tc && tc.clientId) || null;
+  } catch {
+    return null;
+  }
 }
 
 // Reuse one client so the 60s live-check cache survives across IPC/JARVIS calls.
@@ -4426,7 +4446,7 @@ function createRaidHelixClient() {
   if (raidHelixClient) return raidHelixClient;
   raidHelixClient = new RaidHelixClient({
     fetchFn: fetch,
-    getClientId: () => twitchClientId,
+    getClientId: helixClientId,
     getAccessToken: helixAccessToken,
     getBroadcasterId: async () => {
       if (!twitchUserId) await getUserId();
@@ -4498,6 +4518,7 @@ async function raidFavoritesListLive({ forceRefresh = false } = {}) {
       checkedAt,
       cached: !!cached,
       hasRaidScope: !!scope.hasRaidScope,
+      scopeStatus: scope.scopeStatus || (scope.hasRaidScope ? 'ok' : 'unknown'),
       authorizeUrl: scope.hasRaidScope ? null : buildTwitchAuthorizeUrl({ forceVerify: true }),
     };
   } catch (err) {
