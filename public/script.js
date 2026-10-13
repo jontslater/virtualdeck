@@ -7371,7 +7371,7 @@ function setupOverlayWidget() {
         const voices = Array.isArray(data.voices) ? data.voices : [];
         const saved = readSavedVoice();
         
-        voiceSelect.innerHTML = '<option value="">Default Voice</option>';
+        voiceSelect.innerHTML = '';
         
         if (!voices.length) {
           if (voiceStatus) {
@@ -7387,7 +7387,7 @@ function setupOverlayWidget() {
           if (voice.preview_url) {
             opt.dataset.previewUrl = voice.preview_url;
           }
-          if (saved.voiceId && saved.voiceId === voice.voice_id) opt.selected = true;
+          if (saved.voiceId ? saved.voiceId === voice.voice_id : voice.isRavenDefault) opt.selected = true;
           voiceSelect.appendChild(opt);
         });
         

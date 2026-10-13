@@ -4,6 +4,21 @@
  * auth-protected VirtualDeck overlay server (8080) — otherwise the macro whitelist fetch 401s.
  */
 const assert = require('assert');
+{
+  const m = require('./lib/raven-env-migrate');
+  assert.strictEqual(m.RAVEN_DEFAULT_VOICE_ID, 'wJqPPQ618aTW29mptyoc');
+  assert.strictEqual(m.resolveTtsVoiceId(''), 'wJqPPQ618aTW29mptyoc');
+  assert.strictEqual(m.resolveTtsVoiceId('  '), 'wJqPPQ618aTW29mptyoc');
+  assert.strictEqual(m.resolveTtsVoiceId('abc123'), 'abc123');
+  const r = m.migrateRavenEnvText('A=1\nTTS_VOICE_ID=\nB=2\n');
+  assert.ok(r.changed); assert.ok(r.text.includes('TTS_VOICE_ID=wJqPPQ618aTW29mptyoc\n'));
+  const keep = m.migrateRavenEnvText('TTS_VOICE_ID=customVoice123\n');
+  assert.strictEqual(keep.changed, false);
+  const fs2 = require('fs');
+  for (const f of ['extra/raven/env.defaults', 'scripts/raven-env.defaults.template']) {
+    assert.ok(fs2.readFileSync(f, 'utf8').includes('TTS_VOICE_ID=wJqPPQ618aTW29mptyoc'), f + ' default voice');
+  }
+}
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
