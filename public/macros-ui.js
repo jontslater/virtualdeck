@@ -28,6 +28,11 @@ const ALLOWLISTED_TOOLS = [
  * Initialize macro UI
  */
 function initializeMacrosUI() {
+  // Reload live scene lists whenever the macros manager is opened
+  const macrosBtnForScenes = document.getElementById('preferences-macros-manage');
+  if (macrosBtnForScenes && window.VDMacroScenePicker) {
+    macrosBtnForScenes.addEventListener('click', () => window.VDMacroScenePicker.clearSceneCache());
+  }
   console.log('🎬 Initializing Macros UI');
 
   // Open macros manager from preferences
@@ -554,12 +559,15 @@ function createStepCard(step, index) {
   });
   toolSelect.addEventListener('change', (e) => {
     step.tool = e.target.value;
+    if (step.arguments && step.tool !== 'change_scene') delete step.arguments.app;
     renderMacroSteps();
   });
   card.appendChild(toolSelect);
 
   const selectedTool = availableTools.find(t => t.name === step.tool);
-  if (selectedTool && selectedTool.args.length > 0) {
+  if (step.tool === 'change_scene' && window.VDMacroScenePicker) {
+    card.appendChild(window.VDMacroScenePicker.createScenePicker(step));
+  } else if (selectedTool && selectedTool.args.length > 0) {
     const argsContainer = document.createElement('div');
     argsContainer.className = 'step-args';
 
