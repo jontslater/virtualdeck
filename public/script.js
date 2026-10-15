@@ -17388,8 +17388,15 @@ if (window.electronAPI && window.electronAPI.onJarvisChangeScene) {
     
     if (typeof window.meldClient !== 'undefined' && window.meldClient.showScene) {
       try {
-        // Try to change scene using Meld client
-        const result = await window.meldClient.showScene(data.sceneName);
+        // Meld's showScene needs a scene id; resolve a scene name to its id first
+        let sceneId = data.sceneName;
+        try {
+          const scenes = await window.meldClient.getScenes();
+          const hit = scenes.find((s) => s.name === data.sceneName || s.id === data.sceneName)
+            || scenes.find((s) => String(s.name).toLowerCase() === String(data.sceneName).toLowerCase());
+          if (hit) sceneId = hit.id;
+        } catch (_) { /* fall through with the raw value */ }
+        const result = await window.meldClient.showScene(sceneId);
         console.log('[JARVIS] Scene change result:', result);
       } catch (error) {
         console.error('[JARVIS] Error changing scene:', error);
@@ -17417,6 +17424,29 @@ if (window.electronAPI && window.electronAPI.onJarvisGetScenes) {
     } else {
       console.warn('[JARVIS] Meld client not available');
       window.electronAPI.sendJarvisScenesResponse([]);
+    }
+  });
+}
+
+// Scene provider bridge: main process asks the Meld client for scenes / to switch scene
+if (window.electronAPI && window.electronAPI.onSceneProviderRequest) {
+  window.electronAPI.onSceneProviderRequest(async (req) => {
+    const reply = (msg) => window.electronAPI.sendSceneProviderResponse({ reqId: req.reqId, ...msg });
+    if (typeof window.meldClient === 'undefined' || !window.meldClient.getScenes) {
+      reply({ ok: false, error: 'Meld client not loaded' });
+      return;
+    }
+    try {
+      if (req.op === 'list') {
+        reply({ ok: true, scenes: await window.meldClient.getScenes() });
+      } else if (req.op === 'show') {
+        const r = await window.meldClient.showScene(req.sceneId);
+        reply(r && r.ok ? { ok: true } : { ok: false, error: 'Meld did not switch scene (' + ((r && r.reason) || 'unknown') + ')' });
+      } else {
+        reply({ ok: false, error: 'Unknown scene request' });
+      }
+    } catch (error) {
+      reply({ ok: false, error: (error && error.message) || String(error) });
     }
   });
 }

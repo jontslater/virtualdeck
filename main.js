@@ -29,7 +29,8 @@ const fetch = require('node-fetch');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
 const VTuberManager = require('./vtuber-manager');
-const { stopStreamlabsStreamingIfLive } = require('./streamlabs-tcp');
+const { stopStreamlabsStreamingIfLive, streamlabsTcpRequest } = require('./streamlabs-tcp');
+const { SceneProviders, DEFAULT_OBS_URL } = require('./lib/scene-providers');
 const ravenHost = require('./raven-host');
 const SecurityManager = require('./lib/security');
 const { JarvisServer } = require('./jarvis-server');
@@ -6120,6 +6121,78 @@ ipcMain.on('twitch-clear-creds', async (event) => {
 // JARVIS API IPC handlers - for renderer to respond to tool calls
 ipcMain.on('jarvis-scenes-response', (event, scenes) => {
   // This is handled by the get_scenes tool promise
+});
+
+// ---------- Streaming-app scene providers (Meld / OBS / Streamlabs) ----------
+const pendingSceneProviderRequests = new Map();
+let sceneProviderReqSeq = 0;
+ipcMain.on('scene-provider-response', (event, msg) => {
+  if (!msg || !pendingSceneProviderRequests.has(msg.reqId)) return;
+  const resolve = pendingSceneProviderRequests.get(msg.reqId);
+  pendingSceneProviderRequests.delete(msg.reqId);
+  resolve(msg);
+});
+function meldSceneBridge(op, payload = {}) {
+  if (!win || win.isDestroyed()) return Promise.resolve({ ok: false, error: 'VirtualDeck window not available' });
+  const reqId = ++sceneProviderReqSeq;
+  return new Promise((resolve) => {
+    const t = setTimeout(() => {
+      pendingSceneProviderRequests.delete(reqId);
+      resolve({ ok: false, error: 'Meld Studio did not respond' });
+    }, 3000);
+    pendingSceneProviderRequests.set(reqId, (msg) => { clearTimeout(t); resolve(msg); });
+    win.webContents.send('scene-provider-request', { reqId, op, ...payload });
+  });
+}
+let obsSessionPassword = null; // used only when safeStorage is unavailable (never written to disk)
+function getObsSceneConfig() {
+  const prefs = getStoredPreferences();
+  const cfg = prefs.obsWebsocket || {};
+  let password = process.env.VD_OBS_WS_PASSWORD || '';
+  if (!password && cfg.passwordEncrypted && safeStorage.isEncryptionAvailable()) {
+    try { password = safeStorage.decryptString(Buffer.from(cfg.passwordEncrypted, 'base64')); } catch (e) { console.warn('[Scenes] Could not decrypt OBS password'); }
+  }
+  if (!password && obsSessionPassword) password = obsSessionPassword;
+  return { url: process.env.VD_OBS_WS_URL || cfg.url || DEFAULT_OBS_URL, password };
+}
+const sceneProviders = new SceneProviders({
+  meldBridge: meldSceneBridge,
+  getObsConfig: getObsSceneConfig,
+  streamlabsRequest: (opts) => streamlabsTcpRequest({
+    host: process.env.VD_STREAMLABS_TCP_HOST || undefined,
+    port: Number(process.env.VD_STREAMLABS_TCP_PORT) || undefined,
+    ...opts,
+  }),
+});
+jarvisRegistry.setContext({ sceneProvider: sceneProviders });
+
+ipcMain.handle('list-streaming-scenes', async (event, opts = {}) => {
+  const app = opts && ['meld', 'obs', 'streamlabs'].includes(opts.app) ? opts.app : undefined;
+  return sceneProviders.listScenes({ app });
+});
+ipcMain.handle('get-obs-scene-config', async () => {
+  const cfg = getObsSceneConfig();
+  return { url: cfg.url, hasPassword: !!cfg.password };
+});
+ipcMain.handle('set-obs-scene-config', async (event, data = {}) => {
+  const url = String((data && data.url) || '').trim() || DEFAULT_OBS_URL;
+  if (!/^wss?:\/\/[^\s]+$/i.test(url)) return { success: false, error: 'URL must start with ws:// or wss://' };
+  const prefs = getStoredPreferences();
+  const next = { ...(prefs.obsWebsocket || {}), url };
+  let note;
+  if (typeof data.password === 'string') {
+    if (!data.password) {
+      delete next.passwordEncrypted; obsSessionPassword = null;
+    } else if (safeStorage.isEncryptionAvailable()) {
+      next.passwordEncrypted = safeStorage.encryptString(data.password).toString('base64');
+    } else {
+      obsSessionPassword = data.password;
+      note = 'password kept for this session only; secure storage unavailable';
+    }
+  }
+  prefs.obsWebsocket = next;
+  saveStoredPreferences(prefs);
+  return { success: true, note };
 });
 
 // Update JARVIS context when config or connections change

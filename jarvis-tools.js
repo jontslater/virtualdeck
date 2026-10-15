@@ -145,13 +145,18 @@ registry.register(
 registry.register(
   'change_scene',
   {
-    description: 'Switch to a different Meld Studio scene',
+    description: 'Switch scene in the connected streaming app (Meld Studio, OBS or Streamlabs Desktop). The scene is validated against the app\'s live scene list.',
     parameters: {
       type: 'object',
       properties: {
         sceneName: {
           type: 'string',
           description: 'Name of the scene to switch to (or sceneId if known)'
+        },
+        app: {
+          type: 'string',
+          enum: ['meld', 'obs', 'streamlabs'],
+          description: 'Optional: which streaming app to use. Omit to auto-detect the connected app.'
         }
       },
       required: ['sceneName']
@@ -160,6 +165,11 @@ registry.register(
   async (args, context) => {
     const { sceneName } = args;
     const { win } = context;
+
+    if (context.sceneProvider) {
+      const app = ['meld', 'obs', 'streamlabs'].includes(args.app) ? args.app : undefined;
+      return context.sceneProvider.switchScene({ sceneName, app });
+    }
     
     if (!win || win.isDestroyed()) {
       return {
@@ -581,14 +591,27 @@ registry.register(
 registry.register(
   'get_scenes',
   {
-    description: 'List available Meld Studio scenes',
+    description: 'List scenes in the connected streaming app (Meld Studio, OBS or Streamlabs Desktop)',
     parameters: {
       type: 'object',
-      properties: {}
+      properties: {
+        app: {
+          type: 'string',
+          enum: ['meld', 'obs', 'streamlabs'],
+          description: 'Optional: which streaming app to query. Omit to auto-detect.'
+        }
+      }
     }
   },
   async (args, context) => {
     const { win } = context;
+
+    if (context.sceneProvider) {
+      const app = ['meld', 'obs', 'streamlabs'].includes(args && args.app) ? args.app : undefined;
+      const list = await context.sceneProvider.listScenes({ app });
+      if (!list.success) return { success: false, error: list.error, errors: list.errors };
+      return { success: true, app: list.app, scenes: list.scenes };
+    }
     
     if (!win || win.isDestroyed()) {
       return {

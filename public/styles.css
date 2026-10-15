@@ -5404,6 +5404,15 @@ body.resizing-chat * {
 #macro-hotkey-status.error { color: #ff6b6b; }
 .macro-test-results { margin: 10px 0; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-tertiary); font-size: 12px; }
 .macro-test-results.hidden { display: none; }
+.scene-picker-row { display: flex; gap: 6px; align-items: center; }
+.scene-picker-row .scene-name-select { flex: 1; min-width: 0; }
+.scene-picker-row .scene-source-select { max-width: 150px; }
+.scene-picker-status { font-size: 11px; opacity: 0.85; margin: 4px 0; }
+.scene-picker-status.ok { color: #4caf50; }
+.scene-picker-status.error { color: #ff9f43; }
+.scene-name-select option.missing { color: #ff6b6b; }
+.scene-obs-config { margin-top: 4px; font-size: 12px; }
+.scene-obs-config input { margin: 3px 0; width: 100%; box-sizing: border-box; }
 .macro-test-results .macro-test-step { display: flex; gap: 6px; padding: 2px 0; }
 .macro-test-results .ok { color: #4caf50; }
 .macro-test-results .fail { color: #ff6b6b; }
