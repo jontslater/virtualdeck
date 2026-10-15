@@ -1604,6 +1604,14 @@
           <small>The exact phrase that will trigger this macro (case-insensitive)</small>
         </div>
         <div class="preference-item">
+          <label for="macro-hotkey">Global Hotkey (optional)</label>
+          <div class="macro-hotkey-row">
+            <input type="text" id="macro-hotkey" class="preference-input" readonly placeholder="Click here, then press a key combo" />
+            <button type="button" id="macro-hotkey-clear" class="preference-button small">Clear</button>
+          </div>
+          <small id="macro-hotkey-status">Runs this macro from anywhere, without the AI assistant. Backspace clears, Esc cancels.</small>
+        </div>
+        <div class="preference-item">
           <label>
             <input type="checkbox" id="macro-enabled" checked />
             Enabled
@@ -1618,8 +1626,11 @@
           <button id="add-step-btn" class="preference-button">+ Add Step</button>
         </div>
 
+        <div id="macro-test-results" class="macro-test-results hidden" role="status"></div>
+
         <div class="preferences-actions">
           <button type="button" id="save-macro-btn" class="preference-button primary">Save Macro</button>
+          <button type="button" id="test-macro-btn" class="preference-button" title="Run the saved macro now">Test</button>
           <button type="button" id="delete-macro-btn" class="preference-button danger">Delete</button>
           <button type="button" id="cancel-macro-btn" class="preference-button">Cancel</button>
         </div>
@@ -2599,6 +2610,7 @@
   <script src="meldClient.js"></script>
   <script src="AddEditButtonForm.js"></script>
   <script src="script.js"></script>
+  <script src="macro-hotkeys.js"></script>
   <script src="macros-ui.js"></script>
   <script src="raid-favorites-ui.js"></script>
   <script src="ai-audio-modal.js"></script>

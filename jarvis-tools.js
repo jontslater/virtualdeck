@@ -442,14 +442,18 @@ registry.register(
       
       try {
         const result = await registry.invoke(step.tool, step.arguments || {});
+        // registry.invoke wraps the tool's own result; a tool that returns { success: false } failed too.
+        const inner = result && result.result;
+        const stepOk = !!(result && result.success) && !(inner && typeof inner === 'object' && inner.success === false);
         results.push({
           step: i + 1,
           tool: step.tool,
           description: step.description,
-          success: result.success,
-          result: result.result,
-          error: result.error
+          success: stepOk,
+          result: inner,
+          error: stepOk ? undefined : (result.error || (inner && (inner.error || inner.message)) || 'Step failed')
         });
+        result.success = stepOk;
 
         // Stop on first failure if configured
         if (!result.success && macro.stopOnError !== false) {

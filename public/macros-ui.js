@@ -4,6 +4,8 @@
 let currentMacroId = null;
 let currentMacroSteps = [];
 let availableTools = [];
+let currentMacroHotkey = '';
+let savedMacroSnapshot = null;
 
 // List of JARVIS tools that can be used in macros
 const ALLOWLISTED_TOOLS = [
@@ -73,7 +75,153 @@ function initializeMacrosUI() {
     addStepBtn.addEventListener('click', addMacroStep);
   }
 
+  const testMacroBtn = document.getElementById('test-macro-btn');
+  if (testMacroBtn) {
+    testMacroBtn.addEventListener('click', testCurrentMacro);
+  }
+
+  initMacroHotkeyCapture();
+
+  if (window.electronAPI && typeof window.electronAPI.onMacroExecuted === 'function') {
+    window.electronAPI.onMacroExecuted((result) => {
+      const rows = window.VDMacroHotkeys ? window.VDMacroHotkeys.formatMacroRunSteps(result) : [];
+      const failed = rows.find((r) => !r.ok);
+      showCustomAlert(result.success
+        ? `Hotkey macro "${result.macro}" done (${rows.length} step(s))`
+        : `Hotkey macro "${result.macro || result.id}" failed: ${failed ? failed.label + ' - ' + failed.detail : result.error}`);
+    });
+  }
+
   availableTools = ALLOWLISTED_TOOLS;
+}
+
+function setHotkeyStatus(text, isError) {
+  const el = document.getElementById('macro-hotkey-status');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('error', !!isError);
+}
+
+function setMacroHotkey(value) {
+  currentMacroHotkey = value || '';
+  const input = document.getElementById('macro-hotkey');
+  if (input) input.value = currentMacroHotkey;
+}
+
+async function validateMacroHotkeyLive() {
+  if (!currentMacroHotkey) {
+    setHotkeyStatus('No hotkey. Click the field and press a combo like Ctrl+Shift+1.', false);
+    return true;
+  }
+  const local = window.VDMacroHotkeys.parseAccelerator(currentMacroHotkey);
+  if (!local.valid) { setHotkeyStatus(local.errors.join('; '), true); return false; }
+  if (window.electronAPI && typeof window.electronAPI.checkMacroHotkey === 'function') {
+    const res = await window.electronAPI.checkMacroHotkey(currentMacroId, local.accelerator);
+    if (!res.valid) { setHotkeyStatus(res.errors.join('; '), true); return false; }
+  }
+  setHotkeyStatus(`${local.accelerator} will run this macro after you save.`, false);
+  return true;
+}
+
+function initMacroHotkeyCapture() {
+  const input = document.getElementById('macro-hotkey');
+  const clearBtn = document.getElementById('macro-hotkey-clear');
+  if (!input) return;
+  let before = '';
+  input.addEventListener('focus', () => {
+    before = currentMacroHotkey;
+    input.classList.add('capturing');
+    input.value = 'Press keys…';
+    // Pause global shortcuts so the combo being captured doesn't fire an existing hotkey.
+    if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
+  });
+  input.addEventListener('blur', () => {
+    input.classList.remove('capturing');
+    input.value = currentMacroHotkey;
+    if (window.electronAPI && window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+  });
+  input.addEventListener('keydown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const noMods = !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey;
+    if (noMods && e.code === 'Escape') { setMacroHotkey(before); input.blur(); return; }
+    if (noMods && (e.code === 'Backspace' || e.code === 'Delete')) { setMacroHotkey(''); input.blur(); validateMacroHotkeyLive(); return; }
+    const { accelerator, complete } = window.VDMacroHotkeys.acceleratorFromKeyEvent(e);
+    if (!complete) { input.value = accelerator ? accelerator + '+…' : 'Press keys…'; return; }
+    setMacroHotkey(accelerator);
+    input.blur();
+    validateMacroHotkeyLive();
+  });
+  if (clearBtn) clearBtn.addEventListener('click', () => { setMacroHotkey(''); validateMacroHotkeyLive(); });
+}
+
+function buildMacroFromForm() {
+  return {
+    name: document.getElementById('macro-name').value.trim(),
+    description: document.getElementById('macro-description').value.trim(),
+    triggers: {
+      phrase: document.getElementById('macro-phrase').value.trim() || null,
+      button: null,
+      hotkey: currentMacroHotkey || null
+    },
+    steps: currentMacroSteps,
+    enabled: document.getElementById('macro-enabled').checked
+  };
+}
+
+function renderMacroTestResults(container, result) {
+  if (!container) return;
+  container.classList.remove('hidden');
+  container.innerHTML = '';
+  const head = document.createElement('div');
+  head.className = result.success ? 'ok' : 'fail';
+  head.textContent = result.success
+    ? `\u2714 "${result.macro}" completed`
+    : `\u2716 "${result.macro || 'Macro'}" failed${result.error ? ': ' + result.error : ''}`;
+  container.appendChild(head);
+  const rows = window.VDMacroHotkeys.formatMacroRunSteps(result);
+  rows.forEach((r) => {
+    const line = document.createElement('div');
+    line.className = 'macro-test-step';
+    const mark = document.createElement('span');
+    mark.className = r.ok ? 'ok' : 'fail';
+    mark.textContent = r.ok ? '\u2714' : '\u2716';
+    const text = document.createElement('span');
+    text.textContent = `${r.label} \u2014 ${r.detail}`;
+    line.appendChild(mark);
+    line.appendChild(text);
+    container.appendChild(line);
+  });
+  const total = Array.isArray(result.steps) ? result.steps.length : 0;
+  const expected = typeof result.totalSteps === 'number' ? result.totalSteps : null;
+  if (!result.success && expected && total < expected) {
+    const skipped = document.createElement('div');
+    skipped.className = 'fail';
+    skipped.textContent = `${expected - total} later step(s) skipped`;
+    container.appendChild(skipped);
+  }
+}
+
+async function runMacroTest(macroId, container, totalSteps) {
+  if (container) { container.classList.remove('hidden'); container.textContent = 'Running…'; }
+  try {
+    const result = await window.electronAPI.executeMacro(macroId);
+    renderMacroTestResults(container, { ...result, totalSteps });
+    return result;
+  } catch (error) {
+    renderMacroTestResults(container, { success: false, error: error.message, steps: [] });
+    return { success: false };
+  }
+}
+
+async function testCurrentMacro() {
+  const container = document.getElementById('macro-test-results');
+  const current = JSON.stringify(buildMacroFromForm());
+  if (savedMacroSnapshot === null || savedMacroSnapshot !== current) {
+    renderMacroTestResults(container, { success: false, error: 'Save the macro first; Test runs the saved version.', steps: [] });
+    return;
+  }
+  await runMacroTest(currentMacroId, container, currentMacroSteps.length);
 }
 
 /**
@@ -160,6 +308,19 @@ function createMacroCard(macro) {
     card.appendChild(phrase);
   }
 
+  if (macro.triggers?.hotkey) {
+    const hk = document.createElement('p');
+    hk.className = 'macro-trigger';
+    const strong = document.createElement('strong');
+    strong.textContent = 'Hotkey: ';
+    const badge = document.createElement('span');
+    badge.className = 'macro-hotkey-badge';
+    badge.textContent = macro.triggers.hotkey;
+    hk.appendChild(strong);
+    hk.appendChild(badge);
+    card.appendChild(hk);
+  }
+
   const steps = document.createElement('p');
   steps.className = 'macro-steps-count';
   steps.textContent = `${macro.steps?.length || 0} step(s)`;
@@ -174,14 +335,20 @@ function createMacroCard(macro) {
   editBtn.addEventListener('click', () => editMacro(macro.id));
   actions.appendChild(editBtn);
 
+  const results = document.createElement('div');
+  results.className = 'macro-test-results hidden';
+  results.setAttribute('role', 'status');
+
   const runBtn = document.createElement('button');
   runBtn.className = 'preference-button small primary';
-  runBtn.textContent = 'Run';
+  runBtn.textContent = 'Test';
+  runBtn.title = macro.enabled ? 'Run this macro now' : 'Enable the macro to test it';
   runBtn.disabled = !macro.enabled;
-  runBtn.addEventListener('click', () => runMacro(macro.id));
+  runBtn.addEventListener('click', () => runMacroTest(macro.id, results, macro.steps?.length || 0));
   actions.appendChild(runBtn);
 
   card.appendChild(actions);
+  card.appendChild(results);
 
   return card;
 }
@@ -199,6 +366,11 @@ function createNewMacro() {
   document.getElementById('macro-phrase').value = '';
   document.getElementById('macro-enabled').checked = true;
   document.getElementById('delete-macro-btn').style.display = 'none';
+  setMacroHotkey('');
+  savedMacroSnapshot = null;
+  const newResults = document.getElementById('macro-test-results');
+  if (newResults) newResults.classList.add('hidden');
+  validateMacroHotkeyLive();
 
   renderMacroSteps();
   openMacroEditor();
@@ -225,8 +397,13 @@ async function editMacro(macroId) {
     document.getElementById('macro-phrase').value = macro.triggers?.phrase || '';
     document.getElementById('macro-enabled').checked = macro.enabled !== false;
     document.getElementById('delete-macro-btn').style.display = 'inline-block';
+    setMacroHotkey(macro.triggers?.hotkey || '');
+    const editResults = document.getElementById('macro-test-results');
+    if (editResults) editResults.classList.add('hidden');
+    validateMacroHotkeyLive();
 
     renderMacroSteps();
+    savedMacroSnapshot = JSON.stringify(buildMacroFromForm());
     openMacroEditor();
   } catch (error) {
     console.error('Error editing macro:', error);
@@ -435,16 +612,12 @@ async function saveMacro() {
       return;
     }
 
-    const macro = {
-      name,
-      description: document.getElementById('macro-description').value.trim(),
-      triggers: {
-        phrase: document.getElementById('macro-phrase').value.trim() || null,
-        button: null
-      },
-      steps: currentMacroSteps,
-      enabled: document.getElementById('macro-enabled').checked
-    };
+    if (!(await validateMacroHotkeyLive())) {
+      showCustomAlert('Fix the hotkey first: ' + (document.getElementById('macro-hotkey-status')?.textContent || ''));
+      return;
+    }
+
+    const macro = buildMacroFromForm();
 
     const result = await window.electronAPI.saveMacro(currentMacroId, macro);
     if (!result.success) {
@@ -452,8 +625,9 @@ async function saveMacro() {
       return;
     }
 
-    showCustomAlert('Macro saved successfully!');
-    closeMacroEditor();
+    if (result.macro?.triggers?.hotkey) setMacroHotkey(result.macro.triggers.hotkey);
+    savedMacroSnapshot = JSON.stringify(buildMacroFromForm());
+    showCustomAlert(result.warning || 'Macro saved. Use Test to run it now.');
     await loadMacrosList();
   } catch (error) {
     console.error('Error saving macro:', error);
@@ -493,10 +667,12 @@ async function runMacro(macroId) {
     console.log('Running macro:', macroId);
     const result = await window.electronAPI.executeMacro(macroId);
     
+    const rows = window.VDMacroHotkeys ? window.VDMacroHotkeys.formatMacroRunSteps(result) : [];
     if (result.success) {
-      showCustomAlert(`Macro executed successfully! ${result.steps?.length || 0} steps completed.`);
+      showCustomAlert(`Macro executed successfully! ${rows.length} steps completed.`);
     } else {
-      showCustomAlert('Macro execution failed: ' + result.error);
+      const failed = rows.find((r) => !r.ok);
+      showCustomAlert('Macro execution failed: ' + (failed ? `${failed.label} - ${failed.detail}` : result.error));
     }
   } catch (error) {
     console.error('Error running macro:', error);
