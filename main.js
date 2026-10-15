@@ -36,6 +36,7 @@ const { JarvisServer } = require('./jarvis-server');
 const { registry: jarvisRegistry } = require('./jarvis-tools');
 const { AIConfigManager } = require('./lib/ai-config');
 const { fetchVoicePreviewAudio, validateVoicePreviewRequest } = require('./lib/ai-voice-preview');
+const { readMediaFileAsDataUrl } = require('./lib/media-file');
 const { WAKE_NAMES_REQUIRE_RAVEN_RESTART } = require('./lib/wake-names');
 const { copyTreeSync, copyFileSyncSafe } = require('./lib/copy-tree-sync');
 const RaidFavoritesStore = require('./lib/raid-favorites-store');
@@ -2690,42 +2691,11 @@ ipcMain.handle('get-media-file-path', async (event, relativePath) => {
 
 // IPC handler to get media file as base64 (for serving to overlay) - DEPRECATED, use HTTP serving instead
 ipcMain.handle('get-media-file', async (event, relativePath) => {
-  try {
-    // Sanitize path to prevent traversal
-    const sanitizedPath = securityManager.sanitizePath(userDataPath, relativePath);
-    
-    if (!fs.existsSync(sanitizedPath)) {
-      return { success: false, error: 'File not found' };
-    }
-
-    const fileBuffer = fs.readFileSync(sanitizedPath);
-    const base64Data = fileBuffer.toString('base64');
-    
-    // Detect mime type from extension
-    const ext = path.extname(fullPath).toLowerCase();
-    const extToMime = {
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.png': 'image/png',
-      '.gif': 'image/gif',
-      '.webp': 'image/webp',
-      '.mp4': 'video/mp4',
-      '.webm': 'video/webm',
-      '.mp3': 'audio/mpeg',
-      '.wav': 'audio/wav',
-      '.ogg': 'audio/ogg'
-    };
-    const mimeType = extToMime[ext] || 'application/octet-stream';
-    
-    return { 
-      success: true, 
-      data: `data:${mimeType};base64,${base64Data}`,
-      mimeType: mimeType
-    };
-  } catch (error) {
-    console.error('Error reading media file:', error);
-    return { success: false, error: error.message };
+  const result = readMediaFileAsDataUrl({ userDataPath, relativePath, securityManager });
+  if (!result.success) {
+    console.error('Error reading media file:', relativePath, result.error);
   }
+  return result;
 });
 
 
