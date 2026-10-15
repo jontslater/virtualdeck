@@ -108,6 +108,8 @@ try {
 
 // Initialize Macro Manager
 const MacroManager = require('./lib/macro-manager');
+const { MacroHotkeyRegistrar } = require('./lib/macro-hotkey-registrar');
+const { parseAccelerator: parseMacroHotkey, findHotkeyConflicts } = require('./public/macro-hotkeys');
 let macroManager;
 let raidFavoritesStore;
 try {
@@ -2334,8 +2336,21 @@ ipcMain.handle('save-macro', async (event, { id, macro }) => {
       return { success: false, errors: validation.errors };
     }
 
+    const hotkey = macro.triggers && macro.triggers.hotkey;
+    if (hotkey) {
+      const check = checkMacroHotkey(id, hotkey);
+      if (!check.valid) return { success: false, errors: check.errors };
+      macro.triggers.hotkey = check.accelerator;
+    }
+
     const saved = macroManager.set(id, macro);
-    return { success: true, macro: { id, ...saved } };
+    const sync = syncMacroHotkeys();
+    const failedReg = sync.failed.find((f) => f.id === id);
+    return {
+      success: true,
+      macro: { id, ...saved },
+      warning: failedReg ? `Saved, but hotkey ${failedReg.hotkey} could not be registered: ${failedReg.reason}` : undefined,
+    };
   } catch (error) {
     console.error('Error saving macro:', error);
     return { success: false, error: error.message };
@@ -2349,6 +2364,7 @@ ipcMain.handle('delete-macro', async (event, id) => {
       return { success: false, error: 'Macro manager not available' };
     }
     const deleted = macroManager.delete(id);
+    syncMacroHotkeys();
     return { success: deleted };
   } catch (error) {
     console.error('Error deleting macro:', error);
@@ -2356,19 +2372,89 @@ ipcMain.handle('delete-macro', async (event, id) => {
   }
 });
 
-// Execute a macro (via JARVIS tool)
+// One execution path for the Run/Test buttons and global hotkeys (no AI assistant involved).
+// Re-validates against the macro allowlist / start_raid confirm rule before running.
+async function executeMacroById(id, source) {
+  if (!macroManager) return { success: false, error: 'Macro manager not available', steps: [] };
+  const macro = macroManager.get(id);
+  if (!macro) return { success: false, error: `Macro '${id}' not found`, steps: [] };
+  const validation = macroManager.validate(macro);
+  if (!validation.valid) {
+    return { success: false, error: validation.errors.join('; '), steps: [], macro: macro.name };
+  }
+  console.log(`[Macro] Running '${macro.name}' (${source})`);
+  const wrapped = await jarvisRegistry.invoke('run_macro', { id });
+  const inner = wrapped && wrapped.success ? (wrapped.result || {}) : { success: false, error: wrapped && wrapped.error };
+  const steps = Array.isArray(inner.steps) ? inner.steps : [];
+  const failed = steps.find((s) => !s.success);
+  return {
+    success: inner.success === true,
+    macro: inner.macro || macro.name,
+    steps,
+    error: inner.success === true ? undefined : (inner.error || (failed && failed.error) || 'Macro failed'),
+    note: inner.note,
+    source,
+  };
+}
+
+async function runMacroFromHotkey(id) {
+  try {
+    const result = await executeMacroById(id, 'hotkey');
+    if (win && !win.isDestroyed()) win.webContents.send('macro-executed', { id, ...result });
+  } catch (err) {
+    console.error('[Macro] Hotkey run failed:', err);
+  }
+}
+
+const macroHotkeyRegistrar = new MacroHotkeyRegistrar({
+  globalShortcut,
+  onTrigger: (id) => runMacroFromHotkey(id),
+});
+let lastMacroHotkeySync = { registered: [], failed: [] };
+
+function syncMacroHotkeys() {
+  if (!macroManager) return lastMacroHotkeySync;
+  try {
+    lastMacroHotkeySync = macroHotkeyRegistrar.sync(macroManager.list());
+  } catch (err) {
+    console.error('[MacroHotkeys] sync failed:', err);
+  }
+  return lastMacroHotkeySync;
+}
+
+function activeButtonHotkeys() {
+  try {
+    const profile = loadProfile(currentActiveProfile);
+    return (profile.buttons || []).filter((b) => b && b.hotkey).map((b) => ({ label: b.name || b.label, hotkey: b.hotkey }));
+  } catch {
+    return [];
+  }
+}
+
+function checkMacroHotkey(id, hotkey) {
+  if (!hotkey) return { valid: true, accelerator: '', errors: [] };
+  const parsed = parseMacroHotkey(hotkey);
+  if (!parsed.valid) return parsed;
+  const conflicts = findHotkeyConflicts({
+    hotkey: parsed.accelerator,
+    macroId: id,
+    macros: macroManager ? macroManager.list() : [],
+    buttonHotkeys: activeButtonHotkeys(),
+  });
+  return { valid: conflicts.length === 0, accelerator: parsed.accelerator, errors: conflicts };
+}
+
+ipcMain.handle('check-macro-hotkey', async (_event, payload) => {
+  const input = payload && typeof payload === 'object' ? payload : {};
+  return checkMacroHotkey(String(input.id || ''), String(input.hotkey || ''));
+});
+
 ipcMain.handle('execute-macro', async (event, id) => {
   try {
-    if (!macroManager) {
-      return { success: false, error: 'Macro manager not available' };
-    }
-    
-    // Use JARVIS tool to execute
-    const result = await jarvisRegistry.invoke('run_macro', { id });
-    return result;
+    return await executeMacroById(id, 'ui');
   } catch (error) {
     console.error('Error executing macro:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: error.message, steps: [] };
   }
 });
 
@@ -5358,6 +5444,8 @@ function registerHotkeys() {
       }
     }
   });
+  // unregisterAll above also cleared macro hotkeys; register them again after the buttons.
+  syncMacroHotkeys();
 }
 
 // Preferences management

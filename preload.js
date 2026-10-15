@@ -150,6 +150,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveMacro: async (id, macro) => ipcRenderer.invoke('save-macro', { id, macro }),
   deleteMacro: async (id) => ipcRenderer.invoke('delete-macro', id),
   executeMacro: async (id) => ipcRenderer.invoke('execute-macro', id),
+  checkMacroHotkey: async (id, hotkey) => ipcRenderer.invoke('check-macro-hotkey', { id, hotkey }),
+  onMacroExecuted: (callback) => ipcRenderer.on('macro-executed', (event, data) => callback(data)),
   previewAiVoice: async (payload) => ipcRenderer.invoke('preview-ai-voice', payload),
   // Raid favorites
   raidFavoritesGet: async () => ipcRenderer.invoke('raid-favorites-get'),
