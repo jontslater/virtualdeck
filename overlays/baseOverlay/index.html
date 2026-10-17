@@ -20,8 +20,8 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            width: var(--overlay-width);
-            height: var(--overlay-height);
+            width: 100vw;
+            height: 100vh;
             margin: 0;
             padding: 0;
             overflow: hidden;
@@ -56,12 +56,15 @@
         }
 
         /* Overlay Content Container */
+        /* Fixed 1920x1080 stage, scaled to fit the browser source (see fitOverlayStage).
+           All text sizes/positions are canvas px, identical to the editor preview. */
         .overlay-content {
-            width: 100%;
-            height: 100%;
+            width: var(--overlay-width);
+            height: var(--overlay-height);
             position: absolute;
             top: 0;
             left: 0;
+            transform-origin: 0 0;
             /* Remove flexbox centering to avoid conflicts with absolute positioning */
         }
 
@@ -70,8 +73,8 @@
             position: absolute;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
             object-fit: contain;
             /* Enhanced visibility for streaming alerts */
             filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
@@ -89,8 +92,8 @@
             transform: translate(-50%, -50%);
             width: 220px;
             height: 220px;
-            max-width: 22vw;
-            max-height: 22vw;
+            max-width: 422px;
+            max-height: 422px;
             object-fit: cover;
             border-radius: 50%;
             border: 4px solid rgba(255, 255, 255, 0.95);
@@ -236,6 +239,9 @@
     </div>
 
     <script>
+/*__VD_ALERT_TEXT_RENDER__*/
+    </script>
+    <script>
         // Overlay Configuration
         const OVERLAY_CONFIG = {
             name: '{{OVERLAY_NAME}}',
@@ -253,7 +259,22 @@
         const MESSAGE_DEDUP_WINDOW = 5000; // 5 seconds
 
         // Initialize overlay
+        // Scale the 1920x1080 stage to the browser source size (scale 1 at 1920x1080).
+        function fitOverlayStage() {
+            const stage = document.querySelector('.overlay-content');
+            if (!stage) return;
+            if (window.VDAlertText) {
+                window.VDAlertText.fitStage(stage, window.innerWidth, window.innerHeight);
+            } else {
+                const s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080) || 1;
+                stage.style.transformOrigin = '0 0';
+                stage.style.transform = s === 1 ? 'none' : 'scale(' + s + ')';
+            }
+        }
+        window.addEventListener('resize', fitOverlayStage);
+
         function initOverlay() {
+            fitOverlayStage();
             console.log('🚀 Initializing overlay:', OVERLAY_CONFIG.name);
             console.log('🎨 Background mode:', OVERLAY_CONFIG.backgroundMode);
             console.log('🎯 Layout:', OVERLAY_CONFIG.layout);
@@ -531,7 +552,7 @@
                 left: ${payload.position?.left || '50%'};
                 transform: translate(-50%, -50%);
                 color: ${payload.color || 'white'};
-                font-size: ${payload.fontSize || '24px'};
+                font-size: ${window.VDAlertText ? window.VDAlertText.normalizeFontSize(payload.fontSize, 24) : (payload.fontSize || '24px')};
                 font-weight: ${payload.fontWeight || 'bold'};
                 text-align: center;
                 text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
@@ -567,8 +588,8 @@
                     position: absolute;
                     top: 0;
                     left: 0;
-                    width: 100vw;
-                    height: 100vh;
+                    width: 100%;
+                    height: 100%;
                     object-fit: contain;
                     animation: fadeIn 0.5s ease-in-out;
                     filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
@@ -638,8 +659,8 @@
                 position: absolute;
                 top: 0;
                 left: 0;
-                width: 100vw;
-                height: 100vh;
+                width: 100%;
+                height: 100%;
                 object-fit: contain;
                 animation: fadeIn 0.5s ease-in-out;
                 filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
@@ -740,105 +761,9 @@
         // Render text slot
         function renderTextSlot(position, slotData) {
             console.log('📝 Rendering text slot:', position, slotData);
-            
-            const textElement = document.createElement('div');
-            textElement.className = 'text-element';
-            textElement.textContent = slotData.text;
-            
-            // Apply styling
-            const style = slotData.style || {};
-            
-            // Apply webkit-text-stroke if specified
-            const webkitTextStroke = style.webkitTextStroke || '';
-            
-            // Build positioning styles based on position
-            let positioningStyles = '';
-            let flexDirection = 'row'; // Default for horizontal centering
-            
-            switch (position) {
-                case 'topCenter':
-                    positioningStyles = 'top: 10vh; left: 0; right: 0; width: 100vw;';
-                    flexDirection = 'row';
-                    break;
-                case 'topLeft':
-                    positioningStyles = 'top: 10vh; left: 10vw; width: auto;';
-                    flexDirection = 'row';
-                    break;
-                case 'topRight':
-                    positioningStyles = 'top: 10vh; right: 10vw; width: auto;';
-                    flexDirection = 'row';
-                    break;
-                case 'midLeft':
-                    positioningStyles = 'top: 50vh; left: 10vw; width: auto; transform: translateY(-50%);';
-                    flexDirection = 'row';
-                    break;
-                case 'center':
-                    positioningStyles = 'top: 50vh; left: 0; right: 0; width: 100vw; transform: translateY(-50%);';
-                    flexDirection = 'row';
-                    break;
-                case 'midRight':
-                    positioningStyles = 'top: 50vh; right: 10vw; width: auto; transform: translateY(-50%);';
-                    flexDirection = 'row';
-                    break;
-                case 'bottomCenter':
-                    positioningStyles = 'bottom: 10vh; left: 0; right: 0; width: 100vw;';
-                    flexDirection = 'row';
-                    break;
-                case 'bottomLeft':
-                    positioningStyles = 'bottom: 10vh; left: 10vw; width: auto;';
-                    flexDirection = 'row';
-                    break;
-                case 'bottomRight':
-                    positioningStyles = 'bottom: 10vh; right: 10vw; width: auto;';
-                    flexDirection = 'row';
-                    break;
-                default:
-                    positioningStyles = 'top: 50vh; left: 0; right: 0; width: 100vw; transform: translateY(-50%);';
-                    flexDirection = 'row';
-            }
-            
-            textElement.style.cssText = `
-                position: absolute;
-                color: ${style.color || 'white'};
-                font-family: ${style.fontFamily || 'Arial, sans-serif'};
-                font-size: ${style.fontSize || '64px'};
-                font-weight: ${style.fontWeight || 'bold'};
-                text-shadow: ${style.textShadow || '3px 3px 6px rgba(0, 0, 0, 0.9)'};
-                -webkit-text-stroke: ${webkitTextStroke};
-                text-align: center;
-                white-space: nowrap;
-                z-index: ${style.zIndex || '100'};
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                flex-direction: ${flexDirection};
-                pointer-events: none;
-                margin: 0;
-                padding: 0;
-                /* Enhanced visibility for streaming */
-                filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.8));
-                ${positioningStyles}
-            `;
-            
-            // Apply animation if specified
-            if (slotData.animation && slotData.animation.name !== 'none') {
-                const anim = slotData.animation;
-                console.log('🎬 Applying animation:', anim);
-                
-                // Build animation string
-                let animationString = anim.name;
-                if (anim.duration) animationString += ` ${anim.duration}`;
-                if (anim.timingFunction) animationString += ` ${anim.timingFunction}`;
-                if (anim.delay) animationString += ` ${anim.delay}`;
-                if (anim.iterationCount) animationString += ` ${anim.iterationCount}`;
-                animationString += ' forwards';
-                
-                textElement.style.animation = animationString;
-                textElement.style.animationFillMode = 'both';
-                console.log('🎬 Animation string:', animationString);
-            } else {
-                console.log('🎬 No animation or animation is "none"');
-            }
+            // Shared renderer (public/alert-text-render.js) - same code the alert editor preview uses.
+            const textElement = window.VDAlertText.createTextSlotElement(document, position, slotData);
+            console.log('🎬 Text slot css:', textElement.style.cssText);
             
             document.querySelector('.overlay-content').appendChild(textElement);
             
