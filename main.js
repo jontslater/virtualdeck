@@ -1513,6 +1513,14 @@ function generateOverlayHTML(overlayName, callback) {
       html = html.replace(/\{\{BACKGROUND_MODE\}\}/g, 'transparent');
       html = html.replace(/\{\{CHROMA_COLOR\}\}/g, '#00ff00');
       html = html.replace(/\{\{LAYOUT_CLASS\}\}/g, 'layout-center');
+      // Inline the shared text renderer (same file the alert editor preview loads) so
+      // overlay and preview render text identically. Function replacer: no $-pattern expansion.
+      try {
+        const rendererJs = fs.readFileSync(path.join(__dirname, 'public', 'alert-text-render.js'), 'utf8');
+        html = html.replace('/*__VD_ALERT_TEXT_RENDER__*/', () => rendererJs.replace(/<\/script/gi, '<\\/script'));
+      } catch (e) {
+        console.warn('⚠️ Could not inline alert-text-render.js into overlay:', e.message);
+      }
       
       callback(null, html);
     });

@@ -10850,115 +10850,105 @@ function setupAlertWidget() {
     // Process text with sample data for preview
     const processedText = replacePlaceholders(text, sampleUserData);
     
-    // Get styling values
-    const textPosition = alertTextPositionSelect ? alertTextPositionSelect.value : 'topCenter';
-    const fontFamily = alertFontFamilySelect ? alertFontFamilySelect.value : 'Arial, sans-serif';
-    const fontSize = alertFontSizeRange ? alertFontSizeRange.value + 'px' : '24px';
-    const fontWeight = alertFontWeightSelect ? alertFontWeightSelect.value : '700';
-    const textColor = alertTextColorInput ? alertTextColorInput.value : '#ffffff';
-    const textShadow = alertTextShadowSelect ? alertTextShadowSelect.value : '1px 1px 2px rgba(0,0,0,0.8)';
-    const textStroke = alertTextStrokeSelect ? alertTextStrokeSelect.value : '1px #000';
-    const animation = alertAnimationSelect ? alertAnimationSelect.value : 'none';
-    const animationDuration = alertAnimationDurationRange ? alertAnimationDurationRange.value + 's' : '1s';
-    const animationDelay = alertAnimationDelayRange ? alertAnimationDelayRange.value + 's' : '0s';
-    const animationIteration = alertAnimationIterationSelect ? alertAnimationIterationSelect.value : '1';
-    const animationEasing = alertAnimationEasingSelect ? alertAnimationEasingSelect.value : 'ease';
+    // Build the alert exactly as it will be saved/sent, then render it with the SAME
+    // renderer the overlay uses (public/alert-text-render.js) on a 1920x1080 stage
+    // scaled to the preview width - a true WYSIWYG of the browser source.
+    const previewAlert = {
+      textStyling: {
+        position: alertTextPositionSelect ? alertTextPositionSelect.value : 'topCenter',
+        fontFamily: alertFontFamilySelect ? alertFontFamilySelect.value : 'Arial, sans-serif',
+        fontSize: alertFontSizeRange ? alertFontSizeRange.value + 'px' : '64px',
+        fontWeight: alertFontWeightSelect ? alertFontWeightSelect.value : '700',
+        color: alertTextColorInput ? alertTextColorInput.value : '#ffffff',
+        textShadow: alertTextShadowSelect ? alertTextShadowSelect.value : '1px 1px 2px rgba(0,0,0,0.8)',
+        textStroke: alertTextStrokeSelect ? alertTextStrokeSelect.value : '1px #000'
+      },
+      animation: {
+        type: alertAnimationSelect ? alertAnimationSelect.value : 'none',
+        duration: alertAnimationDurationRange ? alertAnimationDurationRange.value + 's' : '1s',
+        delay: alertAnimationDelayRange ? alertAnimationDelayRange.value + 's' : '0s',
+        iteration: alertAnimationIterationSelect ? alertAnimationIterationSelect.value : '1',
+        easing: alertAnimationEasingSelect ? alertAnimationEasingSelect.value : 'ease'
+      }
+    };
+    const builtSlot = window.VDAlertText.alertToSlot(previewAlert, processedText);
+    const textPosition = builtSlot.position;
     
-    // Build text style
-    let textStyle = `
-      font-family: ${fontFamily};
-      font-size: ${fontSize};
-      font-weight: ${fontWeight};
-      color: ${textColor};
-      text-shadow: ${textShadow};
-      -webkit-text-stroke: ${textStroke};
-    `;
-    
-    // Add animation if selected
-    if (animation !== 'none') {
-      textStyle += `
-        animation: ${animation} ${animationDuration} ${animationEasing} ${animationDelay} ${animationIteration};
-      `;
-    }
-    
-    // Build position style for text
-    let positionStyle = '';
-    switch(textPosition) {
-      case 'topLeft':
-        positionStyle = 'top: 10%; left: 10%;';
-        break;
-      case 'topCenter':
-        positionStyle = 'top: 10%; left: 50%; transform: translateX(-50%);';
-        break;
-      case 'topRight':
-        positionStyle = 'top: 10%; right: 10%;';
-        break;
-      case 'midLeft':
-        positionStyle = 'top: 50%; left: 10%; transform: translateY(-50%);';
-        break;
-      case 'center':
-        positionStyle = 'top: 50%; left: 50%; transform: translate(-50%, -50%);';
-        break;
-      case 'midRight':
-        positionStyle = 'top: 50%; right: 10%; transform: translateY(-50%);';
-        break;
-      case 'bottomLeft':
-        positionStyle = 'bottom: 10%; left: 10%;';
-        break;
-      case 'bottomCenter':
-        positionStyle = 'bottom: 10%; left: 50%; transform: translateX(-50%);';
-        break;
-      case 'bottomRight':
-        positionStyle = 'bottom: 10%; right: 10%;';
-        break;
-    }
-    
-    let previewHTML = '<div class="alert-preview-content" style="position: relative; width: 100%; height: 300px; background: rgba(0,0,0,0.1); border: 1px solid var(--border-color);">';
-    
+    // Resolve the preview image src (same image the overlay shows, full opacity)
+    let previewImageSrc = null;
+    let previewImageLabel = null;
     if (imageFile) {
       if (imageFile instanceof File) {
-        // New file from input
-        const imageUrl = URL.createObjectURL(imageFile);
-        previewHTML += `<img src="${imageUrl}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
+        previewImageSrc = URL.createObjectURL(imageFile);
       } else if (imageFile.data) {
-        // Legacy base64 data
-        previewHTML += `<img src="${imageFile.data}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
+        previewImageSrc = imageFile.data;
       } else if (imageFile.path && window.electronAPI && window.electronAPI.getMediaFile) {
-        // Existing saved file with path - load from disk
         try {
           const result = await window.electronAPI.getMediaFile(imageFile.path);
-          if (result.success) {
-            previewHTML += `<img src="${result.data}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
-          } else {
-            // Fallback to placeholder if loading fails
-            previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name || 'Alert Image'}</div>`;
-          }
+          if (result.success) previewImageSrc = result.data;
+          else previewImageLabel = imageFile.name || 'Alert Image';
         } catch (error) {
           console.error('Error loading preview image:', error);
-          previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name || 'Alert Image'}</div>`;
+          previewImageLabel = imageFile.name || 'Alert Image';
         }
       } else if (imageFile.name) {
-        // Existing file (show placeholder)
-        previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name}</div>`;
+        previewImageLabel = imageFile.name;
       }
     }
     
-    // Add positioned text
-    previewHTML += `<div style="position: absolute; ${positionStyle} white-space: nowrap;">`;
-    previewHTML += `<p style="${textStyle} margin: 0;">${processedText}</p>`;
-    previewHTML += `</div>`;
-    
-    // Add info at bottom
-    previewHTML += `<div style="position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--text-tertiary); text-align: center;">`;
-    previewHTML += `<div><small>Position: ${textPosition} | Duration: ${duration}s</small></div>`;
-    if (soundFile) {
-      const soundName = soundFile.name || 'Existing Sound';
-      previewHTML += `<div><small>🔊 Sound: ${soundName}</small></div>`;
+    const wrap = document.createElement('div');
+    wrap.className = 'vd-alert-preview-wrap';
+    const viewport = document.createElement('div');
+    viewport.className = 'vd-alert-preview-viewport';
+    viewport.title = 'Preview of the 1920x1080 browser source';
+    const stage = document.createElement('div');
+    stage.className = 'vd-alert-preview-stage';
+    stage.setAttribute('data-vd-stage', 'preview');
+    if (previewImageSrc) {
+      const img = document.createElement('img');
+      img.className = 'media-element';
+      img.alt = 'Alert Image';
+      img.src = previewImageSrc;
+      img.style.cssText = window.VDAlertText.MEDIA_FILL_CSS;
+      stage.appendChild(img);
+    } else if (previewImageLabel) {
+      const ph = document.createElement('div');
+      ph.className = 'image-placeholder';
+      ph.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(3);';
+      ph.textContent = '📷 ' + previewImageLabel;
+      stage.appendChild(ph);
     }
-    previewHTML += `</div>`;
+    const textEl = window.VDAlertText.createTextSlotElement(document, builtSlot.position, builtSlot.slot);
+    textEl.style.setProperty('z-index', '100', 'important'); // overlay forces this too
+    stage.appendChild(textEl);
+    viewport.appendChild(stage);
+    wrap.appendChild(viewport);
     
-    previewHTML += '</div>';
-    alertPreviewArea.innerHTML = previewHTML;
+    const info = document.createElement('div');
+    info.className = 'vd-alert-preview-info';
+    const infoLine = document.createElement('div');
+    infoLine.textContent = 'Position: ' + textPosition + ' | Size: ' + builtSlot.slot.style.fontSize + ' on 1920x1080 | Duration: ' + duration + 's';
+    info.appendChild(infoLine);
+    if (soundFile) {
+      const soundLine = document.createElement('div');
+      soundLine.textContent = '🔊 Sound: ' + (soundFile.name || 'Existing Sound');
+      info.appendChild(soundLine);
+    }
+    wrap.appendChild(info);
+    
+    alertPreviewArea.innerHTML = '';
+    alertPreviewArea.appendChild(wrap);
+    
+    const fitPreviewStage = () => {
+      const w = viewport.clientWidth;
+      if (w > 0) window.VDAlertText.fitStage(stage, w, viewport.clientHeight || (w * 9 / 16));
+    };
+    fitPreviewStage();
+    if (window.ResizeObserver) {
+      if (alertPreviewArea._vdStageObserver) alertPreviewArea._vdStageObserver.disconnect();
+      alertPreviewArea._vdStageObserver = new ResizeObserver(fitPreviewStage);
+      alertPreviewArea._vdStageObserver.observe(viewport);
+    }
   }
   
   // Get display name for alert type
@@ -11226,11 +11216,13 @@ function setupAlertWidget() {
       const textStyling = {
         position: alertTextPositionSelect ? alertTextPositionSelect.value : 'topCenter',
         fontFamily: alertFontFamilySelect ? alertFontFamilySelect.value : 'Arial, sans-serif',
-        fontSize: alertFontSizeRange ? alertFontSizeRange.value + 'px' : '24px',
+        fontSize: alertFontSizeRange ? window.VDAlertText.normalizeFontSize(alertFontSizeRange.value, 64) : '64px',
         fontWeight: alertFontWeightSelect ? alertFontWeightSelect.value : '700',
         color: alertTextColorInput ? alertTextColorInput.value : '#ffffff',
         textShadow: alertTextShadowSelect ? alertTextShadowSelect.value : '1px 1px 2px rgba(0,0,0,0.8)',
-        textStroke: alertTextStrokeSelect ? alertTextStrokeSelect.value : '1px #000'
+        textStroke: alertTextStrokeSelect ? alertTextStrokeSelect.value : '1px #000',
+        // v2: fontSize is pixels on the 1920x1080 canvas (what the overlay always rendered)
+        styleVersion: window.VDAlertText.STYLE_VERSION
       };
       
       const animation = {
@@ -11783,7 +11775,7 @@ function setupAlertWidget() {
         alertFontFamilySelect.value = alertToEdit.textStyling.fontFamily;
       }
       if (alertFontSizeRange && alertToEdit.textStyling.fontSize) {
-        const fontSize = alertToEdit.textStyling.fontSize.replace('px', '');
+        const fontSize = window.VDAlertText.editorSliderValue(alertToEdit.textStyling.fontSize);
         alertFontSizeRange.value = fontSize;
         // Update the display value
         const fontSizeValue = document.getElementById('font-size-value');
@@ -12351,33 +12343,16 @@ let alertQueue = {
           clearPrevious: true,
           durationMs: alertData.duration * 1000
         },
-        slots: processedText && processedText.trim() ? {
-          [alertData.textStyling?.position || 'topCenter']: {
-            text: processedText,
-            style: {
-              fontFamily: alertData.textStyling?.fontFamily || 'Arial, sans-serif',
-              fontSize: alertData.textStyling?.fontSize || '24px',
-              color: alertData.textStyling?.color || '#00ff00',
-              fontWeight: alertData.textStyling?.fontWeight || 'bold',
-              textShadow: alertData.textStyling?.textShadow || '2px 2px #000',
-              webkitTextStroke: alertData.textStyling?.textStroke || '1px #000',
-              textAlign: 'center',
-              zIndex: '1'
-            },
-            animation: (alertData.animation && alertData.animation.type && alertData.animation.type !== 'none') ? {
-              name: alertData.animation.type,
-              duration: alertData.animation.duration || '1s',
-              delay: alertData.animation.delay || '0s',
-              iterationCount: alertData.animation.iteration || '1',
-              timingFunction: alertData.animation.easing || 'ease'
-            } : null
-          }
-        } : {},
+        // Shared builder (public/alert-text-render.js) - identical to the editor preview.
+        slots: processedText && processedText.trim() ? (() => {
+          const built = window.VDAlertText.alertToSlot(alertData, processedText);
+          return { [built.position]: built.slot };
+        })() : {},
         centerMedia: [],
         fullscreenMedia: [] // New: fullscreen media support for alerts
       };
       
-      console.log('🎬 Payload animation data:', payload.slots[alertData.textStyling?.position || 'topCenter']?.animation);
+      console.log('🎬 Payload animation data:', payload.slots[window.VDAlertText.migrateAlertTextStyling(alertData.textStyling).position]?.animation);
       console.log('📦 Payload slots object:', payload.slots);
       console.log('📦 Payload slots keys:', Object.keys(payload.slots));
       console.log('📦 Payload slots topCenter:', payload.slots.topCenter);
