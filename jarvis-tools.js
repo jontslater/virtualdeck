@@ -9,6 +9,7 @@ const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { normalizeTwitchLogin, isValidTwitchLogin } = require('./lib/twitch-login');
+const { matchMacroByUtterance, summarizeMacroRun } = require('./lib/macro-voice');
 
 class JarvisToolRegistry {
   constructor() {
@@ -397,17 +398,85 @@ registry.register(
   }
 );
 
+// Shared macro step runner. Used by run_macro (and by main.js executeMacroById, the single executor
+// for the Test/Run buttons, global hotkeys and JARVIS/voice) so every trigger runs the same steps.
+registry.runMacroSteps = async function runMacroSteps(macro) {
+  const steps = Array.isArray(macro.steps) ? macro.steps : [];
+  const results = [];
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    console.log(`[JARVIS] Executing macro step ${i + 1}/${steps.length}: ${step.tool}`);
+    try {
+      const result = await registry.invoke(step.tool, step.arguments || {});
+      // registry.invoke wraps the tool's own result; a tool that returns { success: false } failed too.
+      const inner = result && result.result;
+      const stepOk = !!(result && result.success) && !(inner && typeof inner === 'object' && inner.success === false);
+      results.push({
+        step: i + 1,
+        tool: step.tool,
+        description: step.description,
+        success: stepOk,
+        result: inner,
+        error: stepOk ? undefined : ((result && result.error) || (inner && (inner.error || inner.message)) || 'Step failed')
+      });
+      if (!stepOk && macro.stopOnError !== false) {
+        console.error(`[JARVIS] Macro step ${i + 1} failed, stopping execution`);
+        break;
+      }
+    } catch (error) {
+      console.error(`[JARVIS] Error executing macro step ${i + 1}:`, error);
+      results.push({ step: i + 1, tool: step.tool, description: step.description, success: false, error: error.message });
+      break;
+    }
+  }
+  const allSucceeded = results.length === steps.length && results.every(r => r.success);
+  return {
+    success: allSucceeded,
+    macro: macro.name,
+    steps: results,
+    totalSteps: steps.length,
+    note: allSucceeded
+      ? `Macro '${macro.name}' completed successfully`
+      : `Macro '${macro.name}' completed with errors`
+  };
+};
+
+function resolveMacro(macroManager, ref) {
+  if (!ref) return null;
+  const direct = macroManager.get(ref);
+  if (direct) return { id: ref, ...direct };
+  const byPhrase = macroManager.findByPhrase(String(ref));
+  if (byPhrase) return byPhrase;
+  const wanted = String(ref).trim().toLowerCase();
+  const list = typeof macroManager.list === 'function' ? macroManager.list() : [];
+  return list.find(m => (m.name || '').trim().toLowerCase() === wanted) || null;
+}
+
+async function runResolvedMacro(macro, context, source) {
+  if (!macro.enabled) {
+    return { success: false, macro: macro.name, steps: [], error: `Macro '${macro.name}' is disabled` };
+  }
+  let out;
+  if (typeof context.executeMacroById === 'function') {
+    // Same executor as the hotkey / Test button (validation + per-step results + UI notification)
+    out = await context.executeMacroById(macro.id, source);
+  } else {
+    out = await registry.runMacroSteps(macro);
+  }
+  return { ...out, id: macro.id, summary: summarizeMacroRun(out) };
+}
+
 // Tool: run_macro
 registry.register(
   'run_macro',
   {
-    description: 'Execute a named macro (sequence of JARVIS tool calls)',
+    description: 'Run one of the streamer\'s SAVED VirtualDeck macros (e.g. going live / start stream, BRB, ending stream) exactly as configured, the same as pressing its hotkey. ALWAYS use this for any routine that matches a saved macro (see list_macros); never recreate a macro\'s steps with individual tools like change_scene. Returns per-step results and a spoken summary.',
     parameters: {
       type: 'object',
       properties: {
         id: {
           type: 'string',
-          description: 'Macro ID (e.g. "going-live") or name'
+          description: 'Macro ID (e.g. "going-live"), exact macro name, or its trigger phrase'
         }
       },
       required: ['id']
@@ -416,82 +485,82 @@ registry.register(
   async (args, context) => {
     const { id } = args;
     const { macroManager } = context;
-    
+
     if (!macroManager) {
-      return {
-        success: false,
-        error: 'Macro manager not available'
-      };
+      return { success: false, error: 'Macro manager not available' };
     }
 
-    // Try to find macro by ID first, then by phrase/name
-    let macro = macroManager.get(id);
+    const macro = resolveMacro(macroManager, id);
     if (!macro) {
-      macro = macroManager.findByPhrase(id);
+      const names = (typeof macroManager.list === 'function' ? macroManager.list() : []).map(m => `${m.name} (${m.id})`);
+      return { success: false, error: `Macro '${id}' not found${names.length ? `. Saved macros: ${names.join(', ')}` : ''}` };
     }
+    return runResolvedMacro(macro, context, 'jarvis');
+  }
+);
 
-    if (!macro) {
-      return {
-        success: false,
-        error: `Macro '${id}' not found`
-      };
+// Tool: list_macros (read-only)
+registry.register(
+  'list_macros',
+  {
+    description: 'List the streamer\'s saved VirtualDeck macros (id, name, voice trigger phrase, step tools). Use run_macro with the id to run one.',
+    parameters: { type: 'object', properties: {} }
+  },
+  async (args, context) => {
+    const { macroManager } = context;
+    if (!macroManager) return { success: false, error: 'Macro manager not available' };
+    const macros = macroManager.list().map(m => ({
+      id: m.id,
+      name: m.name,
+      description: m.description || '',
+      phrase: (m.triggers && m.triggers.phrase) || null,
+      enabled: m.enabled !== false,
+      steps: (m.steps || []).map(s => s.tool)
+    }));
+    return { success: true, macros };
+  }
+);
+
+// Tool: run_voice_macro — deterministic voice trigger (no LLM): match the host's utterance against
+// saved macro trigger phrases / "run the <name> macro" and run it through the hotkey executor.
+registry.register(
+  'run_voice_macro',
+  {
+    description: 'Match a host voice utterance against saved macro trigger phrases and, if exactly one matches, run that macro (same executor as its hotkey). Returns { matched:false } when nothing matches.',
+    parameters: {
+      type: 'object',
+      properties: {
+        utterance: { type: 'string', description: 'What the host said (wake word may be included)' }
+      },
+      required: ['utterance']
     }
-
-    if (!macro.enabled) {
-      return {
-        success: false,
-        error: `Macro '${macro.name}' is disabled`
-      };
-    }
-
-    // Execute each step in sequence
-    const results = [];
-    for (let i = 0; i < macro.steps.length; i++) {
-      const step = macro.steps[i];
-      console.log(`[JARVIS] Executing macro step ${i + 1}/${macro.steps.length}: ${step.tool}`);
-      
-      try {
-        const result = await registry.invoke(step.tool, step.arguments || {});
-        // registry.invoke wraps the tool's own result; a tool that returns { success: false } failed too.
-        const inner = result && result.result;
-        const stepOk = !!(result && result.success) && !(inner && typeof inner === 'object' && inner.success === false);
-        results.push({
-          step: i + 1,
-          tool: step.tool,
-          description: step.description,
-          success: stepOk,
-          result: inner,
-          error: stepOk ? undefined : (result.error || (inner && (inner.error || inner.message)) || 'Step failed')
-        });
-        result.success = stepOk;
-
-        // Stop on first failure if configured
-        if (!result.success && macro.stopOnError !== false) {
-          console.error(`[JARVIS] Macro step ${i + 1} failed, stopping execution`);
-          break;
-        }
-      } catch (error) {
-        console.error(`[JARVIS] Error executing macro step ${i + 1}:`, error);
-        results.push({
-          step: i + 1,
-          tool: step.tool,
-          description: step.description,
-          success: false,
-          error: error.message
-        });
-        break;
+  },
+  async (args, context) => {
+    const { macroManager } = context;
+    if (!macroManager) return { success: false, matched: false, error: 'Macro manager not available' };
+    let wakeNames = [];
+    try {
+      if (macroManager.macrosPath) {
+        const { readHostWakeNamesFromUserData } = require('./lib/wake-names');
+        const w = readHostWakeNamesFromUserData(path.dirname(macroManager.macrosPath));
+        wakeNames = (w && (w.names || w.all || [])) || [];
+        if (w && w.primary && !wakeNames.includes(w.primary)) wakeNames = [w.primary, ...wakeNames];
       }
+    } catch (_) { /* wake names are optional */ }
+    const m = matchMacroByUtterance(macroManager.list(), args.utterance, { wakeNames });
+    if (!m.matched) {
+      return {
+        success: true,
+        matched: false,
+        reason: m.reason,
+        ambiguous: m.ambiguous,
+        summary: m.ambiguous ? `That matches more than one macro: ${m.ambiguous.join(', ')}. Which one?` : undefined
+      };
     }
-
-    const allSucceeded = results.every(r => r.success);
-    return {
-      success: allSucceeded,
-      macro: macro.name,
-      steps: results,
-      note: allSucceeded 
-        ? `Macro '${macro.name}' completed successfully` 
-        : `Macro '${macro.name}' completed with errors`
-    };
+    console.log(`[JARVIS] Voice trigger "${args.utterance}" -> macro '${m.macro.name}' (${m.matchedOn}: "${m.phrase}")`);
+    const out = await runResolvedMacro(m.macro, context, 'voice');
+    // success here = the macro ran OK; matched tells Raven not to send this utterance to the LLM.
+    return { ...out, matched: true, matchedOn: m.matchedOn, phrase: m.phrase };
   }
 );
 
@@ -826,11 +895,14 @@ registry.register(
       }
     }
 
-    return await registry.invoke('discord_send_message', {
+    // Unwrap registry.invoke's { success, result } so a failed Discord post fails this step too.
+    const sent = await registry.invoke('discord_send_message', {
       message: embed ? '' : announcement,
       embed,
       channelId
     });
+    if (!sent || !sent.success) return { success: false, error: (sent && sent.error) || 'Discord post failed' };
+    return sent.result;
   }
 );
 

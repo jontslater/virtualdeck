@@ -2384,8 +2384,12 @@ async function executeMacroById(id, source) {
     return { success: false, error: validation.errors.join('; '), steps: [], macro: macro.name };
   }
   console.log(`[Macro] Running '${macro.name}' (${source})`);
-  const wrapped = await jarvisRegistry.invoke('run_macro', { id });
-  const inner = wrapped && wrapped.success ? (wrapped.result || {}) : { success: false, error: wrapped && wrapped.error };
+  let inner;
+  try {
+    inner = await jarvisRegistry.runMacroSteps({ id, ...macro });
+  } catch (err) {
+    inner = { success: false, error: err.message || String(err), steps: [] };
+  }
   const steps = Array.isArray(inner.steps) ? inner.steps : [];
   const failed = steps.find((s) => !s.success);
   return {
@@ -2394,9 +2398,19 @@ async function executeMacroById(id, source) {
     steps,
     error: inner.success === true ? undefined : (inner.error || (failed && failed.error) || 'Macro failed'),
     note: inner.note,
+    totalSteps: Array.isArray(macro.steps) ? macro.steps.length : steps.length,
     source,
   };
 }
+
+// JARVIS run_macro / run_voice_macro (Raven voice) use this same executor as the hotkey.
+jarvisRegistry.setContext({
+  executeMacroById: async (id, source) => {
+    const result = await executeMacroById(id, source || 'jarvis');
+    if (win && !win.isDestroyed()) win.webContents.send('macro-executed', { id, ...result });
+    return result;
+  },
+});
 
 async function runMacroFromHotkey(id) {
   try {
