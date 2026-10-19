@@ -1,0 +1,7 @@
+# Twitch OAuth Configuration (optional)
+# Instead of editing twitch-oauth-config.js, you can set these environment variables
+# Get the values from https://dev.twitch.tv/console/apps
+# Create a .env file in the project root with these values
+
+TWITCH_CLIENT_ID=your_client_id_here
+TWITCH_CLIENT_SECRET=your_client_secret_here

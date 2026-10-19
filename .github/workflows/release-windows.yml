@@ -12,8 +12,15 @@ jobs:
   release:
     runs-on: windows-latest
     steps:
-      - name: Checkout
+      - name: Checkout VirtualDeck
         uses: actions/checkout@v4
+
+      - name: Checkout AITuber (Raven source)
+        uses: actions/checkout@v4
+        with:
+          repository: jontslater/AITuber
+          path: vendor/AITuber
+          token: ${{ secrets.AITUBER_CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -35,13 +42,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install ffmpeg (Raven TTS playback)
+        run: choco install ffmpeg -y
+
       - name: Test release metadata
         run: node test-release-metadata.js
 
-      - name: Build and publish to GitHub Releases
+      - name: Stage Raven + build and publish
         env:
+          AITUBER_ROOT: ${{ github.workspace }}/vendor/AITuber
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build:win:publish
+        run: npm run build:win:publish:raven
 
       - name: List dist artifacts
         run: dir dist

@@ -66,6 +66,9 @@ extra/raven/
 !extra/raven/README.md
 scripts/.raven-env-defaults-backup-path
 
+# Twitch OAuth credentials (copy from twitch-oauth-config.example.js)
+twitch-oauth-config.js
+
 # Electron build artifacts
 dist_electron/
 

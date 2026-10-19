@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VirtualDeck Progression Overlay</title>
+    <style>
+        :root {
+            --overlay-width: 1920px;
+            --overlay-height: 1080px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            width: var(--overlay-width);
+            height: var(--overlay-height);
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: transparent;
+        }
+        
+        /* Connection Status Indicator */
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 9999;
+            pointer-events: none;
+            display: none;
+        }
+        
+        #connection-status.error {
+            color: #ff0000;
+        }
+        
+        #connection-status.warning {
+            color: #ffaa00;
+        }
+
+        /* Progression Container */
+        .progression-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            display: none; /* Hidden by default */
+        }
+
+        .progression-container.visible {
+            display: block;
+        }
+
+        /* Media Display */
+        .progression-media {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .progression-media img,
+        .progression-media video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
+        }
+        
+        .progression-media img.fill-mode,
+        .progression-media video.fill-mode {
+            object-fit: cover;
+        }
+
+        .progression-media audio {
+            display: none; /* Audio elements are not visible */
+        }
+
+        /* Progress Counter and Text */
+        .progression-counter {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px 40px;
+            border-radius: 10px;
+            font-size: 48px;
+            font-weight: bold;
+            text-align: center;
+            min-width: 200px;
+            z-index: 100;
+            display: none;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.9);
+        }
+
+        .progression-counter.visible {
+            display: block;
+        }
+
+        .counter-text {
+            font-size: 24px;
+            color: #aaa;
+            margin-bottom: 5px;
+        }
+
+        .counter-value {
+            font-size: 48px;
+            color: #fff;
+        }
+        
+        .progression-overlay-text {
+            position: absolute;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 36px;
+            font-weight: bold;
+            text-align: center;
+            z-index: 100;
+            display: none;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.9);
+        }
+        
+        .progression-overlay-text.visible {
+            display: block;
+        }
+
+        /* Stage transition animation */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideInUp {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        @keyframes zoomIn {
+            from { transform: scale(0.3); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .progression-media.transition-fade {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        .progression-media.transition-slide {
+            animation: slideInUp 0.7s ease-out;
+        }
+
+        .progression-media.transition-zoom {
+            animation: zoomIn 0.6s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div id="connection-status">Connecting...</div>
+    
+    <div class="progression-container" id="progression-container">
+        <div class="progression-media" id="progression-media">
+            <!-- Media elements will be inserted here -->
+        </div>
+        <div class="progression-overlay-text" id="progression-overlay-text">
+            <!-- Custom overlay text will be inserted here -->
+        </div>
+        <div class="progression-counter" id="progression-counter">
+            <div class="counter-value">0/0</div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let overlayWS = null;
+        let currentProgression = null;
+        let hideTimer = null;
+
+        // Initialize overlay
+        function initOverlay() {
+            console.log('🚀 Initializing progression overlay');
+            connectWebSocket();
+            showConnectionStatus('🔄 Connecting...', 'warning');
+        }
+
+        // WebSocket connection
+        function connectWebSocket() {
+            try {
+                const wsUrl = 'ws://localhost:8080?overlay=progressionOverlay';
+                console.log('🔗 Connecting to:', wsUrl);
+                
+                overlayWS = new WebSocket(wsUrl);
+                
+                overlayWS.onopen = function() {
+                    console.log('✅ WebSocket connected successfully!');
+                    showConnectionStatus('✅ Connected', 'success');
+                };
+                
+                overlayWS.onmessage = function(event) {
+                    try {
+                        console.log('📨 Raw WebSocket message:', event.data);
+                        const payload = JSON.parse(event.data);
+                        console.log('📨 Parsed payload:', payload);
+                        handleMessage(payload);
+                    } catch (error) {
+                        console.error('❌ Error parsing WebSocket message:', error);
+                    }
+                };
+                
+                overlayWS.onclose = function(event) {
+                    console.log('🔌 WebSocket disconnected');
+                    showConnectionStatus('❌ Disconnected', 'error');
+                    // Attempt to reconnect after 3 seconds
+                    setTimeout(connectWebSocket, 3000);
+                };
+                
+                overlayWS.onerror = function(error) {
+                    console.error('❌ WebSocket error:', error);
+                    showConnectionStatus('❌ Connection Error', 'error');
+                };
+                
+            } catch (error) {
+                console.error('❌ Failed to create WebSocket connection:', error);
+                showConnectionStatus('❌ Connection Failed', 'error');
+            }
+        }
+
+        // Show connection status indicator
+        function showConnectionStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('connection-status');
+            if (!statusDiv) return;
+            
+            statusDiv.textContent = message;
+            statusDiv.className = type === 'success' ? '' : type;
+            statusDiv.style.display = 'block';
+            
+            // Auto-hide success messages after 3 seconds
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // Handle WebSocket messages
+        function handleMessage(payload) {
+            console.log('🎯🎯🎯 OVERLAY RECEIVED MESSAGE!');
+            console.log('🎯 Message type:', payload.type);
+            console.log('🎯 Full payload:', payload);
+            
+            switch (payload.type) {
+                case 'progressionUpdate':
+                    console.log('🎯 Calling updateProgression');
+                    updateProgression(payload.data);
+                    break;
+                case 'progressionStageAdvance':
+                    console.log('🎯 Calling advanceStage');
+                    advanceStage(payload.data);
+                    break;
+                case 'progressionShow':
+                    console.log('🎯 Calling showProgression');
+                    showProgression(payload.data);
+                    break;
+                case 'progressionHide':
+                    console.log('🎯 Calling hideProgression');
+                    hideProgression();
+                    break;
+                case 'clear':
+                    console.log('🎯 Calling clearProgression');
+                    clearProgression();
+                    break;
+                default:
+                    console.log('❓ Unknown message type:', payload.type);
+            }
+        }
+
+        // Update progression display
+        function updateProgression(data) {
+            console.log('🎨🎨🎨 UPDATE PROGRESSION CALLED!');
+            console.log('🎨 Data received:', data);
+            console.log('🎨 Current stage:', data.currentStage);
+            console.log('🎨 Media path:', data.currentStage?.mediaPath);
+            console.log('🎨 Display mode:', data.displayMode);
+            
+            currentProgression = data;
+            
+            const container = document.getElementById('progression-container');
+            const mediaContainer = document.getElementById('progression-media');
+            const counter = document.getElementById('progression-counter');
+            const overlayText = document.getElementById('progression-overlay-text');
+            
+            console.log('🎨 Container found:', !!container);
+            console.log('🎨 Media container found:', !!mediaContainer);
+            
+            // Show container
+            container.classList.add('visible');
+            console.log('🎨 Container classes:', container.className);
+            
+            // Update media
+            if (data.currentStage) {
+                console.log('🎨 Rendering media for stage...');
+                renderMedia(data.currentStage, mediaContainer);
+            } else {
+                console.log('⚠️ No current stage data!');
+            }
+            
+            // Update overlay text
+            console.log('🎨 Checking overlay text:', data.overlayText);
+            if (data.overlayText && data.overlayText.trim() !== '' && overlayText) {
+                overlayText.textContent = data.overlayText;
+                overlayText.classList.add('visible');
+                console.log('🎨 Overlay text updated and shown:', data.overlayText);
+            } else if (overlayText) {
+                overlayText.classList.remove('visible');
+                console.log('🎨 Overlay text hidden (no text provided)');
+            }
+            
+            // Update counter
+            if (data.showCounter) {
+                const counterValue = counter.querySelector('.counter-value');
+                counterValue.textContent = `${data.currentCount}/${data.currentStage.requiredCount}`;
+                counter.classList.add('visible');
+                console.log('🎨 Counter updated:', counterValue.textContent);
+            } else {
+                counter.classList.remove('visible');
+            }
+            
+            // Handle display mode
+            if (data.displayMode === 'duration' && data.duration) {
+                console.log('🎨 Duration mode - will hide after', data.duration, 'seconds');
+                // Clear existing timer
+                if (hideTimer) {
+                    clearTimeout(hideTimer);
+                }
+                // Set timer to hide after duration
+                hideTimer = setTimeout(() => {
+                    console.log('⏰ Duration expired, hiding progression');
+                    hideProgression();
+                }, data.duration * 1000);
+            } else {
+                console.log('🎨 Always visible mode - no auto-hide');
+            }
+        }
+
+        // Advance to next stage with animation
+        function advanceStage(data) {
+            console.log('🎉 Advancing stage!', data);
+            
+            const mediaContainer = document.getElementById('progression-media');
+            
+            // Add transition animation
+            mediaContainer.classList.add('transition-zoom');
+            
+            // Don't play audio here - renderMedia() will handle it to avoid double audio
+            
+            // Update display
+            setTimeout(() => {
+                updateProgression(data);
+                mediaContainer.classList.remove('transition-zoom');
+            }, 100);
+        }
+
+        // Show progression (for duration mode)
+        function showProgression(data) {
+            console.log('👁️ Showing progression');
+            updateProgression(data);
+        }
+
+        // Hide progression
+        function hideProgression() {
+            console.log('🙈 Hiding progression');
+            const container = document.getElementById('progression-container');
+            container.classList.remove('visible');
+            
+            if (hideTimer) {
+                clearTimeout(hideTimer);
+                hideTimer = null;
+            }
+        }
+
+        // Clear progression
+        function clearProgression() {
+            console.log('🧹 Clearing progression');
+            const mediaContainer = document.getElementById('progression-media');
+            mediaContainer.innerHTML = '';
+            hideProgression();
+        }
+
+        // Render media element
+        function renderMedia(stage, container) {
+            console.log('🎬 Rendering media:', stage);
+            
+            // Clear previous media
+            container.innerHTML = '';
+            
+            if (!stage || !stage.mediaPath) {
+                console.log('⚠️ No media to render');
+                return;
+            }
+            
+            const mediaUrl = `http://localhost:8080/media/${stage.mediaPath}`;
+            
+            if (stage.mediaType === 'image') {
+                const img = document.createElement('img');
+                img.src = mediaUrl;
+                img.alt = 'Progression Stage';
+                img.onload = () => console.log('✅ Image loaded');
+                img.onerror = () => console.error('❌ Failed to load image:', mediaUrl);
+                container.appendChild(img);
+            } else if (stage.mediaType === 'video') {
+                const video = document.createElement('video');
+                video.src = mediaUrl;
+                video.autoplay = true;
+                video.loop = true;
+                video.muted = false;
+                video.onloadeddata = () => console.log('✅ Video loaded');
+                video.onerror = () => console.error('❌ Failed to load video:', mediaUrl);
+                container.appendChild(video);
+            }
+            
+            // Play audio if available
+            if (stage.audioPath) {
+                playAudio(stage.audioPath);
+            }
+        }
+
+        // Play audio file
+        function playAudio(audioPath) {
+            console.log('🔊 Playing audio:', audioPath);
+            const audioUrl = `http://localhost:8080/media/${audioPath}`;
+            const audio = new Audio(audioUrl);
+            audio.volume = 1.0;
+            audio.play().then(() => {
+                console.log('✅ Audio playing');
+            }).catch(error => {
+                console.error('❌ Failed to play audio:', error);
+            });
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initOverlay);
+        
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (overlayWS) {
+                overlayWS.close();
+            }
+        });
+    </script>
+</body>
+</html>
