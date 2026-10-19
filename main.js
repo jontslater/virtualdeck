@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, Menu, dialog, safeStorage } = require('electron');
+const { app, BrowserWindow, globalShortcut, Menu, dialog, safeStorage, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 // Node's crypto: Electron's main process also exposes WebCrypto as globalThis.crypto,
@@ -28,6 +28,7 @@ const WebSocket = require('ws');
 const fetch = require('node-fetch');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
+const { createAppUpdater } = require('./lib/app-updater');
 const VTuberManager = require('./vtuber-manager');
 const { stopStreamlabsStreamingIfLive, streamlabsTcpRequest } = require('./streamlabs-tcp');
 const { SceneProviders, DEFAULT_OBS_URL } = require('./lib/scene-providers');
@@ -50,9 +51,21 @@ process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection]', reason);
 });
 
-// Configure auto-updater
-autoUpdater.autoDownload = false; // Don't auto-download, ask user first
+// Configure auto-updater (GitHub Releases via electron-builder publish config)
+autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.allowDowngrade = false;
+
+let appUpdater;
+function sendUpdateEventToRenderer(channel, payload) {
+  try {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(channel, payload);
+    }
+  } catch (e) {
+    console.warn('[Updater] renderer notify failed:', e && e.message);
+  }
+}
 
 // Global debouncing mechanism to prevent duplicate button triggers
 const recentButtonTriggers = new Map();
@@ -5647,95 +5660,22 @@ function saveStoredPreferences(preferences) {
   }
 }
 
-// Auto-updater event handlers
-function setupAutoUpdater() {
-  // Detect platform
-  const isMac = process.platform === 'darwin';
-  const isWindows = process.platform === 'win32';
-
-  autoUpdater.on('checking-for-update', () => {
-    console.log('Checking for updates...');
+function initAppUpdater() {
+  if (appUpdater) return appUpdater;
+  appUpdater = createAppUpdater({
+    autoUpdater,
+    dialog,
+    shell,
+    getWin: () => win,
+    getPreferences: getStoredPreferences,
+    sendToRenderer: sendUpdateEventToRenderer,
+    isPackaged: () => app.isPackaged,
   });
-
-  autoUpdater.on('update-available', (info) => {
-    console.log('Update available:', info.version);
-    
-    if (isMac) {
-      // macOS: unsigned builds can't auto-update, show download link
-      dialog.showMessageBox(win, {
-        type: 'info',
-        title: 'Update Available',
-        message: `A new version (${info.version}) is available!`,
-        detail: 'Please visit the GitHub releases page to download the latest version.',
-        buttons: ['Open GitHub Releases', 'Later'],
-        defaultId: 0
-      }).then(result => {
-        if (result.response === 0) {
-          require('electron').shell.openExternal('https://github.com/jontslater/VirtualDeck/releases/latest');
-        }
-      });
-    } else if (isWindows) {
-      // Windows: can auto-update even unsigned
-      dialog.showMessageBox(win, {
-        type: 'info',
-        title: 'Update Available',
-        message: `A new version (${info.version}) is available!`,
-        detail: 'Would you like to download it now?',
-        buttons: ['Download', 'Later'],
-        defaultId: 0
-      }).then(result => {
-        if (result.response === 0) {
-          autoUpdater.downloadUpdate();
-          if (win && !win.isDestroyed()) {
-            win.webContents.send('update-downloading');
-          }
-        }
-      });
-    }
-  });
-
-  autoUpdater.on('update-not-available', (info) => {
-    console.log('Update not available. Current version is latest:', info.version);
-  });
-
-  autoUpdater.on('download-progress', (progressObj) => {
-    const msg = `Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`;
-    console.log(msg);
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log('Update downloaded:', info.version);
-    
-    dialog.showMessageBox(win, {
-      type: 'info',
-      title: 'Update Ready',
-      message: 'Update downloaded successfully!',
-      detail: 'The application will restart to apply the update.',
-      buttons: ['Restart Now', 'Later'],
-      defaultId: 0
-    }).then(result => {
-      if (result.response === 0) {
-        autoUpdater.quitAndInstall();
-      }
-    });
-  });
-
-  autoUpdater.on('error', (err) => {
-    console.error('Update error:', err);
-    dialog.showMessageBox(win, {
-      type: 'error',
-      title: 'Update Error',
-      message: 'Failed to check for updates',
-      detail: err.message || 'Please try again later.',
-      buttons: ['OK']
-    });
-  });
+  return appUpdater;
 }
 
-// Manual update check function
 function checkForUpdates() {
-  setupAutoUpdater();
-  autoUpdater.checkForUpdates();
+  initAppUpdater().checkForUpdates({ manual: true });
 }
 
 app.whenReady().then(() => {
@@ -5763,21 +5703,9 @@ app.whenReady().then(() => {
   });
   ravenHost.maybeAutoStart();
   
-  // Setup and check for updates on startup (delay by 3 seconds to let app initialize)
+  initAppUpdater();
   setTimeout(() => {
-    setupAutoUpdater();
-    
-    // Check if auto-update is enabled in preferences
-    const preferences = getStoredPreferences();
-    if (preferences.autoUpdate !== false) { // default to true if not set
-      // Disabled auto-update check for private repository
-      console.log('Auto-update check disabled (private repository)');
-      // autoUpdater.checkForUpdates().catch(err => {
-      //   console.log('Auto-update check failed (expected if not installed from installer):', err.message);
-      // });
-    } else {
-      console.log('Auto-update disabled in preferences');
-    }
+    initAppUpdater().maybeCheckOnStartup();
   }, 3000);
   
   // Build application menu: Edit contains Preferences, View & Window removed, Tools added
@@ -6183,7 +6111,7 @@ app.whenReady().then(() => {
   ipcMain.on('check-for-updates', () => {
     try {
       console.log('Manual update check requested from preferences');
-      checkForUpdates();
+      initAppUpdater().checkForUpdates({ manual: true });
     } catch (e) { console.warn('check-for-updates failed', e); }
   });
 

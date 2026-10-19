@@ -128,6 +128,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Preferences and updates
   savePreferences: (preferences) => ipcRenderer.send('save-preferences', preferences),
   checkForUpdates: () => ipcRenderer.send('check-for-updates'),
+  onUpdateStatus: (callback) => ipcRenderer.on('update-status', (_event, status) => callback(status)),
   // Daily Check-In System
   loadDailyCheckins: async () => ipcRenderer.invoke('loadDailyCheckins'),
   saveDailyCheckins: async (data) => ipcRenderer.invoke('saveDailyCheckins', data),

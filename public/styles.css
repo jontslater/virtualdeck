@@ -1249,6 +1249,23 @@ html[data-theme], body[data-theme] {
   text-decoration: none;
 }
 
+.update-status-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-height: 1.2em;
+  margin-top: 6px;
+}
+
+.update-download-progress {
+  width: 100%;
+  margin-top: 8px;
+  height: 8px;
+}
+
+.update-download-progress.hidden {
+  display: none;
+}
+
 /* Drag and Drop Styles */
 .sound-card.draggable {
   cursor: grab;

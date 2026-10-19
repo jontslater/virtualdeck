@@ -16985,17 +16985,36 @@ function savePreferences() {
   closePreferencesModal();
 }
 
+function applyUpdateStatusToPreferences(status) {
+  const textEl = document.getElementById('update-status-text');
+  const progressEl = document.getElementById('update-download-progress');
+  if (!textEl) return;
+  if (!status) {
+    textEl.textContent = '';
+    if (progressEl) progressEl.classList.add('hidden');
+    return;
+  }
+  if (status.message) textEl.textContent = status.message;
+  if (progressEl) {
+    if (status.phase === 'downloading' && typeof status.percent === 'number') {
+      progressEl.classList.remove('hidden');
+      progressEl.value = status.percent;
+    } else if (status.phase === 'downloaded' || status.phase === 'idle') {
+      progressEl.classList.add('hidden');
+      progressEl.value = 0;
+    }
+  }
+}
+
 function checkForUpdatesFromPreferences() {
-  // Send check for updates request to main process
   if (window.electronAPI && window.electronAPI.checkForUpdates) {
+    applyUpdateStatusToPreferences({ phase: 'checking', message: 'Checking for updates…' });
     window.electronAPI.checkForUpdates();
-    if (window.notificationManager) {
-      window.notificationManager.show('Checking for updates...', 'info');
-    }
   } else {
-    if (window.notificationManager) {
-      window.notificationManager.show('Update checking not available in development mode', 'warning');
-    }
+    applyUpdateStatusToPreferences({
+      phase: 'error',
+      message: 'Updates are only available in the installed Windows build.',
+    });
   }
 }
 
@@ -17023,6 +17042,10 @@ function initializePreferencesModal() {
   const checkUpdatesBtn = document.getElementById('check-updates-button');
   if (checkUpdatesBtn) {
     checkUpdatesBtn.addEventListener('click', checkForUpdatesFromPreferences);
+  }
+
+  if (window.electronAPI && typeof window.electronAPI.onUpdateStatus === 'function') {
+    window.electronAPI.onUpdateStatus((status) => applyUpdateStatusToPreferences(status));
   }
 
   // Copy token path button

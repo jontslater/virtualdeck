@@ -1,8 +1,10 @@
 # VirtualDeck Auto-Update Guide
 
+> **Canonical docs:** see [`docs/UPDATES.md`](docs/UPDATES.md) and [`docs/VERSIONING.md`](docs/VERSIONING.md) for v1.2+ (version `1.2.0`, repo `jontslater/virtualdeck`, artifact `VirtualDeck-Setup-X.Y.Z.exe`).
+
 ## Overview
 
-VirtualDeck now includes automatic update functionality using `electron-updater`. This allows users to receive updates automatically from GitHub releases.
+VirtualDeck includes automatic update functionality using `electron-updater`. Updates are delivered from **GitHub Releases** on `jontslater/virtualdeck`.
 
 ## How It Works
 

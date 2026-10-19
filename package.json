@@ -1,13 +1,13 @@
 {
   "name": "virtualdeck",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "A virtual deck application built with Electron",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "prepare-build": "node prepare-build.js",
     "prepare-build:no-raven": "node -e \"process.env.SKIP_RAVEN='1'; require('./prepare-build').runPrepareBuild()\"",
-    "test": "node test-prepare-build.js && node test-security.js && node test-license.js && node test-ai-config.js && node test-raid-favorites.js && node test-raven-env-migrate.js && node test-ai-audio-modal.js && node test-media-file.js && node test-macro-hotkeys.js && node test-scene-providers.js && node test-voice-macro.js && node test-alert-wysiwyg.js && node test-input-focus.js",
+    "test": "node test-prepare-build.js && node test-release-metadata.js && node test-security.js && node test-app-updater.js && node test-license.js && node test-ai-config.js && node test-raid-favorites.js && node test-raven-env-migrate.js && node test-ai-audio-modal.js && node test-media-file.js && node test-macro-hotkeys.js && node test-scene-providers.js && node test-voice-macro.js && node test-alert-wysiwyg.js && node test-input-focus.js",
     "test:prepare-build": "node test-prepare-build.js",
     "test:ai-config": "node test-ai-config.js",
     "stage-raven": "powershell -ExecutionPolicy Bypass -File scripts/stage-raven-runtime.ps1",
@@ -16,7 +16,12 @@
     "dist": "npm run prepare-build:no-raven && electron-builder",
     "build:win": "npm run prepare-build:no-raven && electron-builder --win",
     "build:win:with-raven": "npm run stage-raven && npm run prepare-build && electron-builder --win",
-    "build:win:personal": "node scripts/build-win-personal.js"
+    "build:win:personal": "node scripts/build-win-personal.js",
+    "build:win:publish": "npm run prepare-build:no-raven && electron-builder --win --publish always"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jontslater/virtualdeck.git"
   },
   "keywords": [
     "electron",
@@ -33,7 +38,12 @@
   "build": {
     "appId": "com.virtualdeck.app",
     "productName": "VirtualDeck",
-    "publish": null,
+    "publish": {
+      "provider": "github",
+      "owner": "jontslater",
+      "repo": "virtualdeck",
+      "releaseType": "release"
+    },
     "directories": {
       "output": "dist"
     },
@@ -73,7 +83,8 @@
         }
       ],
       "icon": "public/icons/VD.gif",
-      "sign": null
+      "sign": null,
+      "artifactName": "VirtualDeck-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
