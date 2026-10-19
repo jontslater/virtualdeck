@@ -9,6 +9,7 @@ function showCustomPrompt(message, defaultValue = '') {
   return new Promise((resolve) => {
     // Create modal overlay
     const overlay = document.createElement('div');
+    overlay.setAttribute('data-vd-dialog', '1'); // Esc handled by this dialog, not the global modal closer
     overlay.style.cssText = `
       position: fixed;
       top: 0;
@@ -116,9 +117,15 @@ function showCustomPrompt(message, defaultValue = '') {
     overlay.appendChild(dialog);
     
     // Event handlers
+    const previousFocus = document.activeElement;
     const cleanup = () => {
       if (overlay.parentNode) {
         overlay.parentNode.removeChild(overlay);
+      }
+      // Every close path (buttons, Esc, Enter) drops the keydown listener and restores focus.
+      document.removeEventListener('keydown', handleKeydown);
+      if (previousFocus && previousFocus !== document.body && document.contains(previousFocus) && typeof previousFocus.focus === 'function') {
+        try { previousFocus.focus(); } catch (_) {}
       }
     };
     
@@ -158,6 +165,7 @@ function showProfileDeleteDialog(profiles) {
   return new Promise((resolve) => {
     // Create modal overlay
     const overlay = document.createElement('div');
+    overlay.setAttribute('data-vd-dialog', '1'); // Esc handled by this dialog, not the global modal closer
     overlay.style.cssText = `
       position: fixed;
       top: 0;
@@ -270,9 +278,15 @@ function showProfileDeleteDialog(profiles) {
     overlay.appendChild(dialog);
     
     // Event handlers
+    const previousFocus = document.activeElement;
     const cleanup = () => {
       if (overlay.parentNode) {
         overlay.parentNode.removeChild(overlay);
+      }
+      // Every close path (buttons, Esc, Enter) drops the keydown listener and restores focus.
+      document.removeEventListener('keydown', handleKeydown);
+      if (previousFocus && previousFocus !== document.body && document.contains(previousFocus) && typeof previousFocus.focus === 'function') {
+        try { previousFocus.focus(); } catch (_) {}
       }
     };
     
@@ -308,6 +322,7 @@ function showCustomConfirm(message) {
   return new Promise((resolve) => {
     // Create modal overlay
     const overlay = document.createElement('div');
+    overlay.setAttribute('data-vd-dialog', '1'); // Esc handled by this dialog, not the global modal closer
     overlay.style.cssText = `
       position: fixed;
       top: 0;
@@ -399,9 +414,15 @@ function showCustomConfirm(message) {
     overlay.appendChild(dialog);
     
     // Event handlers
+    const previousFocus = document.activeElement;
     const cleanup = () => {
       if (overlay.parentNode) {
         overlay.parentNode.removeChild(overlay);
+      }
+      // Every close path (buttons, Esc, Enter) drops the keydown listener and restores focus.
+      document.removeEventListener('keydown', handleKeydown);
+      if (previousFocus && previousFocus !== document.body && document.contains(previousFocus) && typeof previousFocus.focus === 'function') {
+        try { previousFocus.focus(); } catch (_) {}
       }
     };
     
@@ -5348,14 +5369,9 @@ document.addEventListener('keydown', (event) => {
       return;
     }
     
-    // Close any other visible modals
-    const visibleModals = document.querySelectorAll('.modal:not(.hidden), [class*="modal"]:not(.hidden)');
-    visibleModals.forEach(modal => {
-      if (modal.style.display !== 'none' && modal.offsetParent !== null) {
-        modal.classList.add('hidden');
-        modal.style.display = 'none';
-      }
-    });
+    // Close the topmost open modal CONTAINER via its own close function (public/modal-escape.js).
+    // Never hide inner parts: that left the full-screen backdrop up and swallowed all input.
+    if (window.VDModalEscape) window.VDModalEscape.closeTopmost(window, document);
   }
 });
 
@@ -6844,7 +6860,15 @@ function setupOverlayWidget() {
           copyAiAudio.textContent = 'Copied';
           setTimeout(() => { copyAiAudio.textContent = original || '📋 Copy'; }, 1200);
         } catch (err) {
-          window.prompt('Copy this OBS browser source URL:', url);
+          // prompt() is not supported in Electron; select the URL so it can be copied with Ctrl+C.
+          if (el && window.getSelection) {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+          if (typeof showCustomAlert === 'function') showCustomAlert('Copy failed - URL selected, press Ctrl+C', 'error');
         }
       });
     }

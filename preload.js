@@ -7,6 +7,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   refreshHotkeys: () => ipcRenderer.send('refresh-hotkeys'),
   disableHotkeys: () => ipcRenderer.send('disable-hotkeys'),
   enableHotkeys: () => ipcRenderer.send('enable-hotkeys'),
+  // Synchronous parented alert/confirm that hands keyboard focus back to the page (public/dialog-shim.js)
+  nativeDialog: (kind, message) => ipcRenderer.sendSync('vd-native-dialog', { kind: kind === 'confirm' ? 'confirm' : 'alert', message: String(message == null ? '' : message) }),
+  // Suspend global shortcuts while typing in a VirtualDeck text field (public/input-focus-guard.js)
+  setTextInputActive: (active) => ipcRenderer.send('text-input-active', !!active),
   onTriggerMedia: (callback) => ipcRenderer.on('trigger-media', (event, mediaId) => callback(mediaId)),
   onPlayAiTts: (callback) => ipcRenderer.on('play-ai-tts', (event, payload) => callback(payload)),
   onRefreshUI: (callback) => ipcRenderer.on('refresh-ui', (event) => callback()),
