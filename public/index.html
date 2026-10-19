@@ -1227,6 +1227,23 @@
           </div>
         </div>
 
+        <!-- License Section -->
+        <div class="preferences-section" id="license-preferences-section">
+          <h3>License</h3>
+          <p id="license-status-message" class="license-status-message">Loading license status…</p>
+          <div class="preference-item">
+            <label for="license-key-input">License key</label>
+            <input type="text" id="license-key-input" class="preference-input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" />
+            <small>VirtualDeck Pro unlocks the AI assistant (bring your own API keys) and unlimited buttons. One-time purchase via Lemon Squeezy.</small>
+          </div>
+          <div class="preference-item license-actions">
+            <button type="button" id="license-activate-btn" class="preference-button primary">Activate license</button>
+            <button type="button" id="license-deactivate-btn" class="preference-button">Deactivate on this PC</button>
+            <button type="button" id="license-revalidate-btn" class="preference-button">Re-check license</button>
+            <a id="license-purchase-link" href="#" target="_blank" rel="noopener" class="preference-button link-button">Get VirtualDeck Pro</a>
+          </div>
+        </div>
+
         <!-- Security Section -->
         <div class="preferences-section">
           <h3>Security</h3>
@@ -2613,6 +2630,7 @@
   <script src="meldClient.js"></script>
   <script src="AddEditButtonForm.js"></script>
   <script src="alert-text-render.js"></script>
+  <script src="license-ui.js"></script>
   <script src="script.js"></script>
   <script src="macro-hotkeys.js"></script>
   <script src="macro-scene-picker.js"></script>

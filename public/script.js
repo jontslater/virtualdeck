@@ -2146,6 +2146,14 @@ async function loadButtons() {
     console.error('soundGrid element not found!');
     return;
   }
+
+  if (window.vdLicense && typeof window.vdLicense.refreshDeckEntitlements === 'function') {
+    try {
+      await window.vdLicense.refreshDeckEntitlements();
+    } catch (e) {
+      console.warn('[License] deck entitlements refresh failed', e);
+    }
+  }
   
   // Clear existing buttons
   soundGrid.innerHTML = '';
@@ -2159,6 +2167,12 @@ async function loadButtons() {
     <div class="add-text">Add New</div>
   `;
   addCard.onclick = () => {
+    if (window.vdLicense && !window.vdLicense.canAddButton()) {
+      window.vdLicense.showUpsell(
+        `Free plan includes ${window.vdLicense.getCachedDeckEntitlements()?.maxActiveButtons || 15} active buttons. Upgrade in Preferences → License for unlimited buttons and Raven AI.`,
+      );
+      return;
+    }
     // Show selection modal
     document.getElementById('button-type-modal').classList.remove('hidden');
   };
@@ -2235,11 +2249,18 @@ async function loadButtons() {
       <div class="sound-name">${button.name || button.label || button.sceneName || 'Unnamed'}</div>
       <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
     `;
+    if (window.vdLicense && typeof window.vdLicense.applyLockedStylesToCard === 'function') {
+      window.vdLicense.applyLockedStylesToCard(card, button);
+    }
     card.addEventListener('click', (e) => {
       if (!e.target.classList.contains('edit-button') && !e.target.classList.contains('delete-x-button')) {
         // Suppress trigger if in drag mode or the card was just dragged
         if (isDragMode) return;
         if (card._vdJustDragged) return;
+        if (window.vdLicense && button.id && window.vdLicense.isButtonLocked(button.id)) {
+          window.vdLicense.showUpsell();
+          return;
+        }
         // Read fresh soundData from the DOM so edits/reorders take effect
         try {
           const sd = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
@@ -5050,6 +5071,11 @@ window.editButtonByEl = async (btnEl) => {
   try {
     const card = btnEl.closest && btnEl.closest('.sound-card');
     if (!card) return;
+    const bid = card.dataset.buttonId;
+    if (window.vdLicense && bid && window.vdLicense.isButtonLocked(bid)) {
+      window.vdLicense.showUpsell();
+      return;
+    }
     const config = await window.electronAPI.getConfig();
     let origIndex = -1;
     // Prefer stable id mapping if present
@@ -6829,6 +6855,24 @@ function setupOverlayWidget() {
 
   function setupAIManagementPanel() {
     console.log('🤖 Setting up AI Management Panel');
+
+    (async () => {
+      if (!window.electronAPI || typeof window.electronAPI.licenseGetStatus !== 'function') return;
+      const status = await window.electronAPI.licenseGetStatus();
+      if (status && !status.aiAssistant) {
+        const panel = document.getElementById('ai-management-panel');
+        if (panel && !document.getElementById('ai-license-upsell')) {
+          const note = document.createElement('div');
+          note.id = 'ai-license-upsell';
+          note.style.cssText =
+            'margin-bottom:12px;padding:12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-tertiary);font-size:12px;line-height:1.45;';
+          note.innerHTML =
+            '<strong>VirtualDeck Pro required.</strong> Raven AI and voice assistant features need a one-time license. ' +
+            'Open <strong>Preferences → License</strong> to activate your key (BYOK for OpenAI / ElevenLabs).';
+          panel.prepend(note);
+        }
+      }
+    })();
     
     // Auto-detect controller port if needed (helps when we move off 3004).
     // Raven starts a few seconds after VirtualDeck, so keep retrying.
@@ -16858,6 +16902,9 @@ function openPreferencesModal() {
   if (preferencesModal) {
     preferencesModal.classList.remove('hidden');
     loadPreferences();
+    if (window.vdLicense && typeof window.vdLicense.loadLicensePreferencesPanel === 'function') {
+      window.vdLicense.loadLicensePreferencesPanel();
+    }
   }
 }
 

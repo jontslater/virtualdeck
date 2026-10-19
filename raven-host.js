@@ -17,6 +17,12 @@ const { stripBom } = require('./lib/read-utf8');
 const { migrateRavenEnvFile } = require('./lib/raven-env-migrate');
 
 let ravenProc = null;
+/** @type {() => { allowed: boolean, message?: string }} */
+let licenseGate = () => ({ allowed: true });
+
+function setLicenseGate(fn) {
+  licenseGate = typeof fn === 'function' ? fn : () => ({ allowed: true });
+}
 
 function prefsPath() {
   return path.join(app.getPath('userData'), 'raven-host.json');
@@ -208,6 +214,18 @@ function isRunning() {
 }
 
 function startRaven() {
+  const gate = licenseGate();
+  if (!gate.allowed) {
+    console.warn('[Raven] start blocked:', gate.message || 'license required');
+    dialog.showMessageBoxSync({
+      type: 'info',
+      title: 'VirtualDeck Pro required',
+      message: 'Raven AI requires a license',
+      detail: gate.message || 'Purchase VirtualDeck Pro and activate your license key in Preferences.',
+      buttons: ['OK'],
+    });
+    return;
+  }
   if (isRunning()) {
     console.log('[Raven] already running');
     return;
@@ -314,6 +332,11 @@ function openEnvFile() {
 
 function maybeAutoStart() {
   if (!app.isPackaged) return;
+  const gate = licenseGate();
+  if (!gate.allowed) {
+    console.log('[Raven] auto-start skipped (no AI license)');
+    return;
+  }
   const prefs = loadPrefs();
   if (prefs.autoStart === false) return;
   setTimeout(() => startRaven(), 400);
@@ -354,4 +377,5 @@ module.exports = {
   maybeAutoStart,
   menuTemplateItems,
   ensureEnv,
+  setLicenseGate,
 };

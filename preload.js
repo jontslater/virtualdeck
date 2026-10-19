@@ -175,4 +175,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkTwitchRaidScope: async () => ipcRenderer.invoke('check-twitch-raid-scope'),
   getTwitchOAuthAuthorizeUrl: async () => ipcRenderer.invoke('get-twitch-oauth-authorize-url'),
   onRaidFavoritesHistoryUpdated: (callback) => ipcRenderer.on('raid-favorites-history-updated', (_event, data) => callback(data)),
+  // Licensing (entitlements enforced in main process)
+  licenseGetStatus: async () => ipcRenderer.invoke('license-get-status'),
+  licenseGetDeckEntitlements: async () => ipcRenderer.invoke('license-get-deck-entitlements'),
+  licenseActivate: async (licenseKey) => ipcRenderer.invoke('license-activate', licenseKey),
+  licenseDeactivate: async () => ipcRenderer.invoke('license-deactivate'),
+  licenseRevalidate: async () => ipcRenderer.invoke('license-revalidate'),
+  onLicenseStatusChanged: (callback) => ipcRenderer.on('license-status-changed', (_event, status) => callback(status)),
+  onLicenseUpsell: (callback) => ipcRenderer.on('license-upsell', (_event, payload) => callback(payload)),
 });

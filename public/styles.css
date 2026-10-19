@@ -1214,6 +1214,41 @@ html[data-theme], body[data-theme] {
   z-index: 20; /* bring hovered card above neighbors so the lifted top is visible */
 }
 
+.sound-card.sound-card-locked {
+  opacity: 0.55;
+  cursor: not-allowed;
+  border-color: var(--border-secondary, #555);
+  filter: grayscale(0.35);
+}
+
+.sound-card.sound-card-locked:hover {
+  transform: none;
+}
+
+.license-status-message {
+  font-size: 13px;
+  margin: 0 0 12px 0;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.license-status-message.license-status-licensed {
+  color: var(--accent-color, #6bcf7f);
+}
+
+.license-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.preference-button.link-button {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 /* Drag and Drop Styles */
 .sound-card.draggable {
   cursor: grab;

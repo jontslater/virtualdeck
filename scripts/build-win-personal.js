@@ -8,6 +8,13 @@ const path = require('path');
 
 const repoRoot = path.join(__dirname, '..');
 
+if (process.env.CI === 'true' && process.env.VD_ALLOW_PERSONAL_BUILD !== '1') {
+  console.error('❌ Refusing personal installer build in CI (sets RAVEN_BUNDLE_KEYS=1).');
+  console.error('   Public/release builds must use: npm run build:win or npm run build:win:with-raven');
+  console.error('   To override locally: VD_ALLOW_PERSONAL_BUILD=1 npm run build:win:personal');
+  process.exit(1);
+}
+
 function run(command, args, env = {}) {
   const result = spawnSync(command, args, {
     cwd: repoRoot,

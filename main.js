@@ -70,6 +70,24 @@ function isRecentButtonTrigger(label) {
 
 function triggerButtonWithDebounce(label, source = 'unknown') {
   console.log(`🔍 triggerButtonWithDebounce called for "${label}" from ${source}`);
+  if (licenseManager) {
+    try {
+      const profile = loadProfile(currentActiveProfile);
+      const gate = licenseManager.canTriggerButton(profile, label);
+      if (!gate.allowed) {
+        console.log(`🔒 Blocked trigger for "${label}" from ${source}:`, gate.reason);
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('license-upsell', {
+            reason: gate.reason,
+            message: gate.message,
+          });
+        }
+        return false;
+      }
+    } catch (e) {
+      console.warn('[License] trigger check failed:', e && e.message);
+    }
+  }
   if (isRecentButtonTrigger(label)) {
     console.log(`🚫 Skipping duplicate trigger for "${label}" from ${source} (within ${BUTTON_TRIGGER_DEBOUNCE_MS}ms)`);
     return false;
@@ -96,6 +114,54 @@ const defaultConfigPath = path.join(__dirname, 'config.json');
 const securityManager = new SecurityManager(userDataPath);
 securityManager.getOrCreateToken();
 const wsRateLimiter = securityManager.createRateLimiter(1000, 10);
+
+const { LicenseManager } = require('./lib/license/license-manager');
+const { computeButtonEntitlements } = require('./lib/license/button-entitlements');
+let licenseManager;
+function broadcastLicenseStatus() {
+  try {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('license-status-changed', licenseManager.getStatusForUi());
+    }
+  } catch (e) {
+    console.warn('[License] broadcast failed', e && e.message);
+  }
+}
+try {
+  licenseManager = new LicenseManager({
+    userDataPath,
+    safeStorage,
+    onStatusChange: () => broadcastLicenseStatus(),
+  });
+  licenseManager.startPeriodicRevalidation();
+  console.log('✅ License manager initialized (provider:', licenseManager.config.provider, ')');
+} catch (err) {
+  console.error('❌ License manager failed to initialize:', err);
+  licenseManager = null;
+}
+
+function assertProfileLicenseConstraints(nextProfile, prevProfile) {
+  if (!licenseManager) return;
+  if (licenseManager.getEntitlements().unlimitedButtons) return;
+  const prevDeck = computeButtonEntitlements(prevProfile, false);
+  const nextButtons = nextProfile.buttons || [];
+  const prevButtons = prevProfile.buttons || [];
+  if (nextButtons.length > prevButtons.length) {
+    const addCheck = licenseManager.canAddButton(prevProfile);
+    if (!addCheck.allowed) {
+      throw new Error(addCheck.message);
+    }
+  }
+  for (const btn of nextButtons) {
+    if (!btn || !btn.id) continue;
+    if (!prevDeck.lockedIds.has(btn.id)) continue;
+    const prevBtn = prevButtons.find((b) => b && b.id === btn.id);
+    if (prevBtn && JSON.stringify(prevBtn) !== JSON.stringify(btn)) {
+      const editCheck = licenseManager.canEditButton(prevProfile, btn.id);
+      throw new Error(editCheck.message);
+    }
+  }
+}
 
 // Initialize VTuber Manager
 let vtuberManager;
@@ -1400,6 +1466,15 @@ function handleAIConfigAPI(req, res) {
     res.end(JSON.stringify({ error: 'AI Config Manager not initialized' }));
     return;
   }
+
+  if (licenseManager) {
+    const aiGate = licenseManager.canUseAiAssistant();
+    if (!aiGate.allowed) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: aiGate.message, code: 'license_required' }));
+      return;
+    }
+  }
   
   try {
     if (path === '/api/ai/voices' && req.method === 'GET') {
@@ -1757,6 +1832,45 @@ function nextUniqueButtonId(buttons) {
 
 ipcMain.on('add-media', (event, data) => {
   try {
+    if (licenseManager) {
+      const profile = loadProfile(currentActiveProfile);
+      if (typeof data.editingIndex === 'number') {
+        const existing = profile.buttons[data.editingIndex];
+        if (existing && existing.id) {
+          const editCheck = licenseManager.canEditButton(profile, existing.id);
+          if (!editCheck.allowed) {
+            if (win && !win.isDestroyed()) {
+              dialog.showMessageBox(win, {
+                type: 'info',
+                title: 'Button locked',
+                message: 'VirtualDeck Pro required',
+                detail: editCheck.message,
+                buttons: ['OK'],
+              });
+            }
+            return;
+          }
+        }
+      } else {
+        const addCheck = licenseManager.canAddButton(profile);
+        if (!addCheck.allowed) {
+          if (win && !win.isDestroyed()) {
+            dialog.showMessageBox(win, {
+              type: 'info',
+              title: 'Button limit reached',
+              message: 'Upgrade to VirtualDeck Pro',
+              detail: addCheck.message,
+              buttons: ['OK'],
+            });
+            win.webContents.send('license-upsell', {
+              reason: addCheck.reason,
+              message: addCheck.message,
+            });
+          }
+          return;
+        }
+      }
+    }
     console.log('add-media received:', data);
     console.log('Chat command data:', data.chatCommand);
     // Load from active profile instead of old config.json
@@ -2051,6 +2165,8 @@ ipcMain.handle('save-config', async (event, config) => {
         soundButtonOrder: []
       }
     };
+
+    assertProfileLicenseConstraints(mergedConfig, currentProfile);
     
     // Save to active profile
     saveProfile(currentActiveProfile, mergedConfig);
@@ -2090,6 +2206,8 @@ ipcMain.handle('get-profile', async (event, profileId) => {
 // Save a specific profile
 ipcMain.handle('save-profile', async (event, { profileId, profileData }) => {
   try {
+    const previous = loadProfile(profileId);
+    assertProfileLicenseConstraints(profileData, previous);
     saveProfile(profileId, profileData);
     return { success: true };
   } catch (error) {
@@ -5478,8 +5596,13 @@ function registerHotkeysNow() {
   globalShortcut.unregisterAll();
   // Load buttons from active profile
   const profile = loadProfile(currentActiveProfile);
-  const buttons = profile.buttons || [];
+  const unlimited = licenseManager ? licenseManager.getEntitlements().unlimitedButtons : true;
+  const deck = computeButtonEntitlements(profile, unlimited);
+  const buttons = deck.ordered || profile.buttons || [];
   buttons.forEach((btn) => {
+    if (btn && btn.id && deck.lockedIds && deck.lockedIds.has(btn.id)) {
+      return;
+    }
     if (btn.hotkey) {
       // Register the full hotkey string, including modifiers
       try {
@@ -5625,12 +5748,19 @@ app.whenReady().then(() => {
   if (!fs.existsSync(aiTtsSoundsDir)) {
     fs.mkdirSync(aiTtsSoundsDir, { recursive: true });
   }
-  // Start AI command watcher
-  startAICommandWatcher();
+  if (licenseManager && licenseManager.canUseAiAssistant().allowed) {
+    startAICommandWatcher();
+  } else {
+    console.log('[AI Audio] Command watcher not started (VirtualDeck Pro license required)');
+  }
   createWindow();
   registerHotkeys();
   startOverlayServer();
   startJarvisServer();
+  ravenHost.setLicenseGate(() => {
+    if (!licenseManager) return { allowed: true };
+    return licenseManager.canUseAiAssistant();
+  });
   ravenHost.maybeAutoStart();
   
   // Setup and check for updates on startup (delay by 3 seconds to let app initialize)
@@ -5955,8 +6085,73 @@ app.whenReady().then(() => {
     return securityManager.tokenPath;
   });
 
+  ipcMain.handle('license-get-status', async () => {
+    if (!licenseManager) {
+      return {
+        licensed: false,
+        aiAssistant: false,
+        unlimitedButtons: false,
+        maxButtons: 15,
+        status: 'unavailable',
+        message: 'License manager not initialized',
+      };
+    }
+    return licenseManager.getStatusForUi();
+  });
+
+  ipcMain.handle('license-get-deck-entitlements', async () => {
+    if (!licenseManager) {
+      return { licensed: false, canAddButton: true, lockedButtonIds: [], activeButtonIds: [] };
+    }
+    const profile = loadProfile(currentActiveProfile);
+    return licenseManager.getButtonEntitlementsForProfile(profile);
+  });
+
+  ipcMain.handle('license-activate', async (_event, licenseKey) => {
+    if (!licenseManager) {
+      return { success: false, error: 'License manager not initialized' };
+    }
+    const result = await licenseManager.activate(licenseKey);
+    if (result.success) {
+      registerHotkeys();
+      try {
+        ravenHost.stopRaven();
+      } catch (e) {
+        // ignore
+      }
+    }
+    return result;
+  });
+
+  ipcMain.handle('license-deactivate', async () => {
+    if (!licenseManager) {
+      return { success: false, error: 'License manager not initialized' };
+    }
+    try {
+      ravenHost.stopRaven();
+    } catch (e) {
+      // ignore
+    }
+    const result = await licenseManager.deactivate();
+    registerHotkeys();
+    return result;
+  });
+
+  ipcMain.handle('license-revalidate', async () => {
+    if (!licenseManager) {
+      return { success: false, error: 'License manager not initialized' };
+    }
+    return licenseManager.revalidate();
+  });
+
   ipcMain.handle('preview-ai-voice', async (_event, payload) => {
     try {
+      if (licenseManager) {
+        const aiGate = licenseManager.canUseAiAssistant();
+        if (!aiGate.allowed) {
+          return { success: false, error: aiGate.message };
+        }
+      }
       if (!aiConfigManager) {
         return { success: false, error: 'AI configuration is not available' };
       }

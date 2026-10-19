@@ -7,7 +7,7 @@
     "start": "electron .",
     "prepare-build": "node prepare-build.js",
     "prepare-build:no-raven": "node -e \"process.env.SKIP_RAVEN='1'; require('./prepare-build').runPrepareBuild()\"",
-    "test": "node test-prepare-build.js && node test-security.js && node test-ai-config.js && node test-raid-favorites.js && node test-raven-env-migrate.js && node test-ai-audio-modal.js && node test-media-file.js && node test-macro-hotkeys.js && node test-scene-providers.js && node test-voice-macro.js && node test-alert-wysiwyg.js && node test-input-focus.js",
+    "test": "node test-prepare-build.js && node test-security.js && node test-license.js && node test-ai-config.js && node test-raid-favorites.js && node test-raven-env-migrate.js && node test-ai-audio-modal.js && node test-media-file.js && node test-macro-hotkeys.js && node test-scene-providers.js && node test-voice-macro.js && node test-alert-wysiwyg.js && node test-input-focus.js",
     "test:prepare-build": "node test-prepare-build.js",
     "test:ai-config": "node test-ai-config.js",
     "stage-raven": "powershell -ExecutionPolicy Bypass -File scripts/stage-raven-runtime.ps1",
