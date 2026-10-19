@@ -110,6 +110,8 @@ try {
 // Initialize Macro Manager
 const MacroManager = require('./lib/macro-manager');
 const { MacroHotkeyRegistrar } = require('./lib/macro-hotkey-registrar');
+const { registerNativeDialogIpc, installWindowFocusRelay } = require('./lib/native-dialog');
+const { HotkeySuspension } = require('./lib/hotkey-suspension');
 const { parseAccelerator: parseMacroHotkey, findHotkeyConflicts } = require('./public/macro-hotkeys');
 let macroManager;
 let raidFavoritesStore;
@@ -769,6 +771,11 @@ function createWindow() {
       nodeIntegration: false
     }
   });
+
+  // Keyboard focus safety net + hotkey suspension follow window focus.
+  installWindowFocusRelay(win);
+  win.on('focus', () => hotkeySuspension.apply());
+  win.on('blur', () => hotkeySuspension.apply());
 
   win.loadFile(path.join(__dirname, 'public/index.html'));
   // Show window only when ready-to-show to avoid initial mis-sizing
@@ -1998,12 +2005,23 @@ ipcMain.on('refresh-hotkeys', () => {
   registerHotkeys();
 });
 
+// Global shortcuts are suspended for explicit reasons (modals / hotkey capture via
+// disable/enable) and while typing in a VirtualDeck text field with the window focused.
+var hotkeySuspension = new HotkeySuspension({ // var: registerHotkeys may reference it early
+  register: () => registerHotkeysNow(),
+  unregisterAll: () => globalShortcut.unregisterAll(),
+  isWindowFocused: () => !!(win && !win.isDestroyed() && win.isFocused())
+});
 ipcMain.on('disable-hotkeys', () => {
-  globalShortcut.unregisterAll();
+  hotkeySuspension.add('renderer');
 });
 ipcMain.on('enable-hotkeys', () => {
-  registerHotkeys();
+  hotkeySuspension.remove('renderer');
 });
+ipcMain.on('text-input-active', (event, active) => {
+  hotkeySuspension.setTextInputActive(active);
+});
+registerNativeDialogIpc({ ipcMain, dialog, BrowserWindow });
 
 // IPC handler to get config (now loads from active profile)
 ipcMain.handle('get-config', async () => {
@@ -5446,6 +5464,17 @@ ipcMain.on('trigger-media-to-main', (event, label) => {
 });
 
 function registerHotkeys() {
+  // While suspended (typing in VirtualDeck / modal open) keep shortcuts off; they are
+  // registered from the current profile as soon as the suspension ends.
+  if (typeof hotkeySuspension !== 'undefined' && hotkeySuspension.shouldSuspend()) {
+    globalShortcut.unregisterAll();
+    hotkeySuspension.suspendedNow = true;
+    return;
+  }
+  registerHotkeysNow();
+}
+
+function registerHotkeysNow() {
   globalShortcut.unregisterAll();
   // Load buttons from active profile
   const profile = loadProfile(currentActiveProfile);
