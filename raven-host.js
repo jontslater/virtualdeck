@@ -162,14 +162,48 @@ function ensureEnvFile() {
 }
 
 function checkApiKeys() {
+  return getSetupStatus().configured;
+}
+
+function getSetupStatus() {
   const envPath = envFile();
-  if (!fs.existsSync(envPath)) return false;
-  
+  const defaults = {
+    configured: false,
+    llmProvider: 'openai',
+    ttsProvider: 'elevenlabs',
+    hasLlmKey: false,
+    hasTtsKey: false,
+    envPath: envPath,
+  };
+  if (!fs.existsSync(envPath)) {
+    return defaults;
+  }
   const env = parseEnv(fs.readFileSync(envPath, 'utf8'));
   const llmKey = String(env.LLM_API_KEY || '').trim();
   const ttsKey = String(env.TTS_API_KEY || '').trim();
-  
-  return llmKey.length > 0 && ttsKey.length > 0;
+  return {
+    configured: llmKey.length > 0 && ttsKey.length > 0,
+    llmProvider: String(env.LLM_PROVIDER || 'openai').trim() || 'openai',
+    ttsProvider: String(env.TTS_PROVIDER || 'elevenlabs').trim() || 'elevenlabs',
+    hasLlmKey: llmKey.length > 0,
+    hasTtsKey: ttsKey.length > 0,
+    envPath,
+  };
+}
+
+function updateApiKeys(updates = {}) {
+  const dest = ensureEnvFile();
+  const user = parseEnv(fs.readFileSync(dest, 'utf8'));
+  if (updates.llmApiKey !== undefined) {
+    user.LLM_API_KEY = String(updates.llmApiKey || '').trim();
+  }
+  if (updates.ttsApiKey !== undefined) {
+    user.TTS_API_KEY = String(updates.ttsApiKey || '').trim();
+  }
+  const bundled = bundledEnvPath();
+  const template = bundled ? fs.readFileSync(bundled, 'utf8') : fs.readFileSync(dest, 'utf8');
+  writeEnvFromTemplate(dest, template, user);
+  return getSetupStatus();
 }
 
 function showFirstRunDialog() {
@@ -378,4 +412,8 @@ module.exports = {
   menuTemplateItems,
   ensureEnv,
   setLicenseGate,
+  checkApiKeys,
+  getSetupStatus,
+  updateApiKeys,
+  openEnvFile,
 };

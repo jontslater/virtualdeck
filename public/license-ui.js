@@ -71,6 +71,15 @@
     const deactivateBtn = document.getElementById('license-deactivate-btn');
     const revalidateBtn = document.getElementById('license-revalidate-btn');
     const keyInput = document.getElementById('license-key-input');
+    const keyToggle = document.getElementById('license-key-toggle-visibility');
+
+    if (keyToggle && keyInput) {
+      keyToggle.addEventListener('click', () => {
+        const showing = keyInput.type === 'text';
+        keyInput.type = showing ? 'password' : 'text';
+        keyToggle.textContent = showing ? 'Show' : 'Hide';
+      });
+    }
 
     if (activateBtn) {
       activateBtn.addEventListener('click', async () => {
@@ -85,6 +94,12 @@
           await refreshDeckEntitlements();
           paintLicensePreferences(result.status || cachedStatus);
           if (typeof loadButtons === 'function') loadButtons();
+          if (window.vdRavenSetup && typeof window.vdRavenSetup.promptAfterLicenseActivation === 'function') {
+            await window.vdRavenSetup.promptAfterLicenseActivation();
+          }
+          if (window.vdRavenSetup && typeof window.vdRavenSetup.applyAiDashboardVisibility === 'function') {
+            await window.vdRavenSetup.applyAiDashboardVisibility();
+          }
           showUpsell('License activated. Thank you for supporting VirtualDeck!');
         } else {
           showUpsell((result && result.error) || 'Activation failed.');
@@ -100,6 +115,9 @@
           await refreshDeckEntitlements();
           paintLicensePreferences(result.status || cachedStatus);
           if (typeof loadButtons === 'function') loadButtons();
+          if (window.vdRavenSetup && typeof window.vdRavenSetup.applyAiDashboardVisibility === 'function') {
+            await window.vdRavenSetup.applyAiDashboardVisibility();
+          }
         }
       });
     }

@@ -2228,27 +2228,29 @@ async function loadButtons() {
     card.dataset.soundData = JSON.stringify(button);
   if (button.id) card.dataset.buttonId = button.id;
     
-    // Fetch icon for app buttons; use scene icon for meld-scene
-    let iconImg = '';
+    let appIconSrc = null;
+    let appIconAlt = 'App';
     if (button.type === 'meld-scene') {
-      const meldIcon = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#5b8def"/><text x="24" y="30" font-size="13" text-anchor="middle" fill="white">Meld</text></svg>');
-      iconImg = `<img src="${meldIcon}" alt="Meld Scene" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;pointer-events:none;" />`;
+      appIconSrc =
+        'data:image/svg+xml;charset=utf-8,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#5b8def"/><text x="24" y="30" font-size="13" text-anchor="middle" fill="white">Meld</text></svg>',
+        );
+      appIconAlt = 'Meld Scene';
     } else if (button.type === 'app') {
       let iconData = await window.electronAPI.getAppIcon(button.src);
-      if (!iconData) {
-        // Use a default icon if extraction fails
-        iconData = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="%23bbb"/><text x="24" y="30" font-size="20" text-anchor="middle" fill="%23666">App</text></svg>';
-      }
-      iconImg = `<img src="${iconData}" alt="App Icon" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;" />`;
+      if (!iconData) iconData = buildDefaultAppIconDataUrl();
+      appIconSrc = iconData;
+      appIconAlt = button.name || button.label || 'App';
     }
     card.innerHTML = `
       <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
       <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
-      ${iconImg}
       <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type}</div>
       <div class="sound-name">${button.name || button.label || button.sceneName || 'Unnamed'}</div>
       <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
     `;
+    if (appIconSrc) insertAppIconIntoCard(card, appIconSrc, appIconAlt);
     if (window.vdLicense && typeof window.vdLicense.applyLockedStylesToCard === 'function') {
       window.vdLicense.applyLockedStylesToCard(card, button);
     }
@@ -2517,30 +2519,14 @@ document.addEventListener('wheel', (e) => {
 // Essential: Both preventDefault() and stopPropagation() are required for Electron
 // Only prevent drag events when NOT in sound card drag mode
 document.addEventListener('dragover', (e) => {
-  console.log('🎯 Global dragover event fired');
-  console.log('  - isDragMode:', isDragMode);
-  console.log('  - target:', e.target);
-  console.log('  - target classes:', e.target.classList);
-  console.log('  - files:', e.dataTransfer.files.length);
-  
   if (!isDragMode || !e.target.classList.contains('sound-card')) {
-    console.log('  ✅ Preventing default and stopping propagation');
     e.preventDefault();
     e.stopPropagation();
-  } else {
-    console.log('  ❌ Skipping preventDefault (in drag mode on sound card)');
   }
 });
 
 document.addEventListener('drop', (e) => {
-  console.log('🎯 Global drop event fired');
-  console.log('  - isDragMode:', isDragMode);
-  console.log('  - target:', e.target);
-  console.log('  - target classes:', e.target.classList);
-  console.log('  - files:', e.dataTransfer.files.length);
-  
   if (!isDragMode || !e.target.classList.contains('sound-card')) {
-    console.log('  ✅ Processing file drop');
     e.preventDefault();
     e.stopPropagation();
     const globalDropZone = document.getElementById('global-drop-zone');
@@ -2549,28 +2535,20 @@ document.addEventListener('drop', (e) => {
     if (files.length) {
       void addDroppedDeckFiles(files);
     }
-  } else {
-    console.log('  ❌ Skipping file drop (in drag mode on sound card)');
   }
 });
 
 document.addEventListener('dragenter', (e) => {
-  console.log('🎯 dragenter event fired');
   const globalDropZone = document.getElementById('global-drop-zone');
   if (globalDropZone) {
-    console.log('  ✅ Showing global drop zone');
     globalDropZone.classList.remove('hidden');
-  } else {
-    console.log('  ❌ Global drop zone not found');
   }
 });
 
 document.addEventListener('dragleave', (e) => {
-  console.log('🎯 dragleave event fired');
   if (!document.body.contains(e.relatedTarget)) {
     const globalDropZone = document.getElementById('global-drop-zone');
     if (globalDropZone) {
-      console.log('  ✅ Hiding global drop zone');
       globalDropZone.classList.add('hidden');
     }
   }
@@ -2687,8 +2665,27 @@ function getVisibilityMap() {
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
     'toggle-queue-control': 'queue-control-widget',
-    'toggle-profile-panel': 'profile-panel'
+    'toggle-profile-panel': 'profile-panel',
+    'toggle-ai-dashboard': 'ai-dashboard-controls',
   };
+}
+
+function buildDefaultAppIconDataUrl() {
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#bbb"/><text x="24" y="30" font-size="20" text-anchor="middle" fill="#666">App</text></svg>';
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function insertAppIconIntoCard(card, iconSrc, altText) {
+  if (!card || !iconSrc) return;
+  const img = document.createElement('img');
+  img.className = 'app-icon';
+  img.alt = altText || 'App';
+  img.draggable = false;
+  img.src = iconSrc;
+  const anchor = card.querySelector('.sound-type');
+  if (anchor) card.insertBefore(img, anchor);
+  else card.appendChild(img);
 }
 
 // Initialize component visibility dropdown after DOM is ready
@@ -2730,7 +2727,8 @@ if (window.electronAPI && typeof window.electronAPI.onViewToggle === 'function')
           'twitch-chat': 'twitch-chat-container',
           'recent-activity': 'recent-activity-container',
           'sound-controls': 'sound-controls',
-          'sound-grid': 'sound-grid'
+          'sound-grid': 'sound-grid',
+          'ai-dashboard-controls': 'ai-dashboard-controls',
         };
         componentId = shortToFull[target] || null;
       }
@@ -2995,6 +2993,7 @@ function applyVisibilityPrefs() {
 
   Object.keys(map).forEach(checkboxId => {
     const componentId = map[checkboxId];
+    if (componentId === 'ai-dashboard-controls') return;
     const checkbox = document.getElementById(checkboxId);
     const component = document.getElementById(componentId);
     const visible = prefs.hasOwnProperty(componentId) ? !!prefs[componentId] : true;
@@ -3019,6 +3018,9 @@ function applyVisibilityPrefs() {
       updateBottomPaddingForPagination();
     }
   } catch (e) { console.warn('Failed to recompute pagination after applyVisibilityPrefs', e); }
+  if (window.vdRavenSetup && typeof window.vdRavenSetup.applyAiDashboardVisibility === 'function') {
+    window.vdRavenSetup.applyAiDashboardVisibility().catch(() => {});
+  }
 }
 }
 
@@ -8042,6 +8044,37 @@ function setupOverlayWidget() {
     // Load initial state from API once on startup
     loadInitialAIState();
     
+    async function postAIMode(mode, options) {
+      const allowOfflineMute = options && options.allowOfflineMute && mode === 'MUTED';
+      try {
+        await discoverAIStatusApiBaseUrl(true);
+      } catch (discoverErr) {
+        // continue — may still fail on fetch
+      }
+      try {
+        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to set AI mode: ${response.statusText}`);
+        }
+        return await response.json().catch(() => ({}));
+      } catch (err) {
+        if (allowOfflineMute) {
+          console.warn('AI set to MUTED locally (Raven API unreachable):', err && err.message);
+          try {
+            localStorage.setItem('vdAiPendingMode', mode);
+          } catch (storageErr) {
+            // ignore
+          }
+          return { mode, offline: true };
+        }
+        throw err;
+      }
+    }
+
     // Toggle handler
     dashboardToggle.addEventListener('click', async (e) => {
       e.preventDefault();
@@ -8054,16 +8087,7 @@ function setupOverlayWidget() {
         console.log(`🔌 ${isOn ? 'Turning AI ON' : 'Turning AI OFF'}...`);
         
         const mode = isOn ? 'JUST_CHATTING' : 'MUTED';
-        
-        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode }),
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Failed to toggle AI: ${response.statusText}`);
-        }
+        await postAIMode(mode, { allowOfflineMute: !isOn });
         
         // Update UI immediately
         updateToggleUI(isOn);
@@ -8077,7 +8101,12 @@ function setupOverlayWidget() {
         
       } catch (err) {
         console.error('❌ Error toggling AI:', err);
-        alert(`Failed to ${isOn ? 'enable' : 'disable'} AI: ${err.message}`);
+        if (isOn) {
+          alert(`Failed to enable AI: ${err.message}`);
+        } else {
+          updateToggleUI(false);
+          dashboardMode.value = 'MUTED';
+        }
       }
     });
     
@@ -8086,15 +8115,7 @@ function setupOverlayWidget() {
       const mode = e.target.value;
       
       try {
-        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode }),
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Failed to set AI mode: ${response.statusText}`);
-        }
+        await postAIMode(mode, { allowOfflineMute: mode === 'MUTED' });
         
         // Sync with main selector if it exists
         const aiModeSelector = document.getElementById('ai-mode-selector');
@@ -8108,7 +8129,11 @@ function setupOverlayWidget() {
         
       } catch (err) {
         console.error('❌ Error setting AI mode:', err);
-        alert(`Failed to set AI mode: ${err.message}`);
+        if (mode === 'MUTED') {
+          updateToggleUI(false);
+        } else {
+          alert(`Failed to set AI mode: ${err.message}`);
+        }
       }
     });
     
@@ -16759,6 +16784,7 @@ function setupButtonTypeSelection() {
   const audioOption = document.querySelector('[data-type="audio"]');
   const multiMediaOption = document.querySelector('[data-type="multi-media"]');
   const meldSceneOption = document.querySelector('[data-type="meld-scene"]');
+  const macroOption = document.querySelector('[data-type="macro"]');
   const cancelBtn = document.querySelector('.cancel-selection');
 
   // Audio option clicked
@@ -16783,6 +16809,17 @@ function setupButtonTypeSelection() {
     meldSceneOption.addEventListener('click', () => {
       selectionModal.classList.add('hidden');
       openMeldSceneForm();
+    });
+  }
+
+  if (macroOption) {
+    macroOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      if (typeof window.createNewMacro === 'function') {
+        window.createNewMacro();
+      } else if (typeof showCustomAlert === 'function') {
+        showCustomAlert('Macro editor is not loaded yet. Try Edit → Preferences → Manage Macros.', 'error');
+      }
     });
   }
 

@@ -15,6 +15,7 @@ for (const id of ['ai-voice-selector', 'ai-voice-preview', 'ai-audio-overlay-url
 }
 assert.ok(html.includes('id="menu-view-ai-audio-settings"'), 'menu opener');
 assert.ok(!html.includes('toggle-ai-management-panel'), 'old view toggle removed');
+assert.ok(html.includes('toggle-ai-dashboard'), 'AI dashboard view toggle present');
 assert.ok(html.includes('<script src="ai-audio-modal.js"></script>'));
 const js = fs.readFileSync('public/script.js', 'utf8');
 assert.ok(!js.includes("'toggle-ai-management-panel'"), 'visibility map entry removed');

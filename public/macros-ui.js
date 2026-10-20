@@ -688,6 +688,10 @@ async function runMacro(macroId) {
   }
 }
 
+window.createNewMacro = createNewMacro;
+window.closeMacroEditor = closeMacroEditor;
+window.closeMacrosManager = closeMacrosManager;
+
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initializeMacrosUI);

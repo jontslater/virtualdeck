@@ -1,6 +1,8 @@
 const { app, BrowserWindow, globalShortcut, Menu, dialog, safeStorage, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { installProductionConsole, packagedArgvFlag } = require('./lib/vd-console');
+installProductionConsole();
 // Node's crypto: Electron's main process also exposes WebCrypto as globalThis.crypto,
 // which has no randomBytes(), so a missing require fails only at call time.
 const crypto = require('crypto');
@@ -871,7 +873,8 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      additionalArguments: [packagedArgvFlag()],
     }
   });
 
@@ -5813,7 +5816,8 @@ app.whenReady().then(() => {
   { id: 'view_twitch_stats', label: 'Twitch Statistics', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'twitch-stats-container', checked: menuItem.checked }); } },
   { id: 'view_recent_activity', label: 'Recent Activity', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'recent-activity-container', checked: menuItem.checked }); } },
   { id: 'view_twitch_chat', label: 'Twitch Chat', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'twitch-chat-container', checked: menuItem.checked }); } },
-  { id: 'view_sound_controls', label: 'Sound Controls', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-controls', checked: menuItem.checked }); } }
+  { id: 'view_sound_controls', label: 'Sound Controls', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-controls', checked: menuItem.checked }); } },
+  { id: 'view_ai_dashboard', label: 'AI Dashboard', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'ai-dashboard-controls', checked: menuItem.checked }); } }
     ] },
     { label: 'Profile', submenu: [
       { label: 'Profile Manager...', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-profile-manager'); } }
@@ -6100,6 +6104,28 @@ app.whenReady().then(() => {
   // Get auth token file path
   ipcMain.handle('get-auth-token-path', async () => {
     return securityManager.tokenPath;
+  });
+
+  ipcMain.handle('raven-get-setup-status', async () => ravenHost.getSetupStatus());
+
+  ipcMain.handle('raven-save-api-keys', async (_event, payload) => {
+    try {
+      if (!licenseManager || !licenseManager.canUseAiAssistant().allowed) {
+        return { success: false, error: 'VirtualDeck Pro license required for Raven AI' };
+      }
+      const status = ravenHost.updateApiKeys({
+        llmApiKey: payload && payload.llmApiKey,
+        ttsApiKey: payload && payload.ttsApiKey,
+      });
+      return { success: true, status };
+    } catch (err) {
+      return { success: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('raven-open-env-file', async () => {
+    ravenHost.openEnvFile();
+    return { success: true };
   });
 
   ipcMain.handle('license-get-status', async () => {

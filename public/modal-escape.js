@@ -12,7 +12,7 @@
   // container id -> global close function (falls back to adding .hidden on the container only)
   var CLOSERS = {
     'macro-edit-modal': 'closeMacroEditor',
-    'macros-manager-modal': 'closeMacrosManager',
+    'macros-modal': 'closeMacrosManager',
     'raid-favorites-modal': 'closeRaidFavoritesModal',
     'preferences-modal': 'closePreferencesModal',
     'profile-modal': 'closeProfileModal',

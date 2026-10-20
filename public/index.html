@@ -51,6 +51,7 @@
           <button data-toggle="toggle-sound-controls" class="menu-dropdown-item" role="menuitem">Sound Controls</button>
           <button data-toggle="toggle-queue-control" class="menu-dropdown-item" role="menuitem">Alert Queue</button>
           <button data-toggle="toggle-profile-panel" class="menu-dropdown-item" role="menuitem">Profile Panel</button>
+          <button data-toggle="toggle-ai-dashboard" class="menu-dropdown-item" role="menuitem">AI Dashboard</button>
           <button id="menu-view-ai-audio-settings" class="menu-dropdown-item" role="menuitem">AI Audio Settings…</button>
         </div>
       </div>
@@ -117,6 +118,7 @@
       <input type="checkbox" id="toggle-sound-controls" checked style="display: none;">
       <input type="checkbox" id="toggle-queue-control" checked style="display: none;">
       <input type="checkbox" id="toggle-profile-panel" checked style="display: none;">
+      <input type="checkbox" id="toggle-ai-dashboard" checked style="display: none;">
       
       <!-- Hidden buttons that View menu delegates to -->
       <button id="hide-all-components" style="display: none;">Hide All</button>
@@ -125,12 +127,6 @@
   </div>
   
   <div class="container">
-    <div class="hotkey-info">
-      <strong>Numpad Currently Not supported</strong>
-      <div class="hotkey-help">
-        <small>💡 Tip: Press Ctrl+Shift+T to cycle through themes</small>
-      </div>
-    </div>
   <!-- Twitch connect UI moved to application Tools menu; on-screen button removed -->
     
     
@@ -241,7 +237,7 @@
     </div>
 
     <!-- AI Dashboard Controls - Compact Integration -->
-    <div id="ai-dashboard-controls">
+    <div id="ai-dashboard-controls" class="hidden" aria-hidden="true">
       <div class="ai-control-group">
         <div class="ai-control-label">🤖 AI System</div>
         <label class="ai-toggle-switch" id="ai-dashboard-toggle">
@@ -337,9 +333,17 @@
         <button class="selection-option" data-type="meld-scene">
           <div class="option-icon">📺</div>
           <div class="option-content">
-            <div class="option-title">Meld Scene Button</div>
+            <div class="option-title">Meld Button</div>
             <div class="option-description">Switch to a Meld Studio scene with click, hotkey, chat, or redeem</div>
             <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">Requires Meld Studio running</div>
+          </div>
+        </button>
+        <button class="selection-option" data-type="macro">
+          <div class="option-icon">🎬</div>
+          <div class="option-content">
+            <div class="option-title">Macro</div>
+            <div class="option-description">Create a multi-step macro (hotkey, voice phrase, or deck trigger)</div>
+            <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">Opens the macro editor</div>
           </div>
         </button>
       </div>
@@ -1233,7 +1237,10 @@
           <p id="license-status-message" class="license-status-message">Loading license status…</p>
           <div class="preference-item">
             <label for="license-key-input">License key</label>
-            <input type="text" id="license-key-input" class="preference-input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" />
+            <div class="license-key-row">
+              <input type="password" id="license-key-input" class="preference-input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" />
+              <button type="button" id="license-key-toggle-visibility" class="preference-button" title="Show or hide license key">Show</button>
+            </div>
             <small>VirtualDeck Pro unlocks the AI assistant (bring your own API keys) and unlimited buttons. One-time purchase via Lemon Squeezy.</small>
           </div>
           <div class="preference-item license-actions">
@@ -1242,6 +1249,29 @@
             <button type="button" id="license-revalidate-btn" class="preference-button">Re-check license</button>
             <a id="license-purchase-link" href="#" target="_blank" rel="noopener" class="preference-button link-button">Get VirtualDeck Pro</a>
           </div>
+        </div>
+
+        <div class="preferences-section" id="raven-api-preferences-section">
+          <h3>Raven AI — API keys</h3>
+          <p id="raven-api-intro" class="raven-api-intro">
+            Raven is BYOK (bring your own keys). Defaults: <strong>OpenAI</strong> for chat (<code>LLM_API_KEY</code>) and
+            <strong>ElevenLabs</strong> for voice (<code>TTS_API_KEY</code>). Other providers supported by Raven can be set via
+            <code>LLM_PROVIDER</code> / <code>TTS_PROVIDER</code> in <code>raven.env</code>.
+          </p>
+          <p id="raven-api-status-line" class="raven-api-status-line">Checking Raven configuration…</p>
+          <div class="preference-item">
+            <label for="raven-llm-api-key">OpenAI / LLM API key</label>
+            <input type="password" id="raven-llm-api-key" class="preference-input" autocomplete="off" spellcheck="false" placeholder="sk-…" />
+          </div>
+          <div class="preference-item">
+            <label for="raven-tts-api-key">ElevenLabs / TTS API key</label>
+            <input type="password" id="raven-tts-api-key" class="preference-input" autocomplete="off" spellcheck="false" placeholder="xi-…" />
+          </div>
+          <div class="preference-item license-actions">
+            <button type="button" id="raven-api-save-btn" class="preference-button primary">Save Raven API keys</button>
+            <button type="button" id="raven-open-env-btn" class="preference-button">Open raven.env file…</button>
+          </div>
+          <p id="raven-api-save-message" class="raven-api-save-message" role="status"></p>
         </div>
 
         <!-- Security Section -->
@@ -2160,6 +2190,7 @@
         </div>
 
         <div class="alert-settings">
+          <div class="alert-settings-primary">
           <div class="setting-group">
             <label for="alert-text">Alert Text (Optional):</label>
             <input type="text" id="alert-text" placeholder="Welcome {username}!" />
@@ -2167,7 +2198,21 @@
               Use placeholders: {username}, {display_name}, {tier}, {viewers}, {bits}, {months}, {moderator}, {reason}. Leave empty for media-only alerts.
             </small>
           </div>
-          
+
+          <div class="setting-group">
+            <label for="alert-duration">Duration (seconds):</label>
+            <input type="number" id="alert-duration" min="1" max="60" value="5" />
+          </div>
+
+          <div class="setting-group" id="bits-threshold-group" style="display: none;">
+            <label for="alert-bits-threshold">Minimum Bits (threshold):</label>
+            <input type="number" id="alert-bits-threshold" min="1" max="100000" value="10" placeholder="10" />
+            <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+              Alert only triggers if bits amount meets or exceeds this threshold
+            </small>
+          </div>
+          </div>
+
           <!-- Text Styling & Animation Section -->
           <div class="section text-styling-animation-section">
             <h4>Text Styling & Animation</h4>
@@ -2339,20 +2384,7 @@
               </div>
             </div>
           </div>
-          
-          <div class="setting-group">
-            <label for="alert-duration">Duration (seconds):</label>
-            <input type="number" id="alert-duration" min="1" max="60" value="5" />
-          </div>
-          
-          <div class="setting-group" id="bits-threshold-group" style="display: none;">
-            <label for="alert-bits-threshold">Minimum Bits (threshold):</label>
-            <input type="number" id="alert-bits-threshold" min="1" max="100000" value="10" placeholder="10" />
-            <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
-              Alert only triggers if bits amount meets or exceeds this threshold
-            </small>
-          </div>
-          
+
           <!-- Daily Check-In Settings -->
           <div id="daily-checkin-settings" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
             <h4 style="margin: 0 0 10px 0; font-size: 14px; color: var(--text-primary);">Daily Check-In Configuration</h4>
@@ -2628,6 +2660,7 @@
     </div>
   </div>
 
+  <script src="vd-console.js"></script>
   <script src="dialog-shim.js"></script>
   <script src="input-focus-guard.js"></script>
   <script src="modal-escape.js"></script>
@@ -2635,6 +2668,7 @@
   <script src="AddEditButtonForm.js"></script>
   <script src="alert-text-render.js"></script>
   <script src="license-ui.js"></script>
+  <script src="raven-setup-ui.js"></script>
   <script src="deck-drop-utils.js"></script>
   <script src="script.js"></script>
   <script src="macro-hotkeys.js"></script>

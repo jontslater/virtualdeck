@@ -1,6 +1,9 @@
 //const twitchConnected = require('./TwitchConnected/tc.js');
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
+const vdPackaged = process.argv.some((arg) => arg === '--vd-packaged=1');
+contextBridge.exposeInMainWorld('__VD_IS_PACKAGED__', vdPackaged);
+
 contextBridge.exposeInMainWorld('electronAPI', {
   addMedia: (data) => ipcRenderer.send('add-media', data),
   deleteButton: (index) => ipcRenderer.send('delete-button', index),
@@ -198,4 +201,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   licenseRevalidate: async () => ipcRenderer.invoke('license-revalidate'),
   onLicenseStatusChanged: (callback) => ipcRenderer.on('license-status-changed', (_event, status) => callback(status)),
   onLicenseUpsell: (callback) => ipcRenderer.on('license-upsell', (_event, payload) => callback(payload)),
+  ravenGetSetupStatus: async () => ipcRenderer.invoke('raven-get-setup-status'),
+  ravenSaveApiKeys: async (payload) => ipcRenderer.invoke('raven-save-api-keys', payload || {}),
+  ravenOpenEnvFile: async () => ipcRenderer.invoke('raven-open-env-file'),
 });
