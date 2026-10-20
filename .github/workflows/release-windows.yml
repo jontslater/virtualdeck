@@ -4,23 +4,50 @@ on:
   push:
     tags:
       - 'v*'
-
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git branch or tag to build
+        required: true
+        default: cursor/licensing-v1-2-212e
+      upload_draft_prerelease:
+        description: Also upload installer to a draft GitHub prerelease (updater-safe)
+        type: boolean
+        default: true
 permissions:
   contents: write
 
+env:
+  TWITCH_CLIENT_ID: 6xnmuyhhtmfpqugw2cn9j5njh770ct
+  VD_LICENSE_PROVIDER: lemonsqueezy
+  LEMONSQUEEZY_STORE_ID: '501850'
+  LEMONSQUEEZY_PRODUCT_ID: '1453199'
+  LEMONSQUEEZY_VARIANT_ID: '2268234'
+
 jobs:
   release:
+    if: github.event_name == 'push'
     runs-on: windows-latest
     steps:
       - name: Checkout VirtualDeck
         uses: actions/checkout@v4
 
       - name: Checkout AITuber (Raven source)
+        id: aituber_release
         uses: actions/checkout@v4
         with:
           repository: jontslater/AITuber
           path: vendor/AITuber
           token: ${{ secrets.AITUBER_CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Confirm AITuber checkout
+        shell: bash
+        run: |
+          if [ ! -d vendor/AITuber/.git ]; then
+            echo "AITuber checkout failed: vendor/AITuber/.git missing"
+            exit 1
+          fi
+          echo "AITuber checkout OK at $(cd vendor/AITuber && git rev-parse --short HEAD)"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -52,8 +79,86 @@ jobs:
         env:
           AITUBER_ROOT: ${{ github.workspace }}/vendor/AITuber
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TWITCH_CLIENT_ID: 6xnmuyhhtmfpqugw2cn9j5njh770ct
         run: npm run build:win:publish:raven
 
       - name: List dist artifacts
         run: dir dist
+
+  test-installer:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout VirtualDeck
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Checkout AITuber (Raven source)
+        id: aituber_test
+        uses: actions/checkout@v4
+        with:
+          repository: jontslater/AITuber
+          path: vendor/AITuber
+          token: ${{ secrets.AITUBER_CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Confirm AITuber checkout
+        shell: bash
+        run: |
+          if [ ! -d vendor/AITuber/.git ]; then
+            echo "AITuber checkout failed: vendor/AITuber/.git missing"
+            exit 1
+          fi
+          echo "AITuber checkout OK at $(cd vendor/AITuber && git rev-parse --short HEAD)"
+          if [ -n "${{ secrets.AITUBER_CHECKOUT_TOKEN }}" ]; then
+            echo "AITUBER_CHECKOUT_TOKEN: configured"
+          else
+            echo "AITUBER_CHECKOUT_TOKEN: not set (using GITHUB_TOKEN fallback)"
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install ffmpeg (Raven TTS playback)
+        run: choco install ffmpeg -y
+
+      - name: Run tests
+        run: npm test
+
+      - name: Stage Raven + build NSIS (no publish)
+        env:
+          AITUBER_ROOT: ${{ github.workspace }}/vendor/AITuber
+        run: npm run build:win:with-raven
+
+      - name: List dist artifacts
+        run: dir dist
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VirtualDeck-Windows-test-${{ github.run_number }}
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload draft prerelease (optional)
+        if: inputs.upload_draft_prerelease == true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.2.0-test.${{ github.run_number }}
+          name: VirtualDeck v1.2.0-test.${{ github.run_number }} (test build)
+          body: |
+            **Test installer** from ref `${{ inputs.ref }}` (workflow run ${{ github.run_id }}).
+            Not published to `latest` — electron-updater will not offer this build.
+            Includes Lemon Squeezy licensing (store 501850) and Twitch Device OAuth client.
+          draft: true
+          prerelease: true
+          files: dist/*.exe
+          generate_release_notes: false

@@ -68,6 +68,7 @@ scripts/.raven-env-defaults-backup-path
 
 # Twitch OAuth credentials (copy from twitch-oauth-config.example.js)
 twitch-oauth-config.js
+lib/license/packaged-env.json
 
 # Electron build artifacts
 dist_electron/
@@ -81,6 +82,7 @@ public/assets/sounds/
 
 # Local Twitch OAuth credentials (use twitch-oauth-config.example.js)
 twitch-oauth-config.js
+lib/license/packaged-env.json
 
 # Local Raven env (lives in userData at runtime; never commit)
 raven.env

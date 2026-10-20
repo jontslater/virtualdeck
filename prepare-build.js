@@ -278,6 +278,19 @@ const buildInfo = {
 
 fs.writeFileSync(path.join(userDataPath, 'build-info.json'), JSON.stringify(buildInfo, null, 2));
 
+if (process.env.VD_LICENSE_PROVIDER) {
+  const licensePackaged = {
+    VD_LICENSE_PROVIDER: String(process.env.VD_LICENSE_PROVIDER).trim(),
+    LEMONSQUEEZY_STORE_ID: String(process.env.LEMONSQUEEZY_STORE_ID || '').trim(),
+    LEMONSQUEEZY_PRODUCT_ID: String(process.env.LEMONSQUEEZY_PRODUCT_ID || '').trim(),
+    LEMONSQUEEZY_VARIANT_ID: String(process.env.LEMONSQUEEZY_VARIANT_ID || '').trim(),
+    VD_LICENSE_PURCHASE_URL: String(process.env.VD_LICENSE_PURCHASE_URL || '').trim(),
+  };
+  const licensePackagedPath = path.join(__dirname, 'lib', 'license', 'packaged-env.json');
+  fs.writeFileSync(licensePackagedPath, JSON.stringify(licensePackaged, null, 2));
+  console.log('✅ Wrote packaged license env:', licensePackagedPath);
+}
+
 console.log('🎉 Build preparation complete!');
 console.log(`📁 Test media files copied to: ${userDataPath}`);
 console.log('📋 Build info saved to: build-info.json');
