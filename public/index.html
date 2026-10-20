@@ -253,18 +253,10 @@
         <span id="ai-connection-label" class="ai-connection-label">Checking...</span>
       </div>
       <div class="ai-control-group">
-        <div class="ai-control-label">Mode / Segment</div>
-        <select id="ai-dashboard-mode" class="ai-control-select">
-          <option value="JUST_CHATTING">Just Chatting</option>
-          <option value="CHILL">Chill</option>
-          <option value="HYPE">Hype</option>
-          <option value="QA">Q&A</option>
-          <option value="STORYTIME">Storytime</option>
-          <option value="DND">D&D</option>
-          <option value="COPILOT">Copilot</option>
-          <option value="AFK">AFK</option>
-          <option value="SAFE">Safe</option>
-          <option value="MUTED">Muted</option>
+        <div class="ai-control-label">Presenter mode</div>
+        <select id="ai-dashboard-presenter-mode" class="ai-control-select" title="Co-pilot = off-mic assistant; On-stream = live chat mode">
+          <option value="copilot">Co-pilot</option>
+          <option value="onstream">On-stream</option>
         </select>
       </div>
       <div class="ai-control-group">
@@ -2662,6 +2654,7 @@
 
   <script src="dialog-shim.js"></script>
   <script src="vd-console.js"></script>
+  <script src="raven-ai-control.js"></script>
   <script src="input-focus-guard.js"></script>
   <script src="modal-escape.js"></script>
   <script src="meldClient.js"></script>

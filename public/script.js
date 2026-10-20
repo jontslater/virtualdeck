@@ -8032,11 +8032,12 @@ function setupOverlayWidget() {
     
     const dashboardToggle = document.getElementById('ai-dashboard-toggle');
     const dashboardToggleLabel = document.getElementById('ai-dashboard-toggle-label');
-    const dashboardMode = document.getElementById('ai-dashboard-mode');
+    const dashboardPresenterMode = document.getElementById('ai-dashboard-presenter-mode');
     const dashboardSayText = document.getElementById('ai-dashboard-say-text');
     const dashboardSayBtn = document.getElementById('ai-dashboard-say-btn');
+    const ravenCtl = window.vdRavenAiControl;
     
-    if (!dashboardToggle || !dashboardMode) {
+    if (!dashboardToggle || !dashboardPresenterMode || !ravenCtl) {
       console.warn('⚠️ Compact AI dashboard elements not found');
       return;
     }
@@ -8044,6 +8045,10 @@ function setupOverlayWidget() {
     // Load initial state from API once on startup
     loadInitialAIState();
     
+    function getPresenterMode() {
+      return ravenCtl.presenterModeFromSelect(dashboardPresenterMode.value);
+    }
+
     async function postAIMode(mode, options) {
       const allowOfflineMute = options && options.allowOfflineMute && mode === 'MUTED';
       try {
@@ -8075,7 +8080,7 @@ function setupOverlayWidget() {
       }
     }
 
-    // Toggle handler
+    // Toggle handler (Raven bridge /api/ai/enabled + sidecar lifecycle)
     dashboardToggle.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -8086,18 +8091,21 @@ function setupOverlayWidget() {
       try {
         console.log(`🔌 ${isOn ? 'Turning AI ON' : 'Turning AI OFF'}...`);
         
-        const mode = isOn ? 'JUST_CHATTING' : 'MUTED';
-        await postAIMode(mode, { allowOfflineMute: !isOn });
-        
-        // Update UI immediately
-        updateToggleUI(isOn);
-        dashboardMode.value = mode;
-        
-        // Sync with main selector if it exists
-        const aiModeSelector = document.getElementById('ai-mode-selector');
-        if (aiModeSelector) {
-          aiModeSelector.value = mode;
+        if (!isOn) {
+          await ravenCtl.setAiSystemEnabled(false);
+          updateToggleUI(false);
+          const aiModeSelector = document.getElementById('ai-mode-selector');
+          if (aiModeSelector) aiModeSelector.value = 'MUTED';
+          return;
         }
+
+        const result = await ravenCtl.setAiSystemEnabled(true, { presenterMode: getPresenterMode() });
+        if (result.bridge && result.bridge.offline) {
+          console.warn('Bridge unreachable after start; AI sidecar started locally');
+        }
+        updateToggleUI(true);
+        const aiModeSelector = document.getElementById('ai-mode-selector');
+        if (aiModeSelector) aiModeSelector.value = getPresenterMode();
         
       } catch (err) {
         console.error('❌ Error toggling AI:', err);
@@ -8105,34 +8113,25 @@ function setupOverlayWidget() {
           alert(`Failed to enable AI: ${err.message}`);
         } else {
           updateToggleUI(false);
-          dashboardMode.value = 'MUTED';
         }
       }
     });
     
-    // Mode selector handler
-    dashboardMode.addEventListener('change', async (e) => {
-      const mode = e.target.value;
+    // Presenter mode (Co-pilot vs On-stream → controller /api/ai/mode)
+    dashboardPresenterMode.addEventListener('change', async (e) => {
+      const mode = ravenCtl.presenterModeFromSelect(e.target.value);
+      const isOn = dashboardToggleLabel.textContent === 'ON';
       
       try {
-        await postAIMode(mode, { allowOfflineMute: mode === 'MUTED' });
-        
-        // Sync with main selector if it exists
-        const aiModeSelector = document.getElementById('ai-mode-selector');
-        if (aiModeSelector) {
-          aiModeSelector.value = mode;
+        if (isOn) {
+          await ravenCtl.postPresenterMode(mode);
         }
-        
-        // Update toggle state based on mode
-        const isMuted = mode === 'MUTED';
-        updateToggleUI(!isMuted);
-        
+        const aiModeSelector = document.getElementById('ai-mode-selector');
+        if (aiModeSelector) aiModeSelector.value = mode;
       } catch (err) {
-        console.error('❌ Error setting AI mode:', err);
-        if (mode === 'MUTED') {
-          updateToggleUI(false);
-        } else {
-          alert(`Failed to set AI mode: ${err.message}`);
+        console.error('❌ Error setting presenter mode:', err);
+        if (isOn) {
+          alert(`Failed to set presenter mode: ${err.message}`);
         }
       }
     });
@@ -8143,20 +8142,35 @@ function setupOverlayWidget() {
       dashboardToggle.classList.toggle('off', !isOn);
     }
     
-    // Load initial AI state from API
+    // Load initial AI state from Raven bridge GET /api/ai/enabled (fallback: controller mode)
     async function loadInitialAIState() {
       try {
+        const enabledState = await ravenCtl.getAiEnabled();
+        if (enabledState.ok && typeof enabledState.enabled === 'boolean') {
+          updateToggleUI(enabledState.enabled);
+        }
+      } catch (err) {
+        if (!ravenCtl.isNetworkUnreachableError(err)) {
+          console.debug('Could not load bridge enabled state:', err);
+        }
+      }
+      try {
+        await discoverAIStatusApiBaseUrl(true);
         const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
         if (response.ok) {
           const data = await response.json();
-          const isMuted = data.mode === 'MUTED';
-          updateToggleUI(!isMuted);
-          if (data.mode) {
-            dashboardMode.value = data.mode;
+          if (data.mode === 'MUTED') {
+            updateToggleUI(false);
+          } else if (data.mode) {
+            updateToggleUI(true);
+            if (data.mode === 'COPILOT') dashboardPresenterMode.value = 'copilot';
+            else if (data.mode === 'CHAT' || data.mode === 'JUST_CHATTING') dashboardPresenterMode.value = 'onstream';
+            const aiModeSelector = document.getElementById('ai-mode-selector');
+            if (aiModeSelector) aiModeSelector.value = data.mode;
           }
         }
       } catch (err) {
-        console.debug('Could not load initial AI state:', err);
+        console.debug('Could not load initial AI mode:', err);
       }
     }
     
@@ -8176,7 +8190,8 @@ function setupOverlayWidget() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
         
-        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+        const bridgeBase = ravenCtl.getBridgeBaseUrl();
+        const response = await fetch(`${bridgeBase}/api/ai/enabled`, {
           signal: controller.signal
         });
         clearTimeout(timeoutId);
@@ -8224,7 +8239,7 @@ function setupOverlayWidget() {
       setTimeout(checkConnectionStatus, 500);
     }, { capture: false });
     
-    dashboardMode.addEventListener('change', () => {
+    dashboardPresenterMode.addEventListener('change', () => {
       setTimeout(checkConnectionStatus, 500);
     }, { capture: false });
     

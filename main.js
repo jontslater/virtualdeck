@@ -6128,6 +6128,24 @@ app.whenReady().then(() => {
     return { success: true };
   });
 
+  ipcMain.handle('raven-start', async () => {
+    try {
+      ravenHost.startRaven();
+      return { success: true, running: ravenHost.isRunning() };
+    } catch (err) {
+      return { success: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('raven-stop', async () => {
+    try {
+      ravenHost.stopRaven();
+      return { success: true, running: ravenHost.isRunning() };
+    } catch (err) {
+      return { success: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
   ipcMain.handle('license-get-status', async () => {
     if (!licenseManager) {
       return {
