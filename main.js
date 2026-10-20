@@ -118,8 +118,13 @@ function triggerButtonWithDebounce(label, source = 'unknown') {
   return false;
 }
 
-// Use Electron's userData directory for config and user files
+// Use Electron's userData directory for config and user files (never the app install dir).
 const userDataPath = app.getPath('userData');
+try {
+  fs.mkdirSync(userDataPath, { recursive: true });
+} catch (err) {
+  console.warn('[startup] Could not create userData directory:', err && err.message);
+}
 const configPath = path.join(userDataPath, 'config.json');
 const profilesMetaPath = path.join(userDataPath, 'profiles-meta.json');
 const userSoundsDir = path.join(userDataPath, 'sounds');
