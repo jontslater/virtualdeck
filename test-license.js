@@ -78,6 +78,23 @@ const manager = new LicenseManager({
   assert.strictEqual(ent.licensed, false);
   console.log('✅ Deactivate clears entitlements');
 
+  // Transient validation failure keeps grace entitlements
+  await manager.activate('VD-MOCK-GRACE-NET-123456');
+  manager._state.lastValidationOk = true;
+  manager._state.lastSuccessfulValidationAt = Date.now() - 1000;
+  const origValidate = manager.provider.validate.bind(manager.provider);
+  manager.provider.validate = async () => ({
+    ok: false,
+    transient: true,
+    error: 'offline',
+  });
+  await manager.revalidate();
+  ent = manager.getEntitlements();
+  assert.strictEqual(ent.licensed, true);
+  assert.strictEqual(manager._state.lastValidationOk, true);
+  manager.provider.validate = origValidate;
+  console.log('✅ Transient revalidate errors preserve offline grace');
+
   console.log('\n✅ All license tests passed');
 })().catch((err) => {
   console.error('❌ License tests failed:', err);

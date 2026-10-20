@@ -17,7 +17,9 @@ Set in `.env` (loaded by `main.js` on startup) or the process environment:
 | Variable | Description |
 |----------|-------------|
 | `VD_LICENSE_PROVIDER` | `mock` (default) or `lemonsqueezy` |
-| `LEMONSQUEEZY_API_KEY` | API key from Lemon Squeezy → Settings → API |
+| `LEMONSQUEEZY_STORE_ID` | Lemon Squeezy store ID (recommended for production builds) |
+| `LEMONSQUEEZY_PRODUCT_ID` | Product ID for VirtualDeck Pro / AI license |
+| `LEMONSQUEEZY_VARIANT_ID` | Optional variant ID if you sell multiple variants |
 | `VD_LICENSE_PURCHASE_URL` | Checkout link shown in Preferences (optional) |
 | `VD_LICENSE_MOCK_PREFIXES` | Comma-separated prefixes accepted in mock mode (default `VD-MOCK-,VDTEST-`) |
 
@@ -32,14 +34,29 @@ Example: `VD-MOCK-DEV-LOCAL-001`
 
 ### Lemon Squeezy (production)
 
-1. Create a product in Lemon Squeezy with license keys enabled.
-2. Copy the **API key** into `LEMONSQUEEZY_API_KEY`.
-3. Set `VD_LICENSE_PROVIDER=lemonsqueezy`.
+The app uses Lemon Squeezy’s **public** [License API](https://docs.lemonsqueezy.com/api/license-api) (`activate`, `validate`, `deactivate` at `https://api.lemonsqueezy.com/v1/licenses/...`). **No store API key is required** for these endpoints.
+
+1. Create a product in Lemon Squeezy with license keys enabled (activation limit **3** for VirtualDeck Pro).
+2. Set `VD_LICENSE_PROVIDER=lemonsqueezy`.
+3. Set `LEMONSQUEEZY_STORE_ID` and `LEMONSQUEEZY_PRODUCT_ID` to your store and product so keys from other Lemon Squeezy stores are rejected. Example for the VirtualDeck store (test and live keys share the same IDs):
+
+   | Setting | VirtualDeck value |
+   |---------|-------------------|
+   | Store | `501850` (`virtualdeckapp.lemonsqueezy.com`) |
+   | Product (VirtualDeck AI License) | `1453199` |
+   | Variant (optional) | `2268234` |
+
 4. Set `VD_LICENSE_PURCHASE_URL` to your checkout URL for the in-app “Get VirtualDeck Pro” link.
 
-The app uses the [License API](https://docs.lemonsqueezy.com/api/license-api) (`activate`, `validate`, `deactivate`). Activation is stored encrypted in `%APPDATA%/VirtualDeck/license.dat` (OS keychain via Electron `safeStorage` when available).
+**Flow**
 
-Revalidation runs about every 24 hours. If validation fails (offline), entitlements remain for **7 days** after the last successful check, then revert to free.
+- **Activate:** user enters a key → `POST /licenses/activate` with `license_key` + `instance_name` → app stores the returned `instance.id` encrypted in `%APPDATA%/VirtualDeck/license.dat` (OS keychain via Electron `safeStorage` when available).
+- **Validate:** on launch and every ~24 hours → `POST /licenses/validate` with `license_key` + `instance_id`.
+- **Deactivate:** user removes the key → `POST /licenses/deactivate` with `license_key` + `instance_id`, then local state is cleared.
+
+**Test mode vs live:** Lemon Squeezy test-mode and live keys use the same API and product IDs; no code changes are needed when the store goes live.
+
+**Offline grace:** Revalidation runs about every 24 hours. If validation fails because the key is invalid or revoked, entitlements end after **7 days** from the last successful check. If validation fails due to **network or server errors**, the app keeps the previous validation state and the same 7-day grace window applies from the last successful check—brief offline use does not immediately lock you out.
 
 ## Personal / secret-key builds
 
