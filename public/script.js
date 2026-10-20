@@ -2230,7 +2230,11 @@ async function loadButtons() {
     
     let appIconSrc = null;
     let appIconAlt = 'App';
-    if (button.type === 'meld-scene') {
+    const customIcon = await resolveDeckIconForButton(button);
+    if (customIcon) {
+      appIconSrc = customIcon;
+      appIconAlt = button.name || button.label || 'Button';
+    } else if (button.type === 'meld-scene') {
       appIconSrc =
         'data:image/svg+xml;charset=utf-8,' +
         encodeURIComponent(
@@ -2686,6 +2690,114 @@ function insertAppIconIntoCard(card, iconSrc, altText) {
   const anchor = card.querySelector('.sound-type');
   if (anchor) card.insertBefore(img, anchor);
   else card.appendChild(img);
+}
+
+let vdDeckIconDraft = { source: 'auto' };
+
+async function resolveDeckIconForButton(button) {
+  const d = button && button.deckIcon;
+  if (!d || d.source === 'auto') return null;
+  if (d.source === 'upload' && d.dataUrl) return d.dataUrl;
+  if (d.source === 'library' && d.id && window.vdDeckIconCatalog) {
+    try {
+      return await window.vdDeckIconCatalog.iconDataUrl(d.id);
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+}
+
+async function refreshDeckIconPreview() {
+  const preview = document.getElementById('deck-icon-preview');
+  const sourceSel = document.getElementById('deck-icon-source');
+  if (!preview || !sourceSel) return;
+  const source = sourceSel.value || 'auto';
+  if (source === 'auto') {
+    preview.style.display = 'none';
+    return;
+  }
+  let src = null;
+  if (source === 'upload' && vdDeckIconDraft.dataUrl) src = vdDeckIconDraft.dataUrl;
+  if (source === 'library' && vdDeckIconDraft.id && window.vdDeckIconCatalog) {
+    src = await window.vdDeckIconCatalog.iconDataUrl(vdDeckIconDraft.id);
+  }
+  if (src) {
+    preview.src = src;
+    preview.style.display = 'block';
+  } else {
+    preview.style.display = 'none';
+  }
+}
+
+function applyDeckIconToForm(deckIcon) {
+  vdDeckIconDraft = deckIcon && deckIcon.source ? { ...deckIcon } : { source: 'auto' };
+  const sourceSel = document.getElementById('deck-icon-source');
+  if (sourceSel) {
+    sourceSel.value = vdDeckIconDraft.source === 'library' || vdDeckIconDraft.source === 'upload'
+      ? vdDeckIconDraft.source
+      : 'auto';
+  }
+  refreshDeckIconPreview().catch(() => {});
+}
+
+function collectDeckIconFromForm() {
+  const source = (document.getElementById('deck-icon-source') && document.getElementById('deck-icon-source').value) || 'auto';
+  if (source === 'auto') return { source: 'auto' };
+  if (source === 'library' && vdDeckIconDraft.source === 'library' && vdDeckIconDraft.id) {
+    return { source: 'library', id: vdDeckIconDraft.id };
+  }
+  if (source === 'upload' && vdDeckIconDraft.source === 'upload' && vdDeckIconDraft.dataUrl) {
+    return { source: 'upload', dataUrl: vdDeckIconDraft.dataUrl };
+  }
+  return { source: 'auto' };
+}
+
+function setupDeckIconForm() {
+  const chooseBtn = document.getElementById('deck-icon-choose-btn');
+  const sourceSel = document.getElementById('deck-icon-source');
+  const fileInput = document.getElementById('deck-icon-file');
+  if (sourceSel) {
+    sourceSel.addEventListener('change', () => {
+      if (sourceSel.value === 'library' && window.vdDeckIconPicker) {
+        window.vdDeckIconPicker.open((picked) => {
+          vdDeckIconDraft = picked;
+          refreshDeckIconPreview().catch(() => {});
+        });
+      } else {
+        refreshDeckIconPreview().catch(() => {});
+      }
+    });
+  }
+  if (chooseBtn) {
+    chooseBtn.addEventListener('click', () => {
+      const source = sourceSel ? sourceSel.value : 'library';
+      if (source === 'upload' && fileInput) {
+        fileInput.click();
+        return;
+      }
+      if (sourceSel) sourceSel.value = 'library';
+      if (window.vdDeckIconPicker) {
+        window.vdDeckIconPicker.open((picked) => {
+          vdDeckIconDraft = picked;
+          refreshDeckIconPreview().catch(() => {});
+        });
+      }
+    });
+  }
+  if (fileInput) {
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        vdDeckIconDraft = { source: 'upload', dataUrl: reader.result };
+        if (sourceSel) sourceSel.value = 'upload';
+        refreshDeckIconPreview().catch(() => {});
+      };
+      reader.readAsDataURL(file);
+    });
+  }
 }
 
 // Initialize component visibility dropdown after DOM is ready
@@ -4776,7 +4888,8 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined,
       chatCommand: chatCommand,
       aiAllowed: type === 'audio' ? aiAllowed : undefined,
-      description: type === 'audio' ? aiDescription : undefined
+      description: type === 'audio' ? aiDescription : undefined,
+      deckIcon: collectDeckIconFromForm(),
     };
     
     console.log('Final addMediaData object:', addMediaData);
@@ -4936,6 +5049,8 @@ window.editButton = async (index) => {
     }
   }
   
+  applyDeckIconToForm(btn.deckIcon);
+
   // Set chat command fields
   const chatCommandEnabled = document.getElementById('chat-command-enabled');
   const chatCommandKeyword = document.getElementById('chat-command-keyword');
@@ -5348,6 +5463,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (twitchAlertCloseBtn) {
     twitchAlertCloseBtn.addEventListener('click', closeTwitchAlertWidget);
   }
+
+  setupDeckIconForm();
   
   // Add click-outside-to-close functionality
   const settingsModal = document.getElementById('settings-modal');
@@ -5620,6 +5737,7 @@ function handleFileDrop(file) {
   if (aiAllowedCheckbox) aiAllowedCheckbox.checked = false;
   if (aiDescriptionInput) aiDescriptionInput.value = '';
   if (aiDescriptionContainer) aiDescriptionContainer.style.display = 'none';
+  applyDeckIconToForm({ source: 'auto' });
   
   document.querySelector('#settings-modal h2').textContent = 'Add New ' + (type === 'audio' ? 'Sound' : 'App');
   
@@ -6946,9 +7064,12 @@ function setupOverlayWidget() {
       }
     })();
     
-    // Auto-detect controller port if needed (helps when we move off 3004).
-    // Raven starts a few seconds after VirtualDeck, so keep retrying.
-    discoverAIStatusApiBaseUrl(true).catch(() => {});
+    // Auto-detect controller port only when Raven is eligible to run.
+    (async () => {
+      if (window.vdServiceGates) await window.vdServiceGates.refreshRavenGate();
+      if (window.vdServiceGates && !window.vdServiceGates.shouldPollRavenController()) return;
+      discoverAIStatusApiBaseUrl(true).catch(() => {});
+    })();
 
     async function refreshAiAudioOverlayUrl() {
       const el = document.getElementById('ai-audio-overlay-url');
@@ -8000,10 +8121,26 @@ function setupOverlayWidget() {
       });
     }
     
-    // Update status indicator more frequently for real-time state (every 1 second)
-    setInterval(() => {
-      updateAIManagementStatus();
-    }, 1000);
+    if (window.vdPoll) {
+      window.vdPoll.createAdaptivePoll({
+        baseIntervalMs: 5000,
+        maxIntervalMs: 60000,
+        when: () => {
+          const panel = document.getElementById('ai-management-panel');
+          return (
+            window.vdPoll.isElementActive(panel) &&
+            window.vdServiceGates &&
+            window.vdServiceGates.shouldPollRavenController()
+          );
+        },
+        tick: async () => {
+          await updateAIManagementStatus();
+          return true;
+        },
+      }).start();
+    } else {
+      setInterval(() => updateAIManagementStatus(), 5000);
+    }
     
     // Update D&D campaign state periodically (every 5 seconds)
     setInterval(() => {
@@ -8227,11 +8364,27 @@ function setupOverlayWidget() {
       }
     }
     
-    // Initial connection check
-    checkConnectionStatus();
-    
-    // Check connection status every 5 seconds
-    connectionCheckInterval = setInterval(checkConnectionStatus, 5000);
+    if (window.vdPoll) {
+      window.vdPoll.createAdaptivePoll({
+        baseIntervalMs: 8000,
+        maxIntervalMs: 60000,
+        when: () => {
+          const dash = document.getElementById('ai-dashboard-controls');
+          return (
+            window.vdPoll.isElementActive(dash) &&
+            window.vdServiceGates &&
+            window.vdServiceGates.shouldPollRavenBridge()
+          );
+        },
+        tick: async () => {
+          await checkConnectionStatus();
+          return true;
+        },
+      }).start();
+    } else {
+      checkConnectionStatus();
+      connectionCheckInterval = setInterval(checkConnectionStatus, 8000);
+    }
     
     // Also check after toggle or mode change
     const originalToggleClick = dashboardToggle.onclick;
@@ -8566,6 +8719,9 @@ function setupOverlayWidget() {
       const qaBtn = document.getElementById('ai-qa-btn');
       
       if (!statusText) return;
+      const mgmtPanel = document.getElementById('ai-management-panel');
+      if (window.vdPoll && !window.vdPoll.isElementActive(mgmtPanel)) return;
+      if (window.vdServiceGates && !window.vdServiceGates.shouldPollRavenController()) return;
       
       // Fetch detailed AI status from controller
       let aiState = 'idle';
@@ -8615,16 +8771,23 @@ function setupOverlayWidget() {
         // Silently fail
       }
       
-      // Check trivia status
+      // Check trivia status (only when trivia UI is open)
       let triviaActive = false;
-      try {
-        const triviaResponse = await fetch('http://localhost:3003/api/trivia/status');
-        if (triviaResponse.ok) {
-          const triviaStatus = await triviaResponse.json();
-          triviaActive = triviaStatus && triviaStatus.active;
+      const triviaOverlayOpen =
+        window.vdServiceGates && window.vdServiceGates.trivia && window.vdServiceGates.trivia.overlayVisible;
+      if (triviaOverlayOpen) {
+        try {
+          const triviaResponse = await fetch('http://localhost:3003/api/trivia/status');
+          if (triviaResponse.ok) {
+            const triviaStatus = await triviaResponse.json();
+            triviaActive = triviaStatus && triviaStatus.active;
+            if (window.vdServiceGates.trivia) {
+              window.vdServiceGates.trivia.sessionActive = triviaActive;
+            }
+          }
+        } catch (e) {
+          // Trivia API might not be available
         }
-      } catch (e) {
-        // Trivia API might not be available
       }
       
       // Check Q&A status
@@ -8778,9 +8941,26 @@ function setupOverlayWidget() {
     // Setup Segment controls
     setupSegmentControls();
     
-    // Update AI status periodically
-    updateAIStatus();
-    setInterval(updateAIStatus, 5000); // Update every 5 seconds
+    if (window.vdPoll) {
+      window.vdPoll.createAdaptivePoll({
+        baseIntervalMs: 8000,
+        maxIntervalMs: 60000,
+        when: () => {
+          const overlay = document.getElementById('overlay-widget');
+          const statusTab = document.getElementById('ai-tab-status');
+          const tabOn =
+            statusTab && (statusTab.style.display === 'block' || !statusTab.style.display);
+          return window.vdPoll.isElementActive(overlay) && tabOn;
+        },
+        tick: async () => {
+          await updateAIStatus();
+          return true;
+        },
+      }).start();
+    } else {
+      updateAIStatus();
+      setInterval(updateAIStatus, 8000);
+    }
   }
   
   
@@ -8830,16 +9010,29 @@ function setupOverlayWidget() {
       });
     }
     
-    // Update analytics every 2 seconds
-    updateAnalytics();
-    setInterval(updateAnalytics, 2000);
+    if (window.vdPoll) {
+      window.vdPoll.createAdaptivePoll({
+        baseIntervalMs: 5000,
+        maxIntervalMs: 60000,
+        when: () => {
+          const tab = document.getElementById('ai-tab-analytics');
+          return tab && tab.style.display === 'block';
+        },
+        tick: async () => updateAnalytics(),
+      }).start();
+    } else {
+      updateAnalytics();
+      setInterval(updateAnalytics, 5000);
+    }
   }
   
   // Update Analytics Dashboard
   async function updateAnalytics() {
     try {
+      const tab = document.getElementById('ai-tab-analytics');
+      if (tab && tab.style.display !== 'block') return false;
       const response = await fetch('http://localhost:3005/api/analytics/realtime');
-      if (!response.ok) return;
+      if (!response.ok) return false;
       
       const data = await response.json();
       
@@ -8897,9 +9090,11 @@ function setupOverlayWidget() {
       } catch (e) {
         // Ignore errors for top chatters
       }
+      return true;
     } catch (err) {
-      // Silently fail - analytics API might not be available
+      if (window.vdPoll && window.vdPoll.isLocalFetchError(err)) return false;
       console.debug('Analytics update failed:', err);
+      return false;
     }
   }
   
@@ -9050,9 +9245,12 @@ function setupOverlayWidget() {
   
   // Update AI Status Overview
   async function updateAIStatus() {
+    const overlay = document.getElementById('overlay-widget');
+    if (window.vdPoll && !window.vdPoll.isElementActive(overlay)) return false;
+    const pollRaven = window.vdServiceGates && window.vdServiceGates.shouldPollRavenController();
     // Also update mode selector if it exists
     const modeSelector = document.getElementById('ai-mode-selector');
-    if (modeSelector) {
+    if (modeSelector && pollRaven) {
       try {
         const modeResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
         if (modeResponse.ok) {
@@ -9083,29 +9281,29 @@ function setupOverlayWidget() {
       }
     }
     try {
-      // Check trivia status
       let triviaActive = false;
-      try {
-        const triviaResponse = await fetch('http://localhost:3003/api/trivia/status');
-        if (triviaResponse.ok) {
-          const triviaStatus = await triviaResponse.json();
-          triviaActive = triviaStatus && triviaStatus.active;
+      const triviaOpen =
+        window.vdServiceGates &&
+        window.vdServiceGates.trivia &&
+        (window.vdServiceGates.trivia.overlayVisible || window.vdServiceGates.trivia.sessionActive);
+      if (triviaOpen) {
+        try {
+          const triviaResponse = await fetch('http://localhost:3003/api/trivia/status');
+          if (triviaResponse.ok) {
+            const triviaStatus = await triviaResponse.json();
+            triviaActive = triviaStatus && triviaStatus.active;
+          }
+        } catch (e) {
+          // Trivia API might not be available
         }
-      } catch (e) {
-        // Trivia API might not be available
       }
       
       const activeFeatures = [];
-      if (triviaActive) {
-        activeFeatures.push('Trivia');
-      }
+      if (triviaActive) activeFeatures.push('Trivia');
       
       const qaEnabled = document.getElementById('qa-mode-enabled');
-      if (qaEnabled && qaEnabled.checked) {
-        activeFeatures.push('Q&A');
-      }
+      if (qaEnabled && qaEnabled.checked) activeFeatures.push('Q&A');
       
-      // Update status display
       const statusText = document.getElementById('ai-status-text');
       const featuresText = document.getElementById('ai-features-text');
       
@@ -9115,9 +9313,10 @@ function setupOverlayWidget() {
       if (featuresText) {
         featuresText.textContent = activeFeatures.length > 0 ? activeFeatures.join(', ') : 'None';
       }
+      return true;
     } catch (err) {
-      // Silently fail
       console.debug('AI status update failed:', err);
+      return false;
     }
   }
   
@@ -9186,10 +9385,27 @@ function setupOverlayWidget() {
       observer.observe(overlayWidget, { attributes: true });
     }
     
-    // Auto-refresh trivia UI every 5 seconds when active
-    setInterval(() => {
-      updateTriviaUI();
-    }, 5000);
+    if (window.vdPoll) {
+      window.vdPoll.createAdaptivePoll({
+        baseIntervalMs: 5000,
+        maxIntervalMs: 60000,
+        when: () => {
+          const overlay = document.getElementById('overlay-widget');
+          if (!window.vdPoll.isElementActive(overlay)) return false;
+          if (window.vdServiceGates && window.vdServiceGates.trivia) {
+            window.vdServiceGates.trivia.overlayVisible = true;
+          }
+          const triviaTab = document.getElementById('ai-tab-trivia');
+          return triviaTab && triviaTab.style.display === 'block';
+        },
+        tick: async () => {
+          await updateTriviaUI();
+          return true;
+        },
+      }).start();
+    } else {
+      setInterval(() => updateTriviaUI(), 5000);
+    }
   }
   
   // Start Trivia Session
@@ -12175,88 +12391,7 @@ function setupAlertWidget() {
   updateQueueWidgetStatus();
 }
 
-// Global functions for inline event handlers
-window.updateAlertList = function() {
-  if (!alertListContainer) return;
-  
-  // Get the currently selected alert type
-  const alertTypeSelect = document.getElementById('alert-type');
-  const selectedType = alertTypeSelect ? alertTypeSelect.value : 'follower';
-  
-  // Filter alerts by selected type
-  const filteredAlerts = savedAlerts.filter(alert => alert.type === selectedType);
-  
-  if (filteredAlerts.length === 0) {
-    alertListContainer.innerHTML = `
-      <div class="no-alerts">
-        <div style="margin-bottom: 15px;">No ${selectedType} alerts configured yet</div>
-        <div style="color: var(--text-secondary); font-size: 14px;">
-          Create a new ${selectedType} alert using the form on the left.
-        </div>
-      </div>
-    `;
-    return;
-  }
-  
-  // Render filtered alerts for the selected type
-  const firstAlert = filteredAlerts[0];
-  const thresholdInfo = selectedType === 'bits' && firstAlert.bitsThreshold 
-    ? `<div class="alert-item-threshold" style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px;">Min bits: ${firstAlert.bitsThreshold}</div>`
-    : '';
-  
-  // Create variations list from all alerts of this type
-  const variationsHtml = `
-    <div class="alert-variations-list">
-      <div class="variations-header">
-        <span>Variations (${filteredAlerts.length} total, ${filteredAlerts.filter(a => a.enabled !== false).length} enabled):</span>
-        <div style="display: flex; gap: 12px; align-items: center;">
-          <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', true)" style="padding: 4px 8px; font-size: 12px;">Enable All</button>
-          <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', false)" style="padding: 4px 8px; font-size: 12px;">Disable All</button>
-          <label class="random-toggle">
-            <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
-                   onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
-            Random Mode
-          </label>
-        </div>
-      </div>
-      <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
-        <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
-      </div>
-      <div class="variations-items">
-        ${filteredAlerts.map((alert, index) => `
-          <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
-            <label class="variation-toggle">
-              <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
-                     onchange="toggleAlert('${alert.id}', this.checked)" />
-              <span class="variation-text">
-                ${alert.enabled !== false ? '✓' : '○'} ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
-                <span class="overlay-badge">${alert.overlay || 'main'}</span>
-              </span>
-            </label>
-            <div class="variation-actions">
-              <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
-              <button class="variation-btn test" onclick="testSavedAlert('${alert.id}')">Test</button>
-              <button class="variation-btn delete" onclick="deleteAlert('${alert.id}')">Delete</button>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `;
-  
-  alertListContainer.innerHTML = `
-    <div class="alert-group" data-alert-type="${selectedType}">
-      <div class="alert-item">
-        <div class="alert-item-header">
-          <h4>${getAlertTypeDisplayName(selectedType)}</h4>
-          ${thresholdInfo}
-        </div>
-        ${variationsHtml}
-      </div>
-    </div>
-  `;
-};
-
+// Global functions for inline event handlers (updateAlertList is assigned inside setupAlertWidget)
 window.toggleAlert = function(alertId, enabled) {
   const alert = window.savedAlerts.find(a => a.id === alertId);
   if (alert) {

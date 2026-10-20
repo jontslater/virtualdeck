@@ -426,6 +426,19 @@
             <input type="file" name="app-file" id="app-file-input" accept=".exe,.bat,.cmd,.lnk,.app,.sh,.desktop" required />
           </label>
         </div>
+        <div id="deck-icon-section" class="form-section" style="margin-top: 12px;">
+          <label for="deck-icon-source">Button icon</label>
+          <select id="deck-icon-source" class="preference-input" style="width: 100%; margin-top: 4px;">
+            <option value="auto">Automatic (app icon for apps)</option>
+            <option value="library">Icon library</option>
+            <option value="upload">Custom image upload</option>
+          </select>
+          <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
+            <img id="deck-icon-preview" width="40" height="40" alt="" style="border-radius: 8px; background: var(--bg-tertiary); display: none;" />
+            <button type="button" id="deck-icon-choose-btn" class="form-button">Choose icon…</button>
+            <input type="file" id="deck-icon-file" accept="image/*" hidden />
+          </div>
+        </div>
         <div id="meld-scene-section" class="hidden">
           <label>Meld Studio scene:
             <select id="meld-scene-select">
@@ -1261,6 +1274,7 @@
           </div>
           <div class="preference-item license-actions">
             <button type="button" id="raven-api-save-btn" class="preference-button primary">Save Raven API keys</button>
+            <button type="button" id="raven-api-test-llm-btn" class="preference-button">Test OpenAI key</button>
             <button type="button" id="raven-open-env-btn" class="preference-button">Open raven.env file…</button>
           </div>
           <p id="raven-api-save-message" class="raven-api-save-message" role="status"></p>
@@ -2654,6 +2668,10 @@
 
   <script src="dialog-shim.js"></script>
   <script src="vd-console.js"></script>
+  <script src="vd-poll.js"></script>
+  <script src="vd-service-gates.js"></script>
+  <script src="deck-icon-catalog.js"></script>
+  <script src="deck-icon-picker.js"></script>
   <script src="raven-ai-control.js"></script>
   <script src="input-focus-guard.js"></script>
   <script src="modal-escape.js"></script>

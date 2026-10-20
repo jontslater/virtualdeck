@@ -2067,7 +2067,8 @@ ipcMain.on('add-media', (event, data) => {
     chatCommand: data.chatCommand || undefined,
     // Include AI use settings if provided (for audio buttons)
     aiAllowed: data.aiAllowed !== undefined ? data.aiAllowed : undefined,
-    description: data.description || undefined
+    description: data.description || undefined,
+    deckIcon: data.deckIcon && data.deckIcon.source ? data.deckIcon : undefined,
   };
 
   // Ensure each button has a stable unique id
@@ -6113,13 +6114,38 @@ app.whenReady().then(() => {
       if (!licenseManager || !licenseManager.canUseAiAssistant().allowed) {
         return { success: false, error: 'VirtualDeck Pro license required for Raven AI' };
       }
-      const status = ravenHost.updateApiKeys({
-        llmApiKey: payload && payload.llmApiKey,
-        ttsApiKey: payload && payload.ttsApiKey,
-      });
-      return { success: true, status };
+      const updates = {};
+      if (payload && payload.llmApiKey) updates.llmApiKey = payload.llmApiKey;
+      if (payload && payload.ttsApiKey) updates.ttsApiKey = payload.ttsApiKey;
+      if (!updates.llmApiKey && !updates.ttsApiKey) {
+        return { success: false, error: 'Enter at least one API key to save' };
+      }
+      const status = ravenHost.updateApiKeys(updates);
+      const restart = ravenHost.restartRavenIfRunning();
+      return { success: true, status, restart };
     } catch (err) {
       return { success: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('raven-is-running', async () => ({ running: ravenHost.isRunning() }));
+
+  ipcMain.handle('raven-test-llm-key', async (_event, payload) => {
+    try {
+      if (!licenseManager || !licenseManager.canUseAiAssistant().allowed) {
+        return { ok: false, error: 'VirtualDeck Pro license required' };
+      }
+      const { testOpenAiApiKey } = require('./lib/raven-llm-test');
+      let key = payload && payload.apiKey ? String(payload.apiKey).trim() : '';
+      if (!key) {
+        key = ravenHost.readEnvValue('LLM_API_KEY');
+        if (!key) {
+          return { ok: false, error: 'Enter an API key or save one first' };
+        }
+      }
+      return await testOpenAiApiKey(key);
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : String(err) };
     }
   });
 

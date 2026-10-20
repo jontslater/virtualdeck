@@ -82,6 +82,14 @@ function parseEnv(text) {
   return map;
 }
 
+function formatEnvValue(val) {
+  const s = String(val ?? '');
+  if (/[\s#"'\\]/.test(s) || s.includes('=')) {
+    return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  }
+  return s;
+}
+
 function writeEnvFromTemplate(dest, templateText, overlay) {
   const seen = new Set();
   const lines = [];
@@ -94,10 +102,10 @@ function writeEnvFromTemplate(dest, templateText, overlay) {
     const key = raw.slice(0, eq).trim();
     seen.add(key);
     const val = Object.prototype.hasOwnProperty.call(overlay, key) ? overlay[key] : raw.slice(eq + 1);
-    lines.push(`${key}=${val}`);
+    lines.push(`${key}=${formatEnvValue(val)}`);
   }
   for (const [key, val] of Object.entries(overlay)) {
-    if (!seen.has(key)) lines.push(`${key}=${val}`);
+    if (!seen.has(key)) lines.push(`${key}=${formatEnvValue(val)}`);
   }
   fs.writeFileSync(dest, lines.join('\n').replace(/\n+$/, '') + '\n', 'utf8');
 }
@@ -195,15 +203,31 @@ function updateApiKeys(updates = {}) {
   const dest = ensureEnvFile();
   const user = parseEnv(fs.readFileSync(dest, 'utf8'));
   if (updates.llmApiKey !== undefined) {
-    user.LLM_API_KEY = String(updates.llmApiKey || '').trim();
+    const v = String(updates.llmApiKey || '').trim();
+    if (v) user.LLM_API_KEY = v;
   }
   if (updates.ttsApiKey !== undefined) {
-    user.TTS_API_KEY = String(updates.ttsApiKey || '').trim();
+    const v = String(updates.ttsApiKey || '').trim();
+    if (v) user.TTS_API_KEY = v;
   }
   const bundled = bundledEnvPath();
   const template = bundled ? fs.readFileSync(bundled, 'utf8') : fs.readFileSync(dest, 'utf8');
   writeEnvFromTemplate(dest, template, user);
   return getSetupStatus();
+}
+
+function restartRavenIfRunning() {
+  const wasRunning = isRunning();
+  if (wasRunning) stopRaven();
+  if (wasRunning) startRaven();
+  return { restarted: wasRunning, running: isRunning() };
+}
+
+function readEnvValue(keyName) {
+  const dest = envFile();
+  if (!fs.existsSync(dest)) return '';
+  const map = parseEnv(fs.readFileSync(dest, 'utf8'));
+  return String(map[keyName] || '').trim();
 }
 
 function showFirstRunDialog() {
@@ -415,5 +439,7 @@ module.exports = {
   checkApiKeys,
   getSetupStatus,
   updateApiKeys,
+  restartRavenIfRunning,
+  readEnvValue,
   openEnvFile,
 };

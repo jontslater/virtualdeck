@@ -206,4 +206,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ravenOpenEnvFile: async () => ipcRenderer.invoke('raven-open-env-file'),
   ravenStart: async () => ipcRenderer.invoke('raven-start'),
   ravenStop: async () => ipcRenderer.invoke('raven-stop'),
+  ravenIsRunning: async () => ipcRenderer.invoke('raven-is-running'),
+  ravenTestLlmKey: async (payload) => ipcRenderer.invoke('raven-test-llm-key', payload || {}),
 });
