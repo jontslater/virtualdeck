@@ -10,9 +10,7 @@ VirtualDeck connects to Twitch with **OAuth Device Code Grant** (primary) and a 
 4. Under **OAuth Redirect URLs**, add:
    - `http://localhost:17563/oauth/callback`
 5. Save the application and copy the **Client ID**.
-6. Provide the Client ID to builds via **one** of:
-   - Environment variable `TWITCH_CLIENT_ID` (recommended for CI/release), or
-   - Local gitignored `twitch-oauth-config.js` copied from `twitch-oauth-config.example.js`.
+6. Release builds ship with the public VirtualDeck Client ID in `lib/twitch-oauth.js`. Override with `TWITCH_CLIENT_ID` or gitignored `twitch-oauth-config.js` if needed.
 
 Device Code Grant is enabled for public clients on Twitch; no separate toggle is required beyond using a public client.
 

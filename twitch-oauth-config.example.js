@@ -3,7 +3,7 @@
 // VirtualDeck uses the public Device Code flow (no client secret in the app binary).
 
 module.exports = {
-  clientId: process.env.TWITCH_CLIENT_ID || 'YOUR_TWITCH_CLIENT_ID',
+  clientId: process.env.TWITCH_CLIENT_ID || '6xnmuyhhtmfpqugw2cn9j5njh770ct',
   // Optional: only for server-side tooling — not shipped to end users
   clientSecret: process.env.TWITCH_CLIENT_SECRET || '',
   // Implicit-flow fallback redirect (localhost)

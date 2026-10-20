@@ -5,7 +5,7 @@ const {
   parseImplicitCallbackUrl,
   pollDeviceCodeToken,
 } = require('./lib/twitch-oauth-client');
-const { getTwitchOAuthClientId } = require('./lib/twitch-oauth');
+const { getTwitchOAuthClientId, DEFAULT_TWITCH_CLIENT_ID } = require('./lib/twitch-oauth');
 const { classifyDroppedFileName, labelFromFileName } = require('./lib/dropped-deck-file');
 
 assert.strictEqual(scopeString(['chat:read', 'chat:edit']), 'chat:read chat:edit');
@@ -49,8 +49,8 @@ const fetchMock = async () => {
   assert.strictEqual(classifyDroppedFileName('sound.mp3'), 'audio');
   assert.strictEqual(labelFromFileName('My Sound.wav'), 'My Sound');
 
-  const clientId = getTwitchOAuthClientId();
-  assert.ok(clientId === null || typeof clientId === 'string');
+  assert.strictEqual(DEFAULT_TWITCH_CLIENT_ID, '6xnmuyhhtmfpqugw2cn9j5njh770ct');
+  assert.strictEqual(getTwitchOAuthClientId(), DEFAULT_TWITCH_CLIENT_ID);
 
   console.log('✅ test-twitch-oauth.js passed');
 }).catch((err) => {

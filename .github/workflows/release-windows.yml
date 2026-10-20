@@ -52,6 +52,7 @@ jobs:
         env:
           AITUBER_ROOT: ${{ github.workspace }}/vendor/AITuber
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TWITCH_CLIENT_ID: 6xnmuyhhtmfpqugw2cn9j5njh770ct
         run: npm run build:win:publish:raven
 
       - name: List dist artifacts
