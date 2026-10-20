@@ -43,7 +43,8 @@ const { WAKE_NAMES_REQUIRE_RAVEN_RESTART } = require('./lib/wake-names');
 const { copyTreeSync, copyFileSyncSafe } = require('./lib/copy-tree-sync');
 const RaidFavoritesStore = require('./lib/raid-favorites-store');
 const { RaidHelixClient } = require('./lib/raid-helix');
-const { buildTwitchAuthorizeUrl } = require('./lib/twitch-oauth');
+const { buildTwitchAuthorizeUrl, getTwitchOAuthClientId } = require('./lib/twitch-oauth');
+const { createTwitchOAuthHost } = require('./lib/twitch-oauth-host');
 const { isValidTwitchLogin, normalizeTwitchLogin } = require('./lib/twitch-login');
 const { sanitizeTwitchProfileImageUrl: sanitizeTwitchProfileImageUrlLib } = require('./lib/twitch-profile-image');
 
@@ -674,9 +675,19 @@ function loadTcConfig() {
       try {
         const encryptedBuffer = Buffer.from(raw.oauth_token_encrypted, 'base64');
         raw.oauth_token = safeStorage.decryptString(encryptedBuffer);
+        raw.accessToken = raw.oauth_token;
         console.log('✅ [Security] Decrypted Twitch OAuth token');
       } catch (err) {
         console.error('❌ [Security] Failed to decrypt OAuth token:', err.message);
+      }
+    }
+    if (raw.refresh_token_encrypted && safeStorage.isEncryptionAvailable()) {
+      try {
+        const encryptedBuffer = Buffer.from(raw.refresh_token_encrypted, 'base64');
+        raw.refreshToken = safeStorage.decryptString(encryptedBuffer);
+        console.log('✅ [Security] Decrypted Twitch refresh token');
+      } catch (err) {
+        console.error('❌ [Security] Failed to decrypt refresh token:', err.message);
       }
     }
     
@@ -695,17 +706,30 @@ function saveTcConfig(cfg) {
   const toSave = { ...cfg };
   
   // Encrypt sensitive fields before saving
-  if (toSave.oauth_token && safeStorage.isEncryptionAvailable()) {
+  const tokenPlain = toSave.oauth_token || toSave.accessToken;
+  if (tokenPlain && safeStorage.isEncryptionAvailable()) {
     try {
-      const encrypted = safeStorage.encryptString(toSave.oauth_token);
+      const encrypted = safeStorage.encryptString(String(tokenPlain));
       toSave.oauth_token_encrypted = encrypted.toString('base64');
-      // Remove plain text token from saved config
       delete toSave.oauth_token;
+      delete toSave.accessToken;
       console.log('✅ [Security] Encrypted Twitch OAuth token before saving');
     } catch (err) {
       console.error('❌ [Security] Failed to encrypt OAuth token:', err.message);
-      // If encryption fails, remove token entirely to be safe
       delete toSave.oauth_token;
+      delete toSave.accessToken;
+    }
+  }
+  const refreshPlain = toSave.refreshToken;
+  if (refreshPlain && safeStorage.isEncryptionAvailable()) {
+    try {
+      const encryptedRefresh = safeStorage.encryptString(String(refreshPlain));
+      toSave.refresh_token_encrypted = encryptedRefresh.toString('base64');
+      delete toSave.refreshToken;
+      console.log('✅ [Security] Encrypted Twitch refresh token before saving');
+    } catch (err) {
+      console.error('❌ [Security] Failed to encrypt refresh token:', err.message);
+      delete toSave.refreshToken;
     }
   }
   
@@ -3087,7 +3111,14 @@ ipcMain.on('delete-event-mapping', (event, id) => {
 // IPC: get the saved TwitchConnected config (tc_config.json)
 ipcMain.handle('get-tc-config', async () => {
   try {
-    return loadTcConfig();
+    const tc = loadTcConfig();
+    const safe = { ...tc };
+    delete safe.accessToken;
+    delete safe.oauth_token;
+    delete safe.oauth_token_encrypted;
+    delete safe.refreshToken;
+    delete safe.refresh_token_encrypted;
+    return safe;
   } catch (err) {
     console.error('Error reading tc_config via IPC:', err);
     return { topics: [], lastFollowerPoll: null };
@@ -4622,8 +4653,52 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
 ipcMain.on('twitch-connect', (event, creds) => {
   console.log('Received twitch-connect IPC with creds');
   console.log('Creds:', creds);
-  startTwitchChatConnection(creds);
+  const clientId = creds.clientId || getTwitchOAuthClientId();
+  startTwitchChatConnection({
+    username: creds.username,
+    oauth: creds.oauth,
+    clientId,
+  });
+  if (creds.oauth && creds.username && twitchOAuthHost) {
+    try {
+      twitchOAuthHost.persistOAuthSession({
+        accessToken: creds.oauth,
+        refreshToken: creds.refreshToken || null,
+        expiresIn: creds.expiresIn,
+        clientId,
+        username: creds.username,
+        userId: creds.userId,
+      });
+    } catch (err) {
+      console.warn('[Twitch OAuth] Could not persist manual credentials:', err.message);
+    }
+  }
 });
+
+let twitchOAuthHost = null;
+function isTwitchChatConnected() {
+  try {
+    return !!(twitchClient && typeof twitchClient.readyState === 'function' && twitchClient.readyState() === 'OPEN');
+  } catch {
+    return false;
+  }
+}
+function initTwitchOAuthHost() {
+  if (twitchOAuthHost) return twitchOAuthHost;
+  twitchOAuthHost = createTwitchOAuthHost({
+    fetchFn: fetch,
+    safeStorage,
+    shell,
+    getMainWindow: () => win,
+    loadTcConfig,
+    saveTcConfig,
+    startTwitchChatConnection,
+    ipcMain,
+    getTwitchConnected: isTwitchChatConnected,
+  });
+  twitchOAuthHost.registerIpc();
+  return twitchOAuthHost;
+}
 
 let lastFollowerIds = [];
 let lastPollTime = null;
@@ -5694,6 +5769,20 @@ app.whenReady().then(() => {
     console.log('[AI Audio] Command watcher not started (VirtualDeck Pro license required)');
   }
   createWindow();
+  try {
+    initTwitchOAuthHost();
+    setTimeout(() => {
+      twitchOAuthHost.connectFromStoredSession().then((result) => {
+        if (result && result.ok) {
+          console.log('[Twitch OAuth] Restored session for', result.username);
+        }
+      }).catch((err) => {
+        console.warn('[Twitch OAuth] Session restore failed:', err.message || err);
+      });
+    }, 1200);
+  } catch (err) {
+    console.warn('[Twitch OAuth] Host init failed:', err.message || err);
+  }
   registerHotkeys();
   startOverlayServer();
   startJarvisServer();
@@ -6250,7 +6339,12 @@ ipcMain.on('twitch-clear-creds', async (event) => {
         tc.topics = [];
         purgedTopics = true;
       }
-      saveTcConfig(tc);
+      if (twitchOAuthHost) {
+        const cleared = twitchOAuthHost.clearOAuthSessionFields(tc);
+        saveTcConfig(cleared);
+      } else {
+        saveTcConfig(tc);
+      }
       // attach deletionResults and purgedTopics to the result object below
       // will be sent to renderer once teardown completes
       event.deletionResults = deletionResults;

@@ -2543,14 +2543,11 @@ document.addEventListener('drop', (e) => {
     console.log('  ✅ Processing file drop');
     e.preventDefault();
     e.stopPropagation();
-    // Visual feedback
     const globalDropZone = document.getElementById('global-drop-zone');
     if (globalDropZone) globalDropZone.classList.add('hidden');
-    // Process dropped files
-    for (const file of e.dataTransfer.files) {
-      console.log('  📁 Processing file:', file.name);
-      handleFileDrop(file);
-      break; // Only handle the first file
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length) {
+      void addDroppedDeckFiles(files);
     }
   } else {
     console.log('  ❌ Skipping file drop (in drag mode on sound card)');
@@ -5459,10 +5456,106 @@ if (window.electronAPI && typeof window.electronAPI.onPlayAiTts === 'function') 
   });
 }
 
+function getDroppedFilePath(file) {
+  if (!file) return '';
+  if (window.electronAPI && window.electronAPI.getPathForFile) {
+    const p = window.electronAPI.getPathForFile(file);
+    if (p) return p;
+  }
+  return file.path || '';
+}
+
+async function resolveDroppedAppPath(filePath) {
+  if (!filePath) return { path: '', args: '' };
+  const lower = filePath.toLowerCase();
+  if (!lower.endsWith('.lnk') && !lower.endsWith('.desktop')) {
+    return { path: filePath, args: '' };
+  }
+  try {
+    if (window.electronAPI && window.electronAPI.resolveShortcut) {
+      const shortcut = await window.electronAPI.resolveShortcut(filePath);
+      if (shortcut && shortcut.target) {
+        return { path: shortcut.target, args: shortcut.args || '' };
+      }
+    }
+  } catch (err) {
+    console.warn('Shortcut resolve failed:', err);
+  }
+  return { path: filePath, args: '' };
+}
+
+async function quickAddDroppedDeckFile(file) {
+  const fileName = file.name;
+  const filePath = getDroppedFilePath(file);
+  if (!filePath) {
+    console.warn('Dropped file has no path:', fileName);
+    handleFileDrop(file);
+    return { ok: false, reason: 'no_path' };
+  }
+  if (window.vdLicense && typeof window.vdLicense.canAddButton === 'function' && !window.vdLicense.canAddButton()) {
+    const max = window.vdLicense.getCachedDeckEntitlements()?.maxActiveButtons || 15;
+    window.vdLicense.showUpsell(
+      `Free plan includes ${max} active buttons. Upgrade in Preferences → License for unlimited buttons and Raven AI.`,
+    );
+    return { ok: false, reason: 'limit' };
+  }
+  const classify = (window.vdDeckDrop && window.vdDeckDrop.classifyDroppedFileName)
+    || ((name) => (name.match(/\.(exe|lnk|bat|cmd)$/i) ? 'app' : 'audio'));
+  const labelFrom = (window.vdDeckDrop && window.vdDeckDrop.labelFromFileName)
+    || ((name) => name.replace(/\.[^/.]+$/, ''));
+  const type = classify(fileName);
+  const label = labelFrom(fileName);
+  let originalPath = filePath;
+  let args = '';
+  if (type === 'app') {
+    const resolved = await resolveDroppedAppPath(filePath);
+    originalPath = resolved.path || filePath;
+    args = resolved.args || '';
+  }
+  const ext = fileName.split('.').pop();
+  const targetPath = type === 'app' ? originalPath : `assets/sounds/${label}.${ext}`;
+  window.electronAPI.addMedia({
+    label,
+    type,
+    hotkey: '',
+    volume: 1,
+    targetPath,
+    originalPath,
+    args,
+  });
+  return { ok: true };
+}
+
+async function addDroppedDeckFiles(files) {
+  let added = 0;
+  let stoppedForLimit = false;
+  for (const file of files) {
+    const result = await quickAddDroppedDeckFile(file);
+    if (result.ok) {
+      added += 1;
+      continue;
+    }
+    if (result.reason === 'limit') {
+      stoppedForLimit = true;
+      break;
+    }
+    if (result.reason === 'no_path') {
+      continue;
+    }
+  }
+  if (added > 0) {
+    window.electronAPI.refreshHotkeys();
+    setTimeout(() => loadButtons(), 120);
+  } else if (!stoppedForLimit && files.length > 0) {
+    handleFileDrop(files[0]);
+  }
+}
+
 function handleFileDrop(file) {
   console.log('🎵 handleFileDrop called with file:', file);
   console.log('  - File name:', file.name);
-  console.log('  - File path:', file.path);
+  const droppedPath = getDroppedFilePath(file);
+  console.log('  - File path:', droppedPath);
   console.log('  - File type:', file.type);
   console.log('  - File size:', file.size);
   
@@ -5477,33 +5570,11 @@ function handleFileDrop(file) {
     }
   }
 
-  // Supported extensions
-  const audioExts = ['mp3', 'wav', 'ogg'];
-  const appExts = [
-    'exe',    // Windows executable
-    'bat',    // Windows batch
-    'cmd',    // Windows command
-    'lnk',    // Windows shortcut
-    'app',    // macOS app bundle or Linux AppImage
-    'sh',     // Linux shell script
-    'desktop' // Linux desktop shortcut
-  ];
+  const classify = (window.vdDeckDrop && window.vdDeckDrop.classifyDroppedFileName)
+    || (() => 'audio');
+  const type = classify(file.name);
   const ext = file.name.split('.').pop().toLowerCase();
   console.log('File extension:', ext);
-  let type = 'audio';
-  if (appExts.includes(ext)) type = 'app';
-  
-  // Additional check: if the file has no extension or an unknown extension,
-  // but the name contains common app names, treat it as an app
-  if (type === 'audio' && (!ext || !audioExts.includes(ext))) {
-    const fileName = file.name.toLowerCase();
-    const appKeywords = ['spotify', 'chrome', 'firefox', 'edge', 'steam', 'discord', 'slack', 'teams', 'zoom', 'postman', 'vscode', 'notepad', 'calculator', 'paint', 'word', 'excel', 'powerpoint'];
-    if (appKeywords.some(keyword => fileName.includes(keyword))) {
-      type = 'app';
-      console.log('Detected as app based on filename containing app keyword');
-    }
-  }
-  
   console.log('Detected type:', type);
 
   // Get all required elements
@@ -5558,8 +5629,8 @@ function handleFileDrop(file) {
   // Handle shortcut resolution for app files
   if (type === 'app') {
     // Try to resolve as shortcut regardless of extension
-    console.log('  🔗 Attempting to resolve as shortcut:', file.path);
-    window.electronAPI.resolveShortcut(file.path).then(shortcut => {
+    console.log('  🔗 Attempting to resolve as shortcut:', droppedPath);
+    window.electronAPI.resolveShortcut(droppedPath).then(shortcut => {
       if (shortcut && shortcut.target) {
         console.log('  ✅ Shortcut resolved to:', shortcut);
         // Store the resolved path and args in the form
@@ -5568,19 +5639,19 @@ function handleFileDrop(file) {
         setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
       } else {
         console.warn('  ❌ Failed to resolve shortcut, using original file');
-        settingsForm.dataset.resolvedPath = file.path;
+        settingsForm.dataset.resolvedPath = droppedPath;
         settingsForm.dataset.resolvedArgs = '';
         setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
       }
     }).catch(error => {
       console.error('  ❌ Error resolving shortcut:', error);
-      settingsForm.dataset.resolvedPath = file.path;
+      settingsForm.dataset.resolvedPath = droppedPath;
       settingsForm.dataset.resolvedArgs = '';
       setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
     });
   } else {
     console.log('  🎵 Processing as audio file');
-    settingsForm.dataset.resolvedPath = file.path;
+    settingsForm.dataset.resolvedPath = droppedPath;
     settingsForm.dataset.resolvedArgs = '';
     setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
   }

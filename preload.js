@@ -1,5 +1,5 @@
 //const twitchConnected = require('./TwitchConnected/tc.js');
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   addMedia: (data) => ipcRenderer.send('add-media', data),
@@ -175,6 +175,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   raidFavoritesCancelRaid: async () => ipcRenderer.invoke('raid-favorites-cancel-raid'),
   checkTwitchRaidScope: async () => ipcRenderer.invoke('check-twitch-raid-scope'),
   getTwitchOAuthAuthorizeUrl: async () => ipcRenderer.invoke('get-twitch-oauth-authorize-url'),
+  getPathForFile: (file) => {
+    try {
+      if (file && webUtils && typeof webUtils.getPathForFile === 'function') {
+        return webUtils.getPathForFile(file);
+      }
+    } catch (e) { /* ignore */ }
+    return (file && file.path) || '';
+  },
+  twitchOAuthStart: async () => ipcRenderer.invoke('twitch-oauth-start'),
+  twitchOAuthCancel: async () => ipcRenderer.invoke('twitch-oauth-cancel'),
+  twitchOAuthGetStatus: async () => ipcRenderer.invoke('twitch-oauth-get-status'),
+  twitchOAuthRestoreSession: async () => ipcRenderer.invoke('twitch-oauth-restore-session'),
+  onTwitchOAuthProgress: (callback) => ipcRenderer.on('twitch-oauth-progress', (_event, data) => callback(data)),
+  onTwitchOAuthSuccess: (callback) => ipcRenderer.on('twitch-oauth-success', (_event, data) => callback(data)),
   onRaidFavoritesHistoryUpdated: (callback) => ipcRenderer.on('raid-favorites-history-updated', (_event, data) => callback(data)),
   // Licensing (entitlements enforced in main process)
   licenseGetStatus: async () => ipcRenderer.invoke('license-get-status'),
