@@ -5076,7 +5076,6 @@ window.editButtonByEl = async (btnEl) => {
     const config = await window.electronAPI.getConfig();
     let origIndex = -1;
     // Prefer stable id mapping if present
-    const bid = card.dataset.buttonId;
     if (bid && config && Array.isArray(config.buttons)) {
       origIndex = config.buttons.findIndex(b => b.id === bid);
     }
