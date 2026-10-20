@@ -114,7 +114,7 @@
           if (msg) {
             msg.textContent = restarted
               ? 'API keys saved and Raven restarted with the new keys.'
-              : 'API keys saved to raven.env. Turn AI on or start Raven from Tools → Raven AI.';
+              : 'API keys saved to raven.env. Turn AI on or use Tools → Raven AI → Start Raven AI.';
           }
           if (llmInput) llmInput.value = '';
           if (ttsInput) ttsInput.value = '';

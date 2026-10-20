@@ -6172,6 +6172,15 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle('raven-restart', async () => {
+    try {
+      const result = ravenHost.restartRaven();
+      return { success: true, ...result };
+    } catch (err) {
+      return { success: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
   ipcMain.handle('license-get-status', async () => {
     if (!licenseManager) {
       return {

@@ -216,11 +216,18 @@ function updateApiKeys(updates = {}) {
   return getSetupStatus();
 }
 
-function restartRavenIfRunning() {
+function restartRaven() {
   const wasRunning = isRunning();
-  if (wasRunning) stopRaven();
-  if (wasRunning) startRaven();
-  return { restarted: wasRunning, running: isRunning() };
+  stopRaven();
+  startRaven();
+  return { restarted: true, wasRunning, running: isRunning() };
+}
+
+function restartRavenIfRunning() {
+  if (!isRunning()) {
+    return { restarted: false, wasRunning: false, running: false };
+  }
+  return restartRaven();
 }
 
 function readEnvValue(keyName) {
@@ -241,7 +248,7 @@ function showFirstRunDialog() {
       '2. TTS Provider (ElevenLabs, etc.) - for voice synthesis\n\n' +
       'Click "Open Settings" to add your API keys now.\n\n' +
       'You can also access this later via:\n' +
-      'VirtualDeck menu → Open Raven settings (raven.env)',
+      'Tools → Raven AI → Open Raven settings (raven.env)',
     buttons: ['Open Settings', 'Skip for Now'],
     defaultId: 0,
     cancelId: 1,
@@ -257,9 +264,8 @@ function showFirstRunDialog() {
       detail:
         'After adding your API keys:\n\n' +
         '1. Save the file and close your editor\n' +
-        '2. Go to VirtualDeck menu → Stop Raven AI\n' +
-        '3. Then → Start Raven AI\n\n' +
-        'Raven will now use your API keys for AI features.',
+        '2. Use Tools → Raven AI → Restart Raven AI\n\n' +
+        'Raven will reload your saved keys on restart.',
       buttons: ['OK'],
     });
   }
@@ -412,6 +418,10 @@ function menuTemplateItems() {
       click: () => stopRaven(),
     },
     {
+      label: 'Restart Raven AI',
+      click: () => restartRaven(),
+    },
+    {
       type: 'checkbox',
       label: 'Start Raven with VirtualDeck',
       checked: prefs.autoStart !== false,
@@ -439,6 +449,7 @@ module.exports = {
   checkApiKeys,
   getSetupStatus,
   updateApiKeys,
+  restartRaven,
   restartRavenIfRunning,
   readEnvValue,
   openEnvFile,

@@ -7216,7 +7216,7 @@ function setupOverlayWidget() {
         console.warn('Copilot mic list failed:', err);
         micSelect.innerHTML = '<option value="">Raven not ready</option>';
         if (micStatus) {
-          micStatus.textContent = 'Can’t reach Raven yet. Wait a few seconds after launch, or Raven AI → Start Raven AI, then Scan.';
+          micStatus.textContent = 'Can’t reach Raven yet. Wait a few seconds after launch, or Tools → Raven AI → Start Raven AI, then Scan.';
         }
         return false;
       }
@@ -7468,7 +7468,7 @@ function setupOverlayWidget() {
         applyWakeNameUi(data.primary, data.names);
         if (wakeStatus) {
           wakeStatus.textContent = data.requiresRavenRestart
-            ? 'Saved. Restart Raven to apply the new wake name.'
+            ? 'Saved. Use Tools → Raven AI → Restart Raven AI to apply the new wake name.'
             : 'Saved. Wake name will apply when Raven reloads raven.env.';
         }
       } catch (err) {
@@ -7866,7 +7866,7 @@ function setupOverlayWidget() {
           const raw = err instanceof Error ? err.message : String(err);
           const offline = /Failed to fetch|NetworkError|Load failed|ECONNREFUSED/i.test(raw);
           alert(offline
-            ? 'Raven is not answering yet (manual speak uses port 3003). Wait a few seconds after launch, or use Raven AI → Start Raven AI, then try again.'
+            ? 'Raven is not answering yet (manual speak uses port 3003). Wait a few seconds after launch, or use Tools → Raven AI → Start Raven AI, then try again.'
             : `Manual speak failed: ${raw}`);
         } finally {
           sayBtn.disabled = false;
@@ -13004,7 +13004,7 @@ let alertSystem = {
     const alertsOfType = this.alerts.filter(a => a.type === eventType);
     if (alertsOfType.length === 0) {
       console.log(`⚠️ No alerts found for event type: ${eventType}`);
-      console.log(`💡 Create a "${eventType}" alert in Tools → Alerts to fix this`);
+      console.log(`💡 Create a "${eventType}" alert in Tools → Alert Widget to fix this`);
       return;
     }
     
@@ -14189,6 +14189,44 @@ function setupLeftAppMenu() {
       showAlertWidget();
       if (toolsDropdown) toolsDropdown.classList.add('hidden');
       if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  function closeToolsMenu() {
+    if (toolsDropdown) toolsDropdown.classList.add('hidden');
+    if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  const toolsRavenStart = document.getElementById('menu-tools-raven-start');
+  const toolsRavenStop = document.getElementById('menu-tools-raven-stop');
+  const toolsRavenRestart = document.getElementById('menu-tools-raven-restart');
+  const toolsRavenSettings = document.getElementById('menu-tools-raven-settings');
+  if (toolsRavenStart && window.electronAPI && window.electronAPI.ravenStart) {
+    toolsRavenStart.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeToolsMenu();
+      await window.electronAPI.ravenStart();
+    });
+  }
+  if (toolsRavenStop && window.electronAPI && window.electronAPI.ravenStop) {
+    toolsRavenStop.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeToolsMenu();
+      await window.electronAPI.ravenStop();
+    });
+  }
+  if (toolsRavenRestart && window.electronAPI && window.electronAPI.ravenRestart) {
+    toolsRavenRestart.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeToolsMenu();
+      await window.electronAPI.ravenRestart();
+    });
+  }
+  if (toolsRavenSettings && window.electronAPI && window.electronAPI.ravenOpenEnvFile) {
+    toolsRavenSettings.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeToolsMenu();
+      window.electronAPI.ravenOpenEnvFile();
     });
   }
   
@@ -17429,9 +17467,9 @@ window.testTwitchEventPipeline = function() {
   if (alerts.length === 0) {
     console.log('❌ NO ALERTS CONFIGURED!');
     console.log('💡 This is why you\'re not seeing alerts.');
-    console.log('💡 Go to Tools → Alerts to create alerts.');
+    console.log('💡 Go to Tools → Alert Widget to create alerts.');
     console.log('');
-    alert('⚠️ No alerts configured!\n\nYou need to create alerts in Tools → Alerts first.\n\nCreate at least:\n• 1 "Follower" alert\n• 1 "Subscriber" alert');
+    alert('⚠️ No alerts configured!\n\nYou need to create alerts in Tools → Alert Widget first.\n\nCreate at least:\n• 1 "Follower" alert\n• 1 "Subscriber" alert');
     return;
   }
   
@@ -17522,7 +17560,7 @@ window.testTwitchEventPipeline = function() {
     const alertsForType = alerts.filter(a => a.type === alertType && a.enabled !== false);
     if (alertsForType.length === 0) {
       console.log(`❌ No enabled alerts found for type "${alertType}"!`);
-      console.log('💡 Create a "Follower" alert in Tools → Alerts');
+      console.log('💡 Create a "Follower" alert in Tools → Alert Widget');
     } else {
       console.log(`✅ Found ${alertsForType.length} enabled alert(s) for "${alertType}"`);
       
@@ -17604,7 +17642,7 @@ window.testTwitchEventPipeline = function() {
     const alertsForType = alerts.filter(a => a.type === alertType && a.enabled !== false);
     if (alertsForType.length === 0) {
       console.log(`❌ No enabled alerts found for type "${alertType}"!`);
-      console.log('💡 Create a "Subscriber" alert in Tools → Alerts');
+      console.log('💡 Create a "Subscriber" alert in Tools → Alert Widget');
     } else {
       console.log(`✅ Found ${alertsForType.length} enabled alert(s) for "${alertType}"`);
       
@@ -17658,7 +17696,7 @@ window.testTwitchEventPipeline = function() {
   console.log('─────────────────────────────────────────────────────────');
   console.log('1. Did you see alerts appear on screen?');
   console.log('2. Check the console messages above for errors');
-  console.log('3. Make sure you have alerts created in Tools → Alerts');
+  console.log('3. Make sure you have alerts created in Tools → Alert Widget');
   console.log('4. Make sure your alerts are ENABLED (not disabled)');
   console.log('5. Check if you have an overlay URL open in OBS');
   console.log('6. Look for any error messages in red above');
@@ -17666,10 +17704,10 @@ window.testTwitchEventPipeline = function() {
   console.log('🔍 If alerts didn\'t show:');
   console.log('─────────────────────────────────────────────────────────');
   if (enabledFollowerAlerts.length === 0) {
-    console.log('❌ Create/enable a "Follower" alert in Tools → Alerts');
+    console.log('❌ Create/enable a "Follower" alert in Tools → Alert Widget');
   }
   if (enabledSubscriberAlerts.length === 0) {
-    console.log('❌ Create/enable a "Subscriber" alert in Tools → Alerts');
+    console.log('❌ Create/enable a "Subscriber" alert in Tools → Alert Widget');
   }
   console.log('• Check that your overlay is properly connected');
   console.log('• Verify alert queue is working (check alertQueue in console)');
@@ -17690,7 +17728,7 @@ window.testTwitchEventPipeline = function() {
     if (enabledSubscriberAlerts.length === 0) {
       summaryMessage += '• No enabled subscriber alerts\n';
     }
-    summaryMessage += '\n💡 Create/enable alerts in Tools → Alerts';
+    summaryMessage += '\n💡 Create/enable alerts in Tools → Alert Widget';
   } else {
     summaryMessage += '✅ Alerts are configured correctly!\n\n';
     summaryMessage += 'Check console (F12) for detailed logs.\n';

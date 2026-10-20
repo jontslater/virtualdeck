@@ -31,7 +31,7 @@ Select your preferred TTS voice from your ElevenLabs account.
 **Troubleshooting:**
 - If voices don't load, click the "Refresh" button
 - Ensure `TTS_API_KEY` is set in `raven.env`
-- Check that Raven AI is running (View menu → Start Raven AI)
+- Check that Raven AI is running (Tools → Raven AI → Start Raven AI)
 - Voice list retries automatically for ~45 seconds after launch
 
 ### 🧠 Personality Builder

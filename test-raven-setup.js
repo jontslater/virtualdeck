@@ -26,5 +26,6 @@ assert.ok(host.includes('function getSetupStatus'), 'raven getSetupStatus');
 assert.ok(host.includes('function updateApiKeys'), 'raven updateApiKeys');
 assert.ok(host.includes('function formatEnvValue'), 'raven env value quoting');
 assert.ok(host.includes('restartRavenIfRunning'), 'raven restart after key save');
+assert.ok(host.includes('function restartRaven'), 'raven full restart helper');
 
 console.log('✅ test-raven-setup.js passed');

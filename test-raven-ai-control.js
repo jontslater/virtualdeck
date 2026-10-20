@@ -32,6 +32,7 @@ assert.ok(html.includes('raven-ai-control.js'), 'raven-ai-control script');
 const pre = read('preload.js');
 assert.ok(pre.includes('raven-start') && pre.includes('ravenStop'), 'preload raven lifecycle IPC');
 assert.ok(pre.includes('ravenTestLlmKey'), 'preload raven test LLM key');
+assert.ok(pre.includes('ravenRestart'), 'preload raven restart IPC');
 
 const main = read('main.js');
 assert.ok(main.includes("ipcMain.handle('raven-start'") && main.includes("ipcMain.handle('raven-stop'"), 'main raven lifecycle IPC');
