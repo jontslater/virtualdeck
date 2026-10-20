@@ -14,8 +14,8 @@
     "stage-raven:personal": "powershell -ExecutionPolicy Bypass -File scripts/stage-raven-runtime.ps1 -BundleKeys",
     "restore-raven-env-defaults": "node scripts/restore-raven-env-defaults.js",
     "dist": "npm run prepare-build:no-raven && electron-builder",
-    "build:win": "npm run prepare-build:no-raven && electron-builder --win",
-    "build:win:with-raven": "npm run stage-raven && npm run prepare-build && electron-builder --win",
+    "build:win": "npm run prepare-build:no-raven && electron-builder --win --publish never",
+    "build:win:with-raven": "npm run stage-raven && npm run prepare-build && electron-builder --win --publish never",
     "build:win:personal": "node scripts/build-win-personal.js",
     "build:win:publish": "npm run prepare-build:no-raven && electron-builder --win --publish always",
     "build:win:publish:raven": "npm run stage-raven && npm run prepare-build && electron-builder --win --publish always"
