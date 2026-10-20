@@ -16,6 +16,7 @@ for (let i = 1; i < types.length; i++) {
   assert.ok(types[i - 1].idx < types[i].idx, `add menu order: ${types[i - 1].t} before ${types[i].t}`);
 }
 
+assert.ok(html.indexOf('dialog-shim.js') < html.indexOf('vd-console.js'), 'dialog-shim before console bootstrap');
 assert.ok(html.indexOf('vd-console.js') < html.indexOf('script.js'), 'vd-console loads before app scripts');
 
 const escapeJs = fs.readFileSync(path.join(__dirname, 'public/modal-escape.js'), 'utf8');
