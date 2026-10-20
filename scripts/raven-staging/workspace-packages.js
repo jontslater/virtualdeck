@@ -131,6 +131,15 @@ function workspaceClosure(repoRoot, startPackageDir, options = {}) {
   };
 }
 
+function allPackagesBuildOrder(repoRoot) {
+  const rels = [];
+  const packagesRoot = path.join(repoRoot, 'packages');
+  walkPackageDirs(packagesRoot, (pkgDir) => {
+    rels.push(posixRel(repoRoot, pkgDir));
+  });
+  return orderClosureForStaging(repoRoot, rels);
+}
+
 function orderClosureForStaging(repoRoot, closureRels) {
   const relSet = new Set(closureRels);
   const workspaceMap = scanWorkspacePackages(repoRoot);
@@ -265,6 +274,7 @@ module.exports = {
   workspaceClosure,
   workspaceFileSpec,
   buildDepRewrites,
+  allPackagesBuildOrder,
   orderClosureForStaging,
   readClosureListFromFile,
   collectFileDependencyRels,
@@ -281,6 +291,11 @@ if (require.main === module) {
   if (!cmd || !repoRoot) {
     console.error('Usage: node workspace-packages.js <closure|rewrites> <repoRoot> [packageRel]');
     process.exit(1);
+  }
+  if (cmd === 'packages-build-order') {
+    const ordered = allPackagesBuildOrder(repoRoot);
+    process.stdout.write(`${JSON.stringify(ordered)}\n`);
+    process.exit(0);
   }
   if (cmd === 'closure') {
     const controllerDir = process.argv[4];

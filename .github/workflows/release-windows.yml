@@ -30,11 +30,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout VirtualDeck
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Checkout AITuber (Raven source)
         id: aituber_release
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: jontslater/AITuber
           path: vendor/AITuber
@@ -50,9 +50,9 @@ jobs:
           echo "AITuber checkout OK at $(cd vendor/AITuber && git rev-parse --short HEAD)"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
 
       - name: Verify tag matches package.json version
@@ -89,13 +89,13 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout VirtualDeck
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref }}
 
       - name: Checkout AITuber (Raven source)
         id: aituber_test
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: jontslater/AITuber
           path: vendor/AITuber
@@ -116,9 +116,9 @@ jobs:
           fi
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
 
       - name: Install dependencies

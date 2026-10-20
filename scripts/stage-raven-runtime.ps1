@@ -320,6 +320,23 @@ function Test-PathUnderNodeModules([string]$FullPath) {
     return $normalized -match '\\node_modules(\\|$)'
 }
 
+function Get-WorkspacePackagesBuildOrder {
+    param(
+        [string]$Root,
+        [string]$NodeExe
+    )
+    $helper = Get-RavenStagingHelperPath -FileName 'workspace-packages.js'
+    $output = & $NodeExe $helper 'packages-build-order' $Root
+    if ($LASTEXITCODE -ne 0) {
+        throw 'workspace-packages.js packages-build-order failed'
+    }
+    $json = ($output | Out-String).Trim()
+    if (-not $json) {
+        throw 'packages-build-order returned empty list'
+    }
+    return @($json | ConvertFrom-Json)
+}
+
 function Get-WorkspacePackageFilters([string]$Root) {
     $filters = New-Object System.Collections.Generic.List[string]
     $rootFull = (Resolve-Path -LiteralPath $Root).Path
@@ -952,11 +969,13 @@ function Stage-MonorepoLayout {
     Write-Step 'Checking AITuber dependencies for Raven (install only if needed)...'
     Ensure-RavenPnpmDependencies -Root $Root -NodeExe $NodeExe -ControllerPackageName $controllerPackageName
 
-    Write-Step 'Building workspace packages (pnpm workspace only, excludes node_modules)...'
-    $packageFilters = Get-WorkspacePackageFilters -Root $Root
-    foreach ($filter in $packageFilters) {
-        $rel = $filter -replace '^\./', ''
-        if ($rel -eq $Script:BridgeSourceRel.Replace('\', '/')) { continue }
+    Write-Step 'Building workspace packages (dependency order, shared before dependents)...'
+    $bridgeRel = $Script:BridgeSourceRel.Replace('\', '/')
+    $buildOrder = Get-WorkspacePackagesBuildOrder -Root $Root -NodeExe $NodeExe
+    foreach ($rel in $buildOrder) {
+        $relPosix = [string]$rel
+        if ($relPosix -eq $bridgeRel) { continue }
+        $filter = './' + $relPosix
         Invoke-PackageBuildOptional -Root $Root -Filter $filter
     }
 

@@ -124,6 +124,7 @@ const {
   workspaceClosure,
   buildDepRewrites,
   orderClosureForStaging,
+  allPackagesBuildOrder,
 } = require('./scripts/raven-staging/workspace-packages');
 const wsTmp = path.join(__dirname, '.tmp-workspace-packages');
 fs.rmSync(wsTmp, { recursive: true, force: true });
@@ -160,6 +161,17 @@ const { closureRels } = workspaceClosure(wsTmp, controllerDir, {
 assert.deepStrictEqual(closureRels, ['packages/shared', 'packages/director']);
 const ordered = orderClosureForStaging(wsTmp, closureRels);
 assert.deepStrictEqual(ordered[0], 'packages/shared', 'shared must stage before director');
+const pkgOrder = allPackagesBuildOrder(wsTmp);
+const sharedIdx = pkgOrder.indexOf('packages/shared');
+const directorIdx = pkgOrder.indexOf('packages/director');
+assert.ok(sharedIdx >= 0 && directorIdx >= 0 && sharedIdx < directorIdx, 'packages build order: shared before director');
+const pkgOrderCli = JSON.parse(
+  execSync(
+    `node "${path.join(__dirname, 'scripts/raven-staging/workspace-packages.js')}" packages-build-order "${wsTmp}"`,
+    { encoding: 'utf8' },
+  ).trim(),
+);
+assert.ok(pkgOrderCli.indexOf('packages/shared') < pkgOrderCli.indexOf('packages/director'));
 const rewrites = buildDepRewrites(wsTmp, 'apps/controller', closureRels);
 assert.strictEqual(rewrites['@ai-streamer/shared'], 'file:../../packages/shared');
 assert.strictEqual(rewrites['@ai-streamer/director'], 'file:../../packages/director');
@@ -523,6 +535,10 @@ assert.ok(!stale.includes('env.defaults'));
 fs.rmSync(stageCleanTmp, { recursive: true, force: true });
 
 const stagePs1Clean = fs.readFileSync(path.join(__dirname, 'scripts/stage-raven-runtime.ps1'), 'utf8');
+assert.ok(
+  stagePs1Clean.includes('Get-WorkspacePackagesBuildOrder'),
+  'stage script should build packages in workspace dependency order',
+);
 assert.ok(
   stagePs1Clean.includes('Clear-StaleRavenStageOutput'),
   'stage script should clear stale output before staging',
