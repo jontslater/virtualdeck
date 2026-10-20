@@ -125,6 +125,7 @@ const {
   buildDepRewrites,
   orderClosureForStaging,
   allPackagesBuildOrder,
+  controllerBuildOrder,
 } = require('./scripts/raven-staging/workspace-packages');
 const wsTmp = path.join(__dirname, '.tmp-workspace-packages');
 fs.rmSync(wsTmp, { recursive: true, force: true });
@@ -183,6 +184,35 @@ const rewritesCli = execSync(
 ).trim();
 const fromFile = JSON.parse(rewritesCli);
 assert.strictEqual(fromFile['@ai-streamer/shared'], 'file:../../packages/shared');
+const integrationsDir = path.join(wsTmp, 'packages/integrations/virtualdeck');
+fs.mkdirSync(integrationsDir, { recursive: true });
+fs.writeFileSync(
+  path.join(integrationsDir, 'package.json'),
+  JSON.stringify({
+    name: '@ai-streamer/integrations-virtualdeck',
+    version: '0.0.0',
+    scripts: { build: 'node -e "process.exit(0)"' },
+    dependencies: { '@ai-streamer/shared': 'workspace:*' },
+  }),
+);
+const controllerPkg = JSON.parse(fs.readFileSync(path.join(wsTmp, 'apps/controller/package.json'), 'utf8'));
+controllerPkg.dependencies['@ai-streamer/integrations-virtualdeck'] =
+  'file:../../packages/integrations/virtualdeck';
+fs.writeFileSync(path.join(wsTmp, 'apps/controller/package.json'), JSON.stringify(controllerPkg));
+const ctrlBuildOrder = controllerBuildOrder(wsTmp);
+const integIdx = ctrlBuildOrder.indexOf('packages/integrations/virtualdeck');
+const ctrlIdx = ctrlBuildOrder.indexOf('apps/controller');
+assert.ok(integIdx >= 0 && ctrlIdx >= 0 && integIdx < ctrlIdx, 'integrations bridge must build before controller');
+const ctrlOrderCli = JSON.parse(
+  execSync(
+    `node "${path.join(__dirname, 'scripts/raven-staging/workspace-packages.js')}" controller-build-order "${wsTmp}"`,
+    { encoding: 'utf8' },
+  ).trim(),
+);
+assert.ok(
+  ctrlOrderCli.indexOf('packages/integrations/virtualdeck') < ctrlOrderCli.indexOf('apps/controller'),
+  'controller-build-order CLI must include integrations before controller',
+);
 fs.rmSync(wsTmp, { recursive: true, force: true });
 
 const stagePs1 = fs.readFileSync(stageScript, 'utf8');
@@ -536,8 +566,16 @@ fs.rmSync(stageCleanTmp, { recursive: true, force: true });
 
 const stagePs1Clean = fs.readFileSync(path.join(__dirname, 'scripts/stage-raven-runtime.ps1'), 'utf8');
 assert.ok(
-  stagePs1Clean.includes('Get-WorkspacePackagesBuildOrder'),
-  'stage script should build packages in workspace dependency order',
+  stagePs1Clean.includes('Get-ControllerWorkspaceBuildOrder'),
+  'stage script should build controller closure in workspace dependency order',
+);
+assert.ok(
+  /--filter',\s*\$buildFilter,\s*'run',\s*'build'/.test(stagePs1Clean),
+  'stage script should use pnpm --filter <controller>... run build for the monorepo',
+);
+assert.ok(
+  !/if \(\$relPosix -eq \$bridgeRel\) \{ continue \}/.test(stagePs1Clean),
+  'stage script must not skip VirtualDeck bridge during pre-controller builds',
 );
 assert.ok(
   stagePs1Clean.includes('Clear-StaleRavenStageOutput'),

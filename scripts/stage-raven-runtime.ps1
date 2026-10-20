@@ -337,6 +337,23 @@ function Get-WorkspacePackagesBuildOrder {
     return @($json | ConvertFrom-Json)
 }
 
+function Get-ControllerWorkspaceBuildOrder {
+    param(
+        [string]$Root,
+        [string]$NodeExe
+    )
+    $helper = Get-RavenStagingHelperPath -FileName 'workspace-packages.js'
+    $output = & $NodeExe $helper 'controller-build-order' $Root
+    if ($LASTEXITCODE -ne 0) {
+        throw 'workspace-packages.js controller-build-order failed'
+    }
+    $json = ($output | Out-String).Trim()
+    if (-not $json) {
+        throw 'controller-build-order returned empty list'
+    }
+    return @($json | ConvertFrom-Json)
+}
+
 function Get-WorkspacePackageFilters([string]$Root) {
     $filters = New-Object System.Collections.Generic.List[string]
     $rootFull = (Resolve-Path -LiteralPath $Root).Path
@@ -969,23 +986,27 @@ function Stage-MonorepoLayout {
     Write-Step 'Checking AITuber dependencies for Raven (install only if needed)...'
     Ensure-RavenPnpmDependencies -Root $Root -NodeExe $NodeExe -ControllerPackageName $controllerPackageName
 
-    Write-Step 'Building workspace packages (dependency order, shared before dependents)...'
-    $bridgeRel = $Script:BridgeSourceRel.Replace('\', '/')
-    $buildOrder = Get-WorkspacePackagesBuildOrder -Root $Root -NodeExe $NodeExe
+    $buildFilter = "${controllerPackageName}..."
+    $controllerRel = 'apps/controller'
+    $buildOrder = Get-ControllerWorkspaceBuildOrder -Root $Root -NodeExe $NodeExe
+
+    Write-Step 'Building controller dependency closure (file-linked + workspace packages)...'
     foreach ($rel in $buildOrder) {
         $relPosix = [string]$rel
-        if ($relPosix -eq $bridgeRel) { continue }
-        $filter = './' + $relPosix
-        Invoke-PackageBuildOptional -Root $Root -Filter $filter
+        if ($relPosix -eq $controllerRel) { continue }
+        Invoke-PackageBuildOptional -Root $Root -Filter ('./' + $relPosix)
     }
 
-    Write-Step 'Building apps/controller...'
+    Write-Step "Building apps/controller and workspace deps (pnpm --filter $buildFilter run build)..."
     try {
-        Invoke-Pnpm -PnpmArgs @('--filter', $controllerFilter, 'run', 'build') -WorkingDirectory $Root
+        Invoke-Pnpm -PnpmArgs @('--filter', $buildFilter, 'run', 'build') -WorkingDirectory $Root
     } catch {
-        Write-Warn "pnpm controller build failed; trying tsc in apps/controller ($($_.Exception.Message))"
-        $controllerSrc = Join-Path $Root 'apps\controller'
-        Invoke-TscForPackageDirectory -PackageDir $controllerSrc -Root $Root -NodeExe $NodeExe
+        Write-Warn "pnpm recursive controller build failed; building controller only ($($_.Exception.Message))"
+        Invoke-PackageBuildOptional -Root $Root -Filter $controllerFilter
+        if (-not (Test-PackageHasBuiltOutput -PackageDir (Join-Path $Root 'apps\controller'))) {
+            $controllerSrc = Join-Path $Root 'apps\controller'
+            Invoke-TscForPackageDirectory -PackageDir $controllerSrc -Root $Root -NodeExe $NodeExe
+        }
     }
 
     $closureFile = New-RavenWorkspaceClosureListFile -Root $Root -NodeExe $NodeExe

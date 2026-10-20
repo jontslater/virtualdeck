@@ -43,21 +43,93 @@ function walkPackageDirs(rootDir, onPackageDir) {
   }
 }
 
-function scanWorkspacePackages(repoRoot) {
-  const map = Object.create(null);
+function readPnpmWorkspacePatterns(repoRoot) {
+  const file = path.join(repoRoot, 'pnpm-workspace.yaml');
+  if (!fs.existsSync(file)) {
+    return ['packages/*', 'apps/*'];
+  }
+  const patterns = [];
+  for (const line of readFileUtf8(file).split(/\r?\n/)) {
+    const m = line.match(/^\s*-\s*['"]?([^'"]+)['"]?\s*$/);
+    if (m) patterns.push(m[1].trim());
+  }
+  return patterns.length ? patterns : ['packages/*', 'apps/*'];
+}
+
+function expandWorkspacePattern(repoRoot, pattern) {
+  const norm = pattern.replace(/\\/g, '/').replace(/\/+$/, '');
+  const relDirs = [];
+
+  if (norm.endsWith('/**')) {
+    const baseRel = norm.slice(0, -3);
+    const base = path.join(repoRoot, baseRel.split('/').join(path.sep));
+    walkPackageDirs(base, (pkgDir) => {
+      relDirs.push(posixRel(repoRoot, pkgDir));
+    });
+    return relDirs;
+  }
+
+  if (norm.includes('*')) {
+    const star = norm.indexOf('*');
+    const parentRel = norm.slice(0, star).replace(/\/$/, '');
+    const parent = path.join(repoRoot, parentRel.split('/').join(path.sep));
+    if (!fs.existsSync(parent)) return relDirs;
+    const suffix = norm.slice(star + 1);
+    for (const ent of fs.readdirSync(parent, { withFileTypes: true })) {
+      if (!ent.isDirectory()) continue;
+      const candidateRel = parentRel ? `${parentRel}/${ent.name}${suffix}` : `${ent.name}${suffix}`;
+      const candidate = path.join(repoRoot, candidateRel.split('/').join(path.sep));
+      if (fs.existsSync(path.join(candidate, 'package.json'))) {
+        relDirs.push(candidateRel);
+      }
+      if (!suffix) {
+        walkPackageDirs(candidate, (pkgDir) => {
+          const rel = posixRel(repoRoot, pkgDir);
+          if (!relDirs.includes(rel)) relDirs.push(rel);
+        });
+      }
+    }
+    return relDirs;
+  }
+
+  const abs = path.join(repoRoot, norm.split('/').join(path.sep));
+  if (fs.existsSync(path.join(abs, 'package.json'))) {
+    relDirs.push(norm);
+  }
+  return relDirs;
+}
+
+function listWorkspacePackageDirs(repoRoot) {
+  const patterns = readPnpmWorkspacePatterns(repoRoot);
+  const relSet = new Set();
+  for (const pattern of patterns) {
+    for (const rel of expandWorkspacePattern(repoRoot, pattern)) {
+      relSet.add(rel);
+    }
+  }
+  // Nested packages (e.g. packages/integrations/virtualdeck) may sit outside a single glob.
   for (const top of ['packages', 'apps']) {
     const base = path.join(repoRoot, top);
     walkPackageDirs(base, (pkgDir) => {
-      const pkgPath = path.join(pkgDir, 'package.json');
-      let pkg;
-      try {
-        pkg = JSON.parse(readFileUtf8(pkgPath));
-      } catch {
-        return;
-      }
-      if (!pkg.name) return;
-      map[pkg.name] = posixRel(repoRoot, pkgDir);
+      relSet.add(posixRel(repoRoot, pkgDir));
     });
+  }
+  return [...relSet];
+}
+
+function scanWorkspacePackages(repoRoot) {
+  const map = Object.create(null);
+  for (const rel of listWorkspacePackageDirs(repoRoot)) {
+    const pkgDir = path.join(repoRoot, rel.split('/').join(path.sep));
+    const pkgPath = path.join(pkgDir, 'package.json');
+    let pkg;
+    try {
+      pkg = JSON.parse(readFileUtf8(pkgPath));
+    } catch {
+      continue;
+    }
+    if (!pkg.name) continue;
+    map[pkg.name] = rel;
   }
   return map;
 }
@@ -132,12 +204,23 @@ function workspaceClosure(repoRoot, startPackageDir, options = {}) {
 }
 
 function allPackagesBuildOrder(repoRoot) {
-  const rels = [];
-  const packagesRoot = path.join(repoRoot, 'packages');
-  walkPackageDirs(packagesRoot, (pkgDir) => {
-    rels.push(posixRel(repoRoot, pkgDir));
-  });
+  const rels = listWorkspacePackageDirs(repoRoot).filter((rel) => rel.startsWith('packages/'));
   return orderClosureForStaging(repoRoot, rels);
+}
+
+function controllerBuildOrder(repoRoot) {
+  const controllerDir = path.join(repoRoot, CONTROLLER_REL);
+  const controllerPkg = path.join(controllerDir, 'package.json');
+  if (!fs.existsSync(controllerPkg)) {
+    return [];
+  }
+  const { closureRels } = workspaceClosure(repoRoot, controllerDir, { omitFromResult: [] });
+  const ordered = orderClosureForStaging(repoRoot, closureRels);
+  const withoutController = ordered.filter((r) => r !== CONTROLLER_REL);
+  if (ordered.includes(CONTROLLER_REL)) {
+    return [...withoutController, CONTROLLER_REL];
+  }
+  return [...withoutController, CONTROLLER_REL];
 }
 
 function orderClosureForStaging(repoRoot, closureRels) {
@@ -275,6 +358,9 @@ module.exports = {
   workspaceFileSpec,
   buildDepRewrites,
   allPackagesBuildOrder,
+  controllerBuildOrder,
+  listWorkspacePackageDirs,
+  readPnpmWorkspacePatterns,
   orderClosureForStaging,
   readClosureListFromFile,
   collectFileDependencyRels,
@@ -294,6 +380,11 @@ if (require.main === module) {
   }
   if (cmd === 'packages-build-order') {
     const ordered = allPackagesBuildOrder(repoRoot);
+    process.stdout.write(`${JSON.stringify(ordered)}\n`);
+    process.exit(0);
+  }
+  if (cmd === 'controller-build-order') {
+    const ordered = controllerBuildOrder(repoRoot);
     process.stdout.write(`${JSON.stringify(ordered)}\n`);
     process.exit(0);
   }
