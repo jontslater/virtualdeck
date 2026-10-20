@@ -7835,11 +7835,8 @@ function setupOverlayWidget() {
     // Load saved personality on startup
     loadPersonalityUI();
 
-    // Manual Speak (Controller Dev API on 3003 — never 3002, that is the overlay)
-    if (sayBtn && sayText) {
-      if (isOverlayDevPort(localStorage.getItem('DEV_API_BASE_URL'))) {
-        try { localStorage.removeItem('DEV_API_BASE_URL'); } catch (e) {}
-      }
+    // Manual Speak (shared with dashboard Quick Say — vdRavenManualSpeak)
+    if (sayBtn && sayText && window.vdRavenManualSpeak) {
       sayBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -7847,33 +7844,17 @@ function setupOverlayWidget() {
         if (!text) return;
         sayBtn.disabled = true;
         try {
-          const devApiBaseUrl = await discoverDevApiBaseUrl();
-          const res = await fetch(`${devApiBaseUrl}/api/dev/speak`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, mood: 'neutral', urgency: 'med' }),
-          });
-          if (!res.ok) {
-            const raw = await res.text().catch(() => '');
-            throw new Error(raw || `HTTP ${res.status}`);
-          }
-          sayText.value = '';
-          if (window.notificationManager) {
-            window.notificationManager.show('Cashe will say it.', 'success');
-          }
+          const result = await window.vdRavenManualSpeak.speakManualText(text, { respectAiToggle: false });
+          if (result.ok) sayText.value = '';
+          window.vdRavenManualSpeak.presentSpeakResult(result);
         } catch (err) {
           console.error('❌ Manual speak failed:', err);
-          const raw = err instanceof Error ? err.message : String(err);
-          const offline = /Failed to fetch|NetworkError|Load failed|ECONNREFUSED/i.test(raw);
-          alert(offline
-            ? 'Raven is not answering yet (manual speak uses port 3003). Wait a few seconds after launch, or use Tools → Raven AI → Start Raven AI, then try again.'
-            : `Manual speak failed: ${raw}`);
+          alert(err instanceof Error ? err.message : String(err));
         } finally {
           sayBtn.disabled = false;
         }
       });
 
-      // Enter key submits
       sayText.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
@@ -8396,34 +8377,47 @@ function setupOverlayWidget() {
       setTimeout(checkConnectionStatus, 500);
     }, { capture: false });
     
-    // Say button handler
-    if (dashboardSayBtn && dashboardSayText) {
-      dashboardSayBtn.addEventListener('click', async () => {
+    // Quick Say — same path as AI Audio Manual Speak (POST /api/dev/speak)
+    if (dashboardSayBtn && dashboardSayText && window.vdRavenManualSpeak) {
+      const quickSayStatus = document.getElementById('ai-dashboard-say-status');
+      const runQuickSay = async () => {
         const text = dashboardSayText.value.trim();
         if (!text) return;
-        
+        dashboardSayBtn.disabled = true;
+        if (quickSayStatus) quickSayStatus.textContent = '';
         try {
-          const response = await fetch('http://localhost:3006/api/say', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text }),
-          });
-          
-          if (!response.ok) {
-            throw new Error(`Failed to speak: ${response.statusText}`);
+          const result = await window.vdRavenManualSpeak.speakManualText(text, { respectAiToggle: true });
+          if (result.ok) {
+            dashboardSayText.value = '';
+            if (quickSayStatus) quickSayStatus.textContent = '';
+            window.vdRavenManualSpeak.presentSpeakResult(result, {
+              onSuccess: () => {
+                if (window.notificationManager) {
+                  window.notificationManager.show('Cashe will say it.', 'success');
+                }
+              },
+            });
+          } else if (!result.skipped) {
+            const msg = result.error || 'Could not speak';
+            if (quickSayStatus) quickSayStatus.textContent = msg;
+            window.vdRavenManualSpeak.presentSpeakResult(result);
           }
-          
-          dashboardSayText.value = '';
-          
         } catch (err) {
-          console.error('❌ Error speaking:', err);
+          const msg = err instanceof Error ? err.message : String(err);
+          if (quickSayStatus) quickSayStatus.textContent = msg;
+          console.error('❌ Quick Say failed:', err);
+          alert(msg);
+        } finally {
+          dashboardSayBtn.disabled = false;
         }
+      };
+      dashboardSayBtn.addEventListener('click', () => {
+        runQuickSay();
       });
-      
-      // Enter key handler
-      dashboardSayText.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          dashboardSayBtn.click();
+      dashboardSayText.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          runQuickSay();
         }
       });
     }
