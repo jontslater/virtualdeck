@@ -3,7 +3,13 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const vdPackaged = process.argv.some((arg) => arg === '--vd-packaged=1');
 contextBridge.exposeInMainWorld('__VD_IS_PACKAGED__', vdPackaged);
-contextBridge.exposeInMainWorld('__ravenAiControlLib', require('./lib/raven-ai-control'));
+let ravenAiControlLib = null;
+try {
+  ravenAiControlLib = require('./lib/raven-ai-control');
+} catch (err) {
+  console.error('[preload] raven-ai-control unavailable:', err && err.message ? err.message : err);
+}
+contextBridge.exposeInMainWorld('__ravenAiControlLib', ravenAiControlLib);
 
 contextBridge.exposeInMainWorld('electronAPI', {
   addMedia: (data) => ipcRenderer.send('add-media', data),
@@ -211,5 +217,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ravenStop: async () => ipcRenderer.invoke('raven-stop'),
   ravenRestart: async () => ipcRenderer.invoke('raven-restart'),
   ravenIsRunning: async () => ipcRenderer.invoke('raven-is-running'),
+  ravenConnectionStatus: async () => ipcRenderer.invoke('raven-connection-status'),
   ravenTestLlmKey: async (payload) => ipcRenderer.invoke('raven-test-llm-key', payload || {}),
 });

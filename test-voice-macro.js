@@ -49,6 +49,21 @@ const pick = (u, ms = MACROS) => { const r = matchMacroByUtterance(ms, u, WAKE);
     assert.strictEqual(pick('start stream macro'), 'start-stream');
     assert.strictEqual(pick('tell me about going live'), null); // name alone without run/macro is not a trigger
   });
+  await test('scene switch phrases survive Whisper variants (switched/to/digits) and stay distinct', async () => {
+    const ms = [
+      { id: 's1', name: 'Scene 1', enabled: true, triggers: { phrase: 'Raven switch scene one' } },
+      { id: 's2', name: 'scene 2', enabled: true, triggers: { phrase: 'raven switch scene two' } },
+    ];
+    assert.strictEqual(pick('Raven switch scene one.', ms), 's1');
+    assert.strictEqual(pick('Hey Raven, switch scene one.', ms), 's1');
+    assert.strictEqual(pick('switch scene 1', ms), 's1');
+    assert.strictEqual(pick('Raven switched scene to.', ms), 's2');
+    assert.strictEqual(pick('switch scene two', ms), 's2');
+    assert.strictEqual(pick('switch to scene 2', ms), 's2');
+    assert.strictEqual(pick('switch scene too', ms), 's2');
+    assert.strictEqual(pick('switched scene to', ms), 's2');
+    assert.strictEqual(pick('switch to scene', ms), null);
+  });
   await test('longest phrase wins; true ties are reported as ambiguous instead of guessing', async () => {
     const ms = [
       { id: 'a', name: 'A', enabled: true, triggers: { phrase: 'go live' } },

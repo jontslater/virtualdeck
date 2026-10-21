@@ -39,9 +39,14 @@
     if (!global.electronAPI || !global.electronAPI.getChannelRewards) {
       throw new Error('Twitch API not available');
     }
-    const rewards = await global.electronAPI.getChannelRewards();
-    populateRewardSelect(selectElement, rewards || [], options);
-    return rewards || [];
+    const payload = await global.electronAPI.getChannelRewards();
+    const rewards = Array.isArray(payload) ? payload : (payload && payload.rewards) || [];
+    const error = payload && !Array.isArray(payload) ? payload.error : null;
+    populateRewardSelect(selectElement, rewards, options);
+    if (error && !rewards.length) {
+      throw new Error(error);
+    }
+    return rewards;
   }
 
   global.vdChannelRewards = {

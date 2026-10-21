@@ -157,7 +157,16 @@ try {
     onStatusChange: () => broadcastLicenseStatus(),
   });
   licenseManager.startPeriodicRevalidation();
-  console.log('✅ License manager initialized (provider:', licenseManager.config.provider, ')');
+  const bootLicense = licenseManager.getStatusForUi();
+  console.log(
+    '✅ License manager initialized (provider:',
+    licenseManager.config.provider,
+    ', licensed:',
+    !!bootLicense.licensed,
+    ', unlimitedButtons:',
+    !!bootLicense.unlimitedButtons,
+    ')',
+  );
 } catch (err) {
   console.error('❌ License manager failed to initialize:', err);
   licenseManager = null;
@@ -885,6 +894,9 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Preload requires local modules (lib/raven-ai-control). Electron 20+ sandboxes
+      // preload by default, and that loader cannot resolve those files.
+      sandbox: false,
       additionalArguments: [packagedArgvFlag()],
     }
   });
@@ -898,6 +910,7 @@ function createWindow() {
   // Show window only when ready-to-show to avoid initial mis-sizing
   win.once('ready-to-show', () => {
     try { win.show(); } catch (e) {}
+    try { win.webContents.send('renderer-ready'); } catch (e) {}
   });
 
   // After renderer finishes loading, notify it so it can perform layout work
@@ -3235,26 +3248,32 @@ ipcMain.handle('twitch-eventsub-health', async () => {
 
 ipcMain.handle('get-channel-rewards', async () => {
   try {
-    if (!twitchUserId) await getUserId();
     const token = helixAccessToken();
-    if (!twitchClientId || !token) return [];
+    const clientId = helixClientId();
+    if (!clientId || !token) {
+      return { ok: false, rewards: [], error: 'Twitch is not connected in VirtualDeck.' };
+    }
+    twitchUserId = null;
+    twitchUserIdFor = null;
+    await getUserId();
     const url = `https://api.twitch.tv/helix/channel_points/custom_rewards?broadcaster_id=${encodeURIComponent(twitchUserId)}`;
     const resp = await fetch(url, {
       headers: {
-        'Client-ID': twitchClientId,
+        'Client-ID': clientId,
         Authorization: `Bearer ${token}`,
       },
     });
-    const data = await resp.json();
+    const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
-      vdDebugLog('Helix custom_rewards failed', resp.status, data);
-      return [];
+      const message = (data && data.message) || `Twitch returned ${resp.status}`;
+      console.warn('Helix custom_rewards failed', resp.status, message);
+      return { ok: false, rewards: [], error: message };
     }
-    if (data && Array.isArray(data.data)) return data.data;
-    return [];
+    const rewards = data && Array.isArray(data.data) ? data.data : [];
+    return { ok: true, rewards, error: null };
   } catch (err) {
     console.error('Error fetching channel rewards:', err);
-    return [];
+    return { ok: false, rewards: [], error: err && err.message ? err.message : 'Could not load channel rewards' };
   }
 });
 
@@ -4424,6 +4443,11 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
     },
     channels: [username]
   };
+  const nextLogin = String(username || '').replace(/^#/, '').trim().toLowerCase();
+  if (twitchUserIdFor && nextLogin && twitchUserIdFor !== nextLogin) {
+    twitchUserId = null;
+    twitchUserIdFor = null;
+  }
   twitchClientId = clientId;
   twitchToken = oauth;
   twitchUserName = username;
@@ -4846,12 +4870,15 @@ let applyingEventSub = false;
 const pendingSubFingerprints = new Set();
 let eventSubSessionId = null;
 let eventSubRegistered = false;
+let eventSubGeneration = 0;
 // WebSocket instance for EventSub (kept so we can close it when clearing creds)
 let eventSubWs = null;
 let twitchUserId = null;
+let twitchUserIdFor = null;
 let twitchToken = null;
 let twitchClientId = null;
 let twitchUserName = null;
+const TWITCH_WEB_CLIENT_ID = 'gp762nuuoqcoxypju8c569th9wz7q5';
 let lastTwitchClipAt = 0;
 const TWITCH_CLIP_COOLDOWN_MS = 20000;
 
@@ -4870,13 +4897,21 @@ function helixAccessToken() {
 }
 
 function helixClientId() {
-  if (twitchClientId) return twitchClientId;
+  const usable = (id) => {
+    const value = String(id || '').trim();
+    if (!value || value === TWITCH_WEB_CLIENT_ID) return '';
+    return value;
+  };
+  const fromMemory = usable(twitchClientId);
+  if (fromMemory) return fromMemory;
   try {
     const tc = loadTcConfig();
-    return (tc && tc.clientId) || null;
+    const saved = usable(tc && tc.clientId);
+    if (saved) return saved;
   } catch {
-    return null;
+    // fall through
   }
+  return getTwitchOAuthClientId();
 }
 
 // Reuse one client so the 60s live-check cache survives across IPC/JARVIS calls.
@@ -5075,26 +5110,44 @@ async function createTwitchClipAndAnnounce({ requestedBy } = {}) {
   }
 }
 
+function twitchLoginKey(name) {
+  return String(name || '').replace(/^#/, '').trim().toLowerCase();
+}
+
 async function getUserId() {
-  console.log('Fetching Twitch user ID for', twitchUserName);
-  if (twitchUserId) return twitchUserId;
-  console.log('Using token:', twitchToken);
-  console.log('Using clientId:', twitchClientId);
-  console.log('Using username:', twitchUserName);
-  console.log('Requesting user ID from Twitch API');
-  const response = await fetch(`https://api.twitch.tv/helix/users?login=${twitchUserName}`, {
-    headers: {
-      'Client-ID': twitchClientId,
-      'Authorization': `Bearer ${twitchToken}`
-    }
-  });
-  const data = await response.json();
-  if (data.data && data.data.length > 0) {
-    twitchUserId = data.data[0].id;
+  const wanted = twitchLoginKey(twitchUserName);
+  if (twitchUserId && twitchUserIdFor && (!wanted || twitchUserIdFor === wanted)) {
     return twitchUserId;
-  } else {
+  }
+  const token = helixAccessToken();
+  const clientId = helixClientId();
+  if (!token || !clientId) {
+    throw new Error('Twitch is not connected in VirtualDeck.');
+  }
+  console.log('Fetching Twitch user ID for', wanted || 'the connected account');
+  const response = await fetch('https://api.twitch.tv/helix/users', {
+    headers: {
+      'Client-ID': clientId,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = (data && data.message) || `Twitch user lookup failed (${response.status})`;
+    throw new Error(message);
+  }
+  const match = data.data && data.data[0];
+  if (!match || !match.id) {
     throw new Error('Could not fetch Twitch user ID.');
   }
+  const login = twitchLoginKey(match.login);
+  if (wanted && login && wanted !== login) {
+    console.warn(`Twitch token is for ${match.login}, not ${twitchUserName}. Channel points will use ${match.login}.`);
+  }
+  twitchUserId = match.id;
+  twitchUserIdFor = login || wanted || match.id;
+  if (match.login) twitchUserName = match.login;
+  return twitchUserId;
 }
 
 async function pollFollowers() {
@@ -5546,8 +5599,21 @@ async function applyEventSubSubscriptions(sessionId) {
   }
   applyingEventSub = true;
   try {
-    const tc = loadTcConfig();
-    if (!tc || !Array.isArray(tc.topics) || tc.topics.length === 0) return;
+    const tc = loadTcConfig() || { topics: [], createdSubscriptions: [] };
+    if (!Array.isArray(tc.topics) || tc.topics.length === 0) {
+      tc.topics = [
+        'channel.channel_points_custom_reward_redemption',
+        'channel.subscribe',
+        'channel.subscription.gift',
+        'channel.subscription.message',
+        'channel.follow',
+        'channel.raid',
+        'channel.cheer',
+        'channel.ban',
+      ];
+      saveTcConfig(tc);
+      console.log('[EventSub] No topics were saved. Subscribing to channel point redeems and the other default events.');
+    }
     if (!twitchUserId) await getUserId();
     // Fetch current subscriptions and only add missing ones to avoid duplicates
     const current = await listEventSubscriptions();
@@ -5639,18 +5705,30 @@ async function applyEventSubSubscriptions(sessionId) {
     await ensureOutgoingRaidEventSub(sessionId);
   } catch (err) {
     console.error('Error applying EventSub subscriptions:', err);
+  } finally {
+    applyingEventSub = false;
   }
-  applyingEventSub = false;
 }
 
 function startTwitchEventSub({ username, oauth, clientId}) {
   console.log('Starting Twitch EventSub for user:', username);
+  const generation = ++eventSubGeneration;
   twitchUserName = username;
-  twitchToken = oauth.replace('oauth:', '');
-  // Ensure global clientId is set for subsequent API calls
+  twitchToken = String(oauth || '').replace('oauth:', '');
   if (clientId) twitchClientId = clientId;
+  eventSubRegistered = false;
+  eventSubSessionId = null;
+  if (eventSubWs) {
+    try { eventSubWs.close(); } catch (e) {}
+    eventSubWs = null;
+  }
+  if (pollIntervalId) {
+    clearInterval(pollIntervalId);
+    pollIntervalId = null;
+  }
 
   getUserId().then((userId) => {
+    if (generation !== eventSubGeneration) return;
     twitchUserId = userId;
     // Load last poll timestamp from tc_config so we only report new followers since last run
     try {
@@ -5670,7 +5748,7 @@ function startTwitchEventSub({ username, oauth, clientId}) {
       lastPollTime = new Date();
     }
 
-    setInterval(pollFollowers, 30000);
+    pollIntervalId = setInterval(pollFollowers, 30000);
     pollFollowers();
     // create and store the EventSub websocket so we can close it later if needed
     eventSubWs = new WebSocket('wss://eventsub.wss.twitch.tv/ws');
@@ -5678,6 +5756,7 @@ function startTwitchEventSub({ username, oauth, clientId}) {
       console.log('EventSub WebSocket connected');
     });
     eventSubWs.on('message', async (data) => {
+      if (generation !== eventSubGeneration) return;
       const msg = JSON.parse(data);
       console.log('Raw EventSub message:', msg);
       if (!eventSubSessionId && msg.metadata && msg.metadata.message_type === 'session_welcome') {
@@ -5704,9 +5783,11 @@ function startTwitchEventSub({ username, oauth, clientId}) {
       console.error('EventSub WebSocket error:', err);
     });
     eventSubWs.on('close', () => {
+      if (generation !== eventSubGeneration) return;
       console.log('EventSub WebSocket closed');
-      // clear reference when closed
       eventSubWs = null;
+      eventSubRegistered = false;
+      eventSubSessionId = null;
     });
   }).catch((err) => {
     console.error('Failed to get userId:', err);
@@ -5935,6 +6016,14 @@ app.whenReady().then(() => {
     initAppUpdater().maybeCheckOnStartup();
   }, 3000);
   
+  // Setting menuItem.checked fires the click handler. Ignore those echoes so
+  // syncing the View menu cannot hide a panel the user left visible.
+  let applyingViewMenuSync = false;
+  function sendViewToggle(key, checked) {
+    if (applyingViewMenuSync) return;
+    if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: key, checked: checked });
+  }
+
   // Build application menu: Edit contains Preferences, View & Window removed, Tools added
   const menuTemplate = [
     { label: 'File', submenu: [ { role: 'quit' } ] },
@@ -5947,12 +6036,12 @@ app.whenReady().then(() => {
   { id: 'view_show_all', label: 'Show All', click: () => { if (win && !win.isDestroyed()) win.webContents.send('view-show-all'); } },
   { id: 'view_hide_all', label: 'Hide All', click: () => { if (win && !win.isDestroyed()) win.webContents.send('view-hide-all'); } },
       { type: 'separator' },
-  { id: 'view_sound_grid', label: 'Sound Grid', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-grid', checked: menuItem.checked }); } },
-  { id: 'view_twitch_stats', label: 'Twitch Statistics', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'twitch-stats-container', checked: menuItem.checked }); } },
-  { id: 'view_recent_activity', label: 'Recent Activity', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'recent-activity-container', checked: menuItem.checked }); } },
-  { id: 'view_twitch_chat', label: 'Twitch Chat', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'twitch-chat-container', checked: menuItem.checked }); } },
-  { id: 'view_sound_controls', label: 'Sound Controls', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-controls', checked: menuItem.checked }); } },
-  { id: 'view_ai_dashboard', label: 'AI Dashboard', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'ai-dashboard-controls', checked: menuItem.checked }); } }
+  { id: 'view_sound_grid', label: 'Sound Grid', type: 'checkbox', checked: true, click: (menuItem) => { sendViewToggle('sound-grid', menuItem.checked); } },
+  { id: 'view_twitch_stats', label: 'Twitch Statistics', type: 'checkbox', checked: true, click: (menuItem) => { sendViewToggle('twitch-stats-container', menuItem.checked); } },
+  { id: 'view_recent_activity', label: 'Recent Activity', type: 'checkbox', checked: false, click: (menuItem) => { sendViewToggle('recent-activity-container', menuItem.checked); } },
+  { id: 'view_twitch_chat', label: 'Twitch Chat', type: 'checkbox', checked: false, click: (menuItem) => { sendViewToggle('twitch-chat-container', menuItem.checked); } },
+  { id: 'view_sound_controls', label: 'Sound Controls', type: 'checkbox', checked: true, click: (menuItem) => { sendViewToggle('sound-controls', menuItem.checked); } },
+  { id: 'view_ai_dashboard', label: 'AI Dashboard', type: 'checkbox', checked: true, click: (menuItem) => { sendViewToggle('ai-dashboard-controls', menuItem.checked); } }
     ] },
     { label: 'Profile', submenu: [
       { label: 'Profile Manager...', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-profile-manager'); } }
@@ -6115,13 +6204,20 @@ app.whenReady().then(() => {
         'twitch-chat-container': 'view_twitch_chat',
         'sound-controls': 'view_sound_controls'
       };
-      Object.keys(mapping).forEach(componentId => {
-        const itemId = mapping[componentId];
-        const mi = menu.getMenuItemById ? menu.getMenuItemById(itemId) : null;
-        if (mi && typeof mi.checked !== 'undefined') {
-          mi.checked = !!(prefs && prefs[componentId]);
-        }
-      });
+      applyingViewMenuSync = true;
+      try {
+        Object.keys(mapping).forEach(componentId => {
+          if (!prefs || !Object.prototype.hasOwnProperty.call(prefs, componentId)) return;
+          const itemId = mapping[componentId];
+          const mi = menu.getMenuItemById ? menu.getMenuItemById(itemId) : null;
+          const desired = !!prefs[componentId];
+          if (mi && typeof mi.checked !== 'undefined' && mi.checked !== desired) {
+            mi.checked = desired;
+          }
+        });
+      } finally {
+        applyingViewMenuSync = false;
+      }
     } catch (e) {
       console.warn('Failed to sync view prefs to menu:', e);
     }
@@ -6262,7 +6358,56 @@ app.whenReady().then(() => {
     }
   });
 
+  function probeLocalHttpStatus(url, timeoutMs = 1200) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (status) => {
+        if (settled) return;
+        settled = true;
+        resolve(status);
+      };
+      try {
+        const req = http.get(url, (res) => {
+          res.resume();
+          finish(typeof res.statusCode === 'number' ? res.statusCode : null);
+        });
+        req.setTimeout(timeoutMs, () => {
+          req.destroy();
+          finish(null);
+        });
+        req.on('error', () => finish(null));
+      } catch (err) {
+        finish(null);
+      }
+    });
+  }
+
+  async function probeLocalHttp(url) {
+    const status = await probeLocalHttpStatus(url);
+    return status !== null && status >= 200 && status < 300;
+  }
+
   ipcMain.handle('raven-is-running', async () => ({ running: ravenHost.isRunning() }));
+
+  ipcMain.handle('raven-connection-status', async () => {
+    const running = ravenHost.isRunning();
+    const controllerOk = await probeLocalHttp('http://127.0.0.1:3004/api/ai/status');
+    const bridgeStatus = await probeLocalHttpStatus('http://127.0.0.1:3000/api/ai/enabled');
+    const bridgeOk = bridgeStatus !== null && bridgeStatus < 500;
+    const connected = controllerOk || bridgeOk;
+    let source = 'offline';
+    if (controllerOk) source = 'controller';
+    else if (bridgeOk) source = bridgeStatus === 404 || bridgeStatus === 405 ? 'bridge-legacy' : 'bridge';
+    else if (running) source = 'process';
+    return {
+      running,
+      connected: connected || running,
+      httpReachable: connected,
+      source: connected ? source : (running ? 'process' : 'offline'),
+      controllerOk,
+      bridgeStatus,
+    };
+  });
 
   ipcMain.handle('raven-test-llm-key', async (_event, payload) => {
     try {
@@ -6331,10 +6476,24 @@ app.whenReady().then(() => {
 
   ipcMain.handle('license-get-deck-entitlements', async () => {
     if (!licenseManager) {
-      return { licensed: false, canAddButton: true, lockedButtonIds: [], activeButtonIds: [] };
+      return { licensed: false, unlimitedButtons: false, canAddButton: true, lockedButtonIds: [], activeButtonIds: [] };
     }
     const profile = loadProfile(currentActiveProfile);
-    return licenseManager.getButtonEntitlementsForProfile(profile);
+    const deck = licenseManager.getButtonEntitlementsForProfile(profile);
+    const locked = deck.lockedButtonIds || (deck.lockedIds ? Array.from(deck.lockedIds) : []);
+    const active = deck.activeButtonIds || (deck.activeIds ? Array.from(deck.activeIds) : []);
+    return {
+      licensed: !!deck.licensed,
+      unlimitedButtons: !!deck.unlimitedButtons,
+      aiAssistant: !!deck.aiAssistant,
+      canAddButton: deck.canAddButton !== false,
+      maxActiveButtons: deck.maxActiveButtons == null ? null : deck.maxActiveButtons,
+      buttonCount: deck.buttonCount || 0,
+      lockedButtonIds: locked,
+      activeButtonIds: active,
+      status: deck.status || null,
+      message: deck.message || '',
+    };
   });
 
   ipcMain.handle('license-activate', async (_event, licenseKey) => {

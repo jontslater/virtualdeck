@@ -1548,6 +1548,7 @@ function showTwitchConnectedMenu() {
       try {
         if (window.electronAPI && window.electronAPI.getChannelRewards) {
           rewards = await window.electronAPI.getChannelRewards();
+          if (rewards && !Array.isArray(rewards)) rewards = rewards.rewards || [];
         }
       } catch (e) { console.warn('Could not load channel rewards:', e); }
 
@@ -2035,6 +2036,7 @@ function showTwitchConnectedMenu() {
       try {
         if (window.electronAPI && window.electronAPI.getChannelRewards) {
           rewards = await window.electronAPI.getChannelRewards();
+          if (rewards && !Array.isArray(rewards)) rewards = rewards.rewards || [];
         }
       } catch (e) { console.warn('Could not load channel rewards:', e); }
 

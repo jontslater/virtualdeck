@@ -26,7 +26,9 @@
   }
 
   function isButtonLocked(buttonId) {
-    if (!buttonId || !cachedDeck || cachedDeck.unlimitedButtons) return false;
+    if (!buttonId || !cachedDeck) return false;
+    if (cachedStatus && (cachedStatus.licensed || cachedStatus.unlimitedButtons)) return false;
+    if (cachedDeck.licensed || cachedDeck.unlimitedButtons) return false;
     const locked = cachedDeck.lockedButtonIds || [];
     return locked.includes(buttonId);
   }
@@ -50,11 +52,19 @@
   function paintLicensePreferences(status) {
     const msg = document.getElementById('license-status-message');
     const purchase = document.getElementById('license-purchase-link');
+    const keyInput = document.getElementById('license-key-input');
     if (msg && status) {
       const label = status.licensed ? 'Licensed' : 'Free plan';
-      msg.textContent = `${label} — ${status.message || ''}`;
+      const saved = status.hasLicenseKey ? ' Saved on this PC.' : '';
+      msg.textContent = `${label} —${saved} ${status.message || ''}`.replace(/\s+/g, ' ').trim();
       msg.classList.toggle('license-status-licensed', !!status.licensed);
       msg.classList.toggle('license-status-free', !status.licensed);
+    }
+    if (keyInput) {
+      keyInput.value = '';
+      keyInput.placeholder = status && status.hasLicenseKey
+        ? 'Saved on this PC — enter a new key only to replace it'
+        : 'XXXX-XXXX-XXXX-XXXX';
     }
     if (purchase && status && status.purchaseUrl) {
       purchase.href = status.purchaseUrl;
@@ -93,7 +103,6 @@
           await refreshLicenseStatus();
           await refreshDeckEntitlements();
           paintLicensePreferences(result.status || cachedStatus);
-          if (typeof loadButtons === 'function') loadButtons();
           if (window.vdRavenSetup && typeof window.vdRavenSetup.promptAfterLicenseActivation === 'function') {
             await window.vdRavenSetup.promptAfterLicenseActivation();
           }
@@ -114,7 +123,6 @@
           await refreshLicenseStatus();
           await refreshDeckEntitlements();
           paintLicensePreferences(result.status || cachedStatus);
-          if (typeof loadButtons === 'function') loadButtons();
           if (window.vdRavenSetup && typeof window.vdRavenSetup.applyAiDashboardVisibility === 'function') {
             await window.vdRavenSetup.applyAiDashboardVisibility();
           }
@@ -155,10 +163,13 @@
 
     if (window.electronAPI && typeof window.electronAPI.onLicenseStatusChanged === 'function') {
       window.electronAPI.onLicenseStatusChanged(async () => {
+        const stats = document.getElementById('twitch-stats-container');
+        const keepStats = !!(stats && !stats.classList.contains('hidden'));
         await refreshLicenseStatus();
         await refreshDeckEntitlements();
         paintLicensePreferences(cachedStatus);
-        if (typeof loadButtons === 'function') loadButtons();
+        if (typeof loadButtons === 'function') await loadButtons();
+        if (keepStats && stats) stats.classList.remove('hidden');
       });
     }
     if (window.electronAPI && typeof window.electronAPI.onLicenseUpsell === 'function') {

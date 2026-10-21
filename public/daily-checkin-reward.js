@@ -11,8 +11,8 @@
     if (!config || config.enabled === false) return false;
     const reward = (event && event.reward) || {};
     const eventTitle = reward.title || reward.name || event.reward_title || '';
-    if (config.rewardId && reward.id) {
-      return String(reward.id) === String(config.rewardId);
+    if (config.rewardId && reward.id && String(reward.id) === String(config.rewardId)) {
+      return true;
     }
     const configured = config.rewardName || 'Daily Check-In';
     const a = normalizeRewardTitle(eventTitle);

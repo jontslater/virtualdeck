@@ -395,7 +395,6 @@ function openEnvFile() {
 }
 
 function maybeAutoStart() {
-  if (!app.isPackaged) return;
   const gate = licenseGate();
   if (!gate.allowed) {
     console.log('[Raven] auto-start skipped (no AI license)');

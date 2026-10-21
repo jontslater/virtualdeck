@@ -636,9 +636,11 @@ class ProfileManager {
           console.warn('⚠️ ThemeSystem not available yet');
         }
         
-        // Apply component visibility
+        // View-menu prefs in localStorage win over the profile copy.
+        // Applying the profile on top used to hide Twitch Statistics after
+        // license activation even when the user had that panel turned on.
         if (profile.uiSettings.componentVisibility) {
-          this.applyComponentVisibility(profile.uiSettings.componentVisibility);
+          mergeProfileVisibility(profile.uiSettings.componentVisibility);
         }
         
         // Apply chat width
@@ -876,17 +878,19 @@ class ProfileManager {
     if (!soundGrid) return [];
     
     const soundCards = Array.from(soundGrid.querySelectorAll('.sound-card'));
-    return soundCards
-      .filter(card => card.dataset.soundData)
-      .map(card => {
-        try {
-          const soundData = JSON.parse(card.dataset.soundData);
-          return soundData.id;
-        } catch (e) {
-          return null;
+    const seen = new Set();
+    const order = [];
+    soundCards.forEach(card => {
+      if (!card.dataset.soundData) return;
+      try {
+        const soundData = JSON.parse(card.dataset.soundData);
+        if (soundData.id && !seen.has(soundData.id)) {
+          seen.add(soundData.id);
+          order.push(soundData.id);
         }
-      })
-      .filter(id => id);
+      } catch (e) {}
+    });
+    return order;
   }
 
   async createProfile(profileName) {
@@ -1072,7 +1076,7 @@ async function loadChannelRedemptions(selectElement, inputElement, options) {
     return rewards;
   } catch (error) {
     console.error('Error loading redemptions:', error);
-    showCustomAlert('Failed to load redemptions from Twitch', 'error');
+    showCustomAlert(error.message || 'Failed to load redemptions from Twitch', 'error');
     return [];
   }
 }
@@ -1102,9 +1106,11 @@ function setupRedemptionSync(selectElement, inputElement) {
 }
 
 // Add refresh UI listener
-window.electronAPI.onRefreshUI(() => {
-  loadButtons();
-});
+if (window.electronAPI && typeof window.electronAPI.onRefreshUI === 'function') {
+  window.electronAPI.onRefreshUI(() => {
+    loadButtons();
+  });
+}
 
 // Mute overlay iframe in dashboard to prevent double audio
 // Audio should only play in OBS browser source
@@ -1297,6 +1303,37 @@ let vdDragState = {
 
 // Pagination state
 let currentPage = 0;
+let deckPageReady = false;
+
+function deckPageProfileId() {
+  const id = window.profileManager && window.profileManager.currentProfile;
+  return id || 'active';
+}
+
+function readSavedDeckPage() {
+  try {
+    const map = JSON.parse(localStorage.getItem('vdDeckPages') || '{}') || {};
+    const id = deckPageProfileId();
+    const raw = map[id] != null ? map[id] : map.active;
+    const page = parseInt(raw, 10);
+    return Number.isFinite(page) && page >= 0 ? page : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function writeSavedDeckPage(page) {
+  if (!deckPageReady) return;
+  try {
+    const map = JSON.parse(localStorage.getItem('vdDeckPages') || '{}') || {};
+    const id = deckPageProfileId();
+    map[id] = page;
+    map.active = page;
+    localStorage.setItem('vdDeckPages', JSON.stringify(map));
+  } catch (e) {
+    // ignore quota / private mode
+  }
+}
 let itemsPerPage = 12; // fallback
 let totalPages = 1;
 
@@ -2135,11 +2172,15 @@ function updateChatVisibility(isConnected) {
   }
 }
 
+let loadButtonsGeneration = 0;
+
 async function loadButtons() {
   if (!soundGrid) {
     console.error('soundGrid element not found!');
     return;
   }
+
+  const generation = ++loadButtonsGeneration;
 
   if (window.vdLicense && typeof window.vdLicense.refreshDeckEntitlements === 'function') {
     try {
@@ -2148,6 +2189,7 @@ async function loadButtons() {
       console.warn('[License] deck entitlements refresh failed', e);
     }
   }
+  if (generation !== loadButtonsGeneration) return;
   
   // Clear existing buttons
   soundGrid.innerHTML = '';
@@ -2175,6 +2217,7 @@ async function loadButtons() {
 
   // Load buttons from config
   const data = await window.electronAPI.getConfig();
+  if (generation !== loadButtonsGeneration) return;
   console.log('🔍 Loaded config data:', data);
   console.log('🔍 Number of buttons:', data.buttons?.length || 0);
   
@@ -2202,7 +2245,7 @@ async function loadButtons() {
     const usedIds = new Set();
 
     for (const s of savedOrder) {
-      if (s && s.id && configById.has(s.id)) {
+      if (s && s.id && configById.has(s.id) && !usedIds.has(s.id)) {
         ordered.push(configById.get(s.id));
         usedIds.add(s.id);
       }
@@ -2225,6 +2268,7 @@ async function loadButtons() {
     let appIconSrc = null;
     let appIconAlt = 'App';
     const customIcon = await resolveDeckIconForButton(button);
+    if (generation !== loadButtonsGeneration) return;
     if (customIcon) {
       appIconSrc = customIcon;
       appIconAlt = button.name || button.label || 'Button';
@@ -2237,6 +2281,7 @@ async function loadButtons() {
       appIconAlt = 'Meld Scene';
     } else if (button.type === 'app') {
       let iconData = await window.electronAPI.getAppIcon(button.src);
+      if (generation !== loadButtonsGeneration) return;
       if (!iconData) iconData = buildDefaultAppIconDataUrl();
       appIconSrc = iconData;
       appIconAlt = button.name || button.label || 'App';
@@ -2274,10 +2319,15 @@ async function loadButtons() {
         }
       }
     });
+    if (generation !== loadButtonsGeneration) return;
     soundGrid.appendChild(card);
   }
 
+  if (generation !== loadButtonsGeneration) return;
+
   // After full list appended to DOM, compute pagination and show page
+  deckPageReady = true;
+  currentPage = readSavedDeckPage();
   computePagination();
   renderCurrentPage();
   
@@ -2318,32 +2368,35 @@ function goToPage(pageNumber) {
 function computePagination() {
   const grid = document.getElementById('sound-grid');
   if (!grid) return;
-  // Measure a representative card size; if none, fallback to CSS sizes
-  const sample = grid.querySelector('.sound-card');
+  // Measure a card that is actually laid out. A hidden or not-yet-shown
+  // card reports 0px, which used to paginate into a single unreachable row.
+  const sample = Array.from(grid.querySelectorAll('.sound-card')).find((card) => {
+    const rect = card.getBoundingClientRect();
+    return rect.width >= 40 && rect.height >= 40;
+  }) || grid.querySelector('.sound-card');
   const gridRect = grid.getBoundingClientRect();
   let cardW = 100, cardH = 100, gap = 10;
   if (sample) {
     const sRect = sample.getBoundingClientRect();
-    cardW = sRect.width;
-    cardH = sRect.height;
-    // try to read gap from computed style
+    if (sRect.width >= 40) cardW = sRect.width;
+    if (sRect.height >= 40) cardH = sRect.height;
     const cs = window.getComputedStyle(grid);
-    const g = parseInt(cs.getPropertyValue('gap'));
+    const g = parseInt(cs.getPropertyValue('gap'), 10);
     if (!isNaN(g)) gap = g;
   }
-  const cols = Math.max(1, Math.floor((gridRect.width + gap) / (cardW + gap)));
-  // Use the visible viewport area below the grid's top as the available height for pagination
+  const gridWidth = gridRect.width >= 40 ? gridRect.width : Math.max(100, window.innerWidth - 80);
+  const cols = Math.max(1, Math.floor((gridWidth + gap) / (cardW + gap)));
   const pag = document.getElementById('pagination-controls');
   const pagRect = pag ? pag.getBoundingClientRect() : { height: 0 };
-  // Reserve some bottom space: pagination height + extra margin
-  const reservedBottom = (pagRect.height || 0) + 32;
-  // Compute available height from grid top to viewport bottom minus reserved space
-  const availableHeight = Math.max(0, (window.innerHeight - gridRect.top) - reservedBottom);
+  const reservedBottom = (pagRect.height || 48) + 32;
+  const gridTop = gridRect.top > 0 ? gridRect.top : 120;
+  const availableHeight = Math.max(cardH, (window.innerHeight - gridTop) - reservedBottom);
   const rows = Math.max(1, Math.floor((availableHeight + gap) / (cardH + gap)));
   itemsPerPage = Math.max(1, cols * rows);
   const totalItems = grid.querySelectorAll('.sound-card').length;
   totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
   if (currentPage >= totalPages) currentPage = totalPages - 1;
+  if (currentPage < 0) currentPage = 0;
   updatePaginationIndicator();
 }
 
@@ -2372,6 +2425,7 @@ function renderCurrentPage() {
   removeSlots();
   if (isDragMode) createSlots();
   updatePaginationIndicator();
+  writeSavedDeckPage(currentPage);
   // ensure bottom padding accounts for pagination bar height after render
   updateBottomPaddingForPagination();
 }
@@ -2861,7 +2915,37 @@ if (window.electronAPI && typeof window.electronAPI.onViewToggle === 'function')
 loadAppVersion();
 
 // Component Visibility Dropdown Functions
+function repairTwitchStatsVisibilityOnce() {
+  try {
+    if (localStorage.getItem('vdTwitchStatsKept') === '1') return;
+    const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+    if (prefs['twitch-stats-container'] === false) {
+      prefs['twitch-stats-container'] = true;
+      localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+    }
+    localStorage.setItem('vdTwitchStatsKept', '1');
+  } catch (e) {}
+}
+
+function mergeProfileVisibility(profilePrefs) {
+  let stored = {};
+  try {
+    stored = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+  } catch (e) {
+    stored = {};
+  }
+  const merged = { ...(profilePrefs || {}) };
+  Object.keys(stored).forEach((key) => {
+    merged[key] = stored[key];
+  });
+  try {
+    localStorage.setItem('vdVisibility', JSON.stringify(merged));
+  } catch (e) {}
+  if (typeof applyVisibilityPrefs === 'function') applyVisibilityPrefs();
+}
+
 function initializeVisibilityDropdown() {
+  repairTwitchStatsVisibilityOnce();
   console.log('Initializing visibility dropdown...'); // Debug log
   
   const toggleBtn = document.getElementById('visibility-toggle');
@@ -3372,8 +3456,7 @@ if (statsFilter) {
 // Open settings modal when Preferences menu item is clicked
 if (window.electronAPI && window.electronAPI.onOpenPreferences) {
   window.electronAPI.onOpenPreferences(() => {
-    const settingsModal = document.getElementById('settings-modal');
-    if (settingsModal) settingsModal.classList.remove('hidden');
+    if (typeof openPreferencesModal === 'function') openPreferencesModal();
   });
 }
 
@@ -3475,9 +3558,6 @@ async function updateTwitchStats() {
     document.getElementById('subscriber-count').textContent = subStats.count.toLocaleString();
     document.getElementById('sub-points').textContent = subStats.points.toLocaleString();
 
-    // Respect persisted visibility preferences
-    try { applyVisibilityPrefs(); } catch (e) { /* ignore */ }
-    
     // Add debug info
     let debugDiv = document.getElementById('debug-info');
     if (debugDiv) {
@@ -3489,14 +3569,14 @@ async function updateTwitchStats() {
 
   } catch (error) {
     console.error('Error updating Twitch stats:', error);
-    // Hide stats on error
-    try {
-      const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
-      const visible = prefs.hasOwnProperty('twitch-stats-container') ? !!prefs['twitch-stats-container'] : true;
-      if (!visible) statsContainer.classList.add('hidden');
-    } catch (err) {
-      statsContainer.classList.add('hidden');
-    }
+    const viewer = document.getElementById('viewer-count');
+    const follower = document.getElementById('follower-count');
+    const subscriber = document.getElementById('subscriber-count');
+    const points = document.getElementById('sub-points');
+    if (viewer && viewer.textContent === '...') viewer.textContent = '-';
+    if (follower && follower.textContent === '...') follower.textContent = '-';
+    if (subscriber && subscriber.textContent === '...') subscriber.textContent = '-';
+    if (points && points.textContent === '...') points.textContent = '-';
   }
 }
 
@@ -4079,11 +4159,6 @@ window.electronAPI.onTwitchConnected(() => {
 window.electronAPI.onTwitchCleared(() => {
   updateChatVisibility(false);
   updateChatStatusIndicator(false);
-  // Hide stats when disconnected
-  const statsContainer = document.getElementById('twitch-stats-container');
-  if (statsContainer) {
-    statsContainer.classList.add('hidden');
-  }
   // Stop stats refresh
   stopStatsRefresh();
   // Clear chat messages when disconnected
@@ -8349,18 +8424,25 @@ function setupOverlayWidget() {
       }
       connectionCheckInFlight = true;
       try {
-        await discoverAIStatusApiBaseUrl(false).catch(() => {});
-        const result = await ravenCtl.checkDashboardConnection(
-          ravenCtl.getBridgeBaseUrl(),
-          getDashboardControllerBase(),
-        );
+        let result = null;
+        if (window.electronAPI && typeof window.electronAPI.ravenConnectionStatus === 'function') {
+          result = await window.electronAPI.ravenConnectionStatus();
+        }
+        if (!result) {
+          await discoverAIStatusApiBaseUrl(false).catch(() => {});
+          result = await ravenCtl.checkDashboardConnection(
+            ravenCtl.getBridgeBaseUrl(),
+            getDashboardControllerBase(),
+          );
+        }
         if (window.vdServiceGates && window.vdServiceGates.refreshRavenGate) {
           window.vdServiceGates.refreshRavenGate().catch(() => {});
         }
         if (result && result.connected) {
           updateConnectionStatus('connected');
           if (connectionStatusLabel && result.source) {
-            connectionStatusLabel.title = `Raven reachable (${result.source})`;
+            const via = result.httpReachable === false ? 'process is running; status API not answering yet' : result.source;
+            connectionStatusLabel.title = `Raven reachable (${via})`;
           }
         } else {
           updateConnectionStatus('disconnected');
@@ -8397,6 +8479,11 @@ function setupOverlayWidget() {
       }
     }
     
+    window.addEventListener('vd-raven-refresh-connection', () => {
+      lastConnectionCheck = 0;
+      checkConnectionStatus();
+    });
+
     if (window.vdPoll) {
       window.vdPoll.createAdaptivePoll({
         baseIntervalMs: 8000,
@@ -14386,6 +14473,8 @@ function setupLeftAppMenu() {
       e.stopPropagation();
       closeToolsMenu();
       await window.electronAPI.ravenStart();
+      window.dispatchEvent(new Event('vd-raven-refresh-connection'));
+      setTimeout(() => window.dispatchEvent(new Event('vd-raven-refresh-connection')), 2500);
     });
   }
   if (toolsRavenStop && window.electronAPI && window.electronAPI.ravenStop) {
@@ -17379,6 +17468,9 @@ function openPreferencesModal() {
     loadPreferences();
     if (window.vdLicense && typeof window.vdLicense.loadLicensePreferencesPanel === 'function') {
       window.vdLicense.loadLicensePreferencesPanel();
+    }
+    if (window.vdRavenSetup && typeof window.vdRavenSetup.refreshRavenSetupPanel === 'function') {
+      window.vdRavenSetup.refreshRavenSetupPanel();
     }
   }
 }
