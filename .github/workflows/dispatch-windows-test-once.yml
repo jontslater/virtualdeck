@@ -1,0 +1,32 @@
+# One-shot helper: dispatches Windows test installer on main (delete after use).
+name: Dispatch Windows test installer (once)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/dispatch-windows-test-once.yml
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'windows-test-installer.yml',
+              ref: 'main',
+              inputs: {
+                ref: 'main',
+                aituber_ref: 'main',
+                upload_draft_prerelease: 'true',
+              },
+            });
