@@ -26,6 +26,13 @@ assert.strictEqual(
 );
 assert.strictEqual(
   isDailyCheckinRewardRedemption(
+    { reward: { id: 'wrong', title: 'Daily Check-In' } },
+    { enabled: true, rewardId: 'abc', rewardName: 'Daily Check-In' },
+  ),
+  false,
+);
+assert.strictEqual(
+  isDailyCheckinRewardRedemption(
     { reward: { title: 'Sound Board' } },
     { enabled: true, rewardName: 'Daily Check-In' },
   ),
