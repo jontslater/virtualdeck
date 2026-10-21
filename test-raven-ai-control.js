@@ -32,8 +32,9 @@ const html = read('public/index.html');
 assert.ok(html.includes('ai-dashboard-presenter-mode'), 'presenter mode select');
 assert.ok(html.includes('raven-ai-control.js'), 'raven-ai-control script');
 
-const pre = read('preload.js');
-assert.ok(pre.includes('raven-start') && pre.includes('ravenStop'), 'preload raven lifecycle IPC');
+  const pre = read('preload.js');
+  assert.ok(pre.includes('raven-start') && pre.includes('ravenStop'), 'preload raven lifecycle IPC');
+  assert.ok(pre.includes('__ravenAiControlLib'), 'preload shares raven-ai-control lib with renderer');
 assert.ok(pre.includes('ravenTestLlmKey'), 'preload raven test LLM key');
 assert.ok(pre.includes('ravenRestart'), 'preload raven restart IPC');
 
@@ -57,7 +58,7 @@ async function mockFetch(url) {
 
   const conn = await checkDashboardConnection(mockFetch, 'http://localhost:3000', 'http://localhost:3004');
   assert.strictEqual(conn.connected, true);
-  assert.strictEqual(conn.source, 'bridge-legacy');
+  assert.strictEqual(conn.source, 'controller');
 
   const offlineBridge = async (url) => {
     if (url.includes(':3000')) throw new Error('Failed to fetch');
@@ -69,7 +70,9 @@ async function mockFetch(url) {
   assert.strictEqual(viaController.source, 'controller');
 
   const ravenUi = read('public/raven-ai-control.js');
-  assert.ok(ravenUi.includes('probeControllerStatus'), 'renderer controller probe fallback');
+  assert.ok(ravenUi.includes('resolveDashboardAiEnabled'), 'renderer resolveDashboardAiEnabled');
+  const skin = read('skins/halloween-night.json');
+  assert.ok(!skin.includes('blood-png-7162'), 'halloween skin has no missing blood png refs');
 
   console.log('test-raven-ai-control.js: OK');
 })().catch((err) => {

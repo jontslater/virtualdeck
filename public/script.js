@@ -6119,14 +6119,20 @@ class ThemeManager {
 
     // Add custom CSS rules
     if (skinData.css && typeof skinData.css === 'string') {
+      let skinCss = skinData.css;
+      // Drop url(...) rules for optional skin assets that are not shipped (avoids ERR_FILE_NOT_FOUND noise)
+      skinCss = skinCss.replace(
+        /background-image\s*:\s*url\([^)]+\)\s*;?/gi,
+        '/* optional skin asset omitted */',
+      );
       // Warn if skin CSS appears to contain SCSS-style nesting (e.g., '&::after') which browsers won't parse
-      if (/&\s*[:.{\[]?/m.test(skinData.css)) {
+      if (/&\s*[:.{\[]?/m.test(skinCss)) {
         console.warn('Skin CSS contains SCSS-style nesting (&). This may not be valid CSS when injected. Consider using flat selectors.');
         try {
           if (window.notificationManager) window.notificationManager.show('Imported skin contains nested/SCSS syntax which may not apply correctly.', 'warning', 5000);
         } catch (e) {}
       }
-      cssContent += skinData.css;
+      cssContent += skinCss;
     }
 
     // Add custom component styles
@@ -6135,6 +6141,13 @@ class ThemeManager {
         if (typeof styles === 'object') {
           cssContent += `${selector} {\n`;
           for (const [property, value] of Object.entries(styles)) {
+            if (
+              typeof value === 'string' &&
+              property.toLowerCase() === 'background-image' &&
+              /^url\(/i.test(value)
+            ) {
+              continue;
+            }
             // Normalize font-family values for injected skins
             if (property.toLowerCase() === 'font-family' && typeof value === 'string') {
               const forceRoboto = localStorage.getItem('forceRobotoUI') === 'true';
@@ -8271,28 +8284,34 @@ function setupOverlayWidget() {
       dashboardToggle.classList.toggle('off', !isOn);
     }
     
-    // Load initial AI state from Raven bridge GET /api/ai/enabled (fallback: controller mode)
+    function getDashboardControllerBase() {
+      return AI_STATUS_API_BASE_URL || ravenCtl.getControllerBaseUrl();
+    }
+
+    // Controller /api/ai/status is source of truth; bridge /enabled only when it exists
     async function loadInitialAIState() {
       try {
-        const enabledState = await ravenCtl.getAiEnabled();
-        if (enabledState.legacyBridge || (enabledState.ok && enabledState.enabled === true)) {
-          updateToggleUI(true);
-        } else if (enabledState.ok && typeof enabledState.enabled === 'boolean') {
+        await discoverAIStatusApiBaseUrl(true);
+      } catch (err) {
+        console.debug('Could not discover AI Status API:', err);
+      }
+      try {
+        const enabledState = await ravenCtl.resolveDashboardAiEnabled(
+          ravenCtl.getBridgeBaseUrl(),
+          getDashboardControllerBase(),
+        );
+        if (enabledState.ok && typeof enabledState.enabled === 'boolean') {
           updateToggleUI(enabledState.enabled);
-        } else if (enabledState.offline) {
-          const conn = await ravenCtl.checkDashboardConnection();
-          if (conn && conn.connected) {
-            updateToggleUI(true);
-          }
+        } else if (enabledState.source === 'bridge-legacy') {
+          updateToggleUI(true);
         }
       } catch (err) {
         if (!ravenCtl.isNetworkUnreachableError(err)) {
-          console.debug('Could not load bridge enabled state:', err);
+          console.debug('Could not load dashboard AI enabled state:', err);
         }
       }
       try {
-        await discoverAIStatusApiBaseUrl(true);
-        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
+        const response = await fetch(`${getDashboardControllerBase()}/api/ai/mode`);
         if (response.ok) {
           const data = await response.json();
           if (data.mode === 'MUTED') {
@@ -8330,13 +8349,14 @@ function setupOverlayWidget() {
       }
       connectionCheckInFlight = true;
       try {
-        if (window.vdServiceGates && window.vdServiceGates.refreshRavenGate) {
-          await window.vdServiceGates.refreshRavenGate();
-        }
+        await discoverAIStatusApiBaseUrl(false).catch(() => {});
         const result = await ravenCtl.checkDashboardConnection(
           ravenCtl.getBridgeBaseUrl(),
-          ravenCtl.getControllerBaseUrl(),
+          getDashboardControllerBase(),
         );
+        if (window.vdServiceGates && window.vdServiceGates.refreshRavenGate) {
+          window.vdServiceGates.refreshRavenGate().catch(() => {});
+        }
         if (result && result.connected) {
           updateConnectionStatus('connected');
           if (connectionStatusLabel && result.source) {

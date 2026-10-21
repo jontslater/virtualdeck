@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const vdPackaged = process.argv.some((arg) => arg === '--vd-packaged=1');
 contextBridge.exposeInMainWorld('__VD_IS_PACKAGED__', vdPackaged);
+contextBridge.exposeInMainWorld('__ravenAiControlLib', require('./lib/raven-ai-control'));
 
 contextBridge.exposeInMainWorld('electronAPI', {
   addMedia: (data) => ipcRenderer.send('add-media', data),

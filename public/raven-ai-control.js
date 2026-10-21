@@ -2,7 +2,7 @@
  * Raven AI ON/OFF (bridge /api/ai/enabled) + presenter mode (controller /api/ai/mode).
  */
 (function (global) {
-  const lib = typeof require === 'function' ? require('../lib/raven-ai-control') : null;
+  const lib = global.__ravenAiControlLib || null;
   const DEFAULT_BRIDGE_BASE = (lib && lib.DEFAULT_BRIDGE_BASE) || 'http://localhost:3000';
   const DEFAULT_CONTROLLER_BASE = (lib && lib.DEFAULT_CONTROLLER_BASE) || 'http://localhost:3004';
 
@@ -48,38 +48,19 @@
     }
   }
 
-  async function probeControllerStatus(controllerBase, timeoutMs) {
-    if (lib && lib.probeControllerStatus) {
-      return lib.probeControllerStatus(
-        (url, opts) => fetchWithTimeout(url, opts, timeoutMs || 2500),
-        controllerBase,
-        timeoutMs || 2500,
-      );
-    }
-    const base = normalizeBase(controllerBase, getControllerBaseUrl());
-    const paths = ['/api/ai/status', '/api/status', '/health'];
-    for (const p of paths) {
-      const url = `${base}${p}`;
-      try {
-        const response = await fetchWithTimeout(url, {}, timeoutMs || 2500);
-        if (response.ok || response.status === 404) {
-          return { reachable: true, ok: response.ok, status: response.status, path: p };
-        }
-      } catch (err) {
-        if (!isNetworkUnreachableError(err)) throw err;
-      }
-    }
-    return { reachable: false, ok: false };
-  }
+  const fetchForLib = (url, opts) => fetchWithTimeout(url, opts, 2500);
 
   async function getAiEnabled(bridgeBase) {
     const base = normalizeBase(bridgeBase, getBridgeBaseUrl());
     if (lib && lib.probeBridgeEnabled) {
-      return lib.probeBridgeEnabled((url, opts) => fetchWithTimeout(url, opts, 2500), base, 2500);
+      return lib.probeBridgeEnabled(fetchForLib, base, 2500);
     }
     const url = `${base}/api/ai/enabled`;
     try {
       const response = await fetchWithTimeout(url, {}, 2500);
+      if (lib && lib.isMissingBridgeEnabledRoute && lib.isMissingBridgeEnabledRoute(response.status)) {
+        return { ok: true, enabled: true, legacyBridge: true, reachable: true, status: response.status, offline: false };
+      }
       if (response.status === 404) {
         return { ok: true, enabled: true, legacyBridge: true, reachable: true, status: 404, offline: false };
       }
@@ -94,15 +75,25 @@
     }
   }
 
+  async function resolveDashboardAiEnabled(bridgeBase, controllerBase) {
+    const bridgeBaseUrl = bridgeBase || getBridgeBaseUrl();
+    const controllerBaseUrl = controllerBase || getControllerBaseUrl();
+    if (lib && lib.resolveDashboardAiEnabled) {
+      return lib.resolveDashboardAiEnabled(fetchForLib, bridgeBaseUrl, controllerBaseUrl);
+    }
+    const conn = await checkDashboardConnection(bridgeBaseUrl, controllerBaseUrl);
+    return {
+      ok: !!conn.connected,
+      enabled: conn.connected ? true : null,
+      source: conn.source,
+    };
+  }
+
   async function checkDashboardConnection(bridgeBase, controllerBase) {
     const bridgeBaseUrl = bridgeBase || getBridgeBaseUrl();
     const controllerBaseUrl = controllerBase || getControllerBaseUrl();
     if (lib && lib.checkDashboardConnection) {
-      return lib.checkDashboardConnection(
-        (url, opts) => fetchWithTimeout(url, opts, 2500),
-        bridgeBaseUrl,
-        controllerBaseUrl,
-      );
+      return lib.checkDashboardConnection(fetchForLib, bridgeBaseUrl, controllerBaseUrl);
     }
     const bridge = await getAiEnabled(bridgeBaseUrl);
     if (bridge.reachable && bridge.ok) {
@@ -112,14 +103,7 @@
         bridge,
       };
     }
-    const controller = await probeControllerStatus(controllerBaseUrl);
-    if (controller.reachable) {
-      return { connected: true, source: 'controller', controller, bridge };
-    }
-    if (bridge.offline && !controller.reachable) {
-      return { connected: false, source: 'offline', bridge, controller };
-    }
-    return { connected: false, source: 'unreachable', bridge, controller };
+    return { connected: false, source: 'offline', bridge };
   }
 
   async function postAiEnabled(enabled, bridgeBase) {
@@ -135,8 +119,14 @@
         },
         5000,
       );
+      if (lib && lib.isMissingBridgeEnabledRoute && lib.isMissingBridgeEnabledRoute(response.status)) {
+        return { ok: true, offline: false, legacyBridge: true, status: response.status };
+      }
+      if (response.status === 404) {
+        return { ok: true, offline: false, legacyBridge: true, status: 404 };
+      }
       const body = await response.json().catch(() => ({}));
-      return { ok: response.ok, offline: false, body };
+      return { ok: response.ok, offline: false, body, status: response.status };
     } catch (err) {
       if (isNetworkUnreachableError(err)) {
         return { ok: false, offline: true, error: err };
@@ -187,7 +177,7 @@
       await api.ravenStart();
     }
     let bridgeResult = await postAiEnabled(true);
-    if (!bridgeResult.ok && !bridgeResult.offline) {
+    if (!bridgeResult.ok && !bridgeResult.offline && !bridgeResult.legacyBridge) {
       await new Promise((r) => setTimeout(r, 1500));
       bridgeResult = await postAiEnabled(true);
     }
@@ -205,6 +195,7 @@
     getBridgeBaseUrl,
     getControllerBaseUrl,
     getAiEnabled,
+    resolveDashboardAiEnabled,
     checkDashboardConnection,
     postAiEnabled,
     postPresenterMode,
