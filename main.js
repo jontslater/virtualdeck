@@ -3224,18 +3224,32 @@ ipcMain.handle('list-eventsub-subscriptions', async () => {
 });
 
 // IPC: fetch channel point rewards for the connected channel (requires clientId and token)
+ipcMain.handle('twitch-eventsub-health', async () => {
+  try {
+    return await getTwitchEventSubHealth();
+  } catch (err) {
+    console.error('twitch-eventsub-health error:', err);
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
 ipcMain.handle('get-channel-rewards', async () => {
   try {
     if (!twitchUserId) await getUserId();
-    if (!twitchClientId || !twitchToken) return [];
+    const token = helixAccessToken();
+    if (!twitchClientId || !token) return [];
     const url = `https://api.twitch.tv/helix/channel_points/custom_rewards?broadcaster_id=${encodeURIComponent(twitchUserId)}`;
     const resp = await fetch(url, {
       headers: {
         'Client-ID': twitchClientId,
-        'Authorization': `Bearer ${twitchToken}`
-      }
+        Authorization: `Bearer ${token}`,
+      },
     });
     const data = await resp.json();
+    if (!resp.ok) {
+      vdDebugLog('Helix custom_rewards failed', resp.status, data);
+      return [];
+    }
     if (data && Array.isArray(data.data)) return data.data;
     return [];
   } catch (err) {
@@ -4714,6 +4728,52 @@ function isEventSubConnected() {
   }
 }
 
+function vdDebugLog(...args) {
+  const v = String(process.env.VD_DEBUG || '').trim().toLowerCase();
+  if (v === '1' || v === 'true' || v === 'yes') {
+    console.log('[VD_DEBUG]', ...args);
+  }
+}
+
+async function getTwitchEventSubHealth() {
+  const oauth = await getTwitchOAuthStatus();
+  let hasChannelPointsSub = false;
+  let channelPointsSubscriptionIds = [];
+  try {
+    const listed = await listEventSubscriptions();
+    const rows = listed && listed.data ? listed.data : [];
+    const cp = rows.filter((s) => s.type === 'channel.channel_points_custom_reward_redemption.add');
+    hasChannelPointsSub = cp.length > 0;
+    channelPointsSubscriptionIds = cp.map((s) => s.id).filter(Boolean);
+    vdDebugLog('EventSub channel_points subscriptions:', channelPointsSubscriptionIds.length, channelPointsSubscriptionIds);
+  } catch (err) {
+    vdDebugLog('EventSub list failed:', err.message || err);
+  }
+  let wantsChannelPointsTopic = false;
+  try {
+    const tc = loadTcConfig();
+    wantsChannelPointsTopic =
+      Array.isArray(tc.topics) && tc.topics.includes('channel.channel_points_custom_reward_redemption');
+  } catch (e) {
+    wantsChannelPointsTopic = false;
+  }
+  const missingRedemptionsScope =
+    Array.isArray(oauth.missingScopes) && oauth.missingScopes.includes('channel:read:redemptions');
+  return {
+    ...oauth,
+    eventSubWsOpen: isEventSubConnected(),
+    eventSubSessionId: eventSubSessionId || null,
+    wantsChannelPointsTopic,
+    hasChannelPointsSub,
+    channelPointsSubscriptionIds,
+    channelPointsReady:
+      hasChannelPointsSub &&
+      oauth.eventSubConnected &&
+      !missingRedemptionsScope &&
+      oauth.chatConnected,
+  };
+}
+
 async function getTwitchOAuthStatus() {
   const clientId = getTwitchOAuthClientId();
   const session = twitchOAuthHost ? twitchOAuthHost.readStoredTokens() : readStoredTokensFromTc();
@@ -5124,6 +5184,7 @@ function addCreatedSubscriptionId(id) {
 
 async function subscribeEventSub(type, condition, sessionId) {
   console.log('Subscribing to EventSub:', type, condition);
+  vdDebugLog('subscribeEventSub request', type, condition);
   const fp = subFingerprint(type, condition);
   if (pendingSubFingerprints.has(fp)) {
     console.log('Subscription creation already pending for fingerprint, skipping:', fp);

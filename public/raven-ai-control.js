@@ -48,20 +48,78 @@
     }
   }
 
+  async function probeControllerStatus(controllerBase, timeoutMs) {
+    if (lib && lib.probeControllerStatus) {
+      return lib.probeControllerStatus(
+        (url, opts) => fetchWithTimeout(url, opts, timeoutMs || 2500),
+        controllerBase,
+        timeoutMs || 2500,
+      );
+    }
+    const base = normalizeBase(controllerBase, getControllerBaseUrl());
+    const paths = ['/api/ai/status', '/api/status', '/health'];
+    for (const p of paths) {
+      const url = `${base}${p}`;
+      try {
+        const response = await fetchWithTimeout(url, {}, timeoutMs || 2500);
+        if (response.ok || response.status === 404) {
+          return { reachable: true, ok: response.ok, status: response.status, path: p };
+        }
+      } catch (err) {
+        if (!isNetworkUnreachableError(err)) throw err;
+      }
+    }
+    return { reachable: false, ok: false };
+  }
+
   async function getAiEnabled(bridgeBase) {
     const base = normalizeBase(bridgeBase, getBridgeBaseUrl());
+    if (lib && lib.probeBridgeEnabled) {
+      return lib.probeBridgeEnabled((url, opts) => fetchWithTimeout(url, opts, 2500), base, 2500);
+    }
     const url = `${base}/api/ai/enabled`;
     try {
       const response = await fetchWithTimeout(url, {}, 2500);
+      if (response.status === 404) {
+        return { ok: true, enabled: true, legacyBridge: true, reachable: true, status: 404, offline: false };
+      }
       const body = await response.json().catch(() => ({}));
       const parsed = lib ? lib.parseEnabledResponse(body) : { enabled: body.enabled };
-      return { ok: response.ok, enabled: parsed.enabled, raw: body, offline: false };
+      return { ok: response.ok, enabled: parsed.enabled, raw: body, offline: false, reachable: true, status: response.status };
     } catch (err) {
       if (isNetworkUnreachableError(err)) {
-        return { ok: false, enabled: null, offline: true };
+        return { ok: false, enabled: null, offline: true, reachable: false };
       }
       throw err;
     }
+  }
+
+  async function checkDashboardConnection(bridgeBase, controllerBase) {
+    const bridgeBaseUrl = bridgeBase || getBridgeBaseUrl();
+    const controllerBaseUrl = controllerBase || getControllerBaseUrl();
+    if (lib && lib.checkDashboardConnection) {
+      return lib.checkDashboardConnection(
+        (url, opts) => fetchWithTimeout(url, opts, 2500),
+        bridgeBaseUrl,
+        controllerBaseUrl,
+      );
+    }
+    const bridge = await getAiEnabled(bridgeBaseUrl);
+    if (bridge.reachable && bridge.ok) {
+      return {
+        connected: true,
+        source: bridge.legacyBridge ? 'bridge-legacy' : 'bridge-enabled',
+        bridge,
+      };
+    }
+    const controller = await probeControllerStatus(controllerBaseUrl);
+    if (controller.reachable) {
+      return { connected: true, source: 'controller', controller, bridge };
+    }
+    if (bridge.offline && !controller.reachable) {
+      return { connected: false, source: 'offline', bridge, controller };
+    }
+    return { connected: false, source: 'unreachable', bridge, controller };
   }
 
   async function postAiEnabled(enabled, bridgeBase) {
@@ -147,6 +205,7 @@
     getBridgeBaseUrl,
     getControllerBaseUrl,
     getAiEnabled,
+    checkDashboardConnection,
     postAiEnabled,
     postPresenterMode,
     setAiSystemEnabled,

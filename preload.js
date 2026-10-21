@@ -191,6 +191,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   twitchOAuthGetStatus: async () => ipcRenderer.invoke('twitch-oauth-get-status'),
   twitchOAuthRestoreSession: async () => ipcRenderer.invoke('twitch-oauth-restore-session'),
   ravenDevSpeak: async (payload) => ipcRenderer.invoke('raven-dev-speak', payload),
+  twitchEventSubHealth: async () => ipcRenderer.invoke('twitch-eventsub-health'),
   onTwitchOAuthProgress: (callback) => ipcRenderer.on('twitch-oauth-progress', (_event, data) => callback(data)),
   onTwitchOAuthSuccess: (callback) => ipcRenderer.on('twitch-oauth-success', (_event, data) => callback(data)),
   onRaidFavoritesHistoryUpdated: (callback) => ipcRenderer.on('raid-favorites-history-updated', (_event, data) => callback(data)),

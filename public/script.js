@@ -1050,36 +1050,30 @@ const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
 
 // Helper function to load Twitch channel point redemptions
-async function loadChannelRedemptions(selectElement, inputElement) {
-  if (!window.electronAPI || !window.electronAPI.getChannelRewards) {
-    showCustomAlert('Twitch API not available', 'error');
-    return;
+async function loadChannelRedemptions(selectElement, inputElement, options) {
+  if (!window.vdChannelRewards) {
+    showCustomAlert('Reward UI not loaded', 'error');
+    return [];
   }
-  
   try {
-    const rewards = await window.electronAPI.getChannelRewards();
-    
-    if (!rewards || rewards.length === 0) {
-      showCustomAlert('No channel point redemptions found. Make sure you\'re connected to Twitch.', 'error');
-      return;
-    }
-    
-    // Clear existing options except the first one
-    selectElement.innerHTML = '<option value="">-- Select or type manually --</option>';
-    
-    // Add redemptions to dropdown
-    rewards.forEach(reward => {
-      const option = document.createElement('option');
-      option.value = reward.title;
-      option.textContent = `${reward.title} (${reward.cost} pts)`;
-      selectElement.appendChild(option);
+    const rewards = await window.vdChannelRewards.loadRewardsIntoSelect(selectElement, {
+      valueField: (options && options.valueField) || 'title',
+      placeholder: (options && options.placeholder) || '-- Select or type manually --',
     });
-    
+    if (!rewards.length) {
+      showCustomAlert('No channel point redemptions found. Make sure you\'re connected to Twitch.', 'error');
+      return [];
+    }
+    if (inputElement && selectElement.value) {
+      inputElement.value = selectElement.selectedOptions[0].dataset.rewardTitle || selectElement.value;
+    }
     showCustomAlert(`Loaded ${rewards.length} redemption(s) from Twitch`, 'success');
     console.log('✅ Loaded Twitch redemptions:', rewards);
+    return rewards;
   } catch (error) {
     console.error('Error loading redemptions:', error);
     showCustomAlert('Failed to load redemptions from Twitch', 'error');
+    return [];
   }
 }
 
@@ -3788,7 +3782,14 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
         eventData.event.reward?.name ||
         eventData.event.reward_title ||
         '';
-      console.log('✅ Daily Check-In redemption detected!', rewardTitle);
+      console.log(
+        '✅ Daily Check-In redemption detected!',
+        rewardTitle,
+        'rewardId:',
+        eventData.event.reward?.id || eventData.event.reward_id,
+        'config.rewardId:',
+        dailyCheckinData.config.rewardId || '(title fallback)',
+      );
 
       // Process the daily check-in
       const checkinResult = await processDailyCheckin({
@@ -4069,6 +4070,9 @@ window.electronAPI.onTwitchConnected(() => {
   
   // Re-apply visibility prefs globally after connection changes
   try { applyVisibilityPrefs(); } catch (e) { /* ignore */ }
+  if (typeof refreshDailyCheckinEventSubWarning === 'function') {
+    refreshDailyCheckinEventSubWarning();
+  }
 });
 
 // Listen for Twitch disconnection
@@ -8271,8 +8275,15 @@ function setupOverlayWidget() {
     async function loadInitialAIState() {
       try {
         const enabledState = await ravenCtl.getAiEnabled();
-        if (enabledState.ok && typeof enabledState.enabled === 'boolean') {
+        if (enabledState.legacyBridge || (enabledState.ok && enabledState.enabled === true)) {
+          updateToggleUI(true);
+        } else if (enabledState.ok && typeof enabledState.enabled === 'boolean') {
           updateToggleUI(enabledState.enabled);
+        } else if (enabledState.offline) {
+          const conn = await ravenCtl.checkDashboardConnection();
+          if (conn && conn.connected) {
+            updateToggleUI(true);
+          }
         }
       } catch (err) {
         if (!ravenCtl.isNetworkUnreachableError(err)) {
@@ -8305,29 +8316,43 @@ function setupOverlayWidget() {
     let lastConnectionCheck = 0;
     let connectionCheckInterval = null;
     
+    let connectionCheckInFlight = false;
+
     async function checkConnectionStatus() {
       const now = Date.now();
-      // Throttle checks to once every 3 seconds
+      if (connectionCheckInFlight) return;
       if (now - lastConnectionCheck < 3000) return;
       lastConnectionCheck = now;
-      
+
+      const wasConnected = connectionStatusLabel && connectionStatusLabel.classList.contains('connected');
+      if (!wasConnected) {
+        updateConnectionStatus('checking');
+      }
+      connectionCheckInFlight = true;
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
-        
-        const bridgeBase = ravenCtl.getBridgeBaseUrl();
-        const response = await fetch(`${bridgeBase}/api/ai/enabled`, {
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
+        if (window.vdServiceGates && window.vdServiceGates.refreshRavenGate) {
+          await window.vdServiceGates.refreshRavenGate();
+        }
+        const result = await ravenCtl.checkDashboardConnection(
+          ravenCtl.getBridgeBaseUrl(),
+          ravenCtl.getControllerBaseUrl(),
+        );
+        if (result && result.connected) {
           updateConnectionStatus('connected');
+          if (connectionStatusLabel && result.source) {
+            connectionStatusLabel.title = `Raven reachable (${result.source})`;
+          }
         } else {
           updateConnectionStatus('disconnected');
+          if (connectionStatusLabel) {
+            connectionStatusLabel.title = 'Start Raven: Tools → Raven AI → Start Raven AI';
+          }
         }
       } catch (err) {
+        console.debug('Raven dashboard connection check failed:', err);
         updateConnectionStatus('disconnected');
+      } finally {
+        connectionCheckInFlight = false;
       }
     }
     
@@ -8358,11 +8383,7 @@ function setupOverlayWidget() {
         maxIntervalMs: 60000,
         when: () => {
           const dash = document.getElementById('ai-dashboard-controls');
-          return (
-            window.vdPoll.isElementActive(dash) &&
-            window.vdServiceGates &&
-            window.vdServiceGates.shouldPollRavenBridge()
-          );
+          return window.vdPoll.isElementActive(dash);
         },
         tick: async () => {
           await checkConnectionStatus();
@@ -8373,6 +8394,7 @@ function setupOverlayWidget() {
       checkConnectionStatus();
       connectionCheckInterval = setInterval(checkConnectionStatus, 8000);
     }
+    checkConnectionStatus();
     
     // Also check after toggle or mode change
     const originalToggleClick = dashboardToggle.onclick;
@@ -10951,6 +10973,9 @@ function setupAlertWidget() {
       const dailyCheckinSettings = document.getElementById('daily-checkin-settings');
       if (dailyCheckinSettings) {
         dailyCheckinSettings.style.display = selectedType === 'daily-checkin' ? 'block' : 'none';
+        if (selectedType === 'daily-checkin') {
+          refreshDailyCheckinEventSubWarning();
+        }
       }
       
       // Update alert list to show only matching alerts
@@ -11768,6 +11793,7 @@ function setupAlertWidget() {
         // Include daily check-in config if this is a daily-checkin alert
         dailyCheckinConfig: type === 'daily-checkin' ? {
           enabled: document.getElementById('daily-checkin-enabled')?.checked ?? true,
+          rewardId: document.getElementById('daily-checkin-reward-id')?.value || '',
           rewardName: document.getElementById('daily-checkin-reward-name')?.value || 'Daily Check-In',
           chatResponse: document.getElementById('daily-checkin-chat-response')?.value || 'Welcome back {username}!',
           alreadyCheckedMessage: document.getElementById('daily-checkin-already-checked-message')?.value || 'You\'ve already checked in today!',
@@ -12255,8 +12281,11 @@ function setupAlertWidget() {
       const enabledCheckbox = document.getElementById('daily-checkin-enabled');
       if (enabledCheckbox) enabledCheckbox.checked = config.enabled ?? true;
       
+      const rewardIdInput = document.getElementById('daily-checkin-reward-id');
+      if (rewardIdInput) rewardIdInput.value = config.rewardId || '';
       const rewardNameInput = document.getElementById('daily-checkin-reward-name');
       if (rewardNameInput) rewardNameInput.value = config.rewardName || 'Daily Check-In';
+      applyDailyCheckinRewardSelectFromConfig(config);
       
       const chatResponseInput = document.getElementById('daily-checkin-chat-response');
       if (chatResponseInput) chatResponseInput.value = config.chatResponse || 'Welcome back {username}!';
@@ -13308,6 +13337,7 @@ let dailyCheckinData = {
   liveDays: [], // Array of date strings (YYYY-MM-DD) when stream was live
   config: {
     enabled: true,
+    rewardId: '',
     rewardName: 'Daily Check-In',
     chatResponse: 'Welcome back {username}! You\'ve checked in {total_checkins} times!',
     alreadyCheckedMessage: 'You\'ve already checked in today, {username}! Come back tomorrow!',
@@ -13526,10 +13556,102 @@ async function sendTwitchChatMessage(message) {
   }
 }
 
+function readDailyCheckinRewardFromUI() {
+  const rewardNameInput = document.getElementById('daily-checkin-reward-name');
+  const rewardIdInput = document.getElementById('daily-checkin-reward-id');
+  const select = document.getElementById('daily-checkin-reward-select');
+  let rewardId = rewardIdInput?.value?.trim() || '';
+  let rewardName = rewardNameInput?.value?.trim() || 'Daily Check-In';
+  if (select && window.vdChannelRewards) {
+    const picked = window.vdChannelRewards.selectedRewardFromSelect(select);
+    if (picked.rewardId) {
+      rewardId = picked.rewardId;
+      if (rewardIdInput) rewardIdInput.value = rewardId;
+      if (picked.rewardName) rewardName = picked.rewardName;
+      if (rewardNameInput && picked.rewardName) rewardNameInput.value = picked.rewardName;
+    }
+  }
+  return { rewardId, rewardName };
+}
+
+function applyDailyCheckinRewardSelectFromConfig(config) {
+  const select = document.getElementById('daily-checkin-reward-select');
+  if (!select || !config) return;
+  if (config.rewardId) {
+    const opt = Array.from(select.options).find(
+      (o) => o.dataset && o.dataset.rewardId === String(config.rewardId),
+    );
+    if (opt) select.value = opt.value;
+  } else if (config.rewardName && window.vdChannelRewards) {
+    const opt = Array.from(select.options).find((o) => {
+      const t = (o.dataset && o.dataset.rewardTitle) || '';
+      return t.trim().toLowerCase() === String(config.rewardName).trim().toLowerCase();
+    });
+    if (opt) select.value = opt.value;
+  }
+}
+
+async function refreshDailyCheckinEventSubWarning() {
+  const el = document.getElementById('daily-checkin-eventsub-warning');
+  if (!el) return;
+  if (!window.electronAPI || !window.electronAPI.twitchEventSubHealth) {
+    el.style.display = 'none';
+    return;
+  }
+  try {
+    const health = await window.electronAPI.twitchEventSubHealth();
+    const issues = [];
+    if (health.scopeWarning) {
+      issues.push(health.scopeWarning);
+    } else if (health.missingScopes && health.missingScopes.includes('channel:read:redemptions')) {
+      issues.push('Missing scope channel:read:redemptions — reconnect Twitch in VirtualDeck.');
+    }
+    if (!health.eventSubWsOpen) {
+      issues.push('Twitch EventSub is not connected (WebSocket). Use Connect / reconnect Twitch.');
+    }
+    if (!health.hasChannelPointsSub) {
+      issues.push(
+        'No EventSub subscription for channel point redemptions (channel.channel_points_custom_reward_redemption.add). Reconnect Twitch after granting scopes.',
+      );
+    }
+    if (issues.length) {
+      el.style.display = 'block';
+      const subHint =
+        health.channelPointsSubscriptionIds && health.channelPointsSubscriptionIds.length
+          ? ` Active sub id(s): ${health.channelPointsSubscriptionIds.join(', ')}.`
+          : '';
+      el.innerHTML =
+        `<strong>Channel points may not trigger check-in</strong><ul style="margin:8px 0 0 16px;padding:0;">` +
+        issues.map((msg) => `<li>${msg}</li>`).join('') +
+        `</ul>${subHint ? `<div style="margin-top:8px;font-size:11px;">${subHint}</div>` : ''}`;
+    } else {
+      el.style.display = 'none';
+      el.textContent = '';
+    }
+    if (window.vdLog) {
+      window.vdLog('Daily check-in EventSub health', health);
+    }
+  } catch (err) {
+    console.warn('Could not load EventSub health for daily check-in:', err);
+  }
+}
+
+async function loadDailyCheckinRewardsFromTwitch() {
+  const select = document.getElementById('daily-checkin-reward-select');
+  const nameInput = document.getElementById('daily-checkin-reward-name');
+  if (!select) return;
+  await loadChannelRedemptions(select, nameInput, {
+    valueField: 'id',
+    placeholder: '-- Select reward --',
+  });
+  applyDailyCheckinRewardSelectFromConfig(dailyCheckinData.config);
+  updateDailyCheckinConfig();
+}
+
 // Update daily check-in config from UI
 function updateDailyCheckinConfig() {
   const enabled = document.getElementById('daily-checkin-enabled')?.checked ?? true;
-  const rewardName = document.getElementById('daily-checkin-reward-name')?.value || 'Daily Check-In';
+  const { rewardId, rewardName } = readDailyCheckinRewardFromUI();
   const chatResponse = document.getElementById('daily-checkin-chat-response')?.value || 'Welcome back {username}!';
   const alreadyCheckedMessage = document.getElementById('daily-checkin-already-checked-message')?.value || 'You\'ve already checked in today!';
   const showStreak = document.getElementById('daily-checkin-show-streak')?.checked ?? false;
@@ -13538,6 +13660,7 @@ function updateDailyCheckinConfig() {
   
   dailyCheckinData.config = {
     enabled,
+    rewardId,
     rewardName,
     chatResponse,
     alreadyCheckedMessage,
@@ -13557,8 +13680,12 @@ function loadDailyCheckinConfigToUI() {
   const enabledCheckbox = document.getElementById('daily-checkin-enabled');
   if (enabledCheckbox) enabledCheckbox.checked = config.enabled ?? true;
   
+  const rewardIdInput = document.getElementById('daily-checkin-reward-id');
+  if (rewardIdInput) rewardIdInput.value = config.rewardId || '';
+
   const rewardNameInput = document.getElementById('daily-checkin-reward-name');
   if (rewardNameInput) rewardNameInput.value = config.rewardName || 'Daily Check-In';
+  applyDailyCheckinRewardSelectFromConfig(config);
   
   const chatResponseInput = document.getElementById('daily-checkin-chat-response');
   if (chatResponseInput) chatResponseInput.value = config.chatResponse || 'Welcome back {username}!';
@@ -13585,6 +13712,18 @@ async function initDailyCheckinSystem() {
   
   // Load config to UI
   loadDailyCheckinConfigToUI();
+  refreshDailyCheckinEventSubWarning();
+
+  const loadRewardsBtn = document.getElementById('daily-checkin-load-rewards');
+  if (loadRewardsBtn) {
+    loadRewardsBtn.addEventListener('click', () => {
+      loadDailyCheckinRewardsFromTwitch().catch((err) => console.error('Load daily check-in rewards failed:', err));
+    });
+  }
+  const rewardSelect = document.getElementById('daily-checkin-reward-select');
+  if (rewardSelect) {
+    rewardSelect.addEventListener('change', updateDailyCheckinConfig);
+  }
   
   // Add change listeners to update config
   const fields = [

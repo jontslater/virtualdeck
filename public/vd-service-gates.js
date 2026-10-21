@@ -43,11 +43,14 @@
 
   function shouldPollRavenController() {
     const g = global.vdServiceGates.raven;
-    return g.licensed && g.configured && (g.running || g.dashboardVisible || g.aiPanelVisible);
+    if (g.aiPanelVisible) return true;
+    return g.licensed && g.configured && (g.running || g.dashboardVisible);
   }
 
   function shouldPollRavenBridge() {
-    return shouldPollRavenController();
+    const g = global.vdServiceGates.raven;
+    if (g.dashboardVisible || g.aiPanelVisible) return true;
+    return g.licensed && g.configured && g.running;
   }
 
   global.vdServiceGates.refreshRavenGate = refreshRavenGate;
