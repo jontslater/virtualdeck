@@ -47,6 +47,8 @@ const RaidFavoritesStore = require('./lib/raid-favorites-store');
 const { RaidHelixClient } = require('./lib/raid-helix');
 const { buildTwitchAuthorizeUrl, getTwitchOAuthClientId } = require('./lib/twitch-oauth');
 const { createTwitchOAuthHost } = require('./lib/twitch-oauth-host');
+const { encodeField, decodeField } = require('./lib/portable-secret');
+const { speakViaDevApi } = require('./lib/raven-dev-speak');
 const { isValidTwitchLogin, normalizeTwitchLogin } = require('./lib/twitch-login');
 const { sanitizeTwitchProfileImageUrl: sanitizeTwitchProfileImageUrlLib } = require('./lib/twitch-profile-image');
 
@@ -676,9 +678,17 @@ function ensureProfiles() {
 function loadTcConfig() {
   try {
     const raw = JSON.parse(fs.readFileSync(tcConfigPath, 'utf-8'));
-    
-    // Decrypt sensitive fields if they were encrypted
-    if (raw.oauth_token_encrypted && safeStorage.isEncryptionAvailable()) {
+
+    const oauthKeyMaterial = `${tcConfigPath}:oauth`;
+    const refreshKeyMaterial = `${tcConfigPath}:refresh`;
+
+    if (raw.oauth_secret) {
+      const plain = decodeField(oauthKeyMaterial, raw.oauth_secret, safeStorage);
+      if (plain) {
+        raw.oauth_token = plain;
+        raw.accessToken = plain;
+      }
+    } else if (raw.oauth_token_encrypted && safeStorage.isEncryptionAvailable()) {
       try {
         const encryptedBuffer = Buffer.from(raw.oauth_token_encrypted, 'base64');
         raw.oauth_token = safeStorage.decryptString(encryptedBuffer);
@@ -688,7 +698,10 @@ function loadTcConfig() {
         console.error('❌ [Security] Failed to decrypt OAuth token:', err.message);
       }
     }
-    if (raw.refresh_token_encrypted && safeStorage.isEncryptionAvailable()) {
+    if (raw.refresh_secret) {
+      const plain = decodeField(refreshKeyMaterial, raw.refresh_secret, safeStorage);
+      if (plain) raw.refreshToken = plain;
+    } else if (raw.refresh_token_encrypted && safeStorage.isEncryptionAvailable()) {
       try {
         const encryptedBuffer = Buffer.from(raw.refresh_token_encrypted, 'base64');
         raw.refreshToken = safeStorage.decryptString(encryptedBuffer);
@@ -709,37 +722,30 @@ function loadTcConfig() {
 }
 
 function saveTcConfig(cfg) {
-  // Create a copy to avoid mutating the original
   const toSave = { ...cfg };
-  
-  // Encrypt sensitive fields before saving
+  const oauthKeyMaterial = `${tcConfigPath}:oauth`;
+  const refreshKeyMaterial = `${tcConfigPath}:refresh`;
+
   const tokenPlain = toSave.oauth_token || toSave.accessToken;
-  if (tokenPlain && safeStorage.isEncryptionAvailable()) {
-    try {
-      const encrypted = safeStorage.encryptString(String(tokenPlain));
-      toSave.oauth_token_encrypted = encrypted.toString('base64');
-      delete toSave.oauth_token;
-      delete toSave.accessToken;
-      console.log('✅ [Security] Encrypted Twitch OAuth token before saving');
-    } catch (err) {
-      console.error('❌ [Security] Failed to encrypt OAuth token:', err.message);
-      delete toSave.oauth_token;
-      delete toSave.accessToken;
+  if (tokenPlain) {
+    const wrapped = encodeField(oauthKeyMaterial, String(tokenPlain).replace(/^oauth:/i, '').trim(), safeStorage);
+    if (wrapped) {
+      toSave.oauth_secret = wrapped;
+      delete toSave.oauth_token_encrypted;
     }
+    delete toSave.oauth_token;
+    delete toSave.accessToken;
   }
   const refreshPlain = toSave.refreshToken;
-  if (refreshPlain && safeStorage.isEncryptionAvailable()) {
-    try {
-      const encryptedRefresh = safeStorage.encryptString(String(refreshPlain));
-      toSave.refresh_token_encrypted = encryptedRefresh.toString('base64');
-      delete toSave.refreshToken;
-      console.log('✅ [Security] Encrypted Twitch refresh token before saving');
-    } catch (err) {
-      console.error('❌ [Security] Failed to encrypt refresh token:', err.message);
-      delete toSave.refreshToken;
+  if (refreshPlain) {
+    const wrapped = encodeField(refreshKeyMaterial, String(refreshPlain).trim(), safeStorage);
+    if (wrapped) {
+      toSave.refresh_secret = wrapped;
+      delete toSave.refresh_token_encrypted;
     }
+    delete toSave.refreshToken;
   }
-  
+
   fs.writeFileSync(tcConfigPath, JSON.stringify(toSave, null, 2));
 }
 
@@ -4409,6 +4415,13 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
   twitchUserName = username;
   console.log('Using clientId:', twitchClientId);
   twitchClient = new tmi.Client(opts);
+  twitchClient.on('disconnected', (reason) => {
+    console.warn('Twitch chat disconnected:', reason);
+    if (win && win.webContents) {
+      win.webContents.send('twitch-cleared');
+    }
+  });
+
   twitchClient.connect().then(() => {
     console.log('Connected to Twitch chat as', username);
     
@@ -4692,6 +4705,60 @@ function isTwitchChatConnected() {
     return false;
   }
 }
+
+function isEventSubConnected() {
+  try {
+    return !!(eventSubWs && eventSubWs.readyState === WebSocket.OPEN && eventSubSessionId);
+  } catch {
+    return false;
+  }
+}
+
+async function getTwitchOAuthStatus() {
+  const clientId = getTwitchOAuthClientId();
+  const session = twitchOAuthHost ? twitchOAuthHost.readStoredTokens() : readStoredTokensFromTc();
+  const hasSession = !!(session.accessToken || session.refreshToken);
+  const chatConnected = isTwitchChatConnected();
+  const eventSubConnected = isEventSubConnected();
+  let missingScopes = [];
+  let scopeWarning = null;
+  if (session.accessToken) {
+    try {
+      const { validateTwitchAccessToken } = require('./lib/twitch-oauth');
+      const validation = await validateTwitchAccessToken(fetch, session.accessToken);
+      if (validation.ok && Array.isArray(validation.scopes)) {
+        const required = ['channel:read:redemptions'];
+        missingScopes = required.filter((s) => !validation.scopes.includes(s));
+        if (missingScopes.length) {
+          scopeWarning = `Reconnect Twitch to grant: ${missingScopes.join(', ')}`;
+        }
+      }
+    } catch (err) {
+      console.warn('[Twitch OAuth] scope validation failed:', err.message || err);
+    }
+  }
+  return {
+    clientIdConfigured: !!clientId,
+    hasSession,
+    login: session.username || twitchUserName || null,
+    chatConnected,
+    eventSubConnected,
+    connected: chatConnected,
+    missingScopes,
+    scopeWarning,
+    needsReconnect: hasSession && !chatConnected,
+  };
+}
+
+function readStoredTokensFromTc() {
+  const tc = loadTcConfig();
+  return {
+    accessToken: String(tc.accessToken || tc.oauth_token || '').replace(/^oauth:/i, '').trim(),
+    refreshToken: String(tc.refreshToken || '').trim(),
+    username: tc.username || '',
+  };
+}
+
 function initTwitchOAuthHost() {
   if (twitchOAuthHost) return twitchOAuthHost;
   twitchOAuthHost = createTwitchOAuthHost({
@@ -4704,6 +4771,7 @@ function initTwitchOAuthHost() {
     startTwitchChatConnection,
     ipcMain,
     getTwitchConnected: isTwitchChatConnected,
+    getTwitchOAuthStatus,
   });
   twitchOAuthHost.registerIpc();
   return twitchOAuthHost;
@@ -6243,6 +6311,39 @@ app.whenReady().then(() => {
       return { success: false, error: 'License manager not initialized' };
     }
     return licenseManager.revalidate();
+  });
+
+  ipcMain.handle('raven-dev-speak', async (_event, payload) => {
+    try {
+      if (licenseManager) {
+        const aiGate = licenseManager.canUseAiAssistant();
+        if (!aiGate.allowed) {
+          return { ok: false, error: aiGate.message };
+        }
+      }
+      const text = payload && payload.text;
+      let storedDevBase = null;
+      try {
+        const tc = loadTcConfig();
+        storedDevBase = tc.devApiBaseUrl || null;
+      } catch (e) {
+        storedDevBase = null;
+      }
+      return await speakViaDevApi(
+        {
+          fetchFn: fetch,
+          userDataPath,
+          overlayPort: overlayServerPort || 8080,
+          aiCommandsPath,
+          getMainWindow: () => win,
+          handleAIAudioCommands,
+          storedDevBaseUrl: storedDevBase,
+        },
+        text,
+      );
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : String(err) };
+    }
   });
 
   ipcMain.handle('preview-ai-voice', async (_event, payload) => {

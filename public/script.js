@@ -3776,13 +3776,20 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
   
   // Handle daily check-in redemptions first
   if (eventData.type === 'channel.channel_points_custom_reward_redemption.add') {
-    const rewardTitle = eventData.event.reward?.title || eventData.event.reward?.name || eventData.event.reward_title || '';
-    const configuredRewardName = dailyCheckinData.config.rewardName || 'Daily Check-In';
-    
-    // Check if this matches our daily check-in reward
-    if (rewardTitle.toLowerCase() === configuredRewardName.toLowerCase()) {
-      console.log('✅ Daily Check-In redemption detected!');
-      
+    const matchFn =
+      window.vdDailyCheckinReward && window.vdDailyCheckinReward.isDailyCheckinRewardRedemption;
+    const isDailyReward = matchFn
+      ? matchFn(eventData.event, dailyCheckinData.config)
+      : false;
+
+    if (isDailyReward) {
+      const rewardTitle =
+        eventData.event.reward?.title ||
+        eventData.event.reward?.name ||
+        eventData.event.reward_title ||
+        '';
+      console.log('✅ Daily Check-In redemption detected!', rewardTitle);
+
       // Process the daily check-in
       const checkinResult = await processDailyCheckin({
         user_id: eventData.event.user_id,
@@ -10749,8 +10756,106 @@ function setupAlertWidget() {
   // Alert storage - make it globally accessible for window functions
   window.savedAlerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
   let savedAlerts = window.savedAlerts; // Keep local reference for backward compatibility
-  
-  
+
+  function getAlertTypeDisplayName(alertType) {
+    const typeNames = {
+      follower: 'Follower',
+      subscriber: 'Subscriber',
+      resubscriber: 'Resubscriber',
+      'gift-sub': 'Gift Sub',
+      'gift-sub-received': 'Gift Received',
+      raid: 'Raid',
+      bits: 'Bits',
+      'channel-points': 'Channel Point Redemption',
+      'daily-checkin': 'Daily Checkin',
+      'first-chat-walkon': 'Walk On (First Chat)',
+    };
+    return typeNames[alertType] || alertType;
+  }
+
+  function updateAlertList() {
+    if (!alertListContainer) return;
+
+    const alertTypeSelectEl = document.getElementById('alert-type');
+    const selectedType = alertTypeSelectEl ? alertTypeSelectEl.value : 'follower';
+
+    const filteredAlerts = savedAlerts.filter((alert) => alert.type === selectedType);
+
+    if (filteredAlerts.length === 0) {
+      alertListContainer.innerHTML = `
+        <div class="no-alerts">
+          <div style="margin-bottom: 15px;">No ${selectedType} alerts configured yet</div>
+          <div style="color: var(--text-secondary); font-size: 14px;">
+            Create a new ${selectedType} alert using the form on the left.
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    const firstAlert = filteredAlerts[0];
+    const thresholdInfo =
+      selectedType === 'bits' && firstAlert.bitsThreshold
+        ? `<div class="alert-item-threshold" style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px;">Min bits: ${firstAlert.bitsThreshold}</div>`
+        : '';
+
+    const variationsHtml = `
+      <div class="alert-variations-list">
+        <div class="variations-header">
+          <span>Variations (${filteredAlerts.length} total, ${filteredAlerts.filter((a) => a.enabled !== false).length} enabled):</span>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', true)" style="padding: 4px 8px; font-size: 12px;">Enable All</button>
+            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', false)" style="padding: 4px 8px; font-size: 12px;">Disable All</button>
+            <label class="random-toggle">
+              <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
+                     onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
+              Random Mode
+            </label>
+          </div>
+        </div>
+        <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
+          <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
+        </div>
+        <div class="variations-items">
+          ${filteredAlerts
+            .map(
+              (alert) => `
+            <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
+              <label class="variation-toggle">
+                <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
+                       onchange="toggleAlert('${alert.id}', this.checked)" />
+                <span class="variation-text">
+                  ${alert.enabled !== false ? '✓' : '○'} ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
+                  <span class="overlay-badge">${alert.overlay || 'main'}</span>
+                </span>
+              </label>
+              <div class="variation-actions">
+                <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
+                <button class="variation-btn test" onclick="testSavedAlert('${alert.id}')">Test</button>
+                <button class="variation-btn delete" onclick="deleteAlert('${alert.id}')">Delete</button>
+              </div>
+            </div>
+          `,
+            )
+            .join('')}
+        </div>
+      </div>
+    `;
+
+    alertListContainer.innerHTML = `
+      <div class="alert-group" data-alert-type="${selectedType}">
+        <div class="alert-group-header">
+          <div class="alert-item-type">${getAlertTypeDisplayName(selectedType)}</div>
+          ${thresholdInfo}
+        </div>
+        ${variationsHtml}
+      </div>
+      `;
+  }
+
+  window.getAlertTypeDisplayName = getAlertTypeDisplayName;
+  window.updateAlertList = updateAlertList;
+
   // Helper function to convert file to base64
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -11745,6 +11850,9 @@ function setupAlertWidget() {
         }
         
         localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+        if (type === 'daily-checkin') {
+          updateDailyCheckinConfig();
+        }
         console.log('💾 Saved to localStorage. Verifying overlay property persisted...');
         
         // Verify the alert was saved correctly with overlay
@@ -11918,103 +12026,6 @@ function setupAlertWidget() {
     }
     
     updatePreview().catch(console.error);
-  }
-  
-  // Get display name for alert type
-  window.getAlertTypeDisplayName = function(alertType) {
-    const typeNames = {
-      'follower': 'Follower',
-      'subscriber': 'Subscriber', 
-      'resubscriber': 'Resubscriber',
-      'gift-sub': 'Gift Sub',
-      'gift-sub-received': 'Gift Received',
-      'raid': 'Raid',
-      'bits': 'Bits',
-      'channel-points': 'Channel Point Redemption',
-      'daily-checkin': 'Daily Checkin',
-      'first-chat-walkon': 'Walk On (First Chat)'
-    };
-    return typeNames[alertType] || alertType;
-  }
-
-  // Update alert list display - filtered by selected alert type
-  window.updateAlertList = function() {
-    if (!alertListContainer) return;
-    
-    // Get the currently selected alert type
-    const alertTypeSelect = document.getElementById('alert-type');
-    const selectedType = alertTypeSelect ? alertTypeSelect.value : 'follower';
-    
-    // Filter alerts by selected type
-    const filteredAlerts = savedAlerts.filter(alert => alert.type === selectedType);
-    
-    if (filteredAlerts.length === 0) {
-      alertListContainer.innerHTML = `
-        <div class="no-alerts">
-          <div style="margin-bottom: 15px;">No ${selectedType} alerts configured yet</div>
-          <div style="color: var(--text-secondary); font-size: 14px;">
-            Create a new ${selectedType} alert using the form on the left.
-          </div>
-        </div>
-      `;
-      return;
-    }
-    
-    // Render filtered alerts for the selected type
-    const firstAlert = filteredAlerts[0];
-    const thresholdInfo = selectedType === 'bits' && firstAlert.bitsThreshold 
-      ? `<div class="alert-item-threshold" style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px;">Min bits: ${firstAlert.bitsThreshold}</div>`
-      : '';
-    
-    // Create variations list from all alerts of this type
-    const variationsHtml = `
-      <div class="alert-variations-list">
-        <div class="variations-header">
-          <span>Variations (${filteredAlerts.length} total, ${filteredAlerts.filter(a => a.enabled !== false).length} enabled):</span>
-          <div style="display: flex; gap: 12px; align-items: center;">
-            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', true)" style="padding: 4px 8px; font-size: 12px;">Enable All</button>
-            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', false)" style="padding: 4px 8px; font-size: 12px;">Disable All</button>
-            <label class="random-toggle">
-              <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
-                     onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
-              Random Mode
-            </label>
-          </div>
-        </div>
-        <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
-          <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
-        </div>
-        <div class="variations-items">
-          ${filteredAlerts.map((alert, index) => `
-            <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
-              <label class="variation-toggle">
-                <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
-                       onchange="toggleAlert('${alert.id}', this.checked)" />
-                <span class="variation-text">
-                  ${alert.enabled !== false ? '✓' : '○'} ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
-                  <span class="overlay-badge">${alert.overlay || 'main'}</span>
-                </span>
-              </label>
-              <div class="variation-actions">
-                <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
-                <button class="variation-btn test" onclick="testSavedAlert('${alert.id}')">Test</button>
-                <button class="variation-btn delete" onclick="deleteAlert('${alert.id}')">Delete</button>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    `;
-    
-    alertListContainer.innerHTML = `
-      <div class="alert-group" data-alert-type="${selectedType}">
-        <div class="alert-group-header">
-          <div class="alert-item-type">${getAlertTypeDisplayName(selectedType)}</div>
-          ${thresholdInfo}
-        </div>
-        ${variationsHtml}
-      </div>
-      `;
   }
   
   // Test saved alert
@@ -13320,8 +13331,24 @@ async function loadDailyCheckinData() {
         console.log('📊 Loaded daily check-in data:', Object.keys(dailyCheckinData.viewers).length, 'viewers');
       }
     }
+    syncDailyCheckinConfigFromSavedAlerts();
   } catch (error) {
     console.error('❌ Error loading daily check-in data:', error);
+  }
+}
+
+function syncDailyCheckinConfigFromSavedAlerts() {
+  try {
+    const alerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+    const dailyAlert = alerts.find((a) => a.type === 'daily-checkin' && a.dailyCheckinConfig);
+    if (!dailyAlert || !dailyAlert.dailyCheckinConfig) return;
+    dailyCheckinData.config = {
+      ...dailyCheckinData.config,
+      ...dailyAlert.dailyCheckinConfig,
+    };
+    saveDailyCheckinData();
+  } catch (error) {
+    console.warn('Could not sync daily check-in config from saved alerts:', error);
   }
 }
 

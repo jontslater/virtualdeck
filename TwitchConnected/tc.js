@@ -27,7 +27,44 @@ window.twitchConfig = {
   channel: localStorage.getItem('twitch_channel') || '',
 };
 
-window.twitchConnectionState = 'disconnected'; // Initial state
+window.twitchConnectionState = 'disconnected'; // live chat connected (not merely saved session)
+
+function applyTwitchConnectedUi() {
+  window.twitchConnectionState = 'connected';
+  const twitchBtn = document.getElementById('twitch-connect');
+  if (twitchBtn) {
+    twitchBtn.classList.remove('disconnected');
+    twitchBtn.classList.add('connected');
+    twitchBtn.setAttribute('title', 'Connected to Twitch');
+    twitchBtn.style.backgroundColor = '#6441a5';
+    twitchBtn.setAttribute('aria-label', 'Connected to Twitch');
+  }
+}
+
+function applyTwitchDisconnectedUi() {
+  window.twitchConnectionState = 'disconnected';
+  const twitchBtn = document.getElementById('twitch-connect');
+  if (twitchBtn) {
+    twitchBtn.classList.remove('connected');
+    twitchBtn.classList.add('disconnected');
+    twitchBtn.setAttribute('title', 'Connect to Twitch');
+    twitchBtn.style.backgroundColor = '';
+    twitchBtn.setAttribute('aria-label', 'Connect to Twitch');
+  }
+}
+
+async function refreshTwitchSessionFromDisk() {
+  if (!window.electronAPI || !window.electronAPI.twitchOAuthRestoreSession) return;
+  try {
+    const result = await window.electronAPI.twitchOAuthRestoreSession();
+    if (result && result.ok && result.username) {
+      window.twitchConfig.channel = result.username;
+      try { localStorage.setItem('twitch_channel', result.username); } catch (e) {}
+    }
+  } catch (e) {
+    console.warn('Twitch session restore failed:', e);
+  }
+}
 
 function showTwitchConfigModal() {
   let modal = document.getElementById('twitch-modal');
@@ -252,8 +289,13 @@ function bindTwitchOAuthIpcUi() {
       }
       const modal = document.getElementById('twitch-modal');
       if (modal) modal.remove();
-      connectToTwitch();
     });
+  }
+  if (window.electronAPI.onTwitchConnected) {
+    window.electronAPI.onTwitchConnected(() => applyTwitchConnectedUi());
+  }
+  if (window.electronAPI.onTwitchCleared) {
+    window.electronAPI.onTwitchCleared(() => applyTwitchDisconnectedUi());
   }
 }
 
@@ -286,22 +328,12 @@ window.addEventListener('DOMContentLoaded', () => {
   // Listen for Twitch connection status from main process
   if (window.electronAPI && window.electronAPI.onTwitchConnected) {
     window.electronAPI.onTwitchConnected(() => {
-      const btn = document.getElementById('twitch-connect');
-      if (btn) {
-        // Keep the gif inside the button; only change visual connected state
-        btn.style.backgroundColor = '#6441a5'; // Twitch purple
-        btn.setAttribute('aria-label', 'Connected to Twitch');
-      }
+      applyTwitchConnectedUi();
       try { localStorage.setItem('vd_hide_twitch_banner', '1'); } catch (e) {}
     });
   } else if (window.ipcRenderer) {
     window.ipcRenderer.on('twitch-connected', () => {
-      const btn = document.getElementById('twitch-connect');
-      if (btn) {
-        // Keep the gif inside the button; only change visual connected state
-        btn.style.backgroundColor = '#6441a5'; // Twitch purple
-        btn.setAttribute('aria-label', 'Connected to Twitch');
-      }
+      applyTwitchConnectedUi();
       try { localStorage.setItem('vd_hide_twitch_banner', '1'); } catch (e) {}
     });
   }
@@ -322,12 +354,21 @@ window.addEventListener('DOMContentLoaded', () => {
         clientId: window.twitchConfig.clientId
       });
     }
-    connectToTwitch();
   } else if (window.electronAPI && window.electronAPI.twitchOAuthGetStatus) {
-    window.electronAPI.twitchOAuthGetStatus().then((status) => {
+    window.electronAPI.twitchOAuthGetStatus().then(async (status) => {
       if (status && status.login) {
         window.twitchConfig.channel = status.login;
         try { localStorage.setItem('twitch_channel', status.login); } catch (e) {}
+      }
+      if (status && status.hasSession && !status.chatConnected) {
+        await refreshTwitchSessionFromDisk();
+      } else if (status && status.chatConnected) {
+        applyTwitchConnectedUi();
+      } else {
+        applyTwitchDisconnectedUi();
+      }
+      if (status && status.scopeWarning) {
+        console.warn('[Twitch]', status.scopeWarning);
       }
     }).catch(() => {});
   }
@@ -2392,15 +2433,20 @@ function connectToTwitch() {
     alert('Please connect to Twitch first.');
     return;
   }
-  // All Twitch chat logic will be handled in main.js via require('tmi.js') and IPC
-  window.twitchConnectionState = 'connected';
+  // Chat/EventSub connect in main; UI flips to connected on twitch-connected IPC only.
+  if (window.electronAPI && window.electronAPI.sendTwitchConnect) {
+    window.electronAPI.sendTwitchConnect({
+      username: window.twitchConfig.channel,
+      oauth: window.twitchConfig.oauth,
+      clientId: window.twitchConfig.clientId,
+    });
+  }
+  if (!window.electronAPI || !window.electronAPI.onTwitchConnected) {
+    applyTwitchConnectedUi();
+  }
   const twitchBtn = document.getElementById('twitch-connect');
   if (twitchBtn) {
-    twitchBtn.classList.remove('disconnected');
-    twitchBtn.classList.add('connected');
-    twitchBtn.setAttribute('title', 'Connected to Twitch');
-    // Set visual connected color (Twitch purple) but keep inner GIF intact
-    twitchBtn.style.backgroundColor = '#6441a5';
+    twitchBtn.setAttribute('title', 'Connecting to Twitch…');
   }
   let status = document.getElementById('twitch-status');
   if (!status) {

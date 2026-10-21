@@ -98,13 +98,27 @@
     }
 
     try {
+      if (global.electronAPI && typeof global.electronAPI.ravenDevSpeak === 'function') {
+        const hostResult = await global.electronAPI.ravenDevSpeak({ text: trimmed });
+        if (hostResult && hostResult.ok) return { ok: true, via: hostResult.via || 'host' };
+        if (hostResult && hostResult.error) {
+          return { ok: false, error: lib ? lib.formatSpeakNetworkError(hostResult.error) : hostResult.error };
+        }
+      }
+
       const devApiBaseUrl = await discoverDevApiBaseUrl();
       const res = await fetchWithTimeout(
         `${devApiBaseUrl}${DEV_SPEAK_PATH}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: trimmed, mood: 'neutral', urgency: 'med' }),
+          body: JSON.stringify({
+            text: trimmed,
+            mood: 'neutral',
+            urgency: 'med',
+            playbackTarget: 'host',
+            dashboardPlayback: true,
+          }),
         },
         10000,
       );
