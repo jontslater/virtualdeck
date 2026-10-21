@@ -1,0 +1,146 @@
+# VirtualDeck Windows Installer Packaging Guide
+
+This guide explains how to build the VirtualDeck Windows installer with the bundled Raven voice AI sidecar.
+
+## Overview
+
+The VirtualDeck installer can package VirtualDeck and Raven into a single NSIS installer. After installation:
+
+- Users run the installer once
+- VirtualDeck and Raven are installed together (when built with Raven)
+- Raven auto-starts when VirtualDeck launches (packaged mode)
+- Users fill API keys once in `%APPDATA%\VirtualDeck\raven.env` (BYOK)
+
+## Prerequisites (Windows build PC)
+
+1. **Node.js** (v18+) on PATH
+2. **pnpm 9.15.0** via `npx --yes pnpm@9.15.0` (override with `$env:PNPM_CMD` if needed; avoids corepack keyid issues on Node 20.18.x)
+3. **AITuber** clone: https://github.com/jontslater/AITuber  
+   - Default path: `E:\AIChatBot`  
+   - Or: `$env:AITUBER_ROOT = "C:\path\to\AITuber"`
+4. **PowerShell** (script uses `-ExecutionPolicy Bypass` via `package.json`)
+5. **ffmpeg + ffplay** (real binaries, not Chocolatey shims under ~1 MB)  
+   - Set `$env:FFMPEG_DIR` to a folder containing `ffmpeg.exe` and `ffplay.exe`, or  
+   - Place both under `AITuber\runtime\ffmpeg\`, or  
+   - Install ffmpeg so the resolved binary is the full build (script follows Chocolatey shims to `C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin`)
+
+Optional: portable `node.exe` under `AITuber\runtime\node\` (otherwise the staging script copies system `node.exe` into `extra/raven/node/`).
+
+## AITuber layout (pnpm monorepo)
+
+The staging script targets Jonathan's AITuber checkout:
+
+| Path | Role |
+|------|------|
+| `apps/controller` | Raven controller (TypeScript → `dist/`) |
+| `packages/*` | Workspace packages (including VirtualDeck bridge) |
+| `scripts/raven-sidecar.js` | Sidecar entry (copied to `extra/raven/sidecar.js`) |
+| `pnpm-workspace.yaml` | Monorepo marker |
+
+**What `npm run stage-raven` does for the monorepo:**
+
+0. Clears stale generated output under `extra/raven/` via Node `fs.rmSync` (long paths, does not follow junctions), keeping only git-tracked paths from `git ls-files extra/raven` (fallback: `README.md`, `env.defaults`). Verifies the folder is clean before continuing. Refuses to delete outside `extra/raven`.
+1. Uses existing AITuber `node_modules` when `apps/controller` deps resolve (skips `pnpm install`; pnpm 9 may still validate the whole lockfile on install). Otherwise tries `pnpm install --frozen-lockfile --filter <controller>...`, and continues if install fails but deps still resolve.
+2. Builds every package in the controller dependency closure (including `packages/integrations/virtualdeck`, even though it is staged separately later); failures are **warnings** if `dist/` already exists (e.g. `tts-piper` typecheck issues)
+3. `pnpm --filter <controller-package-name>... run build` (workspace deps + controller in pnpm topo order)
+4. Stages every workspace package the controller needs (e.g. `shared`, `director`, `llm`, `trivia`, `tts-piper`) under `extra/raven/app/packages/**` in dependency order: `dist` + rewritten `package.json` + `npm install --omit=dev --install-links` (real copies, no dangling symlinks)
+5. Stages VirtualDeck bridge (`packages/integrations/virtualdeck`, outside pnpm workspace) **before** `apps/controller`: `tsc -p`, copy `dist` + `package.json`, `npm install --omit=dev --install-links`, verify `ws` and `@ai-streamer/shared` — so the controller’s `file:../../packages/integrations/virtualdeck` path exists for install
+6. Stages `apps/controller` with `file:` rewrites for local `@ai-streamer/*` deps (preflight asserts every controller `file:` dependency is already on disk)
+7. Copies `scripts/raven-sidecar.js` -> `sidecar.js`
+8. Verifies controller `package.json` dependencies resolve from `app/apps/controller`, walks `app/` for broken symlinks, and checks `app/apps/controller/dist/index.js` + `app/packages/integrations/virtualdeck/dist/bridge-server.js`
+9. Bundles `node.exe` (early, for bridge npm) and ffmpeg/ffplay
+10. Writes `env.defaults` from the VirtualDeck template (empty API keys only)
+11. Fails if node, ffmpeg, sidecar, controller `dist`, security checks, or dependency install fail
+
+Legacy layouts (`sidecar.js` at repo root, or scripts layout with `app/`) are still supported for older checkouts.
+
+## Build commands
+
+```powershell
+cd VirtualDeck
+npm install
+
+# Stage Raven from AITuber (requires AITUBER_ROOT, pnpm, ffmpeg)
+npm run stage-raven
+
+# Full installer with Raven (keyless, safe to share)
+npm run build:win:with-raven
+```
+
+**Jonathan-only personal installer** (bundles API keys from `%AITUBER_ROOT%\.env` into staged `env.defaults`):
+
+```powershell
+npm run build:win:personal
+```
+
+- Uses `stage-raven -BundleKeys` (or `RAVEN_BUNDLE_KEYS=1`)
+- Key source: AITuber `.env` when it has values; otherwise `%APPDATA%\VirtualDeck\raven.env` (override with `-KeysFrom` / `RAVEN_KEYS_FROM`)
+- Merges **every** non-empty `KEY=VALUE` from the source into staged `env.defaults` so a personal install matches the dev machine (persona fields, model names, TTS device, dev-user lists, API keys, etc.). Template lines keep their comments and order; source values override placeholders; keys not in the template are appended at the end. A small denylist skips machine-only vars (`PATH`, `APPDATA`, `USERPROFILE`, …), `RAVEN_ENV_PATH` / `RAVEN_ENV_FILE`, and absolute paths under the build PC’s temp or workspace roots (`AITUBER_ROOT`, repo root, `%TEMP%`). Skipped names are logged; secret-like keys log name + length only.
+- `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` still map to `LLM_API_KEY` / `TTS_API_KEY` when those are empty. Each bundled setting copies the source file’s **raw** `KEY=…` line(s) verbatim (no re-escaping). Source UTF-8 BOMs are stripped; merged `env.defaults` is written by Node as UTF-8 without BOM (PowerShell uses `Read-TextFileUtf8NoBom` / `Write-TextFileUtf8NoBom` so PS 5.1 does not treat UTF-8 as Windows-1252). Raven loaders strip BOM when parsing. Multiline quoted blocks are copied whole but log a warning (line-based loaders).
+- Skips populated-key checks for `env.defaults`; prints loud warnings
+- Restores committed `extra/raven/env.defaults` after the build (even on failure) via `scripts/build-win-personal.js` + `restore-raven-env-defaults`
+- Template backup lives under `%TEMP%\virtualdeck-raven-env-backup` (never under `extra/raven`, which is packaged)
+- On first launch, packaged `env.defaults` is copied to `%APPDATA%\VirtualDeck\raven.env` if that file does not exist; an existing `raven.env` is not overwritten (empty fields may be filled from bundled defaults)
+
+**VirtualDeck-only installer** (no Raven bundle):
+
+```powershell
+npm run build:win
+```
+
+This sets `SKIP_RAVEN=1` during `prepare-build` so a missing `extra/raven/sidecar.js` is allowed.
+
+**Output:** `dist/VirtualDeck Setup <version>.exe`
+
+### Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `AITUBER_ROOT` | Path to AITuber clone (default `E:\AIChatBot`) |
+| `FFMPEG_DIR` | Directory with `ffmpeg.exe` and `ffplay.exe` |
+| `PNPM_CMD` | pnpm invocation (default `npx --yes pnpm@9.15.0`) |
+| `RAVEN_CONTROLLER_FILTER` | Override pnpm path filter (default `./apps/controller`) |
+| `RAVEN_CONTROLLER_PACKAGE` | Override controller package name for `pnpm install --filter` (default read from `apps/controller/package.json`, e.g. `@ai-streamer/controller`) |
+| `RAVEN_BUNDLE_KEYS=1` | Personal build: allow bundled keys in `env.defaults` (used by `build:win:personal`) |
+| `RAVEN_KEYS_FROM` | Personal build: explicit path to a `.env` file when AITuber `.env` is empty (default fallback: `%APPDATA%\VirtualDeck\raven.env`) |
+| `SKIP_RAVEN=1` | Allow build without staged Raven (`prepare-build:no-raven`) |
+
+## Security model
+
+- Installers **never** ship API keys; `env.defaults` uses blank placeholders only.
+- Staging never copies `.env` / `raven.env` from AITuber.
+- `prepare-build.js` does **not** fail merely because `.env` or `twitch-oauth-config.js` exists in the repo root (common local dev files). It checks whether those paths are included in `electron-builder` `files` / `extraResources`, and scans `extra/raven` for credential files and populated keys.
+- `build:win:with-raven` requires `extra/raven/sidecar.js` unless `SKIP_RAVEN=1`.
+
+Run packaging helper tests on any OS:
+
+```bash
+npm run test:prepare-build
+```
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| `AITuber repository not found` | Clone AITuber or set `$env:AITUBER_ROOT` |
+| `pnpm is required` | `npm i -g pnpm`, then re-run `stage-raven` |
+| `ffmpeg.exe ... only N bytes — likely a shim` | Set `$env:FFMPEG_DIR` to real binaries or use Chocolatey `lib\ffmpeg\tools\ffmpeg\bin` |
+| `Security validation failed` on empty `LLM_API_KEY=` | Update to this branch (line-by-line key check; CRLF-safe) |
+| `extra/raven/sidecar.js missing` on with-raven build | Run `npm run stage-raven` first |
+| `controller ... no dist entrypoint` | Fix `apps/controller` build in AITuber; confirm `pnpm --filter ./apps/controller run build` works |
+| `npm install in staged directory failed` | Check network/Node version; delete `extra/raven` and re-stage |
+
+## File locations
+
+| | Path |
+|--|------|
+| Staged Raven (build machine) | `extra/raven/` (gitignored except README + template `env.defaults`) |
+| Installer output | `dist/` |
+| Installed Raven (end user) | `<VirtualDeck>\resources\raven\` |
+| User API keys | `%APPDATA%\VirtualDeck\raven.env` |
+
+## Ports
+
+- **8080** — overlay HTTP (configurable in `raven.env`)
+- **8081** — VirtualDeck ↔ Raven WebSocket
+- **8091** — JARVIS tool API

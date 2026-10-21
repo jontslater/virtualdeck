@@ -1,13 +1,24 @@
 {
   "name": "virtualdeck",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "A virtual deck application built with Electron",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "prepare-build": "node prepare-build.js",
-    "dist": "npm run prepare-build && electron-builder",
-    "build:win": "npm run prepare-build && electron-builder --win"
+    "prepare-build:no-raven": "node -e \"process.env.SKIP_RAVEN='1'; require('./prepare-build').runPrepareBuild()\"",
+    "test": "node test-prepare-build.js && node test-renderer-syntax.js && node test-raven-ai-control.js && node test-raven-manual-speak.js && node test-alert-widget.js && node test-alert-widget-layout.js && node test-alert-widget-setup-dom.js && node test-menu-paths.js && node test-service-poll.js && node test-deck-icon-catalog.js && node test-raven-setup.js && node test-ui-polish.js && node test-vd-console.js && node test-release-metadata.js && node test-security.js && node test-app-updater.js && node test-license.js && node test-license-persistence.js && node test-lemon-squeezy-provider.js && node test-ai-config.js && node test-raid-favorites.js && node test-raven-env-migrate.js && node test-ai-audio-modal.js && node test-media-file.js && node test-macro-hotkeys.js && node test-scene-providers.js && node test-voice-macro.js && node test-alert-wysiwyg.js && node test-input-focus.js && node test-twitch-oauth.js && node test-deck-drop.js && node test-daily-checkin-reward.js && node test-channel-rewards.js && node test-portable-secret.js",
+    "test:prepare-build": "node test-prepare-build.js",
+    "test:ai-config": "node test-ai-config.js",
+    "stage-raven": "powershell -ExecutionPolicy Bypass -File scripts/stage-raven-runtime.ps1",
+    "stage-raven:personal": "powershell -ExecutionPolicy Bypass -File scripts/stage-raven-runtime.ps1 -BundleKeys",
+    "restore-raven-env-defaults": "node scripts/restore-raven-env-defaults.js",
+    "dist": "npm run prepare-build:no-raven && electron-builder",
+    "build:win": "npm run prepare-build:no-raven && electron-builder --win --publish never",
+    "build:win:with-raven": "npm run stage-raven && npm run prepare-build && electron-builder --win --publish never",
+    "build:win:personal": "node scripts/build-win-personal.js",
+    "build:win:publish": "npm run prepare-build:no-raven && electron-builder --win --publish always",
+    "build:win:publish:raven": "npm run stage-raven && npm run prepare-build && electron-builder --win --publish always"
   },
   "keywords": [
     "electron",
@@ -23,7 +34,8 @@
   },
   "devDependencies": {
     "electron": "^39.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "jsdom": "^26.1.0"
   },
   "build": {
     "appId": "com.virtualdeck.app",
@@ -40,12 +52,25 @@
     "files": [
       "main.js",
       "preload.js",
+      "raven-host.js",
+      "vtuber-manager.js",
+      "streamlabs-tcp.js",
+      "jarvis-server.js",
+      "jarvis-tools.js",
+      "lib/**/*",
       "config.json",
       "public/**/*",
+      "!public/*.meld-backup",
       "overlays/**/*",
       "skins/**/*",
       "TwitchConnected/**/*",
       "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "extra/raven",
+        "to": "raven"
+      }
     ],
     "mac": {
       "target": []
@@ -60,7 +85,8 @@
         }
       ],
       "icon": "public/icons/VD.gif",
-      "sign": null
+      "sign": null,
+      "artifactName": "VirtualDeck-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -74,8 +100,9 @@
     "dotenv": "^16.4.5",
     "electron-updater": "^6.6.2",
     "fs-extra": "^11.3.0",
+    "node-fetch": "^2.7.0",
     "tmi.js": "^1.8.5",
-    "virtualdeck": "file:",
-    "windows-shortcuts": "^0.1.6"
+    "windows-shortcuts": "^0.1.6",
+    "ws": "^8.18.0"
   }
 }

@@ -1,32 +1,37 @@
-# Twitch OAuth Setup
+# Twitch OAuth Setup (VirtualDeck desktop)
 
-To enable Twitch login in VirtualDeck, you need to set up OAuth credentials. This is a one-time setup that allows users to login with just one click.
+VirtualDeck connects to Twitch with **OAuth Device Code Grant** (primary) and a **localhost implicit redirect** fallback. No client secret is embedded in the Electron app.
 
-## Quick Setup
+## Owner setup (Twitch Developer Console)
 
-1. **Go to Twitch Developer Console**
-2. **Create a new application:**
-   - Name: "VirtualDeck"
-   - OAuth Redirect URLs: `http://localhost:3000/oauth/callback`
-   - Category: choose appropriate category
-3. **Copy your credentials:**
-   - **Client ID**
-   - **Client Secret**
+1. Open [Twitch Developer Console → Applications](https://dev.twitch.tv/console/apps).
+2. **Register Your Application** (or edit the existing VirtualDeck app).
+3. Set **Client Type** to **Public** (confidential / secret-based flows are not used in the shipped app).
+4. Under **OAuth Redirect URLs**, add:
+   - `http://localhost:17563/oauth/callback`
+5. Save the application and copy the **Client ID**.
+6. Release builds ship with the public VirtualDeck Client ID in `lib/twitch-oauth.js`. Override with `TWITCH_CLIENT_ID` or gitignored `twitch-oauth-config.js` if needed.
 
-## Configure credentials (choose an option)
+Device Code Grant is enabled for public clients on Twitch; no separate toggle is required beyond using a public client.
 
-**Option A: twitch-oauth-config.js** (gitignored – never commit secrets)
-1. Copy `twitch-oauth-config.example.js` to `twitch-oauth-config.js`
-2. Replace the placeholder values with your Client ID and Client Secret
+### Scopes
 
-**Option B: environment variables**
-```bash
-TWITCH_CLIENT_ID=your_client_id_here
-TWITCH_CLIENT_SECRET=your_client_secret_here
-```
+VirtualDeck requests the scopes in `lib/twitch-oauth-scopes.js` (chat, channel points, raids, etc.). Users approve these on Twitch during login.
 
-## Security Notes
-- Client Secret is used server-side; access tokens are refreshed and stored securely.
-- **Never commit** `twitch-oauth-config.js` – it is in `.gitignore`. Use the example file as a template.
-- If credentials were ever exposed in git history, **revoke and rotate** them in the Twitch Developer Console immediately.
+## End-user experience
 
+1. **Tools → Twitch** (or the Twitch connect entry point) → **Connect with Twitch**.
+2. The app shows a short code and opens Twitch in the browser.
+3. After **Authorize**, VirtualDeck stores tokens with OS-backed encryption (`safeStorage`) in `tc_config.json` and connects chat/EventSub.
+4. **Disconnect Twitch** clears stored tokens and shuts down connections.
+5. **Advanced: manual token entry** remains for power users.
+
+## Token refresh
+
+When Twitch returns a refresh token (device flow), VirtualDeck refreshes access tokens automatically before they expire. If refresh fails, the user is prompted to connect again.
+
+## Security notes
+
+- Do **not** commit `twitch-oauth-config.js` or real Client IDs in the repository.
+- Rotate credentials in the Twitch console if they were ever exposed.
+- Access/refresh tokens are not written to `localStorage` by the OAuth flow.

@@ -1,7 +1,24 @@
-require('dotenv').config();
-const { app, BrowserWindow, globalShortcut, Menu, dialog } = require('electron');
+const { app, BrowserWindow, globalShortcut, Menu, dialog, safeStorage, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { installProductionConsole, packagedArgvFlag } = require('./lib/vd-console');
+installProductionConsole();
+// Node's crypto: Electron's main process also exposes WebCrypto as globalThis.crypto,
+// which has no randomBytes(), so a missing require fails only at call time.
+const crypto = require('crypto');
+(() => {
+  const envPaths = [path.join(__dirname, '.env'), path.join(process.cwd(), '.env')];
+  for (const envPath of envPaths) {
+    try {
+      if (fs.existsSync(envPath)) {
+        require('dotenv').config({ path: envPath, override: false });
+        console.log('[env] Loaded', envPath);
+      }
+    } catch (e) {
+      console.warn('[env] Failed to load', envPath, e && e.message);
+    }
+  }
+})();
 const fse = require('fs-extra'); // helpful for file copying
 const { ipcMain } = require('electron');
 const ws = require('windows-shortcuts'); // Import windows-shortcuts
@@ -12,27 +29,48 @@ const tmi = require('tmi.js'); // Import tmi.js for Twitch chat
 const WebSocket = require('ws');
 const fetch = require('node-fetch');
 const http = require('http');
-const https = require('https');
-const url = require('url');
-const querystring = require('querystring');
 const { autoUpdater } = require('electron-updater');
-let twitchConfig = {};
-try {
-  // Try to load project-provided twitch-oauth-config.js (used in development / custom builds)
-  twitchConfig = require('./twitch-oauth-config.js');
-} catch (e) {
-  // If the file is not present (packaged installer may omit it), fall back to environment variables.
-  console.warn('⚠️ twitch-oauth-config.js not found - falling back to environment variables if present');
-  twitchConfig = {
-    clientId: process.env.TWITCH_CLIENT_ID || '',
-    clientSecret: process.env.TWITCH_CLIENT_SECRET || '',
-    redirectUri: process.env.TWITCH_REDIRECT_URI || 'http://localhost:3000/oauth/callback'
-  };
-}
+const { createAppUpdater } = require('./lib/app-updater');
+const VTuberManager = require('./vtuber-manager');
+const { stopStreamlabsStreamingIfLive, streamlabsTcpRequest } = require('./streamlabs-tcp');
+const { SceneProviders, DEFAULT_OBS_URL } = require('./lib/scene-providers');
+const ravenHost = require('./raven-host');
+const SecurityManager = require('./lib/security');
+const { JarvisServer } = require('./jarvis-server');
+const { registry: jarvisRegistry } = require('./jarvis-tools');
+const { AIConfigManager } = require('./lib/ai-config');
+const { fetchVoicePreviewAudio, validateVoicePreviewRequest } = require('./lib/ai-voice-preview');
+const { readMediaFileAsDataUrl } = require('./lib/media-file');
+const { WAKE_NAMES_REQUIRE_RAVEN_RESTART } = require('./lib/wake-names');
+const { copyTreeSync, copyFileSyncSafe } = require('./lib/copy-tree-sync');
+const RaidFavoritesStore = require('./lib/raid-favorites-store');
+const { RaidHelixClient } = require('./lib/raid-helix');
+const { buildTwitchAuthorizeUrl, getTwitchOAuthClientId } = require('./lib/twitch-oauth');
+const { createTwitchOAuthHost } = require('./lib/twitch-oauth-host');
+const { encodeField, decodeField } = require('./lib/portable-secret');
+const { speakViaDevApi } = require('./lib/raven-dev-speak');
+const { isValidTwitchLogin, normalizeTwitchLogin } = require('./lib/twitch-login');
+const { sanitizeTwitchProfileImageUrl: sanitizeTwitchProfileImageUrlLib } = require('./lib/twitch-profile-image');
 
-// Configure auto-updater
-autoUpdater.autoDownload = false; // Don't auto-download, ask user first
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+
+// Configure auto-updater (GitHub Releases via electron-builder publish config)
+autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.allowDowngrade = false;
+
+let appUpdater;
+function sendUpdateEventToRenderer(channel, payload) {
+  try {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(channel, payload);
+    }
+  } catch (e) {
+    console.warn('[Updater] renderer notify failed:', e && e.message);
+  }
+}
 
 // Global debouncing mechanism to prevent duplicate button triggers
 const recentButtonTriggers = new Map();
@@ -50,6 +88,24 @@ function isRecentButtonTrigger(label) {
 
 function triggerButtonWithDebounce(label, source = 'unknown') {
   console.log(`🔍 triggerButtonWithDebounce called for "${label}" from ${source}`);
+  if (licenseManager) {
+    try {
+      const profile = loadProfile(currentActiveProfile);
+      const gate = licenseManager.canTriggerButton(profile, label);
+      if (!gate.allowed) {
+        console.log(`🔒 Blocked trigger for "${label}" from ${source}:`, gate.reason);
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('license-upsell', {
+            reason: gate.reason,
+            message: gate.message,
+          });
+        }
+        return false;
+      }
+    } catch (e) {
+      console.warn('[License] trigger check failed:', e && e.message);
+    }
+  }
   if (isRecentButtonTrigger(label)) {
     console.log(`🚫 Skipping duplicate trigger for "${label}" from ${source} (within ${BUTTON_TRIGGER_DEBOUNCE_MS}ms)`);
     return false;
@@ -64,20 +120,294 @@ function triggerButtonWithDebounce(label, source = 'unknown') {
   return false;
 }
 
-// Use Electron's userData directory for config and user files
+// Use Electron's userData directory for config and user files (never the app install dir).
 const userDataPath = app.getPath('userData');
+try {
+  fs.mkdirSync(userDataPath, { recursive: true });
+} catch (err) {
+  console.warn('[startup] Could not create userData directory:', err && err.message);
+}
 const configPath = path.join(userDataPath, 'config.json');
 const profilesMetaPath = path.join(userDataPath, 'profiles-meta.json');
 const userSoundsDir = path.join(userDataPath, 'sounds');
 const userSkinsDir = path.join(userDataPath, 'skins');
 const defaultConfigPath = path.join(__dirname, 'config.json');
+
+// Initialize security manager
+const securityManager = new SecurityManager(userDataPath);
+securityManager.getOrCreateToken();
+const wsRateLimiter = securityManager.createRateLimiter(1000, 10);
+
+const { LicenseManager } = require('./lib/license/license-manager');
+const { computeButtonEntitlements } = require('./lib/license/button-entitlements');
+let licenseManager;
+function broadcastLicenseStatus() {
+  try {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('license-status-changed', licenseManager.getStatusForUi());
+    }
+  } catch (e) {
+    console.warn('[License] broadcast failed', e && e.message);
+  }
+}
+try {
+  licenseManager = new LicenseManager({
+    userDataPath,
+    safeStorage,
+    onStatusChange: () => broadcastLicenseStatus(),
+  });
+  licenseManager.startPeriodicRevalidation();
+  const bootLicense = licenseManager.getStatusForUi();
+  console.log(
+    '✅ License manager initialized (provider:',
+    licenseManager.config.provider,
+    ', licensed:',
+    !!bootLicense.licensed,
+    ', unlimitedButtons:',
+    !!bootLicense.unlimitedButtons,
+    ')',
+  );
+} catch (err) {
+  console.error('❌ License manager failed to initialize:', err);
+  licenseManager = null;
+}
+
+function assertProfileLicenseConstraints(nextProfile, prevProfile) {
+  if (!licenseManager) return;
+  if (licenseManager.getEntitlements().unlimitedButtons) return;
+  const prevDeck = computeButtonEntitlements(prevProfile, false);
+  const nextButtons = nextProfile.buttons || [];
+  const prevButtons = prevProfile.buttons || [];
+  if (nextButtons.length > prevButtons.length) {
+    const addCheck = licenseManager.canAddButton(prevProfile);
+    if (!addCheck.allowed) {
+      throw new Error(addCheck.message);
+    }
+  }
+  for (const btn of nextButtons) {
+    if (!btn || !btn.id) continue;
+    if (!prevDeck.lockedIds.has(btn.id)) continue;
+    const prevBtn = prevButtons.find((b) => b && b.id === btn.id);
+    if (prevBtn && JSON.stringify(prevBtn) !== JSON.stringify(btn)) {
+      const editCheck = licenseManager.canEditButton(prevProfile, btn.id);
+      throw new Error(editCheck.message);
+    }
+  }
+}
+
+// Initialize VTuber Manager
+let vtuberManager;
+try {
+  vtuberManager = new VTuberManager(userDataPath);
+  console.log('✅ VTuber Manager initialized');
+} catch (err) {
+  console.error('❌ Error initializing VTuber Manager:', err);
+  vtuberManager = null;
+}
+
+// Initialize Macro Manager
+const MacroManager = require('./lib/macro-manager');
+const { MacroHotkeyRegistrar } = require('./lib/macro-hotkey-registrar');
+const { registerNativeDialogIpc, installWindowFocusRelay } = require('./lib/native-dialog');
+const { HotkeySuspension } = require('./lib/hotkey-suspension');
+const { parseAccelerator: parseMacroHotkey, findHotkeyConflicts } = require('./public/macro-hotkeys');
+let macroManager;
+let raidFavoritesStore;
+try {
+  macroManager = new MacroManager(userDataPath);
+  raidFavoritesStore = new RaidFavoritesStore(userDataPath);
+  console.log('✅ Macro Manager initialized');
+} catch (err) {
+  console.error('❌ Error initializing Macro Manager:', err);
+  macroManager = null;
+}
+if (!raidFavoritesStore) {
+  try {
+    raidFavoritesStore = new RaidFavoritesStore(userDataPath);
+  } catch (err) {
+    console.error('❌ Error initializing Raid Favorites store:', err);
+    raidFavoritesStore = null;
+  }
+}
+
+// Initialize AI Config Manager
+let aiConfigManager;
+try {
+  aiConfigManager = new AIConfigManager();
+  console.log('✅ AI Config Manager initialized');
+} catch (err) {
+  console.error('❌ Error initializing AI Config Manager:', err);
+  aiConfigManager = null;
+}
 const defaultSoundsDir = path.join(__dirname, 'public', 'assets', 'sounds');
 const defaultSkinsDir = path.join(__dirname, 'skins');
 const tcConfigPath = path.join(userDataPath, 'tc_config.json');
 const dailyCheckinsPath = path.join(userDataPath, 'checkins.json');
 const hydrationConfigPath = path.join(userDataPath, 'hydration-config.json');
-const progressionsPath = path.join(userDataPath, 'progressions.json');
-const progressionsMediaPath = path.join(userDataPath, 'media', 'progressions');
+const aiEventsLogPath = path.join(userDataPath, 'ai-events.log');
+const aiCommandsPath = path.join(userDataPath, 'ai-commands.json');
+const aiTtsSoundsDir = path.join(userDataPath, 'sounds', 'ai-tts');
+
+
+/** Append one NDJSON line for AIChatBot bridge (same format as twitch_chat). */
+function appendAiEventsLogLine(payload) {
+  try {
+    if (!payload || typeof payload !== 'object') return;
+    const channelNorm = twitchUserName
+      ? String(twitchUserName).replace(/^#/, '').toLowerCase()
+      : undefined;
+    const line = {
+      ...payload,
+      channel: payload.channel || channelNorm,
+      timestamp: payload.timestamp || Date.now(),
+    };
+    fs.appendFileSync(aiEventsLogPath, JSON.stringify(line) + '\n', 'utf-8');
+    console.log(`📝 [AI Events] wrote ${line.type}${line.channel ? ` (${line.channel})` : ''}`);
+  } catch (err) {
+    console.error('❌ [AI Events] append failed:', err);
+  }
+}
+
+/**
+ * Map Twitch EventSub notifications to ai-events.log types consumed by AIChatBot.
+ * @param {string} subscriptionType e.g. channel.subscribe
+ * @param {object} ev payload.event
+ * @param {string} [messageId] EventSub metadata.message_id (unique per delivery)
+ */
+function appendAiEventSubToLog(subscriptionType, ev, messageId) {
+  if (!subscriptionType || !ev || typeof ev !== 'object') return;
+  const ch = twitchUserName ? String(twitchUserName).replace(/^#/, '').toLowerCase() : undefined;
+  const id =
+    messageId ||
+    `${subscriptionType}_${ev.user_id || ev.from_broadcaster_user_id || 'evt'}_${Date.now()}`;
+  try {
+    switch (subscriptionType) {
+      case 'channel.follow': {
+        appendAiEventsLogLine({
+          id,
+          type: 'twitch_follow',
+          channel: ch,
+          user: {
+            id: ev.user_id,
+            name: ev.user_login,
+            displayName: ev.user_name || ev.user_login,
+          },
+        });
+        break;
+      }
+      case 'channel.subscribe': {
+        appendAiEventsLogLine({
+          id,
+          type: 'twitch_sub',
+          channel: ch,
+          user: {
+            id: ev.user_id,
+            name: ev.user_login,
+            displayName: ev.user_name || ev.user_login,
+          },
+          message: ev.is_gift ? 'Received a gifted subscription' : 'New subscriber',
+          amount: ev.tier === '3000' ? 3 : ev.tier === '2000' ? 2 : 1,
+        });
+        break;
+      }
+      case 'channel.subscription.message': {
+        const months = ev.cumulative_months != null ? ev.cumulative_months : undefined;
+        const subText =
+          ev.message && ev.message.text ? String(ev.message.text) : 'Resubscribed';
+        appendAiEventsLogLine({
+          id,
+          type: 'twitch_sub',
+          channel: ch,
+          user: {
+            id: ev.user_id,
+            name: ev.user_login,
+            displayName: ev.user_name || ev.user_login,
+            monthsSubscribed: months,
+          },
+          message: months != null ? `${months}-month resub: ${subText}` : subText,
+          amount: months,
+        });
+        break;
+      }
+      case 'channel.subscription.gift': {
+        if (ev.is_anonymous) {
+          appendAiEventsLogLine({
+            id,
+            type: 'twitch_gift_sub',
+            channel: ch,
+            user: { name: 'anonymous', displayName: 'Anonymous' },
+            amount: ev.total || 1,
+            message: `Anonymous gifted ${ev.total || 1} subs (tier ${ev.tier || '1000'})`,
+          });
+        } else {
+          appendAiEventsLogLine({
+            id,
+            type: 'twitch_gift_sub',
+            channel: ch,
+            user: {
+              id: ev.user_id,
+              name: ev.user_login,
+              displayName: ev.user_name || ev.user_login,
+            },
+            amount: ev.total || 1,
+            message: `Gifted ${ev.total || 1} subscriptions (tier ${ev.tier || '1000'})`,
+          });
+        }
+        break;
+      }
+      case 'channel.raid': {
+        appendAiEventsLogLine({
+          id,
+          type: 'twitch_raid',
+          channel: ch,
+          user: {
+            id: ev.from_broadcaster_user_id,
+            name: ev.from_broadcaster_user_login,
+            displayName: ev.from_broadcaster_user_name || ev.from_broadcaster_user_login,
+          },
+          raiderCount: ev.viewers,
+          message: `Raid incoming with ${ev.viewers} viewers`,
+        });
+        break;
+      }
+      case 'channel.cheer': {
+        appendAiEventsLogLine({
+          id,
+          type: 'twitch_bits',
+          channel: ch,
+          user: {
+            id: ev.user_id,
+            name: ev.user_login,
+            displayName: ev.user_name || ev.user_login,
+          },
+          amount: ev.bits,
+          message: ev.message ? String(ev.message) : '',
+        });
+        break;
+      }
+      case 'channel.channel_points_custom_reward_redemption.add': {
+        const title = (ev.reward && ev.reward.title) || 'channel points';
+        appendAiEventsLogLine({
+          id: ev.id || id,
+          type: 'twitch_redeem',
+          channel: ch,
+          user: {
+            id: ev.user_id,
+            name: ev.user_login,
+            displayName: ev.user_name || ev.user_login,
+          },
+          redeemTitle: title,
+          message: ev.user_input ? String(ev.user_input) : '',
+        });
+        break;
+      }
+      default:
+        break;
+    }
+  } catch (e) {
+    console.error('[AI Events] appendAiEventSubToLog error:', e);
+  }
+}
 
 // Profile management globals
 let currentActiveProfile = 'default';
@@ -85,11 +415,6 @@ let currentActiveProfile = 'default';
 // Cooldown tracking for !checkin command (username -> timestamp)
 const checkinCommandCooldown = new Map();
 const CHECKIN_COMMAND_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
-
-// Progression system globals
-let progressionsData = { progressions: [] };
-const progressionCommandCooldown = new Map();
-const PROGRESSION_COMMAND_COOLDOWN_MS = 30 * 1000; // 30 seconds
 
 // Helper function to get check-in leaderboard
 function getCheckinLeaderboard(showStreak = false, limit = 5) {
@@ -129,47 +454,69 @@ function getCheckinLeaderboard(showStreak = false, limit = 5) {
 
 // Ensure config and sounds exist in userData on first run
 function ensureUserData() {
-  if (!fs.existsSync(configPath)) {
-    fse.copySync(defaultConfigPath, configPath);
-  }
-  if (!fs.existsSync(userSoundsDir)) {
-    fse.ensureDirSync(userSoundsDir);
-    if (fs.existsSync(defaultSoundsDir)) {
-      fse.copySync(defaultSoundsDir, userSoundsDir);
+  try {
+    if (!fs.existsSync(configPath)) {
+      copyFileSyncSafe(defaultConfigPath, configPath);
     }
+  } catch (err) {
+    console.error('[ensureUserData] Failed to copy default config.json:', err);
   }
-  // Ensure skins directory exists
-  if (!fs.existsSync(userSkinsDir)) {
-    fse.ensureDirSync(userSkinsDir);
-    if (fs.existsSync(defaultSkinsDir)) {
-      fse.copySync(defaultSkinsDir, userSkinsDir);
+
+  try {
+    if (!fs.existsSync(userSoundsDir)) {
+      fs.mkdirSync(userSoundsDir, { recursive: true });
+      if (fs.existsSync(defaultSoundsDir)) {
+        copyTreeSync(defaultSoundsDir, userSoundsDir);
+      }
     }
+  } catch (err) {
+    console.error('[ensureUserData] Failed to seed default sounds:', err);
   }
-  // Ensure tc_config exists with default topics
-  if (!fs.existsSync(tcConfigPath)) {
-    const defaultTc = {
-      topics: [
-        'channel.channel_points_custom_reward_redemption',
-        'channel.subscribe',
-        'channel.subscription.gift',
-        'channel.subscription.message',
-        'channel.follow',
-        'channel.raid',
-        'channel.cheer',
-        'channel.ban'
-      ]
-      ,
-      // ISO string for last time we polled followers; used to detect new followers since last run
-  lastFollowerPoll: null,
-  // track subscription ids created by this app so we don't remove subscriptions we don't own
-  createdSubscriptions: []
-    };
-    fs.writeFileSync(tcConfigPath, JSON.stringify(defaultTc, null, 2));
+
+  try {
+    if (!fs.existsSync(userSkinsDir)) {
+      fs.mkdirSync(userSkinsDir, { recursive: true });
+      if (fs.existsSync(defaultSkinsDir)) {
+        copyTreeSync(defaultSkinsDir, userSkinsDir);
+      }
+    }
+  } catch (err) {
+    console.error('[ensureUserData] Failed to seed default skins:', err);
   }
-  // Run migration to backfill button ids if missing
-  ensureButtonIds();
-  // Initialize profile system
-  ensureProfiles();
+
+  try {
+    if (!fs.existsSync(tcConfigPath)) {
+      const defaultTc = {
+        topics: [
+          'channel.channel_points_custom_reward_redemption',
+          'channel.subscribe',
+          'channel.subscription.gift',
+          'channel.subscription.message',
+          'channel.follow',
+          'channel.raid',
+          'channel.cheer',
+          'channel.ban',
+        ],
+        lastFollowerPoll: null,
+        createdSubscriptions: [],
+      };
+      fs.writeFileSync(tcConfigPath, JSON.stringify(defaultTc, null, 2));
+    }
+  } catch (err) {
+    console.error('[ensureUserData] Failed to write default tc_config.json:', err);
+  }
+
+  try {
+    ensureButtonIds();
+  } catch (err) {
+    console.error('[ensureUserData] ensureButtonIds failed:', err);
+  }
+
+  try {
+    ensureProfiles();
+  } catch (err) {
+    console.error('[ensureUserData] ensureProfiles failed:', err);
+  }
 }
 
 // Ensure each button in config has a stable unique id (migration/backfill)
@@ -339,41 +686,76 @@ function ensureProfiles() {
 
 function loadTcConfig() {
   try {
-  const raw = JSON.parse(fs.readFileSync(tcConfigPath, 'utf-8'));
-  // Ensure shape compatibility
-  if (!raw.topics) raw.topics = [];
-  if (!raw.hasOwnProperty('lastFollowerPoll')) raw.lastFollowerPoll = null;
-  if (!Array.isArray(raw.createdSubscriptions)) raw.createdSubscriptions = [];
-  // OAuth configuration - use defaults if not set
-  if (!raw.oauth) raw.oauth = {};
-  if (!raw.oauth.clientId) raw.oauth.clientId = twitchConfig.clientId;
-  if (!raw.oauth.clientSecret) raw.oauth.clientSecret = twitchConfig.clientSecret;
-  if (!raw.oauth.redirectUri) raw.oauth.redirectUri = twitchConfig.redirectUri;
-  if (!raw.oauth.accessToken) raw.oauth.accessToken = '';
-  if (!raw.oauth.refreshToken) raw.oauth.refreshToken = '';
-  if (!raw.oauth.tokenExpiry) raw.oauth.tokenExpiry = null;
-  if (!raw.oauth.useCustomCredentials) raw.oauth.useCustomCredentials = false;
-  return raw;
-  } catch (e) {
-  return {
-    topics: [],
-    lastFollowerPoll: null,
-    createdSubscriptions: [],
-    oauth: {
-      clientId: twitchConfig.clientId,
-      clientSecret: twitchConfig.clientSecret,
-      redirectUri: twitchConfig.redirectUri,
-      accessToken: '',
-      refreshToken: '',
-      tokenExpiry: null,
-      useCustomCredentials: false
+    const raw = JSON.parse(fs.readFileSync(tcConfigPath, 'utf-8'));
+
+    const oauthKeyMaterial = `${tcConfigPath}:oauth`;
+    const refreshKeyMaterial = `${tcConfigPath}:refresh`;
+
+    if (raw.oauth_secret) {
+      const plain = decodeField(oauthKeyMaterial, raw.oauth_secret, safeStorage);
+      if (plain) {
+        raw.oauth_token = plain;
+        raw.accessToken = plain;
+      }
+    } else if (raw.oauth_token_encrypted && safeStorage.isEncryptionAvailable()) {
+      try {
+        const encryptedBuffer = Buffer.from(raw.oauth_token_encrypted, 'base64');
+        raw.oauth_token = safeStorage.decryptString(encryptedBuffer);
+        raw.accessToken = raw.oauth_token;
+        console.log('✅ [Security] Decrypted Twitch OAuth token');
+      } catch (err) {
+        console.error('❌ [Security] Failed to decrypt OAuth token:', err.message);
+      }
     }
-  };
+    if (raw.refresh_secret) {
+      const plain = decodeField(refreshKeyMaterial, raw.refresh_secret, safeStorage);
+      if (plain) raw.refreshToken = plain;
+    } else if (raw.refresh_token_encrypted && safeStorage.isEncryptionAvailable()) {
+      try {
+        const encryptedBuffer = Buffer.from(raw.refresh_token_encrypted, 'base64');
+        raw.refreshToken = safeStorage.decryptString(encryptedBuffer);
+        console.log('✅ [Security] Decrypted Twitch refresh token');
+      } catch (err) {
+        console.error('❌ [Security] Failed to decrypt refresh token:', err.message);
+      }
+    }
+    
+    // Ensure shape compatibility
+    if (!raw.topics) raw.topics = [];
+    if (!raw.hasOwnProperty('lastFollowerPoll')) raw.lastFollowerPoll = null;
+    if (!Array.isArray(raw.createdSubscriptions)) raw.createdSubscriptions = [];
+    return raw;
+  } catch (e) {
+    return { topics: [], lastFollowerPoll: null, createdSubscriptions: [] };
   }
 }
 
 function saveTcConfig(cfg) {
-  fs.writeFileSync(tcConfigPath, JSON.stringify(cfg, null, 2));
+  const toSave = { ...cfg };
+  const oauthKeyMaterial = `${tcConfigPath}:oauth`;
+  const refreshKeyMaterial = `${tcConfigPath}:refresh`;
+
+  const tokenPlain = toSave.oauth_token || toSave.accessToken;
+  if (tokenPlain) {
+    const wrapped = encodeField(oauthKeyMaterial, String(tokenPlain).replace(/^oauth:/i, '').trim(), safeStorage);
+    if (wrapped) {
+      toSave.oauth_secret = wrapped;
+      delete toSave.oauth_token_encrypted;
+    }
+    delete toSave.oauth_token;
+    delete toSave.accessToken;
+  }
+  const refreshPlain = toSave.refreshToken;
+  if (refreshPlain) {
+    const wrapped = encodeField(refreshKeyMaterial, String(refreshPlain).trim(), safeStorage);
+    if (wrapped) {
+      toSave.refresh_secret = wrapped;
+      delete toSave.refresh_token_encrypted;
+    }
+    delete toSave.refreshToken;
+  }
+
+  fs.writeFileSync(tcConfigPath, JSON.stringify(toSave, null, 2));
 }
 
 // Hydration config management
@@ -414,117 +796,6 @@ function saveHydrationConfig(cfg) {
   }
 }
 
-// Progression system management
-function loadProgressions() {
-  try {
-    if (fs.existsSync(progressionsPath)) {
-      const data = JSON.parse(fs.readFileSync(progressionsPath, 'utf-8'));
-      // Ensure proper structure
-      if (!data.progressions) {
-        data.progressions = [];
-      }
-      // Initialize runtime state for session-only progressions
-      data.progressions.forEach(prog => {
-        if (prog.persistenceMode === 'session') {
-          prog.currentStageIndex = 0;
-          prog.currentCount = 0;
-        }
-        // Ensure required fields exist
-        if (!prog.topRedeemers) prog.topRedeemers = [];
-        if (typeof prog.totalRedeems !== 'number') prog.totalRedeems = 0;
-        if (typeof prog.currentStageIndex !== 'number') prog.currentStageIndex = 0;
-        if (typeof prog.currentCount !== 'number') prog.currentCount = 0;
-      });
-      return data;
-    }
-  } catch (e) {
-    console.error('Error loading progressions:', e);
-  }
-  // Default empty structure
-  return { progressions: [] };
-}
-
-function saveProgressions(data) {
-  try {
-    // Ensure progressions media directory exists
-    if (!fs.existsSync(progressionsMediaPath)) {
-      fs.mkdirSync(progressionsMediaPath, { recursive: true });
-    }
-    fs.writeFileSync(progressionsPath, JSON.stringify(data, null, 2));
-    console.log('Progressions saved');
-  } catch (e) {
-    console.error('Error saving progressions:', e);
-  }
-}
-
-function getProgressionByRedeemKeyword(keyword) {
-  if (!keyword || !progressionsData || !progressionsData.progressions) {
-    return null;
-  }
-  const lowerKeyword = keyword.toLowerCase().trim();
-  return progressionsData.progressions.find(prog => 
-    prog.redeemKeyword && prog.redeemKeyword.toLowerCase().trim() === lowerKeyword
-  );
-}
-
-function incrementProgression(progressionId, username) {
-  const progression = progressionsData.progressions.find(p => p.id === progressionId);
-  if (!progression) {
-    console.error('Progression not found:', progressionId);
-    return null;
-  }
-
-  // Update leaderboard first
-  if (!progression.topRedeemers) {
-    progression.topRedeemers = [];
-  }
-  const redeemer = progression.topRedeemers.find(r => r.username === username);
-  if (redeemer) {
-    redeemer.count++;
-  } else {
-    progression.topRedeemers.push({ username, count: 1 });
-  }
-  // Sort and keep top 10
-  progression.topRedeemers.sort((a, b) => b.count - a.count);
-  progression.topRedeemers = progression.topRedeemers.slice(0, 10);
-
-  // Increment total redeems
-  progression.totalRedeems++;
-  
-  // Check if previous redeem completed a stage (currentCount equals requiredCount)
-  const currentStage = progression.stages[progression.currentStageIndex];
-  let stageAdvanced = false;
-  
-  if (currentStage && progression.currentCount >= currentStage.requiredCount) {
-    // Stage was completed - advance to next stage if available
-    if (progression.currentStageIndex < progression.stages.length - 1) {
-      progression.currentStageIndex++;
-      progression.currentCount = 1; // This redeem is the first toward new stage
-      stageAdvanced = true;
-      console.log(`Progression "${progression.name}" advanced to stage ${progression.currentStageIndex + 1}`);
-    } else {
-      // At final stage - just increment count
-      progression.currentCount++;
-      console.log(`Progression "${progression.name}" is at final stage`);
-    }
-  } else {
-    // Normal increment
-    progression.currentCount++;
-  }
-
-  // Save if permanent mode
-  if (progression.persistenceMode === 'permanent') {
-    saveProgressions(progressionsData);
-  }
-
-  return {
-    progression,
-    stageAdvanced,
-    currentStage: progression.stages[progression.currentStageIndex],
-    currentStageIndex: progression.currentStageIndex
-  };
-}
-
 function broadcastHydrationUpdate(config) {
   const percentage = config.streamGoal > 0 ? (config.currentProgress / config.streamGoal) * 100 : 0;
   const payload = {
@@ -548,8 +819,6 @@ function broadcastHydrationUpdate(config) {
     }
   });
 }
-
-// Progression broadcast functions (removed - now handled inline in increment handler)
 
 // Stream monitor for auto-reset hydration
 let lastStreamLiveState = false;
@@ -608,6 +877,7 @@ let overlayWSS;
 let overlayClients = new Set();
 let overlayRegistry = new Map(); // overlayName -> Set of WebSocket connections
 let overlayServerPort;
+let jarvisServer = null;
 
 function createWindow() {
   win = new BrowserWindow({
@@ -623,14 +893,24 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // Preload requires local modules (lib/raven-ai-control). Electron 20+ sandboxes
+      // preload by default, and that loader cannot resolve those files.
+      sandbox: false,
+      additionalArguments: [packagedArgvFlag()],
     }
   });
+
+  // Keyboard focus safety net + hotkey suspension follow window focus.
+  installWindowFocusRelay(win);
+  win.on('focus', () => hotkeySuspension.apply());
+  win.on('blur', () => hotkeySuspension.apply());
 
   win.loadFile(path.join(__dirname, 'public/index.html'));
   // Show window only when ready-to-show to avoid initial mis-sizing
   win.once('ready-to-show', () => {
     try { win.show(); } catch (e) {}
+    try { win.webContents.send('renderer-ready'); } catch (e) {}
   });
 
   // After renderer finishes loading, notify it so it can perform layout work
@@ -642,8 +922,6 @@ function createWindow() {
         if (win.isMaximized && win.isMaximized()) win.webContents.send('window-maximized');
         else win.webContents.send('window-unmaximized');
       } catch (e) {}
-      // Restore Twitch chat if we have stored OAuth credentials (so user stays "logged in")
-      setTimeout(() => tryRestoreTwitchConnection(), 800);
     } catch (e) { console.warn('Failed to send renderer-ready:', e); }
   });
   // Create context menu
@@ -676,12 +954,33 @@ function startOverlayServer() {
   
   // Create HTTP server to serve overlay HTML and media files
   overlayServer = http.createServer((req, res) => {
+    const url = new URL(req.url || '/', `http://localhost:${port}`);
+    
+    // Check if this is a control/API endpoint that requires auth
+    const requiresAuth = req.url && (
+      (req.url.startsWith('/api/vtuber/') && req.method !== 'GET') || // Only protect write operations
+      req.url.startsWith('/api/ai/') // Protect all AI config endpoints (includes GET /api/ai/voices)
+    );
+    
+    // Validate token for protected endpoints
+    if (requiresAuth) {
+      const token = securityManager.extractToken(req, url);
+      if (!token || !securityManager.validateToken(token)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          error: 'Unauthorized',
+          message: 'Valid authentication token required. Add ?token=YOUR_TOKEN to the URL or use X-VD-Auth header.'
+        }));
+        return;
+      }
+    }
+    
     // Handle CORS preflight requests
     if (req.method === 'OPTIONS') {
       res.writeHead(200, {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type'
+        'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization'
       });
       res.end();
       return;
@@ -699,7 +998,7 @@ function startOverlayServer() {
           'Content-Type': 'text/html',
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type'
+          'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization'
         });
         res.end(html);
       });
@@ -716,24 +1015,7 @@ function startOverlayServer() {
           'Content-Type': 'text/html',
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type'
-        });
-        res.end(data);
-      });
-    } else if (req.url === '/progression') {
-      // Serve the progression system overlay
-      const progressionPath = path.join(__dirname, 'overlays', 'progressionOverlay', 'index.html');
-      fs.readFile(progressionPath, (err, data) => {
-        if (err) {
-          res.writeHead(500);
-          res.end('Error loading progression overlay');
-          return;
-        }
-        res.writeHead(200, { 
-          'Content-Type': 'text/html',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type'
+          'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization'
         });
         res.end(data);
       });
@@ -753,7 +1035,7 @@ function startOverlayServer() {
       console.log(`🎯 Serving overlay: ${overlayName}`);
       
       // Check if it's a predefined overlay
-      const predefinedOverlays = ['hudOverlay', 'cameraFrameOverlay', 'chatOverlay', 'alertOverlay', 'confettiOverlay'];
+      const predefinedOverlays = ['hudOverlay', 'cameraFrameOverlay', 'chatOverlay', 'vtuberOverlay', 'aiAudio'];
       if (predefinedOverlays.includes(overlayName)) {
         // Serve predefined overlay
         const overlayPath = path.join(__dirname, 'overlays', overlayName, 'index.html');
@@ -767,7 +1049,7 @@ function startOverlayServer() {
             'Content-Type': 'text/html',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type'
+            'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization'
           });
           res.end(data);
         });
@@ -783,7 +1065,7 @@ function startOverlayServer() {
             'Content-Type': 'text/html',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type'
+            'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization'
           });
           res.end(html);
         });
@@ -852,7 +1134,7 @@ function startOverlayServer() {
             'Content-Type': contentType,
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type'
+            'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization'
           });
           res.end(data);
         });
@@ -905,12 +1187,18 @@ function startOverlayServer() {
             'Content-Type': contentType,
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization',
             'Cache-Control': 'public, max-age=3600'
           });
           res.end(data);
         });
       });
+    } else if (req.url && req.url.startsWith('/api/vtuber/')) {
+      // VTuber API endpoints
+      handleVTuberAPI(req, res);
+    } else if (req.url && req.url.startsWith('/api/ai/')) {
+      // AI Configuration API endpoints (voices, personality)
+      handleAIConfigAPI(req, res);
     } else {
       res.writeHead(404);
       res.end('Not found');
@@ -918,15 +1206,30 @@ function startOverlayServer() {
   });
 
   // Create WebSocket server for real-time communication
-  overlayWSS = new WebSocket.Server({ server: overlayServer });
+  overlayWSS = new WebSocket.Server({ 
+    server: overlayServer,
+    verifyClient: (info, callback) => {
+      // Extract token from query parameters for WebSocket handshake
+      const url = new URL(info.req.url || '/', `http://localhost:${port}`);
+      const token = url.searchParams.get('token');
+      
+      // Allow connection without token for read-only overlays (for OBS compatibility)
+      // The individual message handlers will enforce permissions
+      callback(true);
+    }
+  });
   
   overlayWSS.on('connection', (ws, req) => {
     console.log('Overlay client connected - URL:', req.url);
     
-    // Extract overlay name from URL query parameters
+    // Extract overlay name and token from URL query parameters
     const url = new URL(req.url || '/', `http://localhost:${port}`);
     const overlayName = url.searchParams.get('overlay') || 'main';
+    const token = url.searchParams.get('token');
+    
     ws.overlayName = overlayName; // Store overlay name on the WebSocket connection
+    ws.isAuthenticated = token && securityManager.validateToken(token);
+    ws.clientId = crypto.randomBytes(16).toString('hex'); // Unique ID for rate limiting
     
     // Add to global clients set
     overlayClients.add(ws);
@@ -942,8 +1245,41 @@ function startOverlayServer() {
     
     ws.on('message', (message) => {
       try {
+        // Rate limiting check
+        if (!wsRateLimiter.check(ws.clientId)) {
+          console.warn(`⚠️ [Security] Rate limit exceeded for client ${ws.clientId}`);
+          ws.send(JSON.stringify({ 
+            type: 'error', 
+            message: 'Rate limit exceeded. Max 10 messages per second.' 
+          }));
+          return;
+        }
+
         const data = JSON.parse(message);
+        
+        // Validate message structure
+        if (!data || typeof data !== 'object') {
+          console.warn(`⚠️ [Security] Invalid message structure from ${overlayName}`);
+          return;
+        }
+
+        // Whitelist of allowed message types for unauthenticated clients
+        const ALLOWED_TYPES = new Set(['ping', 'pong', 'status']);
+        
+        // If client is not authenticated and message type is not whitelisted, reject
+        if (!ws.isAuthenticated && !ALLOWED_TYPES.has(data.type)) {
+          console.warn(`⚠️ [Security] Unauthorized message type "${data.type}" from ${overlayName}`);
+          ws.send(JSON.stringify({ 
+            type: 'error', 
+            message: 'Authentication required for this message type. Add ?token=YOUR_TOKEN to connection URL.' 
+          }));
+          return;
+        }
+
         console.log(`📨 Message from overlay ${overlayName}:`, data);
+        
+        // Future: Handle specific message types here
+        // For now, just log them as this is primarily read-only
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
       }
@@ -952,6 +1288,9 @@ function startOverlayServer() {
     ws.on('close', () => {
       console.log(`Overlay client disconnected: ${overlayName}`);
       overlayClients.delete(ws);
+      
+      // Clean up rate limiter
+      wsRateLimiter.reset(ws.clientId);
       
       // Remove from overlay registry
       if (overlayRegistry.has(overlayName)) {
@@ -967,6 +1306,9 @@ function startOverlayServer() {
     ws.on('error', (error) => {
       console.log('Overlay WebSocket error:', error);
       overlayClients.delete(ws);
+      
+      // Clean up rate limiter
+      wsRateLimiter.reset(ws.clientId);
       
       // Remove from overlay registry
       if (overlayRegistry.has(overlayName)) {
@@ -1009,6 +1351,297 @@ function startOverlayServer() {
   tryStartServer(port);
 }
 
+// Start JARVIS tool server
+async function startJarvisServer() {
+  try {
+    const jarvisPort = process.env.JARVIS_PORT || 8091;
+    const jarvisHost = process.env.JARVIS_HOST || '127.0.0.1';
+    
+    // Use JARVIS_TOKEN env var if set, otherwise fall back to shared .vd-auth-token
+    let jarvisToken = process.env.JARVIS_TOKEN;
+    
+    if (!jarvisToken) {
+      // Use shared SecurityManager token
+      jarvisToken = securityManager.getOrCreateToken();
+      console.log('[JARVIS] Using shared .vd-auth-token for authentication');
+    } else {
+      console.log('[JARVIS] Using JARVIS_TOKEN env var for authentication');
+    }
+
+    jarvisServer = new JarvisServer({
+      port: jarvisPort,
+      host: jarvisHost,
+      token: jarvisToken
+    });
+
+    // Provide context to tool registry
+    const currentProfile = loadProfile(currentActiveProfile);
+    jarvisRegistry.setContext({
+      win,
+      twitchClient,
+      twitchChannel: twitchUserName ? `#${twitchUserName}` : null,
+      twitchUserName,
+      config: currentProfile,
+      currentActiveProfile,
+      loadProfile,
+      triggerButtonFn: triggerButtonWithDebounce,
+      macroManager,
+      ...buildJarvisRaidContext(),
+    });
+
+    await jarvisServer.start();
+    console.log(`[JARVIS] ✅ Tool API ready at http://${jarvisHost}:${jarvisPort}/jarvis/tools`);
+    console.log(`[JARVIS] 📁 Auth token: ${path.join(userDataPath, '.vd-auth-token')}`);
+  } catch (error) {
+    console.error('[JARVIS] ❌ Failed to start tool server:', error);
+  }
+}
+
+// VTuber API handler
+function handleVTuberAPI(req, res) {
+  if (!req.url) {
+    res.writeHead(400);
+    res.end('Invalid request');
+    return;
+  }
+  
+  const url = new URL(req.url, `http://localhost:${overlayServerPort || 8080}`);
+  const path = url.pathname;
+  
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-VD-Auth, Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+  
+  if (!vtuberManager) {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'VTuber Manager not initialized' }));
+    return;
+  }
+  
+  try {
+    if (path === '/api/vtuber/config' && req.method === 'GET') {
+      // Get VTuber configuration
+      const config = vtuberManager.getConfig();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(config));
+    } else if (path === '/api/vtuber/config' && req.method === 'PUT') {
+      // Update VTuber configuration
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', () => {
+        try {
+          const updates = JSON.parse(body);
+          if (updates.state) vtuberManager.setState(updates.state);
+          if (updates.position) vtuberManager.updatePosition(updates.position);
+          if (updates.scale !== undefined || updates.opacity !== undefined) {
+            vtuberManager.updateDisplay(updates.scale, updates.opacity);
+          }
+          const config = vtuberManager.getConfig();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(config));
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+    } else if (path === '/api/vtuber/state' && req.method === 'POST') {
+      // Set avatar state
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', () => {
+        try {
+          const { state } = JSON.parse(body);
+          if (vtuberManager.setState(state)) {
+            // Broadcast state change to overlay
+            broadcastVTuberState(state);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, state }));
+          } else {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid state' }));
+          }
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+    } else {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not found' }));
+    }
+  } catch (err) {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: err.message }));
+  }
+}
+
+// Broadcast VTuber state change to overlay
+function broadcastVTuberState(state) {
+  if (!overlayWSS) return;
+  
+  const message = JSON.stringify({
+    type: 'vtuber-state',
+    state: state,
+    timestamp: Date.now(),
+  });
+  
+  // Broadcast to vtuberOverlay clients
+  const vtuberClients = overlayRegistry.get('vtuberOverlay');
+  if (vtuberClients) {
+    vtuberClients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+}
+
+// AI Configuration API handler
+function handleAIConfigAPI(req, res) {
+  if (!req.url) {
+    res.writeHead(400);
+    res.end('Invalid request');
+    return;
+  }
+  
+  const url = new URL(req.url, `http://localhost:${overlayServerPort || 8080}`);
+  const path = url.pathname;
+  
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-VD-Auth, Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+  
+  if (!aiConfigManager) {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'AI Config Manager not initialized' }));
+    return;
+  }
+
+  if (licenseManager) {
+    const aiGate = licenseManager.canUseAiAssistant();
+    if (!aiGate.allowed) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: aiGate.message, code: 'license_required' }));
+      return;
+    }
+  }
+  
+  try {
+    if (path === '/api/ai/voices' && req.method === 'GET') {
+      // Premade voices always included; merge with account when TTS_API_KEY works
+      aiConfigManager.listVoices().then(result => {
+        if (result.success) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            voices: result.voices,
+            warning: result.warning || undefined,
+          }));
+        } else {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: result.error }));
+        }
+      }).catch(err => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      });
+    } else if (path === '/api/ai/voice' && req.method === 'POST') {
+      // Set voice ID
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', () => {
+        try {
+          const { voiceId, voiceName } = JSON.parse(body);
+          const success = aiConfigManager.setVoice(voiceId, voiceName);
+          if (success) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, voiceId, voiceName }));
+          } else {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Failed to save voice' }));
+          }
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+    } else if (path === '/api/ai/personality' && req.method === 'POST') {
+      // Set personality configuration
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', () => {
+        try {
+          const { personality, prompt } = JSON.parse(body);
+          const success = aiConfigManager.setPersonality(personality, prompt);
+          if (success) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, personality, prompt }));
+          } else {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Failed to save personality' }));
+          }
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+    } else if (path === '/api/ai/personality' && req.method === 'GET') {
+      // Get saved personality configuration
+      const personality = aiConfigManager.getPersonality();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ personality: personality || null }));
+    } else if (path === '/api/ai/wake-names' && req.method === 'GET') {
+      const wake = aiConfigManager.getWakeNames();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        names: wake.names,
+        primary: wake.primary,
+        envValue: wake.envValue,
+        requiresRavenRestart: WAKE_NAMES_REQUIRE_RAVEN_RESTART,
+      }));
+    } else if (path === '/api/ai/wake-names' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk.toString(); });
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          const raw = data.wakeNames != null ? data.wakeNames : data.envValue;
+          const result = aiConfigManager.setWakeNames(raw);
+          if (result.success) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(result));
+          } else {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: result.error }));
+          }
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+    } else {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not found' }));
+    }
+  } catch (err) {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: err.message }));
+  }
+}
+
 // Generate overlay HTML based on overlay name and template
 function generateOverlayHTML(overlayName, callback) {
   try {
@@ -1026,6 +1659,14 @@ function generateOverlayHTML(overlayName, callback) {
       html = html.replace(/\{\{BACKGROUND_MODE\}\}/g, 'transparent');
       html = html.replace(/\{\{CHROMA_COLOR\}\}/g, '#00ff00');
       html = html.replace(/\{\{LAYOUT_CLASS\}\}/g, 'layout-center');
+      // Inline the shared text renderer (same file the alert editor preview loads) so
+      // overlay and preview render text identically. Function replacer: no $-pattern expansion.
+      try {
+        const rendererJs = fs.readFileSync(path.join(__dirname, 'public', 'alert-text-render.js'), 'utf8');
+        html = html.replace('/*__VD_ALERT_TEXT_RENDER__*/', () => rendererJs.replace(/<\/script/gi, '<\\/script'));
+      } catch (e) {
+        console.warn('⚠️ Could not inline alert-text-render.js into overlay:', e.message);
+      }
       
       callback(null, html);
     });
@@ -1084,14 +1725,168 @@ function broadcastToOverlay(message, targetOverlay = null) {
   console.log(`📊 Registry status:`, Array.from(overlayRegistry.entries()).map(([name, clients]) => `${name}:${clients.size}`));
 }
 
+// AI Integration: Handle audio commands from AI controller
+function handleAIAudioCommands() {
+  if (!fs.existsSync(aiCommandsPath)) {
+    return; // No commands file yet
+  }
+  
+  try {
+    const content = fs.readFileSync(aiCommandsPath, 'utf-8');
+    if (!content.trim()) {
+      return; // Empty file
+    }
+    
+    console.log(`🎵 [AI Audio] Command file found, content length: ${content.length} bytes`);
+    const commands = content.trim().split('\n').filter(line => line.trim());
+    console.log(`🎵 [AI Audio] Found ${commands.length} command(s) to process`);
+    
+    commands.forEach((line, index) => {
+      console.log(`🎵 [AI Audio] Processing command ${index + 1}/${commands.length}: ${line.substring(0, 100)}...`);
+      try {
+        const command = JSON.parse(line);
+        
+        if (command.action === 'record-clip' || command.action === 'clip') {
+          console.log('🎬 [AI Clip] Host asked to clip — creating a Twitch clip');
+          void createTwitchClipAndAnnounce({ requestedBy: 'Raven' });
+          return;
+        }
+
+        if (command.action === 'play-audio-file' && command.filePath) {
+          // Verify file exists
+          const audioPath = path.isAbsolute(command.filePath) 
+            ? command.filePath 
+            : path.join(userDataPath, command.filePath);
+            
+          if (fs.existsSync(audioPath)) {
+            console.log(`🎵 [AI Audio] Playing audio file through overlay: ${audioPath}`);
+            
+            // Calculate relative path from userDataPath for /media/ endpoint
+            let relativePath = path.relative(userDataPath, audioPath);
+            // Normalize path separators for URL
+            relativePath = relativePath.replace(/\\/g, '/');
+            
+            // Serve audio via HTTP instead of file:// (browsers block file:// URLs)
+            const mediaPort = overlayServerPort || 8080;
+            const encodedPath = relativePath.split('/').map(encodeURIComponent).join('/');
+            const audioUrl = `http://localhost:${mediaPort}/media/${encodedPath}?t=${Date.now()}`;
+            
+            console.log(`🎵 [AI Audio] Original path: ${audioPath}`);
+            console.log(`🎵 [AI Audio] Relative path: ${relativePath}`);
+            console.log(`🎵 [AI Audio] HTTP URL: ${audioUrl}`);
+            
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('play-ai-tts', {
+                relativePath,
+                audioUrl,
+                volume: command.volume || 1.0,
+              });
+              console.log('🎵 [AI Audio] Sent to dashboard (same pipeline as audio buttons)');
+            }
+
+            const buttonTriggerMessage = {
+              type: 'buttonTrigger',
+              options: {
+                name: 'AI TTS',
+                clearPrevious: true,
+              },
+              centerMedia: [
+                {
+                  type: 'audio',
+                  src: audioUrl,
+                  url: audioUrl,
+                  volume: command.volume || 1.0,
+                  loop: false,
+                }
+              ],
+              slots: {},
+            };
+
+            const playAudioMessage = {
+              type: 'play-audio',
+              src: audioUrl,
+              url: audioUrl,
+              audioUrl,
+              volume: command.volume || 1.0,
+            };
+
+            console.log(`🎵 [AI Audio] Overlay clients: ${overlayClients.size}`);
+            const aiAudioClients = overlayRegistry.get('aiAudio');
+            if (aiAudioClients && aiAudioClients.size > 0) {
+              broadcastToOverlay(playAudioMessage, 'aiAudio');
+              console.log('🎵 [AI Audio] Sent to aiAudio OBS browser source');
+            } else {
+              broadcastToOverlay(buttonTriggerMessage);
+              console.log('🎵 [AI Audio] aiAudio overlay not connected — broadcast to all overlays');
+            }
+            console.log('═══════════════════════════════════════════════════════\n');
+          } else {
+            console.warn(`🎵 [AI Audio] Audio file not found: ${audioPath}`);
+          }
+        }
+      } catch (err) {
+        console.error('🎵 [AI Audio] Error parsing command:', err);
+      }
+    });
+    
+    // Clear the commands file after processing
+    fs.writeFileSync(aiCommandsPath, '', 'utf-8');
+  } catch (err) {
+    // File might not exist yet, that's okay
+    if (err.code !== 'ENOENT') {
+      console.error('🎵 [AI Audio] Error reading commands file:', err);
+    }
+  }
+}
+
+// AI Integration: Watch for AI audio commands every 500ms
+let aiCommandWatcherInterval = null;
+
+function startAICommandWatcher() {
+  if (aiCommandWatcherInterval) {
+    clearInterval(aiCommandWatcherInterval);
+  }
+  console.log('🎵 [AI Audio] Starting command watcher...');
+  console.log('🎵 [AI Audio] Watching file: ' + aiCommandsPath);
+  
+  // Write to a log file so we can verify it's running
+  const logPath = path.join(userDataPath, 'ai-audio-watcher.log');
+  try {
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] Command watcher started\n`, 'utf-8');
+  } catch (err) {
+    // Ignore log file errors
+  }
+  
+  aiCommandWatcherInterval = setInterval(() => {
+    try {
+      handleAIAudioCommands();
+    } catch (err) {
+      console.error('🎵 [AI Audio] Error in command watcher:', err);
+      try {
+        fs.appendFileSync(logPath, `[${new Date().toISOString()}] Error: ${err.message}\n`, 'utf-8');
+      } catch (logErr) {
+        // Ignore
+      }
+    }
+  }, 500);
+  console.log('🎵 [AI Audio] ✅ Command watcher started (checking every 500ms)');
+  console.log('🎵 [AI Audio] Log file: ' + logPath);
+}
+
+function stopAICommandWatcher() {
+  if (aiCommandWatcherInterval) {
+    clearInterval(aiCommandWatcherInterval);
+    aiCommandWatcherInterval = null;
+  }
+}
+
 // Function to get the current overlay server URL
 function getOverlayServerUrl() {
   return `http://localhost:${overlayServerPort || 8080}/overlay`;
 }
 
-// Generate a button id that is unique among current config.buttons (avoids duplicate id when add-media runs twice)
 function nextUniqueButtonId(buttons) {
-  const existingIds = new Set((buttons || []).map(b => b && b.id).filter(Boolean));
+  const existingIds = new Set((buttons || []).map((b) => b && b.id).filter(Boolean));
   let id;
   do {
     id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
@@ -1101,13 +1896,51 @@ function nextUniqueButtonId(buttons) {
 
 ipcMain.on('add-media', (event, data) => {
   try {
+    if (licenseManager) {
+      const profile = loadProfile(currentActiveProfile);
+      if (typeof data.editingIndex === 'number') {
+        const existing = profile.buttons[data.editingIndex];
+        if (existing && existing.id) {
+          const editCheck = licenseManager.canEditButton(profile, existing.id);
+          if (!editCheck.allowed) {
+            if (win && !win.isDestroyed()) {
+              dialog.showMessageBox(win, {
+                type: 'info',
+                title: 'Button locked',
+                message: 'VirtualDeck Pro required',
+                detail: editCheck.message,
+                buttons: ['OK'],
+              });
+            }
+            return;
+          }
+        }
+      } else {
+        const addCheck = licenseManager.canAddButton(profile);
+        if (!addCheck.allowed) {
+          if (win && !win.isDestroyed()) {
+            dialog.showMessageBox(win, {
+              type: 'info',
+              title: 'Button limit reached',
+              message: 'Upgrade to VirtualDeck Pro',
+              detail: addCheck.message,
+              buttons: ['OK'],
+            });
+            win.webContents.send('license-upsell', {
+              reason: addCheck.reason,
+              message: addCheck.message,
+            });
+          }
+          return;
+        }
+      }
+    }
     console.log('add-media received:', data);
     console.log('Chat command data:', data.chatCommand);
     // Load from active profile instead of old config.json
     const profile = loadProfile(currentActiveProfile);
     const config = profile; // Keep variable name for compatibility
 
-    // Meld-scene buttons: no file required
     if (data.type === 'meld-scene') {
       const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
       const newButton = {
@@ -1118,7 +1951,7 @@ ipcMain.on('add-media', (event, data) => {
         sceneName: data.sceneName || data.label,
         src: '',
         hotkey: data.hotkey || undefined,
-        chatCommand: data.chatCommand || undefined
+        chatCommand: data.chatCommand || undefined,
       };
       if (typeof data.editingIndex === 'number') {
         config.buttons[data.editingIndex] = newButton;
@@ -1132,7 +1965,7 @@ ipcMain.on('add-media', (event, data) => {
       return;
     }
 
-    // Validate required data (file path) for audio/app
+    // Validate required data
     if (!data.originalPath) {
       console.error('Error: originalPath is missing from add-media data:', data);
       if (win && !win.isDestroyed()) {
@@ -1148,23 +1981,35 @@ ipcMain.on('add-media', (event, data) => {
     data.targetPath = data.originalPath;
   } else {
     console.log('Processing as audio file');
-    // Only copy file if it's a new file (not editing existing) and it's an audio file
-    if (data.originalPath !== data.targetPath) {
-      // Save to userData/sounds
-      const ext = path.extname(data.originalPath);
+    // Check if originalPath is already in the sounds directory (file was already saved via saveAudioFileToSounds)
+    // If it's a relative path starting with "sounds/", it's already in the right place
+    const isAlreadyInSoundsDir = !path.isAbsolute(data.originalPath) && data.originalPath.startsWith('sounds/');
+    const originalPathAbsolute = path.isAbsolute(data.originalPath) ? data.originalPath : path.join(userDataPath, data.originalPath);
+    
+    if (isAlreadyInSoundsDir || originalPathAbsolute.startsWith(userSoundsDir)) {
+      // File is already in sounds directory, use its relative path directly
+      if (isAlreadyInSoundsDir) {
+        data.targetPath = data.originalPath; // Already a relative path
+      } else {
+        data.targetPath = path.relative(userDataPath, originalPathAbsolute).replace(/\\/g, '/');
+      }
+      console.log('Audio file already in sounds directory, using path:', data.targetPath);
+    } else if (data.originalPath !== data.targetPath) {
+      // Save to userData/sounds (file from external location)
+      const ext = path.extname(originalPathAbsolute);
       const safeLabel = data.label.replace(/[^a-z0-9_\-]/gi, '_');
       const destFile = path.join(userSoundsDir, `${safeLabel}${ext}`);
       
-      console.log('Copying audio file from:', data.originalPath, 'to:', destFile);
+      console.log('Copying audio file from:', originalPathAbsolute, 'to:', destFile);
       
       // Check if source file exists before copying
-      if (!fs.existsSync(data.originalPath)) {
-        console.error('Source file does not exist:', data.originalPath);
-        throw new Error(`Source file does not exist: ${data.originalPath}`);
+      if (!fs.existsSync(originalPathAbsolute)) {
+        console.error('Source file does not exist:', originalPathAbsolute);
+        throw new Error(`Source file does not exist: ${originalPathAbsolute}`);
       }
       
       try {
-        fse.copySync(data.originalPath, destFile);
+        fse.copySync(originalPathAbsolute, destFile);
         data.targetPath = path.relative(userDataPath, destFile).replace(/\\/g, '/');
         console.log('Audio file copied successfully, target path:', data.targetPath);
       } catch (error) {
@@ -1243,7 +2088,11 @@ ipcMain.on('add-media', (event, data) => {
     // Audio element's `volume` property when a button is triggered.
     volume: (typeof data.volume === 'number') ? data.volume : (data.volume ? parseFloat(data.volume) : undefined),
     // Include chat command data if provided
-    chatCommand: data.chatCommand || undefined
+    chatCommand: data.chatCommand || undefined,
+    // Include AI use settings if provided (for audio buttons)
+    aiAllowed: data.aiAllowed !== undefined ? data.aiAllowed : undefined,
+    description: data.description || undefined,
+    deckIcon: data.deckIcon && data.deckIcon.source ? data.deckIcon : undefined,
   };
 
   // Ensure each button has a stable unique id
@@ -1251,11 +2100,11 @@ ipcMain.on('add-media', (event, data) => {
     // Preserve existing id if present
     const existing = config.buttons[data.editingIndex];
     if (existing && existing.id) newButton.id = existing.id;
-    else newButton.id = nextUniqueButtonId(config.buttons);
+    else newButton.id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
     config.buttons[data.editingIndex] = newButton;
     console.log('✏️ Edited button at index', data.editingIndex, ':', newButton.label);
   } else {
-    newButton.id = nextUniqueButtonId(config.buttons);
+    newButton.id = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
     config.buttons.push(newButton);
     console.log('➕ Added new button:', newButton.label);
   }
@@ -1335,12 +2184,23 @@ ipcMain.on('refresh-hotkeys', () => {
   registerHotkeys();
 });
 
+// Global shortcuts are suspended for explicit reasons (modals / hotkey capture via
+// disable/enable) and while typing in a VirtualDeck text field with the window focused.
+var hotkeySuspension = new HotkeySuspension({ // var: registerHotkeys may reference it early
+  register: () => registerHotkeysNow(),
+  unregisterAll: () => globalShortcut.unregisterAll(),
+  isWindowFocused: () => !!(win && !win.isDestroyed() && win.isFocused())
+});
 ipcMain.on('disable-hotkeys', () => {
-  globalShortcut.unregisterAll();
+  hotkeySuspension.add('renderer');
 });
 ipcMain.on('enable-hotkeys', () => {
-  registerHotkeys();
+  hotkeySuspension.remove('renderer');
 });
+ipcMain.on('text-input-active', (event, active) => {
+  hotkeySuspension.setTextInputActive(active);
+});
+registerNativeDialogIpc({ ipcMain, dialog, BrowserWindow });
 
 // IPC handler to get config (now loads from active profile)
 ipcMain.handle('get-config', async () => {
@@ -1370,6 +2230,8 @@ ipcMain.handle('save-config', async (event, config) => {
         soundButtonOrder: []
       }
     };
+
+    assertProfileLicenseConstraints(mergedConfig, currentProfile);
     
     // Save to active profile
     saveProfile(currentActiveProfile, mergedConfig);
@@ -1409,6 +2271,8 @@ ipcMain.handle('get-profile', async (event, profileId) => {
 // Save a specific profile
 ipcMain.handle('save-profile', async (event, { profileId, profileData }) => {
   try {
+    const previous = loadProfile(profileId);
+    assertProfileLicenseConstraints(profileData, previous);
     saveProfile(profileId, profileData);
     return { success: true };
   } catch (error) {
@@ -1634,162 +2498,318 @@ ipcMain.handle('test-hydration', async () => {
   }
 });
 
-// ========== Progression System IPC Handlers ==========
+// ============================================================================
+// MACRO IPC HANDLERS
+// ============================================================================
 
-// Get all progressions
-ipcMain.handle('get-progressions', async () => {
+// Get all macros
+ipcMain.handle('get-macros', async () => {
   try {
-    return { success: true, progressions: progressionsData.progressions };
-  } catch (error) {
-    console.error('Error getting progressions:', error);
-    return { success: false, error: error.message, progressions: [] };
-  }
-});
-
-// Save progression (create or update)
-ipcMain.handle('save-progression', async (event, progression) => {
-  try {
-    console.log('Saving progression:', progression.name);
-    
-    // Generate ID if new
-    if (!progression.id) {
-      progression.id = `prog_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    if (!macroManager) {
+      return { success: false, error: 'Macro manager not available' };
     }
-    
-    // Ensure required fields
-    if (!progression.topRedeemers) progression.topRedeemers = [];
-    if (typeof progression.totalRedeems !== 'number') progression.totalRedeems = 0;
-    if (typeof progression.currentStageIndex !== 'number') progression.currentStageIndex = 0;
-    if (typeof progression.currentCount !== 'number') progression.currentCount = 0;
-    if (!progression.stages) progression.stages = [];
-    
-    // Find existing or add new
-    const existingIndex = progressionsData.progressions.findIndex(p => p.id === progression.id);
-    if (existingIndex >= 0) {
-      progressionsData.progressions[existingIndex] = progression;
-    } else {
-      progressionsData.progressions.push(progression);
-    }
-    
-    saveProgressions(progressionsData);
-    return { success: true, progression };
+    const macros = macroManager.list();
+    return { success: true, macros };
   } catch (error) {
-    console.error('Error saving progression:', error);
+    console.error('Error getting macros:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Delete progression
-ipcMain.handle('delete-progression', async (event, progressionId) => {
+// Get a single macro
+ipcMain.handle('get-macro', async (event, id) => {
   try {
-    console.log('Deleting progression:', progressionId);
-    progressionsData.progressions = progressionsData.progressions.filter(p => p.id !== progressionId);
-    saveProgressions(progressionsData);
-    
-    // Also delete media files
-    const progressionMediaDir = path.join(progressionsMediaPath, progressionId);
-    if (fs.existsSync(progressionMediaDir)) {
-      fse.removeSync(progressionMediaDir);
+    if (!macroManager) {
+      return { success: false, error: 'Macro manager not available' };
     }
-    
+    const macro = macroManager.get(id);
+    if (!macro) {
+      return { success: false, error: 'Macro not found' };
+    }
+    return { success: true, macro: { id, ...macro } };
+  } catch (error) {
+    console.error('Error getting macro:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Save or update a macro
+ipcMain.handle('save-macro', async (event, { id, macro }) => {
+  try {
+    if (!macroManager) {
+      return { success: false, error: 'Macro manager not available' };
+    }
+
+    // Validate macro
+    const validation = macroManager.validate(macro);
+    if (!validation.valid) {
+      return { success: false, errors: validation.errors };
+    }
+
+    const hotkey = macro.triggers && macro.triggers.hotkey;
+    if (hotkey) {
+      const check = checkMacroHotkey(id, hotkey);
+      if (!check.valid) return { success: false, errors: check.errors };
+      macro.triggers.hotkey = check.accelerator;
+    }
+
+    const saved = macroManager.set(id, macro);
+    const sync = syncMacroHotkeys();
+    const failedReg = sync.failed.find((f) => f.id === id);
+    return {
+      success: true,
+      macro: { id, ...saved },
+      warning: failedReg ? `Saved, but hotkey ${failedReg.hotkey} could not be registered: ${failedReg.reason}` : undefined,
+    };
+  } catch (error) {
+    console.error('Error saving macro:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Delete a macro
+ipcMain.handle('delete-macro', async (event, id) => {
+  try {
+    if (!macroManager) {
+      return { success: false, error: 'Macro manager not available' };
+    }
+    const deleted = macroManager.delete(id);
+    syncMacroHotkeys();
+    return { success: deleted };
+  } catch (error) {
+    console.error('Error deleting macro:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// One execution path for the Run/Test buttons and global hotkeys (no AI assistant involved).
+// Re-validates against the macro allowlist / start_raid confirm rule before running.
+async function executeMacroById(id, source) {
+  if (!macroManager) return { success: false, error: 'Macro manager not available', steps: [] };
+  const macro = macroManager.get(id);
+  if (!macro) return { success: false, error: `Macro '${id}' not found`, steps: [] };
+  const validation = macroManager.validate(macro);
+  if (!validation.valid) {
+    return { success: false, error: validation.errors.join('; '), steps: [], macro: macro.name };
+  }
+  console.log(`[Macro] Running '${macro.name}' (${source})`);
+  let inner;
+  try {
+    inner = await jarvisRegistry.runMacroSteps({ id, ...macro });
+  } catch (err) {
+    inner = { success: false, error: err.message || String(err), steps: [] };
+  }
+  const steps = Array.isArray(inner.steps) ? inner.steps : [];
+  const failed = steps.find((s) => !s.success);
+  return {
+    success: inner.success === true,
+    macro: inner.macro || macro.name,
+    steps,
+    error: inner.success === true ? undefined : (inner.error || (failed && failed.error) || 'Macro failed'),
+    note: inner.note,
+    totalSteps: Array.isArray(macro.steps) ? macro.steps.length : steps.length,
+    source,
+  };
+}
+
+// JARVIS run_macro / run_voice_macro (Raven voice) use this same executor as the hotkey.
+jarvisRegistry.setContext({
+  executeMacroById: async (id, source) => {
+    const result = await executeMacroById(id, source || 'jarvis');
+    if (win && !win.isDestroyed()) win.webContents.send('macro-executed', { id, ...result });
+    return result;
+  },
+});
+
+async function runMacroFromHotkey(id) {
+  try {
+    const result = await executeMacroById(id, 'hotkey');
+    if (win && !win.isDestroyed()) win.webContents.send('macro-executed', { id, ...result });
+  } catch (err) {
+    console.error('[Macro] Hotkey run failed:', err);
+  }
+}
+
+const macroHotkeyRegistrar = new MacroHotkeyRegistrar({
+  globalShortcut,
+  onTrigger: (id) => runMacroFromHotkey(id),
+});
+let lastMacroHotkeySync = { registered: [], failed: [] };
+
+function syncMacroHotkeys() {
+  if (!macroManager) return lastMacroHotkeySync;
+  try {
+    lastMacroHotkeySync = macroHotkeyRegistrar.sync(macroManager.list());
+  } catch (err) {
+    console.error('[MacroHotkeys] sync failed:', err);
+  }
+  return lastMacroHotkeySync;
+}
+
+function activeButtonHotkeys() {
+  try {
+    const profile = loadProfile(currentActiveProfile);
+    return (profile.buttons || []).filter((b) => b && b.hotkey).map((b) => ({ label: b.name || b.label, hotkey: b.hotkey }));
+  } catch {
+    return [];
+  }
+}
+
+function checkMacroHotkey(id, hotkey) {
+  if (!hotkey) return { valid: true, accelerator: '', errors: [] };
+  const parsed = parseMacroHotkey(hotkey);
+  if (!parsed.valid) return parsed;
+  const conflicts = findHotkeyConflicts({
+    hotkey: parsed.accelerator,
+    macroId: id,
+    macros: macroManager ? macroManager.list() : [],
+    buttonHotkeys: activeButtonHotkeys(),
+  });
+  return { valid: conflicts.length === 0, accelerator: parsed.accelerator, errors: conflicts };
+}
+
+ipcMain.handle('check-macro-hotkey', async (_event, payload) => {
+  const input = payload && typeof payload === 'object' ? payload : {};
+  return checkMacroHotkey(String(input.id || ''), String(input.hotkey || ''));
+});
+
+ipcMain.handle('execute-macro', async (event, id) => {
+  try {
+    return await executeMacroById(id, 'ui');
+  } catch (error) {
+    console.error('Error executing macro:', error);
+    return { success: false, error: error.message, steps: [] };
+  }
+});
+
+ipcMain.handle('raid-favorites-get', async () => {
+  if (!raidFavoritesStore) return { success: false, error: 'Raid favorites unavailable' };
+  return {
+    success: true,
+    favorites: raidFavoritesStore.listFavorites(),
+    history: raidFavoritesStore.listHistory(),
+  };
+});
+
+ipcMain.handle('raid-favorites-add', async (_event, payload) => {
+  try {
+    if (!raidFavoritesStore) return { success: false, error: 'Raid favorites unavailable' };
+    const input = payload && typeof payload === 'object' ? payload : {};
+    const entry = raidFavoritesStore.addFavorite({
+      login: input.login,
+      note: input.note,
+    });
+    return { success: true, favorite: entry };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('raid-favorites-remove', async (_event, payload) => {
+  try {
+    if (!raidFavoritesStore) return { success: false, error: 'Raid favorites unavailable' };
+    const input = payload && typeof payload === 'object' ? payload : {};
+    if (!isValidTwitchLogin(input.login)) {
+      return { success: false, error: 'Invalid Twitch login' };
+    }
+    const removed = raidFavoritesStore.removeFavorite(input.login);
+    return { success: removed };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('raid-favorites-reorder', async (_event, payload) => {
+  try {
+    if (!raidFavoritesStore) return { success: false, error: 'Raid favorites unavailable' };
+    const input = payload && typeof payload === 'object' ? payload : {};
+    if (!Array.isArray(input.orderedLogins)) {
+      return { success: false, error: 'orderedLogins must be an array' };
+    }
+    const favorites = raidFavoritesStore.reorderFavorites(input.orderedLogins);
+    return { success: true, favorites };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('raid-favorites-update-note', async (_event, payload) => {
+  try {
+    if (!raidFavoritesStore) return { success: false, error: 'Raid favorites unavailable' };
+    const input = payload && typeof payload === 'object' ? payload : {};
+    if (!isValidTwitchLogin(input.login)) {
+      return { success: false, error: 'Invalid Twitch login' };
+    }
+    const updated = raidFavoritesStore.updateFavoriteNote(input.login, input.note);
+    return { success: updated };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('raid-favorites-add-from-history', async (_event, payload) => {
+  try {
+    if (!raidFavoritesStore) return { success: false, error: 'Raid favorites unavailable' };
+    const input = payload && typeof payload === 'object' ? payload : {};
+    const entry = raidFavoritesStore.addFavorite({
+      login: input.login,
+      note: input.note || '',
+    });
+    return { success: true, favorite: entry };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('raid-favorites-live-check', async (_event, payload) => {
+  const input = payload && typeof payload === 'object' ? payload : {};
+  return await raidFavoritesListLive({ forceRefresh: !!input.forceRefresh });
+});
+
+ipcMain.handle('raid-favorites-start-raid', async (_event, payload) => {
+  const input = payload && typeof payload === 'object' ? payload : {};
+  if (!isValidTwitchLogin(input.login)) {
+    return { success: false, error: 'Invalid Twitch login' };
+  }
+  return await raidFavoritesStartRaid({ login: input.login, source: 'ui' });
+});
+
+ipcMain.handle('raid-favorites-cancel-raid', async () => {
+  try {
+    const helix = createRaidHelixClient();
+    const result = await helix.cancelRaid();
+    if (!result.ok) {
+      return {
+        success: false,
+        error: result.error,
+        needsReconnect: !!result.needsReconnect,
+        authorizeUrl: result.needsReconnect ? buildTwitchAuthorizeUrl({ forceVerify: true }) : null,
+      };
+    }
     return { success: true };
-  } catch (error) {
-    console.error('Error deleting progression:', error);
-    return { success: false, error: error.message };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
   }
 });
 
-// Reset progression state
-ipcMain.handle('reset-progression', async (event, progressionId) => {
+ipcMain.handle('check-twitch-raid-scope', async () => {
   try {
-    console.log('Resetting progression:', progressionId);
-    const progression = progressionsData.progressions.find(p => p.id === progressionId);
-    if (!progression) {
-      return { success: false, error: 'Progression not found' };
-    }
-    
-    progression.currentStageIndex = 0;
-    progression.currentCount = 0;
-    progression.totalRedeems = 0;
-    progression.topRedeemers = [];
-    
-    if (progression.persistenceMode === 'permanent') {
-      saveProgressions(progressionsData);
-    }
-    
-    return { success: true, progression };
-  } catch (error) {
-    console.error('Error resetting progression:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// Get progression state
-ipcMain.handle('get-progression-state', async (event, progressionId) => {
-  try {
-    const progression = progressionsData.progressions.find(p => p.id === progressionId);
-    if (!progression) {
-      return { success: false, error: 'Progression not found' };
-    }
-    
+    const helix = createRaidHelixClient();
+    const scope = await helix.validateToken();
     return {
-      success: true,
-      state: {
-        currentStageIndex: progression.currentStageIndex,
-        currentCount: progression.currentCount,
-        totalRedeems: progression.totalRedeems,
-        currentStage: progression.stages[progression.currentStageIndex]
-      }
+      success: scope.ok,
+      hasRaidScope: !!scope.hasRaidScope,
+      scopes: scope.scopes || [],
+      authorizeUrl: scope.hasRaidScope ? null : buildTwitchAuthorizeUrl({ forceVerify: true }),
     };
-  } catch (error) {
-    console.error('Error getting progression state:', error);
-    return { success: false, error: error.message };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
   }
 });
 
-// Get progression leaderboard
-ipcMain.handle('get-progression-leaderboard', async (event, progressionId) => {
-  try {
-    const progression = progressionsData.progressions.find(p => p.id === progressionId);
-    if (!progression) {
-      return { success: false, error: 'Progression not found' };
-    }
-    
-    return {
-      success: true,
-      leaderboard: progression.topRedeemers || []
-    };
-  } catch (error) {
-    console.error('Error getting progression leaderboard:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// Save progression media file
-ipcMain.handle('save-progression-media', async (event, { sourcePath, progressionId, stageId, mediaType, originalName }) => {
-  try {
-    console.log('Saving progression media:', { progressionId, stageId, mediaType });
-    
-    // Create progression-specific directory
-    const progressionMediaDir = path.join(progressionsMediaPath, progressionId);
-    if (!fs.existsSync(progressionMediaDir)) {
-      fs.mkdirSync(progressionMediaDir, { recursive: true });
-    }
-    
-    const extension = path.extname(originalName || sourcePath);
-    const timestamp = Date.now();
-    const filename = `${stageId}_${mediaType}_${timestamp}${extension}`;
-    const destPath = path.join(progressionMediaDir, filename);
-    
-    fse.copySync(sourcePath, destPath);
-    console.log('Progression media saved:', destPath);
-    
-    const relativePath = path.relative(userDataPath, destPath);
-    return { success: true, filePath: relativePath };
-  } catch (error) {
-    console.error('Error saving progression media:', error);
-    return { success: false, error: error.message };
-  }
+ipcMain.handle('get-twitch-oauth-authorize-url', async () => {
+  const url = buildTwitchAuthorizeUrl({ forceVerify: true });
+  return { success: !!url, authorizeUrl: url };
 });
 
 // Create media storage directory for multi-media button assets
@@ -1802,6 +2822,18 @@ if (!fs.existsSync(mediaStoragePath)) {
 ipcMain.handle('save-media-file-by-path', async (event, { sourcePath, buttonId, mediaType, originalName }) => {
   try {
     console.log('Saving media file by path:', { sourcePath, buttonId, mediaType, originalName });
+    
+    // Validate source path exists and is readable
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error('Source file not found');
+    }
+    
+    // Basic validation - reject paths that look suspicious
+    const normalizedSource = path.normalize(sourcePath);
+    if (normalizedSource.includes('..')) {
+      console.error('⚠️ [Security] Rejected path with traversal attempt:', sourcePath);
+      throw new Error('Invalid source path');
+    }
     
     // Create button-specific directory
     const buttonMediaDir = path.join(mediaStoragePath, buttonId);
@@ -1827,6 +2859,66 @@ ipcMain.handle('save-media-file-by-path', async (event, { sourcePath, buttonId, 
     return { success: true, filePath: relativePath };
   } catch (error) {
     console.error('Error copying media file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC handler to save audio file directly to sounds directory (for simple audio buttons)
+ipcMain.handle('save-audio-file-to-sounds', async (event, { base64Data, label, originalName }) => {
+  try {
+    // Ensure sounds directory exists
+    if (!fs.existsSync(userSoundsDir)) {
+      fs.mkdirSync(userSoundsDir, { recursive: true });
+    }
+
+    // Extract extension from original name or base64 mime type
+    let extension = '';
+    if (originalName) {
+      extension = path.extname(originalName);
+    } else {
+      // Extract from base64 data URI
+      const match = base64Data.match(/^data:([^;]+);/);
+      if (match) {
+        const mimeType = match[1];
+        const mimeToExt = {
+          'audio/mpeg': '.mp3',
+          'audio/mp3': '.mp3',
+          'audio/wav': '.wav',
+          'audio/wave': '.wav',
+          'audio/ogg': '.ogg',
+          'audio/oga': '.oga',
+          'audio/m4a': '.m4a',
+          'audio/aac': '.aac'
+        };
+        extension = mimeToExt[mimeType] || '.mp3';
+      }
+    }
+
+    // Use label as filename (sanitized), but handle case where file already exists
+    const safeLabel = label.replace(/[^a-z0-9_\-]/gi, '_');
+    let filename = `${safeLabel}${extension}`;
+    let filePath = path.join(userSoundsDir, filename);
+    
+    // If file already exists, append timestamp to make it unique
+    if (fs.existsSync(filePath)) {
+      const timestamp = Date.now();
+      filename = `${safeLabel}_${timestamp}${extension}`;
+      filePath = path.join(userSoundsDir, filename);
+    }
+
+    // Remove base64 prefix if present
+    const base64String = base64Data.replace(/^data:[^;]+;base64,/, '');
+    
+    // Write file
+    fs.writeFileSync(filePath, Buffer.from(base64String, 'base64'));
+    
+    console.log('Audio file saved to sounds directory:', filePath);
+    
+    // Return relative path from userDataPath for storage in config
+    const relativePath = path.relative(userDataPath, filePath).replace(/\\/g, '/');
+    return { success: true, filePath: relativePath };
+  } catch (error) {
+    console.error('Error saving audio file to sounds:', error);
     return { success: false, error: error.message };
   }
 });
@@ -1891,13 +2983,15 @@ ipcMain.handle('save-media-file', async (event, { base64Data, buttonId, mediaTyp
 // IPC handler to get absolute path for media file (for HTTP serving)
 ipcMain.handle('get-media-file-path', async (event, relativePath) => {
   try {
-    const fullPath = path.join(userDataPath, relativePath);
-    if (!fs.existsSync(fullPath)) {
+    // Sanitize path to prevent traversal
+    const sanitizedPath = securityManager.sanitizePath(userDataPath, relativePath);
+    
+    if (!fs.existsSync(sanitizedPath)) {
       return { success: false, error: 'File not found' };
     }
     return { 
       success: true, 
-      absolutePath: fullPath
+      absolutePath: sanitizedPath
     };
   } catch (error) {
     console.error('Error getting media file path:', error);
@@ -1907,40 +3001,11 @@ ipcMain.handle('get-media-file-path', async (event, relativePath) => {
 
 // IPC handler to get media file as base64 (for serving to overlay) - DEPRECATED, use HTTP serving instead
 ipcMain.handle('get-media-file', async (event, relativePath) => {
-  try {
-    const fullPath = path.join(userDataPath, relativePath);
-    if (!fs.existsSync(fullPath)) {
-      return { success: false, error: 'File not found' };
-    }
-
-    const fileBuffer = fs.readFileSync(fullPath);
-    const base64Data = fileBuffer.toString('base64');
-    
-    // Detect mime type from extension
-    const ext = path.extname(fullPath).toLowerCase();
-    const extToMime = {
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.png': 'image/png',
-      '.gif': 'image/gif',
-      '.webp': 'image/webp',
-      '.mp4': 'video/mp4',
-      '.webm': 'video/webm',
-      '.mp3': 'audio/mpeg',
-      '.wav': 'audio/wav',
-      '.ogg': 'audio/ogg'
-    };
-    const mimeType = extToMime[ext] || 'application/octet-stream';
-    
-    return { 
-      success: true, 
-      data: `data:${mimeType};base64,${base64Data}`,
-      mimeType: mimeType
-    };
-  } catch (error) {
-    console.error('Error reading media file:', error);
-    return { success: false, error: error.message };
+  const result = readMediaFileAsDataUrl({ userDataPath, relativePath, securityManager });
+  if (!result.success) {
+    console.error('Error reading media file:', relativePath, result.error);
   }
+  return result;
 });
 
 
@@ -2074,20 +3139,17 @@ ipcMain.on('delete-event-mapping', (event, id) => {
 // IPC: get the saved TwitchConnected config (tc_config.json)
 ipcMain.handle('get-tc-config', async () => {
   try {
-    return loadTcConfig();
+    const tc = loadTcConfig();
+    const safe = { ...tc };
+    delete safe.accessToken;
+    delete safe.oauth_token;
+    delete safe.oauth_token_encrypted;
+    delete safe.refreshToken;
+    delete safe.refresh_token_encrypted;
+    return safe;
   } catch (err) {
     console.error('Error reading tc_config via IPC:', err);
     return { topics: [], lastFollowerPoll: null };
-  }
-});
-
-// IPC: get the connected Twitch username (login) for defaulting battle overlay channel
-ipcMain.handle('get-twitch-username', async () => {
-  try {
-    if (!twitchUserName) await getUserId();
-    return twitchUserName || null;
-  } catch (err) {
-    return null;
   }
 });
 
@@ -2174,33 +3236,44 @@ ipcMain.handle('list-eventsub-subscriptions', async () => {
   }
 });
 
-// IPC: fetch channel point rewards for the connected channel (requires clientId and token + scope channel:read:redemptions)
+// IPC: fetch channel point rewards for the connected channel (requires clientId and token)
+ipcMain.handle('twitch-eventsub-health', async () => {
+  try {
+    return await getTwitchEventSubHealth();
+  } catch (err) {
+    console.error('twitch-eventsub-health error:', err);
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
 ipcMain.handle('get-channel-rewards', async () => {
   try {
-    if (!twitchUserId) await getUserId();
-    if (!twitchClientId || !twitchToken) {
-      throw new Error('Not connected to Twitch. Connect in the app first.');
+    const token = helixAccessToken();
+    const clientId = helixClientId();
+    if (!clientId || !token) {
+      return { ok: false, rewards: [], error: 'Twitch is not connected in VirtualDeck.' };
     }
+    twitchUserId = null;
+    twitchUserIdFor = null;
+    await getUserId();
     const url = `https://api.twitch.tv/helix/channel_points/custom_rewards?broadcaster_id=${encodeURIComponent(twitchUserId)}`;
     const resp = await fetch(url, {
       headers: {
-        'Client-ID': twitchClientId,
-        'Authorization': `Bearer ${twitchToken}`
-      }
+        'Client-ID': clientId,
+        Authorization: `Bearer ${token}`,
+      },
     });
-    const data = await resp.json();
+    const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
-      const msg = (data && data.message) ? data.message : `${resp.status} ${resp.statusText}`;
-      if (resp.status === 401 || resp.status === 403) {
-        throw new Error(`Twitch denied access: ${msg}. Reconnect Twitch (clear credentials and log in again) to grant "channel point rewards" permission.`);
-      }
-      throw new Error(`Twitch API: ${msg}`);
+      const message = (data && data.message) || `Twitch returned ${resp.status}`;
+      console.warn('Helix custom_rewards failed', resp.status, message);
+      return { ok: false, rewards: [], error: message };
     }
-    if (data && Array.isArray(data.data)) return data.data;
-    return [];
+    const rewards = data && Array.isArray(data.data) ? data.data : [];
+    return { ok: true, rewards, error: null };
   } catch (err) {
     console.error('Error fetching channel rewards:', err);
-    throw err;
+    return { ok: false, rewards: [], error: err && err.message ? err.message : 'Could not load channel rewards' };
   }
 });
 
@@ -2304,24 +3377,6 @@ ipcMain.handle('is-stream-live', async () => {
   }
 });
 
-// IPC: create a Twitch clip
-ipcMain.handle('create-clip', async () => {
-  try {
-    const result = await createClip();
-    // Notify renderer with result
-    if (win && win.webContents) {
-      win.webContents.send('twitch-clip-created', result);
-    }
-    return result;
-  } catch (error) {
-    console.error('Error in create-clip IPC handler:', error);
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-});
-
 // IPC: get current viewer count for the channel
 ipcMain.handle('get-viewer-count', async () => {
   try {
@@ -2368,15 +3423,6 @@ ipcMain.handle('get-follower-count', async () => {
 // IPC: get total subscriber count and subscription points for the channel
 ipcMain.handle('get-subscriber-stats', async () => {
   try {
-    // Try to ensure token is loaded before getting user ID
-    if (!twitchToken) {
-      try {
-        const oauthToken = await ensureValidToken();
-        twitchToken = oauthToken;
-      } catch (err) {
-        console.log('Could not load token for subscriber stats:', err.message);
-      }
-    }
     if (!twitchUserId) await getUserId();
     if (!twitchClientId || !twitchToken) return { count: 0, points: 0 };
     
@@ -2667,12 +3713,16 @@ ipcMain.handle('report-bug', async () => {
 ipcMain.handle('get-connected-overlays', async () => {
   try {
     const connections = [];
-    // Convert overlayRegistry Map to array of connection objects
+    // Convert overlayRegistry Map to array of connection objects (OPEN sockets only).
+    // Merged from the former duplicate handler in app.whenReady: the renderer reads clientCount.
     for (const [overlayName, clientSet] of overlayRegistry.entries()) {
-      if (clientSet.size > 0) {
+      const activeClients = Array.from(clientSet).filter(client => client.readyState === WebSocket.OPEN);
+      if (activeClients.length > 0) {
         connections.push({
           name: overlayName,
-          count: clientSet.size
+          connected: true,
+          clientCount: activeClients.length,
+          count: activeClients.length
         });
       }
     }
@@ -2936,6 +3986,11 @@ async function importSkinFile(filePath) {
       throw new Error('File not found');
     }
     
+    // Validate file extension
+    if (!filePath.toLowerCase().endsWith('.json')) {
+      throw new Error('Invalid file type. Only JSON files are allowed.');
+    }
+    
     const skinData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     
     // Validate skin structure
@@ -3122,74 +4177,205 @@ ipcMain.on('launch-app', async (event, appData) => {
 // IPC handler to get the app icon as a base64 PNG
 ipcMain.handle('get-app-icon', async (event, filePath) => {
   try {
-    if (!filePath || filePath === 'undefined' || filePath === 'null') {
-      console.log('Invalid file path for icon extraction:', filePath);
-      return null;
-    }
-    
-    // For UWP/Store apps, we can't extract the icon directly
+    // For UWP/Store apps, we can't extract the icon directly, so return null or a default
     if (filePath.startsWith('shell:AppsFolder')) {
-      console.log('UWP app detected, cannot extract icon:', filePath);
+      // TODO: Optionally return a custom icon for known UWP apps
       return null;
     }
-    
-    let iconPath = filePath;
-    
-    // If it's a .lnk file, resolve it first to get the target path
-    if (filePath.toLowerCase().endsWith('.lnk')) {
-      try {
-        console.log('Resolving shortcut for icon extraction:', filePath);
-        const shortcut = await new Promise((resolve, reject) => {
-          ws.query(filePath, (err, shortcut) => {
-            if (err) {
-              console.error('Error querying shortcut for icon:', err);
-              resolve(null);
-            } else {
-              resolve(shortcut);
-            }
-          });
-        });
-        
-        if (shortcut && shortcut.target) {
-          iconPath = shortcut.target;
-          console.log('Using resolved shortcut target for icon:', iconPath);
-        } else if (shortcut && shortcut.icon) {
-          // Some shortcuts have an icon path specified
-          iconPath = shortcut.icon;
-          console.log('Using shortcut icon path:', iconPath);
-        }
-      } catch (error) {
-        console.error('Error resolving shortcut for icon:', error);
-        // Fall back to using the .lnk file itself
-      }
+    // For .exe or .lnk files, extract the icon
+    const iconBuffer = extractIcon(filePath, 64); // 64x64 icon
+    if (iconBuffer) {
+      const image = nativeImage.createFromBuffer(iconBuffer);
+      return image.toDataURL(); // Return as base64 PNG
     }
-    
-    // Use Electron's built-in getFileIcon API
-    try {
-      const icon = await app.getFileIcon(iconPath, { size: 'large' });
-      if (icon && !icon.isEmpty()) {
-        const dataURL = icon.toDataURL();
-        console.log('✅ Successfully extracted icon for:', filePath);
-        return dataURL;
-      } else {
-        console.log('Icon is empty for:', filePath);
-        return null;
-      }
-    } catch (iconError) {
-      console.error('Error using app.getFileIcon:', iconError);
-      return null;
-    }
+    return null;
   } catch (error) {
     console.error('Error extracting icon for', filePath, error);
     return null;
   }
 });
 
+// --- !killcommand → Streamlabs Desktop (local TCP JSON-RPC, port 28194) ---
+let lastKillcommandAt = 0;
+const KILLCOMMAND_DEBOUNCE_MS = 5000;
+
+function getKillcommandUserAllowlist() {
+  const raw = process.env.VD_KILLCOMMAND_USERS || '';
+  return raw
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isKillcommandAuthorized(username) {
+  const list = getKillcommandUserAllowlist();
+  const u = String(username || '').toLowerCase();
+  return list.length > 0 && list.includes(u);
+}
+
+async function handleKillcommandFromChat(username) {
+  const channels = twitchClient && twitchClient.getChannels();
+  const ch = channels && channels[0];
+  const reply = (text) => {
+    if (twitchClient && twitchClient.readyState() === 'OPEN' && ch) {
+      twitchClient.say(ch, text);
+    }
+  };
+
+  const now = Date.now();
+  if (now - lastKillcommandAt < KILLCOMMAND_DEBOUNCE_MS) {
+    reply(`@${username} — !killcommand is on cooldown.`);
+    return;
+  }
+
+  try {
+    const result = await stopStreamlabsStreamingIfLive();
+    lastKillcommandAt = Date.now();
+    if (!result.ok) {
+      if (result.reason === 'not_streaming') {
+        reply(`@${username} — Streamlabs is not live (status: ${result.detail || 'offline'}).`);
+      } else {
+        reply(`@${username} — Could not end stream: ${result.reason || 'unknown'}.`);
+      }
+      return;
+    }
+    reply(`@${username} — Ending stream via Streamlabs…`);
+  } catch (e) {
+    console.error('!killcommand / Streamlabs error:', e);
+    lastKillcommandAt = Date.now();
+    reply(
+      `@${username} — Streamlabs error: ${e.message || String(e)} (is Streamlabs running on this PC?)`,
+    );
+  }
+}
+
 let twitchClient = null;
 // In-memory cache of recent chat user state (badges, mod flag) to enable simple VIP/mod checks
 const recentChatUserState = new Map();
 // Track users who have chatted this session (for walk-on alerts)
 const firstTimeChatters = new Set();
+
+const TWITCH_PROFILE_IMAGE_CACHE_TTL_MS = 30 * 60 * 1000;
+const TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS = 60 * 1000;
+const TWITCH_PROFILE_HELIX_TIMEOUT_MS = 2500;
+const TWITCH_USER_ID_PATTERN = /^\d{1,20}$/;
+const TWITCH_LOGIN_PATTERN = /^[a-zA-Z0-9_]{1,25}$/;
+const twitchProfileImageCache = new Map();
+
+function twitchProfileCacheKey({ userId, login }) {
+  if (userId) return `id:${userId}`;
+  if (login) return `login:${String(login).toLowerCase()}`;
+  return null;
+}
+
+function getCachedTwitchProfileImage(cacheKey) {
+  const cached = twitchProfileImageCache.get(cacheKey);
+  if (!cached) return undefined;
+  const ttlMs = cached.ttlMs ?? TWITCH_PROFILE_IMAGE_CACHE_TTL_MS;
+  if (Date.now() - cached.ts >= ttlMs) return undefined;
+  return cached.profileImageUrl;
+}
+
+function setCachedTwitchProfileImage(cacheKey, profileImageUrl, ttlMs = TWITCH_PROFILE_IMAGE_CACHE_TTL_MS) {
+  twitchProfileImageCache.set(cacheKey, {
+    profileImageUrl,
+    ts: Date.now(),
+    ttlMs,
+  });
+}
+
+function cacheTwitchProfileLookupResult(user, profileImageUrl) {
+  const ttlMs = TWITCH_PROFILE_IMAGE_CACHE_TTL_MS;
+  if (user?.id) {
+    setCachedTwitchProfileImage(`id:${user.id}`, profileImageUrl, ttlMs);
+  }
+  if (user?.login) {
+    setCachedTwitchProfileImage(`login:${user.login.toLowerCase()}`, profileImageUrl, ttlMs);
+  }
+}
+
+function sanitizeTwitchProfileImageUrl(url) {
+  return sanitizeTwitchProfileImageUrlLib(url);
+}
+
+async function helixFetchTwitchUser({ userId, login, signal }) {
+  let helixUrl = 'https://api.twitch.tv/helix/users?';
+  if (userId) {
+    helixUrl += `id=${encodeURIComponent(userId)}`;
+  } else {
+    helixUrl += `login=${encodeURIComponent(String(login).toLowerCase())}`;
+  }
+
+  const resp = await fetch(helixUrl, {
+    headers: {
+      'Client-ID': twitchClientId,
+      'Authorization': `Bearer ${twitchToken}`,
+    },
+    signal,
+  });
+  const data = await resp.json().catch(() => ({}));
+  return { resp, data };
+}
+
+async function lookupTwitchProfileImage({ userId, login }) {
+  const cacheKey = twitchProfileCacheKey({ userId, login });
+  if (!cacheKey) return null;
+
+  const cached = getCachedTwitchProfileImage(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  if (!twitchClientId || !twitchToken) {
+    setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
+    return null;
+  }
+
+  const signal = AbortSignal.timeout(TWITCH_PROFILE_HELIX_TIMEOUT_MS);
+
+  try {
+    let user = null;
+
+    if (userId) {
+      const { resp, data } = await helixFetchTwitchUser({ userId, signal });
+      if (!resp.ok) {
+        setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
+        console.warn('[Walk On] Helix users lookup failed:', resp.status);
+        return null;
+      }
+      user = data.data && data.data[0];
+      if (!user && login) {
+        const fallback = await helixFetchTwitchUser({ login, signal });
+        if (!fallback.resp.ok) {
+          setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
+          console.warn('[Walk On] Helix users login fallback failed:', fallback.resp.status);
+          return null;
+        }
+        user = fallback.data.data && fallback.data.data[0];
+      }
+    } else if (login) {
+      const { resp, data } = await helixFetchTwitchUser({ login, signal });
+      if (!resp.ok) {
+        setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
+        console.warn('[Walk On] Helix users lookup failed:', resp.status);
+        return null;
+      }
+      user = data.data && data.data[0];
+    }
+
+    const profileImageUrl = sanitizeTwitchProfileImageUrl(user?.profile_image_url);
+    setCachedTwitchProfileImage(cacheKey, profileImageUrl, TWITCH_PROFILE_IMAGE_CACHE_TTL_MS);
+    if (user) {
+      cacheTwitchProfileLookupResult(user, profileImageUrl);
+    }
+    return profileImageUrl;
+  } catch (err) {
+    const isTimeout = err && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    console.error('[Walk On] Twitch profile image lookup failed:', isTimeout ? 'timed out' : err);
+    setCachedTwitchProfileImage(cacheKey, null, TWITCH_PROFILE_IMAGE_ERROR_CACHE_TTL_MS);
+    return null;
+  }
+}
 
 // Function to reset first-time chatters (useful when restarting stream)
 function resetFirstTimeChatters() {
@@ -3208,28 +4394,48 @@ ipcMain.handle('reset-first-time-chatters', async () => {
   }
 });
 
-async function startTwitchChatConnection({ username, oauth, clientId }) {
+ipcMain.handle('get-twitch-profile-image', async (_event, params) => {
+  const input = params && typeof params === 'object' ? params : {};
+  let userId = input.userId;
+  let login = input.login;
+
+  if (userId != null && userId !== '') {
+    userId = String(userId);
+    if (!TWITCH_USER_ID_PATTERN.test(userId)) {
+      return { success: false, profileImageUrl: null, error: 'Invalid userId' };
+    }
+  } else {
+    userId = undefined;
+  }
+
+  if (login != null && login !== '') {
+    login = String(login);
+    if (!TWITCH_LOGIN_PATTERN.test(login)) {
+      return { success: false, profileImageUrl: null, error: 'Invalid login' };
+    }
+  } else {
+    login = undefined;
+  }
+
+  if (!userId && !login) {
+    return { success: false, profileImageUrl: null, error: 'userId or login required' };
+  }
+
+  try {
+    const profileImageUrl = await lookupTwitchProfileImage({ userId, login });
+    return { success: true, profileImageUrl };
+  } catch (error) {
+    console.error('Error fetching Twitch profile image:', error);
+    return { success: false, profileImageUrl: null, error: error.message };
+  }
+});
+
+function startTwitchChatConnection({ username, oauth, clientId }) {
   console.log('Starting Twitch chat connection for user:', username);
   if (!username || !oauth) {
     console.error('Missing Twitch credentials');
     return;
   }
-
-  // Disconnect any existing client to prevent duplicates
-  if (twitchClient && typeof twitchClient.disconnect === 'function') {
-    try {
-      console.log('Disconnecting existing Twitch client...');
-      await twitchClient.disconnect();
-      twitchClient = null;
-      console.log('Existing client disconnected');
-    } catch (e) {
-      console.warn('Error disconnecting existing client:', e);
-    }
-  }
-
-  // Small delay to ensure disconnect completes
-  await new Promise(resolve => setTimeout(resolve, 500));
-
   const opts = {
     identity: {
       username: username,
@@ -3237,11 +4443,51 @@ async function startTwitchChatConnection({ username, oauth, clientId }) {
     },
     channels: [username]
   };
+  const nextLogin = String(username || '').replace(/^#/, '').trim().toLowerCase();
+  if (twitchUserIdFor && nextLogin && twitchUserIdFor !== nextLogin) {
+    twitchUserId = null;
+    twitchUserIdFor = null;
+  }
   twitchClientId = clientId;
+  twitchToken = oauth;
+  twitchUserName = username;
   console.log('Using clientId:', twitchClientId);
   twitchClient = new tmi.Client(opts);
+  twitchClient.on('disconnected', (reason) => {
+    console.warn('Twitch chat disconnected:', reason);
+    if (win && win.webContents) {
+      win.webContents.send('twitch-cleared');
+    }
+  });
+
   twitchClient.connect().then(() => {
     console.log('Connected to Twitch chat as', username);
+    
+    // Update JARVIS context with Twitch connection
+    updateJarvisContext();
+
+    const kcUsers = getKillcommandUserAllowlist();
+    if (kcUsers.length === 0) {
+      console.warn(
+        '⚠️ !killcommand disabled: set VD_KILLCOMMAND_USERS in .env (comma-separated Twitch logins).',
+      );
+    } else {
+      console.log(`✅ !killcommand allowed users: ${kcUsers.join(', ')}`);
+    }
+    
+    // Save Twitch credentials to tc_config for AI controller to use
+    try {
+      const tc = loadTcConfig();
+      tc.username = username.toLowerCase().trim(); // Normalize for comparison
+      tc.clientId = clientId; // Save client ID for AI controller
+      tc.accessToken = oauth; // Save access token for AI controller
+      // Note: Token is stored but should be kept secure
+      saveTcConfig(tc);
+      console.log(`📺 Saved Twitch credentials to tc_config (username: ${tc.username}, clientId: ${tc.clientId?.substring(0, 7)}...)`);
+    } catch (err) {
+      console.warn('⚠️ Could not save Twitch credentials to tc_config:', err);
+    }
+    
     // Reset first-time chatters when connecting (new stream session)
     resetFirstTimeChatters();
     // Notify renderer to update button state
@@ -3302,6 +4548,31 @@ async function startTwitchChatConnection({ username, oauth, clientId }) {
     }
     // Log chat messages to terminal
     console.log(`[Twitch Chat] ${tags.username}: ${message}`);
+    
+    // Write chat event to ai-events.log for AI controller
+    // Include channel info so AI can filter by authenticated user
+    try {
+      const chatEvent = {
+        type: 'twitch_chat',
+        channel: channel.replace('#', '').toLowerCase(), // Remove # and normalize
+        user: {
+          name: tags.username,
+          displayName: tags['display-name'] || tags.username,
+          id: tags['user-id'],
+          isMod: !!tags.mod,
+          isSub: !!tags.subscriber,
+          isVip: !!tags.vip,
+        },
+        message: message,
+        badges: tags.badges || {},
+        timestamp: Date.now(),
+      };
+      fs.appendFileSync(aiEventsLogPath, JSON.stringify(chatEvent) + '\n', 'utf-8');
+      console.log(`📝 [AI Events] Wrote chat event to log (channel: ${chatEvent.channel})`);
+    } catch (err) {
+      console.error('❌ [AI Events] Error writing chat event:', err);
+    }
+    
     // Forward chat event to renderer via IPC
     if (win && win.webContents) {
       win.webContents.send('twitch-chat-event', {
@@ -3315,53 +4586,6 @@ async function startTwitchChatConnection({ username, oauth, clientId }) {
     // Trigger buttons with chat commands enabled if message starts with '!'
     if (message.startsWith('!')) {
       const commandText = message.split(' ')[0].substring(1).toLowerCase();
-      console.log(`💬 Chat command detected: "${commandText}" from ${username}`);
-      
-      // Handle !clip command
-      if (commandText === 'clip') {
-        console.log(`📹 [Twitch Chat] ${username} requested clip creation via !clip command`);
-        console.log(`📹 Twitch client status:`, twitchClient ? 'exists' : 'null', twitchClient && twitchClient.readyState ? `readyState: ${twitchClient.readyState()}` : 'no readyState');
-        createClip().then((result) => {
-          console.log(`📹 Clip creation result:`, result);
-          if (result.success) {
-            const clipMessage = result.testMode
-              ? `🧪 TEST MODE: @${username} ${result.message}`
-              : (result.clipUrl 
-                ? `@${username} Clip created! ${result.clipUrl}`
-                : `@${username} Clip created! Processing... ${result.editUrl}`);
-            
-            if (twitchClient && twitchClient.readyState() === 'OPEN') {
-              const channels = twitchClient.getChannels();
-              if (channels && channels.length > 0) {
-                twitchClient.say(channels[0], clipMessage);
-              }
-            }
-            
-            // Notify renderer
-            if (win && win.webContents) {
-              win.webContents.send('twitch-clip-created', result);
-            }
-          } else {
-            const errorMessage = `@${username} Failed to create clip: ${result.error || 'Unknown error'}`;
-            if (twitchClient && twitchClient.readyState() === 'OPEN') {
-              const channels = twitchClient.getChannels();
-              if (channels && channels.length > 0) {
-                twitchClient.say(channels[0], errorMessage);
-              }
-            }
-            console.error('Clip creation failed:', result.error);
-          }
-        }).catch((error) => {
-          console.error('Error in clip creation:', error);
-          if (twitchClient && twitchClient.readyState() === 'OPEN') {
-            const channels = twitchClient.getChannels();
-            if (channels && channels.length > 0) {
-              twitchClient.say(channels[0], `@${username} Error creating clip. Please try again.`);
-            }
-          }
-        });
-        return; // Don't process as button trigger
-      }
       
       // Handle !checkin command specifically
       if (commandText === 'checkin') {
@@ -3444,74 +4668,21 @@ async function startTwitchChatConnection({ username, oauth, clientId }) {
         
         return;
       }
-      
-      // Handle progression commands
-      // Check if command matches any progression's chat command
-      const matchingProgression = progressionsData.progressions.find(prog => 
-        prog.chatCommand && prog.chatCommand.toLowerCase().replace('!', '') === commandText
-      );
-      
-      if (matchingProgression) {
-        const uname = String(username).toLowerCase();
-        const now = Date.now();
-        
-        // Check cooldown
-        const lastUsed = progressionCommandCooldown.get(uname + '_' + matchingProgression.id);
-        if (lastUsed && (now - lastUsed) < PROGRESSION_COMMAND_COOLDOWN_MS) {
-          const remainingSeconds = Math.ceil((PROGRESSION_COMMAND_COOLDOWN_MS - (now - lastUsed)) / 1000);
-          
-          if (twitchClient && twitchClient.readyState() === 'OPEN') {
-            const channels = twitchClient.getChannels();
-            if (channels && channels.length > 0) {
-              twitchClient.say(channels[0], `@${username}, please wait ${remainingSeconds}s before using ${matchingProgression.chatCommand} again.`);
-            }
-          }
-          return;
-        }
-        
-        // Update cooldown
-        progressionCommandCooldown.set(uname + '_' + matchingProgression.id, now);
-        
-        // Get leaderboard
-        const leaderboard = matchingProgression.topRedeemers || [];
-        
-        if (leaderboard.length === 0) {
-          if (twitchClient && twitchClient.readyState() === 'OPEN') {
-            const channels = twitchClient.getChannels();
-            if (channels && channels.length > 0) {
-              twitchClient.say(channels[0], `🏆 No contributions to "${matchingProgression.name}" yet. Be the first!`);
-            }
-          }
-          return;
-        }
-        
-        // Format leaderboard message
-        const currentStage = matchingProgression.stages[matchingProgression.currentStageIndex];
-        let leaderboardMsg = `🏆 ${matchingProgression.name} - Stage ${matchingProgression.currentStageIndex + 1}/${matchingProgression.stages.length} (${matchingProgression.currentCount}/${currentStage.requiredCount}) | Top Contributors: `;
-        
-        const entries = [];
-        leaderboard.slice(0, 5).forEach((contrib, index) => {
-          entries.push(`${index + 1}. ${contrib.username} (${contrib.count})`);
-        });
-        
-        leaderboardMsg += entries.join(' • ');
-        
-        // Truncate if needed
-        if (leaderboardMsg.length > 500) {
-          leaderboardMsg = leaderboardMsg.substring(0, 497) + '...';
-        }
-        
-        // Send to chat
-        if (twitchClient && twitchClient.readyState() === 'OPEN') {
-          const channels = twitchClient.getChannels();
-          if (channels && channels.length > 0) {
-            twitchClient.say(channels[0], leaderboardMsg);
-            console.log(`🏆 Sent progression leaderboard to chat for ${username}: ${matchingProgression.name}`);
-          }
+
+      // !clip — Twitch Helix clip + chat link (same path as Raven "clip that")
+      if (commandText === 'clip') {
+        void createTwitchClipAndAnnounce({ requestedBy: displayName || username });
+        return;
+      }
+
+      // !killcommand — Streamlabs end-stream (allowlist from .env VD_KILLCOMMAND_USERS)
+      if (commandText === 'killcommand') {
+        if (isKillcommandAuthorized(username)) {
+          void handleKillcommandFromChat(username);
         }
         return;
       }
-      
+
       // Regular button command handling
       const profile = loadProfile(currentActiveProfile);
       profile.buttons.forEach((btn) => {
@@ -3542,28 +4713,152 @@ async function startTwitchChatConnection({ username, oauth, clientId }) {
 ipcMain.on('twitch-connect', (event, creds) => {
   console.log('Received twitch-connect IPC with creds');
   console.log('Creds:', creds);
-  startTwitchChatConnection(creds);
+  const clientId = creds.clientId || getTwitchOAuthClientId();
+  startTwitchChatConnection({
+    username: creds.username,
+    oauth: creds.oauth,
+    clientId,
+  });
+  if (creds.oauth && creds.username && twitchOAuthHost) {
+    try {
+      twitchOAuthHost.persistOAuthSession({
+        accessToken: creds.oauth,
+        refreshToken: creds.refreshToken || null,
+        expiresIn: creds.expiresIn,
+        clientId,
+        username: creds.username,
+        userId: creds.userId,
+      });
+    } catch (err) {
+      console.warn('[Twitch OAuth] Could not persist manual credentials:', err.message);
+    }
+  }
 });
 
-// Restore Twitch chat connection on app startup when we have valid stored OAuth
-async function tryRestoreTwitchConnection() {
+let twitchOAuthHost = null;
+function isTwitchChatConnected() {
+  try {
+    return !!(twitchClient && typeof twitchClient.readyState === 'function' && twitchClient.readyState() === 'OPEN');
+  } catch {
+    return false;
+  }
+}
+
+function isEventSubConnected() {
+  try {
+    return !!(eventSubWs && eventSubWs.readyState === WebSocket.OPEN && eventSubSessionId);
+  } catch {
+    return false;
+  }
+}
+
+function vdDebugLog(...args) {
+  const v = String(process.env.VD_DEBUG || '').trim().toLowerCase();
+  if (v === '1' || v === 'true' || v === 'yes') {
+    console.log('[VD_DEBUG]', ...args);
+  }
+}
+
+async function getTwitchEventSubHealth() {
+  const oauth = await getTwitchOAuthStatus();
+  let hasChannelPointsSub = false;
+  let channelPointsSubscriptionIds = [];
+  try {
+    const listed = await listEventSubscriptions();
+    const rows = listed && listed.data ? listed.data : [];
+    const cp = rows.filter((s) => s.type === 'channel.channel_points_custom_reward_redemption.add');
+    hasChannelPointsSub = cp.length > 0;
+    channelPointsSubscriptionIds = cp.map((s) => s.id).filter(Boolean);
+    vdDebugLog('EventSub channel_points subscriptions:', channelPointsSubscriptionIds.length, channelPointsSubscriptionIds);
+  } catch (err) {
+    vdDebugLog('EventSub list failed:', err.message || err);
+  }
+  let wantsChannelPointsTopic = false;
   try {
     const tc = loadTcConfig();
-    if (!tc.oauth || (!tc.oauth.accessToken && !tc.oauth.refreshToken)) return;
-    if (!tc.oauth.clientId) return;
-    const token = await ensureValidToken();
-    if (!token) return;
-    const username = await getUsernameFromToken(token);
-    if (!username) return;
-    twitchToken = token;
-    twitchUserName = username;
-    twitchClientId = tc.oauth.clientId;
-    console.log('Restoring Twitch chat connection on startup for', username);
-    await startTwitchChatConnection({ username, oauth: token, clientId: tc.oauth.clientId });
-    console.log('Twitch chat connection restored on startup');
+    wantsChannelPointsTopic =
+      Array.isArray(tc.topics) && tc.topics.includes('channel.channel_points_custom_reward_redemption');
   } catch (e) {
-    console.warn('Could not restore Twitch connection on startup:', e.message);
+    wantsChannelPointsTopic = false;
   }
+  const missingRedemptionsScope =
+    Array.isArray(oauth.missingScopes) && oauth.missingScopes.includes('channel:read:redemptions');
+  return {
+    ...oauth,
+    eventSubWsOpen: isEventSubConnected(),
+    eventSubSessionId: eventSubSessionId || null,
+    wantsChannelPointsTopic,
+    hasChannelPointsSub,
+    channelPointsSubscriptionIds,
+    channelPointsReady:
+      hasChannelPointsSub &&
+      oauth.eventSubConnected &&
+      !missingRedemptionsScope &&
+      oauth.chatConnected,
+  };
+}
+
+async function getTwitchOAuthStatus() {
+  const clientId = getTwitchOAuthClientId();
+  const session = twitchOAuthHost ? twitchOAuthHost.readStoredTokens() : readStoredTokensFromTc();
+  const hasSession = !!(session.accessToken || session.refreshToken);
+  const chatConnected = isTwitchChatConnected();
+  const eventSubConnected = isEventSubConnected();
+  let missingScopes = [];
+  let scopeWarning = null;
+  if (session.accessToken) {
+    try {
+      const { validateTwitchAccessToken } = require('./lib/twitch-oauth');
+      const validation = await validateTwitchAccessToken(fetch, session.accessToken);
+      if (validation.ok && Array.isArray(validation.scopes)) {
+        const required = ['channel:read:redemptions'];
+        missingScopes = required.filter((s) => !validation.scopes.includes(s));
+        if (missingScopes.length) {
+          scopeWarning = `Reconnect Twitch to grant: ${missingScopes.join(', ')}`;
+        }
+      }
+    } catch (err) {
+      console.warn('[Twitch OAuth] scope validation failed:', err.message || err);
+    }
+  }
+  return {
+    clientIdConfigured: !!clientId,
+    hasSession,
+    login: session.username || twitchUserName || null,
+    chatConnected,
+    eventSubConnected,
+    connected: chatConnected,
+    missingScopes,
+    scopeWarning,
+    needsReconnect: hasSession && !chatConnected,
+  };
+}
+
+function readStoredTokensFromTc() {
+  const tc = loadTcConfig();
+  return {
+    accessToken: String(tc.accessToken || tc.oauth_token || '').replace(/^oauth:/i, '').trim(),
+    refreshToken: String(tc.refreshToken || '').trim(),
+    username: tc.username || '',
+  };
+}
+
+function initTwitchOAuthHost() {
+  if (twitchOAuthHost) return twitchOAuthHost;
+  twitchOAuthHost = createTwitchOAuthHost({
+    fetchFn: fetch,
+    safeStorage,
+    shell,
+    getMainWindow: () => win,
+    loadTcConfig,
+    saveTcConfig,
+    startTwitchChatConnection,
+    ipcMain,
+    getTwitchConnected: isTwitchChatConnected,
+    getTwitchOAuthStatus,
+  });
+  twitchOAuthHost.registerIpc();
+  return twitchOAuthHost;
 }
 
 let lastFollowerIds = [];
@@ -3575,233 +4870,284 @@ let applyingEventSub = false;
 const pendingSubFingerprints = new Set();
 let eventSubSessionId = null;
 let eventSubRegistered = false;
+let eventSubGeneration = 0;
 // WebSocket instance for EventSub (kept so we can close it when clearing creds)
 let eventSubWs = null;
 let twitchUserId = null;
+let twitchUserIdFor = null;
 let twitchToken = null;
 let twitchClientId = null;
 let twitchUserName = null;
+const TWITCH_WEB_CLIENT_ID = 'gp762nuuoqcoxypju8c569th9wz7q5';
+let lastTwitchClipAt = 0;
+const TWITCH_CLIP_COOLDOWN_MS = 20000;
 
-async function getUserId() {
-  console.log('Fetching Twitch user ID for', twitchUserName);
-  if (twitchUserId) return twitchUserId;
-
-  // If twitchToken is not set, try to load it from stored OAuth token
-  if (!twitchToken) {
-    try {
-      const oauthToken = await ensureValidToken();
-      twitchToken = oauthToken;
-      console.log('✅ Loaded OAuth token from storage');
-    } catch (oauthError) {
-      console.log('⚠️ Could not load OAuth token from storage:', oauthError.message);
-    }
-  }
-
-  // If still no token, try to get username from token to set twitchUserName
-  if (!twitchUserName && twitchToken) {
+function helixAccessToken() {
+  let token = twitchToken;
+  if (!token) {
+    // Reuse the connection saved by Twitch setup (tc_config) instead of asking for a reconnect.
     try {
       const tc = loadTcConfig();
-      if (tc.oauth && tc.oauth.accessToken) {
-        // Try to get username from token
-        const username = await getUsernameFromToken(twitchToken);
-        if (username) {
-          twitchUserName = username;
-          console.log('✅ Loaded username from token:', twitchUserName);
-        }
-      }
-    } catch (err) {
-      console.warn('Could not get username from token:', err);
+      token = (tc && tc.accessToken) || '';
+    } catch {
+      token = '';
     }
   }
+  return String(token || '').replace(/^oauth:/i, '').trim();
+}
 
-  // If still no clientId, try to load it from config
-  if (!twitchClientId) {
-    try {
-      const tc = loadTcConfig();
-      if (tc.oauth && tc.oauth.clientId) {
-        twitchClientId = tc.oauth.clientId;
-        console.log('✅ Loaded Client ID from config:', twitchClientId);
-      }
-    } catch (err) {
-      console.warn('Could not load Client ID from config:', err);
-    }
-  }
-
-  console.log('Using token:', twitchToken ? twitchToken.substring(0, 20) + '...' : 'NO TOKEN');
-  console.log('Using clientId:', twitchClientId);
-  console.log('Using username:', twitchUserName);
-
-  if (!twitchToken) {
-    throw new Error('No OAuth token available');
-  }
-
-  if (!twitchClientId) {
-    throw new Error('No Client ID available');
-  }
-
-  console.log('Requesting user ID from Twitch API');
-
+function helixClientId() {
+  const usable = (id) => {
+    const value = String(id || '').trim();
+    if (!value || value === TWITCH_WEB_CLIENT_ID) return '';
+    return value;
+  };
+  const fromMemory = usable(twitchClientId);
+  if (fromMemory) return fromMemory;
   try {
-    const response = await fetch(`https://api.twitch.tv/helix/users?login=${twitchUserName}`, {
-      headers: {
-        'Client-ID': twitchClientId,
-        'Authorization': `Bearer ${twitchToken}`
-      }
-    });
+    const tc = loadTcConfig();
+    const saved = usable(tc && tc.clientId);
+    if (saved) return saved;
+  } catch {
+    // fall through
+  }
+  return getTwitchOAuthClientId();
+}
 
-    console.log('API Response status:', response.status);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('API Error response:', errorText);
-      throw new Error(`Twitch API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    console.log('API Response data:', data);
-
-    if (data.data && data.data.length > 0) {
-      twitchUserId = data.data[0].id;
-      console.log('Successfully got user ID:', twitchUserId);
+// Reuse one client so the 60s live-check cache survives across IPC/JARVIS calls.
+// Credentials are read through getters on every request, so reconnects are picked up.
+let raidHelixClient = null;
+function createRaidHelixClient() {
+  if (raidHelixClient) return raidHelixClient;
+  raidHelixClient = new RaidHelixClient({
+    fetchFn: fetch,
+    getClientId: helixClientId,
+    getAccessToken: helixAccessToken,
+    getBroadcasterId: async () => {
+      if (!twitchUserId) await getUserId();
       return twitchUserId;
-    } else {
-      console.error('No user data in response:', data);
-      throw new Error('User not found or invalid response from Twitch API');
+    },
+  });
+  return raidHelixClient;
+}
+
+function recordOutgoingRaidTarget({ login, displayName, source }) {
+  if (!raidFavoritesStore || !login) return null;
+  try {
+    const entry = raidFavoritesStore.recordRaid({ login, displayName });
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('raid-favorites-history-updated', { entry, source });
     }
-  } catch (error) {
-    console.error('Error in getUserId:', error);
-    throw error;
+    return entry;
+  } catch (err) {
+    console.warn('[Raid Favorites] Failed to record raid history:', err);
+    return null;
   }
 }
 
-// Create a Twitch clip
-async function createClip() {
-  try {
-    // Check for test mode in preferences
-    const preferences = getStoredPreferences();
-    console.log('📋 Loaded preferences:', JSON.stringify(preferences));
-    console.log('🧪 clipTestMode value:', preferences.clipTestMode);
-    
-    if (preferences.clipTestMode) {
-      console.log('🧪 TEST MODE: Simulating clip creation');
-      // Simulate a successful clip creation
-      const mockClipId = 'test_clip_' + Date.now();
-      const mockClipUrl = `https://clips.twitch.tv/TestClip-${mockClipId}`;
-      const mockEditUrl = `https://clips.twitch.tv/edit/${mockClipId}`;
-      
-      console.log('🧪 TEST MODE: Returning mock clip result');
-      return {
-        success: true,
-        clipId: mockClipId,
-        editUrl: mockEditUrl,
-        clipUrl: mockClipUrl,
-        message: `🧪 TEST MODE: Clip created! ${mockClipUrl}`,
-        testMode: true
-      };
-    }
-    
-    if (!twitchUserId) {
-      await getUserId();
-    }
-    
-    if (!twitchUserId) {
-      throw new Error('Twitch user ID not available');
-    }
-    
-    if (!twitchToken) {
-      throw new Error('Twitch token not available');
-    }
-    
-    if (!twitchClientId) {
-      throw new Error('Twitch Client ID not available');
-    }
-    
-    console.log('Creating Twitch clip for broadcaster:', twitchUserId);
-    
-    // Ensure token doesn't have 'oauth:' prefix (Bearer tokens shouldn't)
-    let tokenToUse = twitchToken;
-    if (tokenToUse.startsWith('oauth:')) {
-      tokenToUse = tokenToUse.substring(6);
-    }
-    
-    // Create clip using Twitch Helix API
-    const endpointUrl = new URL('https://api.twitch.tv/helix/clips');
-    endpointUrl.searchParams.append('broadcaster_id', twitchUserId);
-    
-    const response = await fetch(endpointUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${tokenToUse}`,
-        'Client-Id': twitchClientId
-      }
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Twitch API error creating clip:', response.status, errorText);
-      throw new Error(`Failed to create clip: ${response.status} ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    
-    if (!data.data || data.data.length === 0) {
-      throw new Error('No clip data returned from Twitch API');
-    }
-    
-    const clipId = data.data[0].id;
-    const editUrl = data.data[0].edit_url;
-    
-    console.log('✅ Clip created successfully! Clip ID:', clipId);
-    console.log('Edit URL:', editUrl);
-    
-    // Clip creation is asynchronous - poll for the clip URL
-    // Twitch recommends checking within 15 seconds
-    let clipUrl = null;
-    let attempts = 0;
-    const maxAttempts = 15; // Check for up to 15 seconds
-    
-    while (!clipUrl && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between checks
-      attempts++;
-      
-      try {
-        const getClipUrl = new URL('https://api.twitch.tv/helix/clips');
-        getClipUrl.searchParams.append('id', clipId);
-        
-        const clipResponse = await fetch(getClipUrl, {
-          headers: {
-            'Authorization': `Bearer ${tokenToUse}`,
-            'Client-Id': twitchClientId
-          }
-        });
-        
-        if (clipResponse.ok) {
-          const clipData = await clipResponse.json();
-          if (clipData.data && clipData.data.length > 0 && clipData.data[0].url) {
-            clipUrl = clipData.data[0].url;
-            console.log('✅ Clip URL retrieved:', clipUrl);
-            break;
-          }
-        }
-      } catch (err) {
-        console.warn('Error checking clip status:', err);
-      }
-    }
-    
+function handleRaidEventSubNotification(type, eventData) {
+  if (type !== 'channel.raid' || !eventData || !twitchUserId) return;
+  if (String(eventData.from_broadcaster_user_id) !== String(twitchUserId)) return;
+  const login = eventData.to_broadcaster_user_login || eventData.to_broadcaster_user_name;
+  if (!login) return;
+  recordOutgoingRaidTarget({
+    login,
+    displayName: eventData.to_broadcaster_user_name || login,
+    source: 'eventsub',
+  });
+}
+
+async function raidFavoritesListLive({ forceRefresh = false } = {}) {
+  if (!raidFavoritesStore) {
+    return { success: false, error: 'Raid favorites unavailable' };
+  }
+  const favorites = raidFavoritesStore.listFavorites();
+  const logins = favorites.map((f) => f.login);
+  if (logins.length === 0) {
     return {
       success: true,
-      clipId,
-      editUrl,
-      clipUrl: clipUrl || editUrl, // Fallback to edit_url if clipUrl not ready
-      message: clipUrl ? `Clip created! ${clipUrl}` : `Clip created! Processing... ${editUrl}`
-    };
-  } catch (error) {
-    console.error('Error creating clip:', error);
-    return {
-      success: false,
-      error: error.message
+      favorites: [],
+      channels: [],
+      checkedAt: new Date().toISOString(),
+      hasRaidScope: false,
     };
   }
+  try {
+    const helix = createRaidHelixClient();
+    const { channels, checkedAt, cached } = await helix.getLiveStatusForLogins(logins, { forceRefresh });
+    const merged = favorites.map((f) => {
+      const key = normalizeTwitchLogin(f.login);
+      const live = channels.find((c) => c.login === key);
+      return { ...f, ...(live || { login: key, live: false }) };
+    });
+    merged.sort((a, b) => {
+      if (a.live !== b.live) return a.live ? -1 : 1;
+      if (a.live && b.live) return (b.viewerCount || 0) - (a.viewerCount || 0);
+      return a.login.localeCompare(b.login);
+    });
+    const scope = await helix.validateToken();
+    return {
+      success: true,
+      favorites: merged,
+      channels,
+      checkedAt,
+      cached: !!cached,
+      hasRaidScope: !!scope.hasRaidScope,
+      scopeStatus: scope.scopeStatus || (scope.hasRaidScope ? 'ok' : 'unknown'),
+      authorizeUrl: scope.hasRaidScope ? null : buildTwitchAuthorizeUrl({ forceVerify: true }),
+    };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+}
+
+async function raidFavoritesStartRaid({ login, source = 'ui' }) {
+  if (!raidFavoritesStore) {
+    return { success: false, error: 'Raid favorites unavailable' };
+  }
+  const normalized = normalizeTwitchLogin(login);
+  if (!isValidTwitchLogin(normalized)) {
+    return { success: false, error: 'Invalid Twitch login' };
+  }
+  if (!raidFavoritesStore.isAllowedRaidTarget(normalized)) {
+    return { success: false, error: 'Target must be in favorites or raid history' };
+  }
+  try {
+    const helix = createRaidHelixClient();
+    const result = await helix.startRaid({ toLogin: normalized });
+    if (!result.ok) {
+      return {
+        success: false,
+        error: result.error,
+        needsReconnect: !!result.needsReconnect,
+        authorizeUrl: result.needsReconnect ? buildTwitchAuthorizeUrl({ forceVerify: true }) : null,
+      };
+    }
+    recordOutgoingRaidTarget({ login: normalized, displayName: normalized, source });
+    return { success: true, login: normalized, raid: result.raid };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+}
+
+function buildJarvisRaidContext() {
+  return {
+    raidFavoritesStore,
+    raidFavoritesListLive,
+    raidFavoritesStartRaid,
+  };
+}
+
+async function sayInTwitchChat(text) {
+  try {
+    if (!twitchClient || twitchClient.readyState() !== 'OPEN') return false;
+    const channels = twitchClient.getChannels();
+    if (!channels || channels.length === 0) return false;
+    await twitchClient.say(channels[0], text);
+    return true;
+  } catch (err) {
+    console.error('💬 Failed to send Twitch chat:', err);
+    return false;
+  }
+}
+
+async function createTwitchClipAndAnnounce({ requestedBy } = {}) {
+  const now = Date.now();
+  if (now - lastTwitchClipAt < TWITCH_CLIP_COOLDOWN_MS) {
+    await sayInTwitchChat('Clip cooldown — try again in a few seconds.');
+    return { ok: false, reason: 'cooldown' };
+  }
+
+  try {
+    if (!twitchUserId) await getUserId();
+    const token = helixAccessToken();
+    if (!twitchClientId || !token || !twitchUserId) {
+      await sayInTwitchChat("Can't clip — Twitch isn't connected.");
+      return { ok: false, reason: 'not-connected' };
+    }
+
+    const resp = await fetch(
+      `https://api.twitch.tv/helix/clips?broadcaster_id=${encodeURIComponent(twitchUserId)}&has_delay=false`,
+      {
+        method: 'POST',
+        headers: {
+          'Client-ID': twitchClientId,
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const msg = String(body?.message || resp.statusText || '');
+      console.error('🎬 Twitch clip failed:', resp.status, msg, body);
+      if (resp.status === 401 || /scope/i.test(msg)) {
+        await sayInTwitchChat('Clip failed — reconnect Twitch with the clips:edit scope.');
+      } else if (resp.status === 404 || /not live/i.test(msg)) {
+        await sayInTwitchChat("Can't clip — the stream doesn't look live.");
+      } else {
+        await sayInTwitchChat("Couldn't create a Twitch clip.");
+      }
+      return { ok: false, reason: msg || String(resp.status) };
+    }
+
+    const clipId = body?.data?.[0]?.id;
+    if (!clipId) {
+      await sayInTwitchChat("Twitch didn't return a clip id.");
+      return { ok: false, reason: 'no-id' };
+    }
+
+    lastTwitchClipAt = now;
+    const url = `https://clips.twitch.tv/${clipId}`;
+    const who = requestedBy ? String(requestedBy).replace(/^@/, '') : '';
+    const line = who ? `${who} clipped that: ${url}` : `Clip: ${url}`;
+    await sayInTwitchChat(line);
+    console.log('🎬 Twitch clip created', url);
+    return { ok: true, url, id: clipId };
+  } catch (err) {
+    console.error('🎬 Twitch clip error:', err);
+    await sayInTwitchChat("Couldn't create a Twitch clip.");
+    return { ok: false, reason: err && err.message };
+  }
+}
+
+function twitchLoginKey(name) {
+  return String(name || '').replace(/^#/, '').trim().toLowerCase();
+}
+
+async function getUserId() {
+  const wanted = twitchLoginKey(twitchUserName);
+  if (twitchUserId && twitchUserIdFor && (!wanted || twitchUserIdFor === wanted)) {
+    return twitchUserId;
+  }
+  const token = helixAccessToken();
+  const clientId = helixClientId();
+  if (!token || !clientId) {
+    throw new Error('Twitch is not connected in VirtualDeck.');
+  }
+  console.log('Fetching Twitch user ID for', wanted || 'the connected account');
+  const response = await fetch('https://api.twitch.tv/helix/users', {
+    headers: {
+      'Client-ID': clientId,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = (data && data.message) || `Twitch user lookup failed (${response.status})`;
+    throw new Error(message);
+  }
+  const match = data.data && data.data[0];
+  if (!match || !match.id) {
+    throw new Error('Could not fetch Twitch user ID.');
+  }
+  const login = twitchLoginKey(match.login);
+  if (wanted && login && wanted !== login) {
+    console.warn(`Twitch token is for ${match.login}, not ${twitchUserName}. Channel points will use ${match.login}.`);
+  }
+  twitchUserId = match.id;
+  twitchUserIdFor = login || wanted || match.id;
+  if (match.login) twitchUserName = match.login;
+  return twitchUserId;
 }
 
 async function pollFollowers() {
@@ -3828,6 +5174,20 @@ async function pollFollowers() {
           console.log('[Poll] New Follower:', f);
           if (win && win.webContents) {
             win.webContents.send('twitch-eventsub', { type: 'poll.follow', event: f });
+          }
+          try {
+            appendAiEventsLogLine({
+              id: `follow_${f.user_id}_${f.followed_at}`,
+              type: 'twitch_follow',
+              channel: twitchUserName ? String(twitchUserName).replace(/^#/, '').toLowerCase() : undefined,
+              user: {
+                id: f.user_id,
+                name: f.user_login,
+                displayName: f.user_name || f.user_login,
+              },
+            });
+          } catch (e) {
+            console.error('[AI Events] follow poll append failed:', e);
           }
         });
       }
@@ -3877,6 +5237,7 @@ function addCreatedSubscriptionId(id) {
 
 async function subscribeEventSub(type, condition, sessionId) {
   console.log('Subscribing to EventSub:', type, condition);
+  vdDebugLog('subscribeEventSub request', type, condition);
   const fp = subFingerprint(type, condition);
   if (pendingSubFingerprints.has(fp)) {
     console.log('Subscription creation already pending for fingerprint, skipping:', fp);
@@ -4221,6 +5582,16 @@ function buildSubscriptionFromKey(key, userId) {
 }
 
 // Apply subscriptions for the given session id using saved tc_config topics
+async function ensureOutgoingRaidEventSub(sessionId) {
+  try {
+    if (!twitchUserId) await getUserId();
+    if (!twitchUserId || !sessionId) return;
+    await subscribeEventSub('channel.raid', { from_broadcaster_user_id: twitchUserId }, sessionId);
+  } catch (err) {
+    console.warn('[Raid Favorites] Could not subscribe to outgoing raids EventSub:', err);
+  }
+}
+
 async function applyEventSubSubscriptions(sessionId) {
   if (applyingEventSub) {
     console.log('applyEventSubSubscriptions: another apply is running; skipping');
@@ -4228,8 +5599,21 @@ async function applyEventSubSubscriptions(sessionId) {
   }
   applyingEventSub = true;
   try {
-    const tc = loadTcConfig();
-    if (!tc || !Array.isArray(tc.topics) || tc.topics.length === 0) return;
+    const tc = loadTcConfig() || { topics: [], createdSubscriptions: [] };
+    if (!Array.isArray(tc.topics) || tc.topics.length === 0) {
+      tc.topics = [
+        'channel.channel_points_custom_reward_redemption',
+        'channel.subscribe',
+        'channel.subscription.gift',
+        'channel.subscription.message',
+        'channel.follow',
+        'channel.raid',
+        'channel.cheer',
+        'channel.ban',
+      ];
+      saveTcConfig(tc);
+      console.log('[EventSub] No topics were saved. Subscribing to channel point redeems and the other default events.');
+    }
     if (!twitchUserId) await getUserId();
     // Fetch current subscriptions and only add missing ones to avoid duplicates
     const current = await listEventSubscriptions();
@@ -4317,32 +5701,34 @@ async function applyEventSubSubscriptions(sessionId) {
       console.log('Applying missing EventSub for key on session welcome:', key);
       await subscribeEventSub(desiredMap[key].type, desiredMap[key].condition, sessionId);
     }
+
+    await ensureOutgoingRaidEventSub(sessionId);
   } catch (err) {
     console.error('Error applying EventSub subscriptions:', err);
+  } finally {
+    applyingEventSub = false;
   }
-  applyingEventSub = false;
 }
 
-async function startTwitchEventSub({ username, oauth, clientId}) {
+function startTwitchEventSub({ username, oauth, clientId}) {
   console.log('Starting Twitch EventSub for user:', username);
+  const generation = ++eventSubGeneration;
   twitchUserName = username;
-
-  // Try to use OAuth token if available, otherwise fall back to provided oauth token
-  let tokenToUse = oauth;
-  try {
-    const oauthToken = await ensureValidToken();
-    tokenToUse = oauthToken;
-    console.log('Using OAuth access token for EventSub');
-  } catch (oauthError) {
-    console.log('OAuth token not available, using provided token:', oauthError.message);
-    tokenToUse = oauth.replace('oauth:', '');
+  twitchToken = String(oauth || '').replace('oauth:', '');
+  if (clientId) twitchClientId = clientId;
+  eventSubRegistered = false;
+  eventSubSessionId = null;
+  if (eventSubWs) {
+    try { eventSubWs.close(); } catch (e) {}
+    eventSubWs = null;
+  }
+  if (pollIntervalId) {
+    clearInterval(pollIntervalId);
+    pollIntervalId = null;
   }
 
-  twitchToken = tokenToUse;
-  // Ensure global clientId is set for subsequent API calls
-  if (clientId) twitchClientId = clientId;
-
   getUserId().then((userId) => {
+    if (generation !== eventSubGeneration) return;
     twitchUserId = userId;
     // Load last poll timestamp from tc_config so we only report new followers since last run
     try {
@@ -4362,7 +5748,7 @@ async function startTwitchEventSub({ username, oauth, clientId}) {
       lastPollTime = new Date();
     }
 
-    setInterval(pollFollowers, 30000);
+    pollIntervalId = setInterval(pollFollowers, 30000);
     pollFollowers();
     // create and store the EventSub websocket so we can close it later if needed
     eventSubWs = new WebSocket('wss://eventsub.wss.twitch.tv/ws');
@@ -4370,6 +5756,7 @@ async function startTwitchEventSub({ username, oauth, clientId}) {
       console.log('EventSub WebSocket connected');
     });
     eventSubWs.on('message', async (data) => {
+      if (generation !== eventSubGeneration) return;
       const msg = JSON.parse(data);
       console.log('Raw EventSub message:', msg);
       if (!eventSubSessionId && msg.metadata && msg.metadata.message_type === 'session_welcome') {
@@ -4388,15 +5775,19 @@ async function startTwitchEventSub({ username, oauth, clientId}) {
           win.webContents.send('twitch-eventsub', { type, event: eventData });
         }
         console.log(`[EventSub] ${type}:`, eventData);
+        appendAiEventSubToLog(type, eventData, msg.metadata && msg.metadata.message_id);
+        handleRaidEventSubNotification(type, eventData);
       }
     });
     eventSubWs.on('error', (err) => {
       console.error('EventSub WebSocket error:', err);
     });
     eventSubWs.on('close', () => {
+      if (generation !== eventSubGeneration) return;
       console.log('EventSub WebSocket closed');
-      // clear reference when closed
       eventSubWs = null;
+      eventSubRegistered = false;
+      eventSubSessionId = null;
     });
   }).catch((err) => {
     console.error('Failed to get userId:', err);
@@ -4497,211 +5888,35 @@ ipcMain.on('trigger-media-to-main', (event, label) => {
   }
 });
 
-// Handle progression increment from Twitch redemptions
-ipcMain.on('progression-increment', (event, data) => {
-  try {
-    const { progressionId, username, redeemTitle } = data;
-    console.log(`🎯🎯🎯 PROGRESSION INCREMENT HANDLER CALLED!`);
-    console.log(`🎯 Progression ID: ${progressionId}`);
-    console.log(`🎯 Username: ${username}`);
-    console.log(`🎯 Redeem Title: ${redeemTitle}`);
-    
-    const result = incrementProgression(progressionId, username);
-    if (!result) {
-      console.error('❌ Failed to increment progression:', progressionId);
-      return;
-    }
-    
-    const { progression, stageAdvanced, currentStage } = result;
-    
-    console.log(`✅ Increment successful!`);
-    console.log(`✅ Stage advanced: ${stageAdvanced}`);
-    console.log(`✅ Current stage:`, currentStage);
-    
-    // Send current stage media to overlay (exactly like hydration)
-    console.log(`📡 Sending progression media to overlay...`);
-    console.log(`📡 Target overlay: ${progression.targetOverlay || 'main'}`);
-    
-    if (currentStage && currentStage.mediaPath) {
-      const targetOverlay = progression.targetOverlay || 'main';
-      const mediaUrl = `http://localhost:${overlayServerPort}/media/${currentStage.mediaPath}`;
-      
-      // If using dedicated progression overlay, send progression-specific update
-      if (targetOverlay === 'progressionOverlay') {
-        console.log('📡 Sending to dedicated progression overlay');
-        // Build overlay text if configured
-        console.log('📝 Progression overlay text template:', progression.overlayText);
-        let overlayTextToShow = '';
-        if (progression.overlayText && progression.overlayText.trim() !== '') {
-          const actionWord = progression.actionWord || 'contributed';
-          overlayTextToShow = progression.overlayText
-            .replace(/{username}/gi, username)
-            .replace(/{action}/gi, actionWord)
-            .replace(/{object}/gi, progression.name)
-            .replace(/{stage}/gi, (progression.currentStageIndex + 1).toString())
-            .replace(/{count}/gi, progression.currentCount.toString())
-            .replace(/{required}/gi, currentStage.requiredCount.toString())
-            .replace(/{total_stages}/gi, progression.stages.length.toString());
-          console.log('📝 Overlay text after replacement:', overlayTextToShow);
-        } else {
-          console.log('📝 No overlay text configured for this progression');
-        }
-        
-        const progressionPayload = {
-          type: stageAdvanced ? 'progressionStageAdvance' : 'progressionUpdate',
-          data: {
-            progressionId: progression.id,
-            name: progression.name,
-            currentStageIndex: progression.currentStageIndex,
-            currentCount: progression.currentCount,
-            totalRedeems: progression.totalRedeems,
-            currentStage: currentStage,
-            displayMode: progression.displayMode,
-            duration: progression.duration,
-            showCounter: true,
-            overlayText: overlayTextToShow
-          }
-        };
-        
-        // Use the existing broadcastToOverlay function with targetOverlay parameter
-        broadcastToOverlay(progressionPayload, 'progressionOverlay');
-      } else {
-        // Send to main overlay using button trigger format (like alerts)
-        console.log('📡 Sending to main/all overlays (button trigger format)');
-        const mediaPayload = {
-          type: 'buttonTrigger',
-          options: {
-            clearPrevious: true,
-            duration: progression.displayMode === 'duration' ? progression.duration : null,
-            name: `${progression.name} - Stage ${progression.currentStageIndex + 1}`
-          },
-          centerMedia: []
-        };
-        
-        // Add the stage media
-        if (currentStage.mediaType === 'image') {
-          mediaPayload.centerMedia.push({
-            type: 'image',
-            src: mediaUrl
-          });
-        } else if (currentStage.mediaType === 'video') {
-          mediaPayload.centerMedia.push({
-            type: 'video',
-            src: mediaUrl,
-            loop: false,
-            muted: false,
-            volume: 1.0
-          });
-        }
-        
-        // Add audio if present
-        if (currentStage.audioPath) {
-          const audioUrl = `http://localhost:${overlayServerPort}/media/${currentStage.audioPath}`;
-          mediaPayload.centerMedia.push({
-            type: 'audio',
-            src: audioUrl,
-            volume: 1.0
-          });
-        }
-        
-        // Broadcast to main overlay (or null for all overlays if not specified)
-        console.log('📡 Broadcasting to main overlay:', mediaPayload);
-        broadcastToOverlay(mediaPayload, targetOverlay === 'main' ? 'main' : null);
-      }
-    } else {
-      console.log('⚠️ No media path for current stage');
-    }
-    
-    // Send chat message if configured
-    if (progression.chatMessage) {
-      console.log(`💬 Sending chat message`);
-      sendProgressionChatMessage(progression, username, redeemTitle, stageAdvanced);
-    }
-    
-    console.log(`✅ Progression "${progression.name}" incremented: ${progression.currentCount}/${currentStage.requiredCount} (Stage ${progression.currentStageIndex + 1}/${progression.stages.length})`);
-  } catch (e) {
-    console.error('❌ Error handling progression increment:', e);
-    console.error('❌ Stack:', e.stack);
-  }
-});
-
-// Helper to send progression chat message
-function sendProgressionChatMessage(progression, username, redeemTitle, stageAdvanced) {
-  if (!twitchClient || !twitchClient.readyState || twitchClient.readyState() !== 'OPEN') {
-    console.log('Twitch client not connected, skipping chat message');
+function registerHotkeys() {
+  // While suspended (typing in VirtualDeck / modal open) keep shortcuts off; they are
+  // registered from the current profile as soon as the suspension ends.
+  if (typeof hotkeySuspension !== 'undefined' && hotkeySuspension.shouldSuspend()) {
+    globalShortcut.unregisterAll();
+    hotkeySuspension.suspendedNow = true;
     return;
   }
-  
-  const channels = twitchClient.getChannels();
-  if (!channels || channels.length === 0) {
-    console.log('No Twitch channels available');
-    return;
-  }
-  
-  // Replace template variables
-  let message = progression.chatMessage;
-  const currentStage = progression.stages[progression.currentStageIndex];
-  const actionWord = progression.actionWord || 'contributed';
-  
-  message = message.replace(/{username}/gi, username);
-  // Use action word as-is, don't modify it when stage advances
-  message = message.replace(/{action}/gi, actionWord);
-  message = message.replace(/{object}/gi, progression.name);
-  message = message.replace(/{count}/gi, progression.totalRedeems.toString());
-  message = message.replace(/{stage}/gi, (progression.currentStageIndex + 1).toString());
-  message = message.replace(/{total_stages}/gi, progression.stages.length.toString());
-  
-  // Truncate if too long (Twitch limit is 500 characters)
-  if (message.length > 500) {
-    message = message.substring(0, 497) + '...';
-  }
-  
-  try {
-    twitchClient.say(channels[0], message);
-    console.log(`💬 Sent progression chat message: ${message}`);
-  } catch (error) {
-    console.error('Error sending progression chat message:', error);
-  }
+  registerHotkeysNow();
 }
 
-function registerHotkeys() {
+function registerHotkeysNow() {
   globalShortcut.unregisterAll();
   // Load buttons from active profile
   const profile = loadProfile(currentActiveProfile);
-  const buttons = profile.buttons || [];
-  
-  // Ensure all buttons have IDs before registering hotkeys
-  let profileChanged = false;
-  const existingIds = new Set(buttons.filter(b => b && b.id).map(b => b.id));
+  const unlimited = licenseManager ? licenseManager.getEntitlements().unlimitedButtons : true;
+  const deck = computeButtonEntitlements(profile, unlimited);
+  const buttons = deck.ordered || profile.buttons || [];
   buttons.forEach((btn) => {
-    if (btn && !btn.id) {
-      // Create a compact unique id
-      let newId;
-      do {
-        newId = 'b_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
-      } while (existingIds.has(newId));
-      btn.id = newId;
-      existingIds.add(newId);
-      profileChanged = true;
-      console.log(`🔧 Backfilled missing ID for button "${btn.name || btn.label}": ${newId}`);
+    if (btn && btn.id && deck.lockedIds && deck.lockedIds.has(btn.id)) {
+      return;
     }
-  });
-  
-  // Save profile if IDs were added
-  if (profileChanged) {
-    saveProfile(currentActiveProfile, profile);
-    console.log('✅ Updated profile with backfilled button IDs');
-  }
-  
-  buttons.forEach((btn) => {
-    if (btn.hotkey && btn.id) {
+    if (btn.hotkey) {
       // Register the full hotkey string, including modifiers
-      // CRITICAL: Only register hotkeys for buttons with IDs to ensure reliable matching
       try {
         const success = globalShortcut.register(btn.hotkey, () => {
-          // Always use ID - buttons without IDs should not have hotkeys registered
-          console.log(`🔑 Hotkey "${btn.hotkey}" triggered - sending ID: "${btn.id}" (button: "${btn.name || btn.label}", type: ${btn.type})`);
-          win.webContents.send('trigger-media', btn.id);
+          // Use name for multi-media buttons, label for others
+          const identifier = btn.name || btn.label;
+          win.webContents.send('trigger-media', identifier);
         });
         if (!success) {
           console.warn('Failed to register hotkey:', btn.hotkey);
@@ -4711,61 +5926,17 @@ function registerHotkeys() {
       }
     }
   });
-  
-  // Register clip hotkey if configured in preferences
-  try {
-    const preferences = getStoredPreferences();
-    console.log('🔑 Checking for clip hotkey in preferences:', preferences.clipHotkey);
-    if (preferences.clipHotkey) {
-      const success = globalShortcut.register(preferences.clipHotkey, async () => {
-        console.log(`🔑 Clip hotkey "${preferences.clipHotkey}" triggered`);
-        const result = await createClip();
-        console.log(`📹 Clip creation result from hotkey:`, result);
-        if (win && win.webContents) {
-          win.webContents.send('twitch-clip-created', result);
-        }
-        if (result.success) {
-          // Post clip URL to chat
-          const clipMessage = result.testMode
-            ? `🧪 TEST MODE: ${result.message}`
-            : (result.clipUrl 
-              ? `Clip created! ${result.clipUrl}`
-              : `Clip created! Processing... ${result.editUrl}`);
-          
-          if (twitchClient && twitchClient.readyState() === 'OPEN') {
-            const channels = twitchClient.getChannels();
-            if (channels && channels.length > 0) {
-              twitchClient.say(channels[0], clipMessage);
-              console.log(`✅ Posted clip to chat: ${clipMessage}`);
-            }
-          }
-        } else {
-          console.error('Clip creation failed via hotkey:', result.error);
-        }
-      });
-      if (!success) {
-        console.warn('Failed to register clip hotkey:', preferences.clipHotkey);
-      } else {
-        console.log(`✅ Registered clip hotkey: ${preferences.clipHotkey}`);
-      }
-    }
-  } catch (error) {
-    console.error('Error registering clip hotkey:', error);
-  }
+  // unregisterAll above also cleared macro hotkeys; register them again after the buttons.
+  syncMacroHotkeys();
 }
 
 // Preferences management
 function getStoredPreferences() {
   try {
     const preferencesPath = path.join(app.getPath('userData'), 'preferences.json');
-    console.log('📋 Loading preferences from:', preferencesPath);
     if (fs.existsSync(preferencesPath)) {
       const data = fs.readFileSync(preferencesPath, 'utf8');
-      const prefs = JSON.parse(data);
-      console.log('📋 Loaded preferences:', JSON.stringify(prefs, null, 2));
-      return prefs;
-    } else {
-      console.log('📋 Preferences file does not exist');
+      return JSON.parse(data);
     }
   } catch (error) {
     console.error('Error reading preferences:', error);
@@ -4783,180 +5954,76 @@ function saveStoredPreferences(preferences) {
   }
 }
 
-// Auto-updater event handlers
-function setupAutoUpdater() {
-  // Detect platform
-  const isMac = process.platform === 'darwin';
-  const isWindows = process.platform === 'win32';
-
-  autoUpdater.on('checking-for-update', () => {
-    console.log('Checking for updates...');
+function initAppUpdater() {
+  if (appUpdater) return appUpdater;
+  appUpdater = createAppUpdater({
+    autoUpdater,
+    dialog,
+    shell,
+    getWin: () => win,
+    getPreferences: getStoredPreferences,
+    sendToRenderer: sendUpdateEventToRenderer,
+    isPackaged: () => app.isPackaged,
   });
-
-  autoUpdater.on('update-available', (info) => {
-    console.log('Update available:', info.version);
-    
-    if (isMac) {
-      // macOS: unsigned builds can't auto-update, show download link
-      dialog.showMessageBox(win, {
-        type: 'info',
-        title: 'Update Available',
-        message: `A new version (${info.version}) is available!`,
-        detail: 'Please visit the GitHub releases page to download the latest version.',
-        buttons: ['Open GitHub Releases', 'Later'],
-        defaultId: 0
-      }).then(result => {
-        if (result.response === 0) {
-          require('electron').shell.openExternal('https://github.com/jontslater/VirtualDeck/releases/latest');
-        }
-      });
-    } else if (isWindows) {
-      // Windows: can auto-update even unsigned
-      dialog.showMessageBox(win, {
-        type: 'info',
-        title: 'Update Available',
-        message: `A new version (${info.version}) is available!`,
-        detail: 'Would you like to download it now?',
-        buttons: ['Download', 'Later'],
-        defaultId: 0
-      }).then(result => {
-        if (result.response === 0) {
-          autoUpdater.downloadUpdate();
-          if (win && !win.isDestroyed()) {
-            win.webContents.send('update-downloading');
-          }
-        }
-      });
-    }
-  });
-
-  autoUpdater.on('update-not-available', (info) => {
-    console.log('Update not available. Current version is latest:', info.version);
-  });
-
-  autoUpdater.on('download-progress', (progressObj) => {
-    const msg = `Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`;
-    console.log(msg);
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log('Update downloaded:', info.version);
-    
-    dialog.showMessageBox(win, {
-      type: 'info',
-      title: 'Update Ready',
-      message: 'Update downloaded successfully!',
-      detail: 'The application will restart to apply the update.',
-      buttons: ['Restart Now', 'Later'],
-      defaultId: 0
-    }).then(result => {
-      if (result.response === 0) {
-        autoUpdater.quitAndInstall();
-      }
-    });
-  });
-
-  autoUpdater.on('error', (err) => {
-    console.error('Update error:', err);
-    dialog.showMessageBox(win, {
-      type: 'error',
-      title: 'Update Error',
-      message: 'Failed to check for updates',
-      detail: err.message || 'Please try again later.',
-      buttons: ['OK']
-    });
-  });
+  return appUpdater;
 }
 
-// Manual update check function
 function checkForUpdates() {
-  setupAutoUpdater();
-  autoUpdater.checkForUpdates();
+  initAppUpdater().checkForUpdates({ manual: true });
 }
 
 app.whenReady().then(() => {
-  ensureUserData();
-  
-  // Log preferences at startup
-  const prefs = getStoredPreferences();
-  console.log('📋 Startup preferences check:');
-  console.log('  - clipTestMode:', prefs.clipTestMode);
-  console.log('  - clipHotkey:', prefs.clipHotkey);
-  
-  // Start OAuth server for Twitch authentication
-  startOAuthServer();
-  // Load progressions data
-  progressionsData = loadProgressions();
-  console.log('Loaded progressions:', progressionsData.progressions.length);
-  
-  // Broadcast initial progression state for "always visible" progressions
-  setTimeout(() => {
-    progressionsData.progressions.forEach(prog => {
-      if (prog.displayMode === 'always' && prog.stages && prog.stages.length > 0) {
-        console.log('Broadcasting initial state for always-visible progression:', prog.name);
-        const currentStage = prog.stages[prog.currentStageIndex];
-        const targetOverlay = prog.targetOverlay || 'main';
-        
-        if (currentStage && currentStage.mediaPath) {
-          const mediaUrl = `http://localhost:${overlayServerPort}/media/${currentStage.mediaPath}`;
-          
-          if (targetOverlay === 'progressionOverlay') {
-            const progressionPayload = {
-              type: 'progressionUpdate',
-              data: {
-                progressionId: prog.id,
-                name: prog.name,
-                currentStageIndex: prog.currentStageIndex,
-                currentCount: prog.currentCount,
-                totalRedeems: prog.totalRedeems,
-                currentStage: currentStage,
-                displayMode: prog.displayMode,
-                duration: prog.duration,
-                showCounter: true
-              }
-            };
-            broadcastToOverlay(progressionPayload, 'progressionOverlay');
-          } else {
-            const mediaPayload = {
-              type: 'buttonTrigger',
-              options: {
-                clearPrevious: true,
-                duration: null,
-                name: `${prog.name} - Stage ${prog.currentStageIndex + 1}`
-              },
-              centerMedia: [{
-                type: currentStage.mediaType,
-                src: mediaUrl
-              }]
-            };
-            broadcastToOverlay(mediaPayload, 'main');
-          }
-        }
-      }
-    });
-  }, 2000); // Wait for overlay server to start
-  
+  try {
+    ensureUserData();
+  } catch (err) {
+    console.error('[startup] ensureUserData failed:', err);
+  }
+  // Ensure AI TTS sounds directory exists
+  if (!fs.existsSync(aiTtsSoundsDir)) {
+    fs.mkdirSync(aiTtsSoundsDir, { recursive: true });
+  }
+  if (licenseManager && licenseManager.canUseAiAssistant().allowed) {
+    startAICommandWatcher();
+  } else {
+    console.log('[AI Audio] Command watcher not started (VirtualDeck Pro license required)');
+  }
   createWindow();
+  try {
+    initTwitchOAuthHost();
+    setTimeout(() => {
+      twitchOAuthHost.connectFromStoredSession().then((result) => {
+        if (result && result.ok) {
+          console.log('[Twitch OAuth] Restored session for', result.username);
+        }
+      }).catch((err) => {
+        console.warn('[Twitch OAuth] Session restore failed:', err.message || err);
+      });
+    }, 1200);
+  } catch (err) {
+    console.warn('[Twitch OAuth] Host init failed:', err.message || err);
+  }
   registerHotkeys();
   startOverlayServer();
+  startJarvisServer();
+  ravenHost.setLicenseGate(() => {
+    if (!licenseManager) return { allowed: true };
+    return licenseManager.canUseAiAssistant();
+  });
+  ravenHost.maybeAutoStart();
   
-  // Setup and check for updates on startup (delay by 3 seconds to let app initialize)
+  initAppUpdater();
   setTimeout(() => {
-    setupAutoUpdater();
-    
-    // Check if auto-update is enabled in preferences
-    const preferences = getStoredPreferences();
-    if (preferences.autoUpdate !== false) { // default to true if not set
-      // Disabled auto-update check for private repository
-      console.log('Auto-update check disabled (private repository)');
-      // autoUpdater.checkForUpdates().catch(err => {
-      //   console.log('Auto-update check failed (expected if not installed from installer):', err.message);
-      // });
-    } else {
-      console.log('Auto-update disabled in preferences');
-    }
+    initAppUpdater().maybeCheckOnStartup();
   }, 3000);
   
+  // Setting menuItem.checked fires the click handler. Ignore those echoes so
+  // syncing the View menu cannot hide a panel the user left visible.
+  let applyingViewMenuSync = false;
+  function sendViewToggle(key, checked) {
+    if (applyingViewMenuSync) return;
+    if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: key, checked: checked });
+  }
+
   // Build application menu: Edit contains Preferences, View & Window removed, Tools added
   const menuTemplate = [
     { label: 'File', submenu: [ { role: 'quit' } ] },
@@ -4969,11 +6036,12 @@ app.whenReady().then(() => {
   { id: 'view_show_all', label: 'Show All', click: () => { if (win && !win.isDestroyed()) win.webContents.send('view-show-all'); } },
   { id: 'view_hide_all', label: 'Hide All', click: () => { if (win && !win.isDestroyed()) win.webContents.send('view-hide-all'); } },
       { type: 'separator' },
-  { id: 'view_sound_grid', label: 'Sound Grid', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-grid', checked: menuItem.checked }); } },
-  { id: 'view_twitch_stats', label: 'Twitch Statistics', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'twitch-stats-container', checked: menuItem.checked }); } },
-  { id: 'view_recent_activity', label: 'Recent Activity', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'recent-activity-container', checked: menuItem.checked }); } },
-  { id: 'view_twitch_chat', label: 'Twitch Chat', type: 'checkbox', checked: false, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'twitch-chat-container', checked: menuItem.checked }); } },
-  { id: 'view_sound_controls', label: 'Sound Controls', type: 'checkbox', checked: true, click: (menuItem) => { if (win && !win.isDestroyed()) win.webContents.send('view-toggle', { key: 'sound-controls', checked: menuItem.checked }); } }
+  { id: 'view_sound_grid', label: 'Sound Grid', type: 'checkbox', checked: true, click: (menuItem) => { sendViewToggle('sound-grid', menuItem.checked); } },
+  { id: 'view_twitch_stats', label: 'Twitch Statistics', type: 'checkbox', checked: true, click: (menuItem) => { sendViewToggle('twitch-stats-container', menuItem.checked); } },
+  { id: 'view_recent_activity', label: 'Recent Activity', type: 'checkbox', checked: false, click: (menuItem) => { sendViewToggle('recent-activity-container', menuItem.checked); } },
+  { id: 'view_twitch_chat', label: 'Twitch Chat', type: 'checkbox', checked: false, click: (menuItem) => { sendViewToggle('twitch-chat-container', menuItem.checked); } },
+  { id: 'view_sound_controls', label: 'Sound Controls', type: 'checkbox', checked: true, click: (menuItem) => { sendViewToggle('sound-controls', menuItem.checked); } },
+  { id: 'view_ai_dashboard', label: 'AI Dashboard', type: 'checkbox', checked: true, click: (menuItem) => { sendViewToggle('ai-dashboard-controls', menuItem.checked); } }
     ] },
     { label: 'Profile', submenu: [
       { label: 'Profile Manager...', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-profile-manager'); } }
@@ -4989,6 +6057,7 @@ app.whenReady().then(() => {
         { type: 'separator' },
         { label: 'Clear Twitch Credentials', click: () => { if (win && !win.isDestroyed()) win.webContents.send('clear-twitch-creds'); } }
       ] },
+      { label: 'Raven AI', submenu: ravenHost.menuTemplateItems() },
       { type: 'separator' },
       { label: 'Themes', submenu: [] }, // Will be populated dynamically with themes and skins
       { role: 'reload' }
@@ -5135,13 +6204,20 @@ app.whenReady().then(() => {
         'twitch-chat-container': 'view_twitch_chat',
         'sound-controls': 'view_sound_controls'
       };
-      Object.keys(mapping).forEach(componentId => {
-        const itemId = mapping[componentId];
-        const mi = menu.getMenuItemById ? menu.getMenuItemById(itemId) : null;
-        if (mi && typeof mi.checked !== 'undefined') {
-          mi.checked = !!(prefs && prefs[componentId]);
-        }
-      });
+      applyingViewMenuSync = true;
+      try {
+        Object.keys(mapping).forEach(componentId => {
+          if (!prefs || !Object.prototype.hasOwnProperty.call(prefs, componentId)) return;
+          const itemId = mapping[componentId];
+          const mi = menu.getMenuItemById ? menu.getMenuItemById(itemId) : null;
+          const desired = !!prefs[componentId];
+          if (mi && typeof mi.checked !== 'undefined' && mi.checked !== desired) {
+            mi.checked = desired;
+          }
+        });
+      } finally {
+        applyingViewMenuSync = false;
+      }
     } catch (e) {
       console.warn('Failed to sync view prefs to menu:', e);
     }
@@ -5251,6 +6327,272 @@ app.whenReady().then(() => {
     return getOverlayServerUrl();
   });
 
+  // Get auth token for display in settings
+  ipcMain.handle('get-auth-token', async () => {
+    return securityManager.getOrCreateToken();
+  });
+
+  // Get auth token file path
+  ipcMain.handle('get-auth-token-path', async () => {
+    return securityManager.tokenPath;
+  });
+
+  ipcMain.handle('raven-get-setup-status', async () => ravenHost.getSetupStatus());
+
+  ipcMain.handle('raven-save-api-keys', async (_event, payload) => {
+    try {
+      if (!licenseManager || !licenseManager.canUseAiAssistant().allowed) {
+        return { success: false, error: 'VirtualDeck Pro license required for Raven AI' };
+      }
+      const updates = {};
+      if (payload && payload.llmApiKey) updates.llmApiKey = payload.llmApiKey;
+      if (payload && payload.ttsApiKey) updates.ttsApiKey = payload.ttsApiKey;
+      if (!updates.llmApiKey && !updates.ttsApiKey) {
+        return { success: false, error: 'Enter at least one API key to save' };
+      }
+      const status = ravenHost.updateApiKeys(updates);
+      const restart = ravenHost.restartRavenIfRunning();
+      return { success: true, status, restart };
+    } catch (err) {
+      return { success: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  function probeLocalHttpStatus(url, timeoutMs = 1200) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (status) => {
+        if (settled) return;
+        settled = true;
+        resolve(status);
+      };
+      try {
+        const req = http.get(url, (res) => {
+          res.resume();
+          finish(typeof res.statusCode === 'number' ? res.statusCode : null);
+        });
+        req.setTimeout(timeoutMs, () => {
+          req.destroy();
+          finish(null);
+        });
+        req.on('error', () => finish(null));
+      } catch (err) {
+        finish(null);
+      }
+    });
+  }
+
+  async function probeLocalHttp(url) {
+    const status = await probeLocalHttpStatus(url);
+    return status !== null && status >= 200 && status < 300;
+  }
+
+  ipcMain.handle('raven-is-running', async () => ({ running: ravenHost.isRunning() }));
+
+  ipcMain.handle('raven-connection-status', async () => {
+    const running = ravenHost.isRunning();
+    const controllerOk = await probeLocalHttp('http://127.0.0.1:3004/api/ai/status');
+    const bridgeStatus = await probeLocalHttpStatus('http://127.0.0.1:3000/api/ai/enabled');
+    const bridgeOk = bridgeStatus !== null && bridgeStatus < 500;
+    const connected = controllerOk || bridgeOk;
+    let source = 'offline';
+    if (controllerOk) source = 'controller';
+    else if (bridgeOk) source = bridgeStatus === 404 || bridgeStatus === 405 ? 'bridge-legacy' : 'bridge';
+    else if (running) source = 'process';
+    return {
+      running,
+      connected: connected || running,
+      httpReachable: connected,
+      source: connected ? source : (running ? 'process' : 'offline'),
+      controllerOk,
+      bridgeStatus,
+    };
+  });
+
+  ipcMain.handle('raven-test-llm-key', async (_event, payload) => {
+    try {
+      if (!licenseManager || !licenseManager.canUseAiAssistant().allowed) {
+        return { ok: false, error: 'VirtualDeck Pro license required' };
+      }
+      const { testOpenAiApiKey } = require('./lib/raven-llm-test');
+      let key = payload && payload.apiKey ? String(payload.apiKey).trim() : '';
+      if (!key) {
+        key = ravenHost.readEnvValue('LLM_API_KEY');
+        if (!key) {
+          return { ok: false, error: 'Enter an API key or save one first' };
+        }
+      }
+      return await testOpenAiApiKey(key);
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('raven-open-env-file', async () => {
+    ravenHost.openEnvFile();
+    return { success: true };
+  });
+
+  ipcMain.handle('raven-start', async () => {
+    try {
+      ravenHost.startRaven();
+      return { success: true, running: ravenHost.isRunning() };
+    } catch (err) {
+      return { success: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('raven-stop', async () => {
+    try {
+      ravenHost.stopRaven();
+      return { success: true, running: ravenHost.isRunning() };
+    } catch (err) {
+      return { success: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('raven-restart', async () => {
+    try {
+      const result = ravenHost.restartRaven();
+      return { success: true, ...result };
+    } catch (err) {
+      return { success: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('license-get-status', async () => {
+    if (!licenseManager) {
+      return {
+        licensed: false,
+        aiAssistant: false,
+        unlimitedButtons: false,
+        maxButtons: 15,
+        status: 'unavailable',
+        message: 'License manager not initialized',
+      };
+    }
+    return licenseManager.getStatusForUi();
+  });
+
+  ipcMain.handle('license-get-deck-entitlements', async () => {
+    if (!licenseManager) {
+      return { licensed: false, unlimitedButtons: false, canAddButton: true, lockedButtonIds: [], activeButtonIds: [] };
+    }
+    const profile = loadProfile(currentActiveProfile);
+    const deck = licenseManager.getButtonEntitlementsForProfile(profile);
+    const locked = deck.lockedButtonIds || (deck.lockedIds ? Array.from(deck.lockedIds) : []);
+    const active = deck.activeButtonIds || (deck.activeIds ? Array.from(deck.activeIds) : []);
+    return {
+      licensed: !!deck.licensed,
+      unlimitedButtons: !!deck.unlimitedButtons,
+      aiAssistant: !!deck.aiAssistant,
+      canAddButton: deck.canAddButton !== false,
+      maxActiveButtons: deck.maxActiveButtons == null ? null : deck.maxActiveButtons,
+      buttonCount: deck.buttonCount || 0,
+      lockedButtonIds: locked,
+      activeButtonIds: active,
+      status: deck.status || null,
+      message: deck.message || '',
+    };
+  });
+
+  ipcMain.handle('license-activate', async (_event, licenseKey) => {
+    if (!licenseManager) {
+      return { success: false, error: 'License manager not initialized' };
+    }
+    const result = await licenseManager.activate(licenseKey);
+    if (result.success) {
+      registerHotkeys();
+      try {
+        ravenHost.stopRaven();
+      } catch (e) {
+        // ignore
+      }
+    }
+    return result;
+  });
+
+  ipcMain.handle('license-deactivate', async () => {
+    if (!licenseManager) {
+      return { success: false, error: 'License manager not initialized' };
+    }
+    try {
+      ravenHost.stopRaven();
+    } catch (e) {
+      // ignore
+    }
+    const result = await licenseManager.deactivate();
+    registerHotkeys();
+    return result;
+  });
+
+  ipcMain.handle('license-revalidate', async () => {
+    if (!licenseManager) {
+      return { success: false, error: 'License manager not initialized' };
+    }
+    return licenseManager.revalidate();
+  });
+
+  ipcMain.handle('raven-dev-speak', async (_event, payload) => {
+    try {
+      if (licenseManager) {
+        const aiGate = licenseManager.canUseAiAssistant();
+        if (!aiGate.allowed) {
+          return { ok: false, error: aiGate.message };
+        }
+      }
+      const text = payload && payload.text;
+      let storedDevBase = null;
+      try {
+        const tc = loadTcConfig();
+        storedDevBase = tc.devApiBaseUrl || null;
+      } catch (e) {
+        storedDevBase = null;
+      }
+      return await speakViaDevApi(
+        {
+          fetchFn: fetch,
+          userDataPath,
+          overlayPort: overlayServerPort || 8080,
+          aiCommandsPath,
+          getMainWindow: () => win,
+          handleAIAudioCommands,
+          storedDevBaseUrl: storedDevBase,
+        },
+        text,
+      );
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('preview-ai-voice', async (_event, payload) => {
+    try {
+      if (licenseManager) {
+        const aiGate = licenseManager.canUseAiAssistant();
+        if (!aiGate.allowed) {
+          return { success: false, error: aiGate.message };
+        }
+      }
+      if (!aiConfigManager) {
+        return { success: false, error: 'AI configuration is not available' };
+      }
+      const validated = validateVoicePreviewRequest(payload);
+      if (!validated.ok) {
+        return { success: false, error: validated.error };
+      }
+      const config = aiConfigManager.readConfig();
+      return await fetchVoicePreviewAudio({
+        voiceId: validated.voiceId,
+        previewUrl: validated.previewUrl,
+        apiKey: aiConfigManager.getTTSApiKey(),
+        configMap: config,
+      });
+    } catch (err) {
+      return { success: false, error: err && err.message ? err.message : 'Preview failed' };
+    }
+  });
+
   // Handle preferences save from renderer
   ipcMain.on('save-preferences', (event, preferences) => {
     try {
@@ -5263,7 +6605,7 @@ app.whenReady().then(() => {
   ipcMain.on('check-for-updates', () => {
     try {
       console.log('Manual update check requested from preferences');
-      checkForUpdates();
+      initAppUpdater().checkForUpdates({ manual: true });
     } catch (e) { console.warn('check-for-updates failed', e); }
   });
 
@@ -5355,184 +6697,7 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
-  // Stop OAuth server
-  stopOAuthServer();
-});
-
-// IPC: Start OAuth server
-ipcMain.on('twitch-start-oauth-server', (event) => {
-  startOAuthServer();
-  event.reply('twitch-oauth-server-started');
-});
-
-// IPC: Stop OAuth server
-ipcMain.on('twitch-stop-oauth-server', (event) => {
-  stopOAuthServer();
-  event.reply('twitch-oauth-server-stopped');
-});
-
-// IPC: Get OAuth configuration
-ipcMain.handle('twitch-get-oauth-config', () => {
-  const tc = loadTcConfig();
-  return tc.oauth;
-});
-
-// IPC: Set OAuth configuration
-ipcMain.on('twitch-set-oauth-config', (event, config) => {
-  try {
-    const tc = loadTcConfig();
-    tc.oauth = { ...tc.oauth, ...config };
-    saveTcConfig(tc);
-    event.reply('twitch-oauth-config-updated', tc.oauth);
-  } catch (error) {
-    console.error('Error saving OAuth config:', error);
-    event.reply('twitch-oauth-error', `Failed to save configuration: ${error.message}`);
-  }
-});
-
-// IPC: Start OAuth login flow
-ipcMain.on('twitch-start-oauth-login', async (event) => {
-  try {
-    console.log('Starting OAuth login process...');
-    const tc = loadTcConfig();
-
-    console.log('Loaded config:', {
-      hasClientId: !!tc.oauth.clientId,
-      hasClientSecret: !!tc.oauth.clientSecret,
-      clientId: tc.oauth.clientId ? tc.oauth.clientId.substring(0, 10) + '...' : 'none'
-    });
-
-    if (!tc.oauth.clientId || !tc.oauth.clientSecret) {
-      console.error('Missing OAuth credentials');
-      event.reply('twitch-oauth-error', 'Client ID and Client Secret must be configured first');
-      return;
-    }
-
-    console.log('Starting OAuth server...');
-    startOAuthServer();
-
-    // Check if server is actually running
-    setTimeout(() => {
-      console.log('Opening OAuth URL in browser...');
-      const { shell } = require('electron');
-      const authUrl = `http://localhost:${OAUTH_PORT}/oauth/authorize`;
-      console.log('Auth URL:', authUrl);
-
-      const success = shell.openExternal(authUrl);
-      console.log('Browser open result:', success);
-
-      if (!success) {
-        console.error('Failed to open browser');
-        event.reply('twitch-oauth-error', 'Failed to open browser for OAuth login');
-      }
-    }, 1000); // Give server time to start
-
-  } catch (error) {
-    console.error('Error starting OAuth login:', error);
-    event.reply('twitch-oauth-error', `Failed to start OAuth login: ${error.message}`);
-  }
-});
-
-// IPC: Trigger alert overlay
-ipcMain.on('trigger-alert', (event, alertData) => {
-  console.log('🚨 Triggering alert overlay:', alertData);
-
-  // Send to alert overlay specifically
-  broadcastToOverlay({
-    type: 'alert',
-    alertType: alertData.type || 'follower',
-    user: alertData.user || alertData.username,
-    message: alertData.message,
-    amount: alertData.amount,
-    bits: alertData.bits,
-    duration: alertData.duration || 5000,
-    media: alertData.media,
-    audio: alertData.audio
-  }, 'alert');
-});
-
-// IPC: Trigger confetti overlay
-ipcMain.on('trigger-confetti', (event, confettiData) => {
-  console.log('🎊 Triggering confetti overlay:', confettiData);
-
-  // Send to confetti overlay specifically
-  broadcastToOverlay({
-    type: 'confetti',
-    count: confettiData.count || 100,
-    duration: confettiData.duration || 3000
-  }, 'confetti');
-});
-
-// IPC: Logout from Twitch OAuth
-ipcMain.on('twitch-logout', async (event) => {
-  try {
-    console.log('Processing Twitch OAuth logout');
-
-    // Clear OAuth tokens from config
-    const tc = loadTcConfig();
-    tc.oauth.accessToken = '';
-    tc.oauth.refreshToken = '';
-    tc.oauth.tokenExpiry = null;
-    saveTcConfig(tc);
-
-    // Send IPC to clear credentials (this will disconnect chat, EventSub, etc.)
-    const mockEvent = {
-      reply: (channel, data) => {
-        console.log('Clear creds completed, sending logout success');
-        event.reply('twitch-logout-success');
-      }
-    };
-
-    // Execute the clear credentials logic inline
-    console.log('Shutting down Twitch connections for logout');
-
-    // Stop follower polling
-    if (pollIntervalId) {
-      clearInterval(pollIntervalId);
-      pollIntervalId = null;
-      console.log('Stopped follower polling');
-    }
-
-    // Stop stream monitor for hydration
-    stopStreamMonitor();
-
-    // Close EventSub websocket if present
-    try {
-      if (eventSubWs) {
-        try { eventSubWs.close(); } catch (e) { console.warn('Error closing EventSub websocket:', e); }
-        eventSubWs = null;
-      }
-    } catch (e) { console.warn('Error while closing EventSub websocket', e); }
-
-    // Clear created subscriptions
-    try {
-      const tcConfig = loadTcConfig();
-      tcConfig.createdSubscriptions = [];
-      saveTcConfig(tcConfig);
-    } catch (e) { console.warn('Error clearing subscriptions:', e); }
-
-    // Clear global variables
-    twitchUserName = null;
-    twitchUserId = null;
-    twitchToken = null;
-    twitchClientId = null;
-    eventSubSessionId = null;
-    eventSubRegistered = false;
-    lastPollTime = null;
-    lastFollowerIds = [];
-
-    // Clear chat-related state
-    recentChatUserState.clear();
-    firstTimeChatters.clear();
-
-    console.log('Twitch connections cleared successfully');
-
-    event.reply('twitch-logout-success');
-
-  } catch (error) {
-    console.error('Error during logout:', error);
-    event.reply('twitch-logout-error', error.message);
-  }
+  try { ravenHost.stopRaven(); } catch (e) {}
 });
 
 // IPC: Clear stored Twitch credentials, close EventSub and chat connections, and remove created subscriptions
@@ -5579,7 +6744,12 @@ ipcMain.on('twitch-clear-creds', async (event) => {
         tc.topics = [];
         purgedTopics = true;
       }
-      saveTcConfig(tc);
+      if (twitchOAuthHost) {
+        const cleared = twitchOAuthHost.clearOAuthSessionFields(tc);
+        saveTcConfig(cleared);
+      } else {
+        saveTcConfig(tc);
+      }
       // attach deletionResults and purgedTopics to the result object below
       // will be sent to renderer once teardown completes
       event.deletionResults = deletionResults;
@@ -5621,349 +6791,98 @@ ipcMain.on('twitch-clear-creds', async (event) => {
   }
 });
 
-// ========================================================
-// Twitch OAuth 2.0 Server Setup
-// ========================================================
+// JARVIS API IPC handlers - for renderer to respond to tool calls
+ipcMain.on('jarvis-scenes-response', (event, scenes) => {
+  // This is handled by the get_scenes tool promise
+});
 
-let oauthServer = null;
-const OAUTH_PORT = 3000;
-
-// Start OAuth server for handling Twitch OAuth callbacks
-function startOAuthServer() {
-  if (oauthServer) {
-    console.log('OAuth server already running');
-    return;
+// ---------- Streaming-app scene providers (Meld / OBS / Streamlabs) ----------
+const pendingSceneProviderRequests = new Map();
+let sceneProviderReqSeq = 0;
+ipcMain.on('scene-provider-response', (event, msg) => {
+  if (!msg || !pendingSceneProviderRequests.has(msg.reqId)) return;
+  const resolve = pendingSceneProviderRequests.get(msg.reqId);
+  pendingSceneProviderRequests.delete(msg.reqId);
+  resolve(msg);
+});
+function meldSceneBridge(op, payload = {}) {
+  if (!win || win.isDestroyed()) return Promise.resolve({ ok: false, error: 'VirtualDeck window not available' });
+  const reqId = ++sceneProviderReqSeq;
+  return new Promise((resolve) => {
+    const t = setTimeout(() => {
+      pendingSceneProviderRequests.delete(reqId);
+      resolve({ ok: false, error: 'Meld Studio did not respond' });
+    }, 3000);
+    pendingSceneProviderRequests.set(reqId, (msg) => { clearTimeout(t); resolve(msg); });
+    win.webContents.send('scene-provider-request', { reqId, op, ...payload });
+  });
+}
+let obsSessionPassword = null; // used only when safeStorage is unavailable (never written to disk)
+function getObsSceneConfig() {
+  const prefs = getStoredPreferences();
+  const cfg = prefs.obsWebsocket || {};
+  let password = process.env.VD_OBS_WS_PASSWORD || '';
+  if (!password && cfg.passwordEncrypted && safeStorage.isEncryptionAvailable()) {
+    try { password = safeStorage.decryptString(Buffer.from(cfg.passwordEncrypted, 'base64')); } catch (e) { console.warn('[Scenes] Could not decrypt OBS password'); }
   }
-
-  console.log('Creating OAuth HTTP server...');
-  oauthServer = http.createServer(async (req, res) => {
-    const parsedUrl = url.parse(req.url, true);
-    const pathname = parsedUrl.pathname;
-
-    // Set CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-    if (req.method === 'OPTIONS') {
-      res.writeHead(200);
-      res.end();
-      return;
-    }
-
-    console.log(`OAuth server: ${req.method} ${pathname}`);
-
-    try {
-      if (pathname === '/oauth/authorize' && req.method === 'GET') {
-        // Redirect to Twitch OAuth authorization
-        const tc = loadTcConfig();
-        const { clientId, redirectUri } = tc.oauth;
-
-        if (!clientId) {
-          res.writeHead(400, { 'Content-Type': 'text/html' });
-          res.end('<h1>Error: Twitch Client ID not configured</h1><p>Please set your Twitch Client ID in the app settings.</p>');
-          return;
-        }
-
-        const authUrl = `https://id.twitch.tv/oauth2/authorize?` +
-          `client_id=${encodeURIComponent(clientId)}&` +
-          `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-          `response_type=code&` +
-          `scope=${encodeURIComponent('chat:read user:read:follows moderator:read:followers clips:edit channel:read:redemptions')}&` +
-          `state=${encodeURIComponent(Math.random().toString(36).substring(7))}`;
-
-        console.log('Redirecting to Twitch OAuth:', authUrl);
-        res.writeHead(302, { 'Location': authUrl });
-        res.end();
-        return;
-
-      } else if (pathname === '/oauth/callback' && req.method === 'GET') {
-        // Handle OAuth callback
-        const { code, state, error, error_description } = parsedUrl.query;
-
-        if (error) {
-          console.error('OAuth error:', error, error_description);
-          res.writeHead(400, { 'Content-Type': 'text/html' });
-          res.end(`<h1>OAuth Error</h1><p>${error}: ${error_description}</p><p>You can close this window.</p>`);
-          return;
-        }
-
-        if (!code) {
-          res.writeHead(400, { 'Content-Type': 'text/html' });
-          res.end('<h1>Error: No authorization code received</h1><p>You can close this window.</p>');
-          return;
-        }
-
-        try {
-          // Exchange code for tokens
-          const tc = loadTcConfig();
-          const { clientId, clientSecret, redirectUri } = tc.oauth;
-
-          const tokenResponse = await exchangeCodeForTokens(code, clientId, clientSecret, redirectUri);
-
-          // Save tokens
-          tc.oauth.accessToken = tokenResponse.access_token;
-          tc.oauth.refreshToken = tokenResponse.refresh_token || '';
-          tc.oauth.tokenExpiry = tokenResponse.expires_in ?
-            Date.now() + (tokenResponse.expires_in * 1000) : null;
-
-          saveTcConfig(tc);
-
-          console.log('OAuth tokens saved successfully');
-
-          // Notify main window of successful authentication
-          if (win && !win.isDestroyed()) {
-            win.webContents.send('twitch-oauth-success', {
-              accessToken: tokenResponse.access_token,
-              username: await getUsernameFromToken(tokenResponse.access_token)
-            });
-          }
-
-          // Show success page
-          res.writeHead(200, { 'Content-Type': 'text/html' });
-          res.end(`
-            <html>
-              <head>
-                <title>Twitch Authentication Successful</title>
-                <style>
-                  body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #1a1a1a; color: white; }
-                  .success { color: #00ff88; font-size: 24px; margin: 20px 0; }
-                  .message { font-size: 16px; margin: 20px 0; }
-                </style>
-              </head>
-              <body>
-                <h1 class="success">✅ Authentication Successful!</h1>
-                <p class="message">You can now close this window and return to VirtualDeck.</p>
-                <script>
-                  // Auto-close after 3 seconds
-                  setTimeout(() => {
-                    window.close();
-                  }, 3000);
-                </script>
-              </body>
-            </html>
-          `);
-
-        } catch (tokenError) {
-          console.error('Token exchange error:', tokenError);
-          res.writeHead(500, { 'Content-Type': 'text/html' });
-          res.end(`<h1>Error exchanging code for tokens</h1><p>${tokenError.message}</p><p>You can close this window.</p>`);
-        }
-
-      } else {
-        res.writeHead(404, { 'Content-Type': 'text/html' });
-        res.end('<h1>404 Not Found</h1>');
-      }
-
-    } catch (err) {
-      console.error('OAuth server error:', err);
-      res.writeHead(500, { 'Content-Type': 'text/html' });
-      res.end('<h1>Internal Server Error</h1>');
-    }
-  });
-
-  oauthServer.listen(OAUTH_PORT, 'localhost', (err) => {
-    if (err) {
-      console.error('Failed to start OAuth server:', err);
-      oauthServer = null;
-      return;
-    }
-    console.log(`✅ OAuth server successfully listening on http://localhost:${OAUTH_PORT}`);
-  });
-
-  oauthServer.on('error', (err) => {
-    console.error('OAuth server error:', err);
-    if (err.code === 'EADDRINUSE') {
-      console.error(`Port ${OAUTH_PORT} is already in use. OAuth authentication may not work.`);
-    }
-  });
+  if (!password && obsSessionPassword) password = obsSessionPassword;
+  return { url: process.env.VD_OBS_WS_URL || cfg.url || DEFAULT_OBS_URL, password };
 }
+const sceneProviders = new SceneProviders({
+  meldBridge: meldSceneBridge,
+  getObsConfig: getObsSceneConfig,
+  streamlabsRequest: (opts) => streamlabsTcpRequest({
+    host: process.env.VD_STREAMLABS_TCP_HOST || undefined,
+    port: Number(process.env.VD_STREAMLABS_TCP_PORT) || undefined,
+    ...opts,
+  }),
+});
+jarvisRegistry.setContext({ sceneProvider: sceneProviders });
 
-// Stop OAuth server
-function stopOAuthServer() {
-  if (oauthServer) {
-    oauthServer.close();
-    oauthServer = null;
-    console.log('OAuth server stopped');
-  }
-}
-
-// Exchange authorization code for access tokens
-async function exchangeCodeForTokens(code, clientId, clientSecret, redirectUri) {
-  return new Promise((resolve, reject) => {
-    const postData = querystring.stringify({
-      client_id: clientId,
-      client_secret: clientSecret,
-      code: code,
-      grant_type: 'authorization_code',
-      redirect_uri: redirectUri
-    });
-
-    const options = {
-      hostname: 'id.twitch.tv',
-      port: 443,
-      path: '/oauth2/token',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-
-      res.on('end', () => {
-        try {
-          if (res.statusCode === 200) {
-            const tokenData = JSON.parse(data);
-            resolve(tokenData);
-          } else {
-            reject(new Error(`Token exchange failed: ${res.statusCode} ${data}`));
-          }
-        } catch (err) {
-          reject(err);
-        }
-      });
-    });
-
-    req.on('error', (err) => {
-      reject(err);
-    });
-
-    req.write(postData);
-    req.end();
-  });
-}
-
-// Get username from access token
-async function getUsernameFromToken(accessToken) {
-  return new Promise((resolve, reject) => {
-    const tc = loadTcConfig();
-    const options = {
-      hostname: 'api.twitch.tv',
-      port: 443,
-      path: '/helix/users',
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Client-Id': tc.oauth.clientId
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-
-      res.on('end', () => {
-        try {
-          if (res.statusCode === 200) {
-            const userData = JSON.parse(data);
-            if (userData.data && userData.data.length > 0) {
-              resolve(userData.data[0].login);
-            } else {
-              reject(new Error('No user data received'));
-            }
-          } else {
-            reject(new Error(`User lookup failed: ${res.statusCode}`));
-          }
-        } catch (err) {
-          reject(err);
-        }
-      });
-    });
-
-    req.on('error', (err) => {
-      reject(err);
-    });
-
-    req.end();
-  });
-}
-
-// Check if access token is expired and refresh if needed
-async function ensureValidToken() {
-  const tc = loadTcConfig();
-  const now = Date.now();
-
-  // Check if token exists and is not expired (with 5 minute buffer)
-  if (!tc.oauth.accessToken || (tc.oauth.tokenExpiry && now >= (tc.oauth.tokenExpiry - 300000))) {
-    if (tc.oauth.refreshToken) {
-      console.log('Access token expired, refreshing...');
-      try {
-        const newTokens = await refreshAccessToken(tc.oauth.refreshToken, tc.oauth.clientId, tc.oauth.clientSecret);
-        tc.oauth.accessToken = newTokens.access_token;
-        tc.oauth.refreshToken = newTokens.refresh_token || tc.oauth.refreshToken;
-        tc.oauth.tokenExpiry = newTokens.expires_in ?
-          Date.now() + (newTokens.expires_in * 1000) : null;
-        saveTcConfig(tc);
-        console.log('Access token refreshed successfully');
-      } catch (refreshError) {
-        console.error('Token refresh failed:', refreshError);
-        throw refreshError;
-      }
+ipcMain.handle('list-streaming-scenes', async (event, opts = {}) => {
+  const app = opts && ['meld', 'obs', 'streamlabs'].includes(opts.app) ? opts.app : undefined;
+  return sceneProviders.listScenes({ app });
+});
+ipcMain.handle('get-obs-scene-config', async () => {
+  const cfg = getObsSceneConfig();
+  return { url: cfg.url, hasPassword: !!cfg.password };
+});
+ipcMain.handle('set-obs-scene-config', async (event, data = {}) => {
+  const url = String((data && data.url) || '').trim() || DEFAULT_OBS_URL;
+  if (!/^wss?:\/\/[^\s]+$/i.test(url)) return { success: false, error: 'URL must start with ws:// or wss://' };
+  const prefs = getStoredPreferences();
+  const next = { ...(prefs.obsWebsocket || {}), url };
+  let note;
+  if (typeof data.password === 'string') {
+    if (!data.password) {
+      delete next.passwordEncrypted; obsSessionPassword = null;
+    } else if (safeStorage.isEncryptionAvailable()) {
+      next.passwordEncrypted = safeStorage.encryptString(data.password).toString('base64');
     } else {
-      throw new Error('No refresh token available');
+      obsSessionPassword = data.password;
+      note = 'password kept for this session only; secure storage unavailable';
     }
   }
+  prefs.obsWebsocket = next;
+  saveStoredPreferences(prefs);
+  return { success: true, note };
+});
 
-  return tc.oauth.accessToken;
-}
-
-// Refresh access token
-async function refreshAccessToken(refreshToken, clientId, clientSecret) {
-  return new Promise((resolve, reject) => {
-    const postData = querystring.stringify({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: 'refresh_token'
+// Update JARVIS context when config or connections change
+function updateJarvisContext() {
+  if (jarvisRegistry) {
+    const currentProfile = loadProfile(currentActiveProfile);
+    jarvisRegistry.setContext({
+      win,
+      twitchClient,
+      twitchChannel: twitchUserName ? `#${twitchUserName}` : null,
+      twitchUserName,
+      config: currentProfile,
+      currentActiveProfile,
+      loadProfile,
+      triggerButtonFn: triggerButtonWithDebounce,
+      macroManager,
+      ...buildJarvisRaidContext(),
     });
-
-    const options = {
-      hostname: 'id.twitch.tv',
-      port: 443,
-      path: '/oauth2/token',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-
-      res.on('end', () => {
-        try {
-          if (res.statusCode === 200) {
-            const tokenData = JSON.parse(data);
-            resolve(tokenData);
-          } else {
-            reject(new Error(`Token refresh failed: ${res.statusCode} ${data}`));
-          }
-        } catch (err) {
-          reject(err);
-        }
-      });
-    });
-
-    req.on('error', (err) => {
-      reject(err);
-    });
-
-    req.write(postData);
-    req.end();
-  });
+  }
 }

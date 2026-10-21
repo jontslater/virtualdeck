@@ -9,6 +9,7 @@ function showCustomPrompt(message, defaultValue = '') {
   return new Promise((resolve) => {
     // Create modal overlay
     const overlay = document.createElement('div');
+    overlay.setAttribute('data-vd-dialog', '1'); // Esc handled by this dialog, not the global modal closer
     overlay.style.cssText = `
       position: fixed;
       top: 0;
@@ -116,9 +117,15 @@ function showCustomPrompt(message, defaultValue = '') {
     overlay.appendChild(dialog);
     
     // Event handlers
+    const previousFocus = document.activeElement;
     const cleanup = () => {
       if (overlay.parentNode) {
         overlay.parentNode.removeChild(overlay);
+      }
+      // Every close path (buttons, Esc, Enter) drops the keydown listener and restores focus.
+      document.removeEventListener('keydown', handleKeydown);
+      if (previousFocus && previousFocus !== document.body && document.contains(previousFocus) && typeof previousFocus.focus === 'function') {
+        try { previousFocus.focus(); } catch (_) {}
       }
     };
     
@@ -158,6 +165,7 @@ function showProfileDeleteDialog(profiles) {
   return new Promise((resolve) => {
     // Create modal overlay
     const overlay = document.createElement('div');
+    overlay.setAttribute('data-vd-dialog', '1'); // Esc handled by this dialog, not the global modal closer
     overlay.style.cssText = `
       position: fixed;
       top: 0;
@@ -270,9 +278,15 @@ function showProfileDeleteDialog(profiles) {
     overlay.appendChild(dialog);
     
     // Event handlers
+    const previousFocus = document.activeElement;
     const cleanup = () => {
       if (overlay.parentNode) {
         overlay.parentNode.removeChild(overlay);
+      }
+      // Every close path (buttons, Esc, Enter) drops the keydown listener and restores focus.
+      document.removeEventListener('keydown', handleKeydown);
+      if (previousFocus && previousFocus !== document.body && document.contains(previousFocus) && typeof previousFocus.focus === 'function') {
+        try { previousFocus.focus(); } catch (_) {}
       }
     };
     
@@ -308,6 +322,7 @@ function showCustomConfirm(message) {
   return new Promise((resolve) => {
     // Create modal overlay
     const overlay = document.createElement('div');
+    overlay.setAttribute('data-vd-dialog', '1'); // Esc handled by this dialog, not the global modal closer
     overlay.style.cssText = `
       position: fixed;
       top: 0;
@@ -399,9 +414,15 @@ function showCustomConfirm(message) {
     overlay.appendChild(dialog);
     
     // Event handlers
+    const previousFocus = document.activeElement;
     const cleanup = () => {
       if (overlay.parentNode) {
         overlay.parentNode.removeChild(overlay);
+      }
+      // Every close path (buttons, Esc, Enter) drops the keydown listener and restores focus.
+      document.removeEventListener('keydown', handleKeydown);
+      if (previousFocus && previousFocus !== document.body && document.contains(previousFocus) && typeof previousFocus.focus === 'function') {
+        try { previousFocus.focus(); } catch (_) {}
       }
     };
     
@@ -572,7 +593,6 @@ class ProfileManager {
     
     // Set current profile
     selector.value = this.currentProfile;
-    updateProfileWidgetLabel();
   }
 
   async loadProfileSettings() {
@@ -616,9 +636,11 @@ class ProfileManager {
           console.warn('⚠️ ThemeSystem not available yet');
         }
         
-        // Apply component visibility
+        // View-menu prefs in localStorage win over the profile copy.
+        // Applying the profile on top used to hide Twitch Statistics after
+        // license activation even when the user had that panel turned on.
         if (profile.uiSettings.componentVisibility) {
-          this.applyComponentVisibility(profile.uiSettings.componentVisibility);
+          mergeProfileVisibility(profile.uiSettings.componentVisibility);
         }
         
         // Apply chat width
@@ -820,9 +842,7 @@ class ProfileManager {
       'recent-activity-container': document.getElementById('recent-activity-container'),
       'twitch-chat-container': document.getElementById('twitch-chat-container'),
       'sound-controls': document.getElementById('sound-controls'),
-      'queue-control-widget': document.getElementById('queue-control-widget'),
-      'profile-control-widget': document.getElementById('profile-control-widget'),
-      'battle-control-widget': document.getElementById('battle-control-widget')
+      'queue-control-widget': document.getElementById('queue-control-widget')
     };
     
     for (const [key, element] of Object.entries(components)) {
@@ -858,17 +878,19 @@ class ProfileManager {
     if (!soundGrid) return [];
     
     const soundCards = Array.from(soundGrid.querySelectorAll('.sound-card'));
-    return soundCards
-      .filter(card => card.dataset.soundData)
-      .map(card => {
-        try {
-          const soundData = JSON.parse(card.dataset.soundData);
-          return soundData.id;
-        } catch (e) {
-          return null;
+    const seen = new Set();
+    const order = [];
+    soundCards.forEach(card => {
+      if (!card.dataset.soundData) return;
+      try {
+        const soundData = JSON.parse(card.dataset.soundData);
+        if (soundData.id && !seen.has(soundData.id)) {
+          seen.add(soundData.id);
+          order.push(soundData.id);
         }
-      })
-      .filter(id => id);
+      } catch (e) {}
+    });
+    return order;
   }
 
   async createProfile(profileName) {
@@ -997,7 +1019,7 @@ class ProfileManager {
       
       if (result.success) {
         this.currentProfile = profileId;
-        updateProfileWidgetLabel();
+        
         const profileName = this.profiles.find(p => p.id === profileId)?.name || 'profile';
         showCustomAlert(`Switched to "${profileName}"`, 'success');
         
@@ -1032,37 +1054,30 @@ const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
 
 // Helper function to load Twitch channel point redemptions
-async function loadChannelRedemptions(selectElement, inputElement) {
-  if (!window.electronAPI || !window.electronAPI.getChannelRewards) {
-    showCustomAlert('Twitch API not available', 'error');
-    return;
+async function loadChannelRedemptions(selectElement, inputElement, options) {
+  if (!window.vdChannelRewards) {
+    showCustomAlert('Reward UI not loaded', 'error');
+    return [];
   }
-  
   try {
-    const rewards = await window.electronAPI.getChannelRewards();
-    
-    if (!rewards || rewards.length === 0) {
-      showCustomAlert('No channel point redemptions found. Make sure you\'re connected to Twitch.', 'error');
-      return;
-    }
-    
-    // Clear existing options except the first one
-    selectElement.innerHTML = '<option value="">-- Select or type manually --</option>';
-    
-    // Add redemptions to dropdown
-    rewards.forEach(reward => {
-      const option = document.createElement('option');
-      option.value = reward.title;
-      option.textContent = `${reward.title} (${reward.cost} pts)`;
-      selectElement.appendChild(option);
+    const rewards = await window.vdChannelRewards.loadRewardsIntoSelect(selectElement, {
+      valueField: (options && options.valueField) || 'title',
+      placeholder: (options && options.placeholder) || '-- Select or type manually --',
     });
-    
+    if (!rewards.length) {
+      showCustomAlert('No channel point redemptions found. Make sure you\'re connected to Twitch.', 'error');
+      return [];
+    }
+    if (inputElement && selectElement.value) {
+      inputElement.value = selectElement.selectedOptions[0].dataset.rewardTitle || selectElement.value;
+    }
     showCustomAlert(`Loaded ${rewards.length} redemption(s) from Twitch`, 'success');
     console.log('✅ Loaded Twitch redemptions:', rewards);
+    return rewards;
   } catch (error) {
     console.error('Error loading redemptions:', error);
-    const msg = (error && error.message) ? error.message : 'Failed to load redemptions from Twitch';
-    showCustomAlert(msg, 'error');
+    showCustomAlert(error.message || 'Failed to load redemptions from Twitch', 'error');
+    return [];
   }
 }
 
@@ -1091,9 +1106,11 @@ function setupRedemptionSync(selectElement, inputElement) {
 }
 
 // Add refresh UI listener
-window.electronAPI.onRefreshUI(() => {
-  loadButtons();
-});
+if (window.electronAPI && typeof window.electronAPI.onRefreshUI === 'function') {
+  window.electronAPI.onRefreshUI(() => {
+    loadButtons();
+  });
+}
 
 // Mute overlay iframe in dashboard to prevent double audio
 // Audio should only play in OBS browser source
@@ -1286,6 +1303,37 @@ let vdDragState = {
 
 // Pagination state
 let currentPage = 0;
+let deckPageReady = false;
+
+function deckPageProfileId() {
+  const id = window.profileManager && window.profileManager.currentProfile;
+  return id || 'active';
+}
+
+function readSavedDeckPage() {
+  try {
+    const map = JSON.parse(localStorage.getItem('vdDeckPages') || '{}') || {};
+    const id = deckPageProfileId();
+    const raw = map[id] != null ? map[id] : map.active;
+    const page = parseInt(raw, 10);
+    return Number.isFinite(page) && page >= 0 ? page : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function writeSavedDeckPage(page) {
+  if (!deckPageReady) return;
+  try {
+    const map = JSON.parse(localStorage.getItem('vdDeckPages') || '{}') || {};
+    const id = deckPageProfileId();
+    map[id] = page;
+    map.active = page;
+    localStorage.setItem('vdDeckPages', JSON.stringify(map));
+  } catch (e) {
+    // ignore quota / private mode
+  }
+}
 let itemsPerPage = 12; // fallback
 let totalPages = 1;
 
@@ -2124,11 +2172,24 @@ function updateChatVisibility(isConnected) {
   }
 }
 
+let loadButtonsGeneration = 0;
+
 async function loadButtons() {
   if (!soundGrid) {
     console.error('soundGrid element not found!');
     return;
   }
+
+  const generation = ++loadButtonsGeneration;
+
+  if (window.vdLicense && typeof window.vdLicense.refreshDeckEntitlements === 'function') {
+    try {
+      await window.vdLicense.refreshDeckEntitlements();
+    } catch (e) {
+      console.warn('[License] deck entitlements refresh failed', e);
+    }
+  }
+  if (generation !== loadButtonsGeneration) return;
   
   // Clear existing buttons
   soundGrid.innerHTML = '';
@@ -2142,6 +2203,12 @@ async function loadButtons() {
     <div class="add-text">Add New</div>
   `;
   addCard.onclick = () => {
+    if (window.vdLicense && !window.vdLicense.canAddButton()) {
+      window.vdLicense.showUpsell(
+        `Free plan includes ${window.vdLicense.getCachedDeckEntitlements()?.maxActiveButtons || 15} active buttons. Upgrade in Preferences → License for unlimited buttons and Raven AI.`,
+      );
+      return;
+    }
     // Show selection modal
     document.getElementById('button-type-modal').classList.remove('hidden');
   };
@@ -2150,6 +2217,7 @@ async function loadButtons() {
 
   // Load buttons from config
   const data = await window.electronAPI.getConfig();
+  if (generation !== loadButtonsGeneration) return;
   console.log('🔍 Loaded config data:', data);
   console.log('🔍 Number of buttons:', data.buttons?.length || 0);
   
@@ -2177,7 +2245,7 @@ async function loadButtons() {
     const usedIds = new Set();
 
     for (const s of savedOrder) {
-      if (s && s.id && configById.has(s.id)) {
+      if (s && s.id && configById.has(s.id) && !usedIds.has(s.id)) {
         ordered.push(configById.get(s.id));
         usedIds.add(s.id);
       }
@@ -2189,102 +2257,77 @@ async function loadButtons() {
     }
     if (ordered.length > 0) orderedButtons = ordered;
   }
-
-  // Meld scene buttons go in the left sidebar; all others in the main grid
-  const meldButtons = orderedButtons.filter(b => b.type === 'meld-scene');
-  const otherButtons = orderedButtons.filter(b => b.type !== 'meld-scene');
-  const meldSidebar = document.getElementById('meld-buttons-sidebar');
-  if (meldSidebar) {
-    meldSidebar.innerHTML = '';
-    for (const button of meldButtons) {
-      const card = document.createElement('div');
-      card.className = 'sound-card';
-      card.dataset.soundData = JSON.stringify(button);
-      if (button.id) card.dataset.buttonId = button.id;
-      const meldSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#5c6bc0"/><text x="24" y="30" font-size="18" text-anchor="middle" fill="#fff">Meld</text></svg>';
-      const meldIcon = 'data:image/svg+xml,' + encodeURIComponent(meldSvg);
-      const iconImg = `<img src="${meldIcon}" alt="Meld Scene" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;pointer-events:none;" />`;
-      card.innerHTML = `
-        <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
-        <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
-        ${iconImg}
-        <div class="sound-type">Meld</div>
-        <div class="sound-name">${button.name || button.label || 'Unnamed'}</div>
-        <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
-      `;
-      card.addEventListener('click', (e) => {
-        if (e.target.classList.contains('edit-button') || e.target.classList.contains('delete-x-button')) return;
-        if (isDragMode) return;
-        if (card._vdJustDragged) return;
-        try {
-          const sd = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
-          if (sd) handleTrigger(sd);
-        } catch (err) { console.error('Failed to parse soundData on click:', err); }
-      });
-      meldSidebar.appendChild(card);
-    }
-  }
-
-  for (const [index, button] of otherButtons.entries()) {
+  
+  for (const [index, button] of orderedButtons.entries()) {
     const card = document.createElement("div");
     card.className = "sound-card";
     card.dataset.index = index;
     card.dataset.soundData = JSON.stringify(button);
   if (button.id) card.dataset.buttonId = button.id;
     
-    // Fetch icon for app buttons; use scene icon for meld-scene
-    let iconImg = '';
-    if (button.type === 'meld-scene') {
-      const meldSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#5c6bc0"/><text x="24" y="30" font-size="18" text-anchor="middle" fill="#fff">Meld</text></svg>';
-      const meldIcon = 'data:image/svg+xml,' + encodeURIComponent(meldSvg);
-      iconImg = `<img src="${meldIcon}" alt="Meld Scene" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;pointer-events:none;" />`;
+    let appIconSrc = null;
+    let appIconAlt = 'App';
+    const customIcon = await resolveDeckIconForButton(button);
+    if (generation !== loadButtonsGeneration) return;
+    if (customIcon) {
+      appIconSrc = customIcon;
+      appIconAlt = button.name || button.label || 'Button';
+    } else if (button.type === 'meld-scene') {
+      appIconSrc =
+        'data:image/svg+xml;charset=utf-8,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#5b8def"/><text x="24" y="30" font-size="13" text-anchor="middle" fill="white">Meld</text></svg>',
+        );
+      appIconAlt = 'Meld Scene';
     } else if (button.type === 'app') {
-      try {
-        let iconData = await window.electronAPI.getAppIcon(button.src);
-        if (!iconData || iconData === 'null' || iconData === 'undefined') {
-          // Use a default icon if extraction fails
-          iconData = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="%23bbb"/><text x="24" y="30" font-size="20" text-anchor="middle" fill="%23666">App</text></svg>';
-        }
-        iconImg = `<img src="${iconData}" alt="App Icon" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;pointer-events:none;" />`;
-      } catch (err) {
-        console.error('Error loading app icon:', err);
-        // Use default icon on error
-        const defaultIcon = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="%23bbb"/><text x="24" y="30" font-size="20" text-anchor="middle" fill="%23666">App</text></svg>';
-        iconImg = `<img src="${defaultIcon}" alt="App Icon" class="app-icon" style="width:32px;height:32px;display:block;margin:0 auto 8px auto;pointer-events:none;" />`;
-      }
+      let iconData = await window.electronAPI.getAppIcon(button.src);
+      if (generation !== loadButtonsGeneration) return;
+      if (!iconData) iconData = buildDefaultAppIconDataUrl();
+      appIconSrc = iconData;
+      appIconAlt = button.name || button.label || 'App';
     }
     card.innerHTML = `
       <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
       <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
-      ${iconImg}
       <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type}</div>
-      <div class="sound-name">${button.name || button.label || 'Unnamed'}</div>
+      <div class="sound-name">${button.name || button.label || button.sceneName || 'Unnamed'}</div>
       <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
     `;
+    if (appIconSrc) insertAppIconIntoCard(card, appIconSrc, appIconAlt);
+    if (window.vdLicense && typeof window.vdLicense.applyLockedStylesToCard === 'function') {
+      window.vdLicense.applyLockedStylesToCard(card, button);
+    }
     card.addEventListener('click', (e) => {
-      // Allow clicks on edit/delete buttons to work normally
-      if (e.target.classList.contains('edit-button') || e.target.classList.contains('delete-x-button')) {
-        return;
-      }
-      // Suppress trigger if in drag mode or the card was just dragged
-      if (isDragMode) return;
-      if (card._vdJustDragged) return;
-      // Read fresh soundData from the DOM so edits/reorders take effect
-      try {
-        const sd = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
-        if (sd) {
-          console.log('🔍 Raw button data from storage:', sd);
-          console.log('🔍 Button overlay property from storage:', sd.overlay);
-          handleTrigger(sd);
+      if (!e.target.classList.contains('edit-button') && !e.target.classList.contains('delete-x-button')) {
+        // Suppress trigger if in drag mode or the card was just dragged
+        if (isDragMode) return;
+        if (card._vdJustDragged) return;
+        if (window.vdLicense && button.id && window.vdLicense.isButtonLocked(button.id)) {
+          window.vdLicense.showUpsell();
+          return;
         }
-      } catch (err) {
-        console.error('Failed to parse soundData on click:', err);
+        // Read fresh soundData from the DOM so edits/reorders take effect
+        try {
+          const sd = card.dataset.soundData ? JSON.parse(card.dataset.soundData) : null;
+          if (sd) {
+            console.log('🔍 Raw button data from storage:', sd);
+            console.log('🔍 Button overlay property from storage:', sd.overlay);
+            handleTrigger(sd);
+          }
+        } catch (err) {
+          console.error('Failed to parse soundData on click:', err);
+        }
       }
     });
+    if (generation !== loadButtonsGeneration) return;
     soundGrid.appendChild(card);
   }
 
+  if (generation !== loadButtonsGeneration) return;
+
   // After full list appended to DOM, compute pagination and show page
+  deckPageReady = true;
+  currentPage = readSavedDeckPage();
   computePagination();
   renderCurrentPage();
   
@@ -2325,32 +2368,35 @@ function goToPage(pageNumber) {
 function computePagination() {
   const grid = document.getElementById('sound-grid');
   if (!grid) return;
-  // Measure a representative card size; if none, fallback to CSS sizes
-  const sample = grid.querySelector('.sound-card');
+  // Measure a card that is actually laid out. A hidden or not-yet-shown
+  // card reports 0px, which used to paginate into a single unreachable row.
+  const sample = Array.from(grid.querySelectorAll('.sound-card')).find((card) => {
+    const rect = card.getBoundingClientRect();
+    return rect.width >= 40 && rect.height >= 40;
+  }) || grid.querySelector('.sound-card');
   const gridRect = grid.getBoundingClientRect();
   let cardW = 100, cardH = 100, gap = 10;
   if (sample) {
     const sRect = sample.getBoundingClientRect();
-    cardW = sRect.width;
-    cardH = sRect.height;
-    // try to read gap from computed style
+    if (sRect.width >= 40) cardW = sRect.width;
+    if (sRect.height >= 40) cardH = sRect.height;
     const cs = window.getComputedStyle(grid);
-    const g = parseInt(cs.getPropertyValue('gap'));
+    const g = parseInt(cs.getPropertyValue('gap'), 10);
     if (!isNaN(g)) gap = g;
   }
-  const cols = Math.max(1, Math.floor((gridRect.width + gap) / (cardW + gap)));
-  // Use the visible viewport area below the grid's top as the available height for pagination
+  const gridWidth = gridRect.width >= 40 ? gridRect.width : Math.max(100, window.innerWidth - 80);
+  const cols = Math.max(1, Math.floor((gridWidth + gap) / (cardW + gap)));
   const pag = document.getElementById('pagination-controls');
   const pagRect = pag ? pag.getBoundingClientRect() : { height: 0 };
-  // Reserve some bottom space: pagination height + extra margin
-  const reservedBottom = (pagRect.height || 0) + 32;
-  // Compute available height from grid top to viewport bottom minus reserved space
-  const availableHeight = Math.max(0, (window.innerHeight - gridRect.top) - reservedBottom);
+  const reservedBottom = (pagRect.height || 48) + 32;
+  const gridTop = gridRect.top > 0 ? gridRect.top : 120;
+  const availableHeight = Math.max(cardH, (window.innerHeight - gridTop) - reservedBottom);
   const rows = Math.max(1, Math.floor((availableHeight + gap) / (cardH + gap)));
   itemsPerPage = Math.max(1, cols * rows);
   const totalItems = grid.querySelectorAll('.sound-card').length;
   totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
   if (currentPage >= totalPages) currentPage = totalPages - 1;
+  if (currentPage < 0) currentPage = 0;
   updatePaginationIndicator();
 }
 
@@ -2379,6 +2425,7 @@ function renderCurrentPage() {
   removeSlots();
   if (isDragMode) createSlots();
   updatePaginationIndicator();
+  writeSavedDeckPage(currentPage);
   // ensure bottom padding accounts for pagination bar height after render
   updateBottomPaddingForPagination();
 }
@@ -2524,63 +2571,36 @@ document.addEventListener('wheel', (e) => {
 // Essential: Both preventDefault() and stopPropagation() are required for Electron
 // Only prevent drag events when NOT in sound card drag mode
 document.addEventListener('dragover', (e) => {
-  console.log('🎯 Global dragover event fired');
-  console.log('  - isDragMode:', isDragMode);
-  console.log('  - target:', e.target);
-  console.log('  - target classes:', e.target.classList);
-  console.log('  - files:', e.dataTransfer.files.length);
-  
   if (!isDragMode || !e.target.classList.contains('sound-card')) {
-    console.log('  ✅ Preventing default and stopping propagation');
     e.preventDefault();
     e.stopPropagation();
-  } else {
-    console.log('  ❌ Skipping preventDefault (in drag mode on sound card)');
   }
 });
 
 document.addEventListener('drop', (e) => {
-  console.log('🎯 Global drop event fired');
-  console.log('  - isDragMode:', isDragMode);
-  console.log('  - target:', e.target);
-  console.log('  - target classes:', e.target.classList);
-  console.log('  - files:', e.dataTransfer.files.length);
-  
   if (!isDragMode || !e.target.classList.contains('sound-card')) {
-    console.log('  ✅ Processing file drop');
     e.preventDefault();
     e.stopPropagation();
-    // Visual feedback
     const globalDropZone = document.getElementById('global-drop-zone');
     if (globalDropZone) globalDropZone.classList.add('hidden');
-    // Process dropped files
-    for (const file of e.dataTransfer.files) {
-      console.log('  📁 Processing file:', file.name);
-      handleFileDrop(file);
-      break; // Only handle the first file
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length) {
+      void addDroppedDeckFiles(files);
     }
-  } else {
-    console.log('  ❌ Skipping file drop (in drag mode on sound card)');
   }
 });
 
 document.addEventListener('dragenter', (e) => {
-  console.log('🎯 dragenter event fired');
   const globalDropZone = document.getElementById('global-drop-zone');
   if (globalDropZone) {
-    console.log('  ✅ Showing global drop zone');
     globalDropZone.classList.remove('hidden');
-  } else {
-    console.log('  ❌ Global drop zone not found');
   }
 });
 
 document.addEventListener('dragleave', (e) => {
-  console.log('🎯 dragleave event fired');
   if (!document.body.contains(e.relatedTarget)) {
     const globalDropZone = document.getElementById('global-drop-zone');
     if (globalDropZone) {
-      console.log('  ✅ Hiding global drop zone');
       globalDropZone.classList.add('hidden');
     }
   }
@@ -2697,9 +2717,135 @@ function getVisibilityMap() {
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
     'toggle-queue-control': 'queue-control-widget',
-    'toggle-profile-widget': 'profile-control-widget',
-    'toggle-battle-widget': 'battle-control-widget'
+    'toggle-profile-panel': 'profile-panel',
+    'toggle-ai-dashboard': 'ai-dashboard-controls',
   };
+}
+
+function buildDefaultAppIconDataUrl() {
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#bbb"/><text x="24" y="30" font-size="20" text-anchor="middle" fill="#666">App</text></svg>';
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function insertAppIconIntoCard(card, iconSrc, altText) {
+  if (!card || !iconSrc) return;
+  const img = document.createElement('img');
+  img.className = 'app-icon';
+  img.alt = altText || 'App';
+  img.draggable = false;
+  img.src = iconSrc;
+  const anchor = card.querySelector('.sound-type');
+  if (anchor) card.insertBefore(img, anchor);
+  else card.appendChild(img);
+}
+
+let vdDeckIconDraft = { source: 'auto' };
+
+async function resolveDeckIconForButton(button) {
+  const d = button && button.deckIcon;
+  if (!d || d.source === 'auto') return null;
+  if (d.source === 'upload' && d.dataUrl) return d.dataUrl;
+  if (d.source === 'library' && d.id && window.vdDeckIconCatalog) {
+    try {
+      return await window.vdDeckIconCatalog.iconDataUrl(d.id);
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+}
+
+async function refreshDeckIconPreview() {
+  const preview = document.getElementById('deck-icon-preview');
+  const sourceSel = document.getElementById('deck-icon-source');
+  if (!preview || !sourceSel) return;
+  const source = sourceSel.value || 'auto';
+  if (source === 'auto') {
+    preview.style.display = 'none';
+    return;
+  }
+  let src = null;
+  if (source === 'upload' && vdDeckIconDraft.dataUrl) src = vdDeckIconDraft.dataUrl;
+  if (source === 'library' && vdDeckIconDraft.id && window.vdDeckIconCatalog) {
+    src = await window.vdDeckIconCatalog.iconDataUrl(vdDeckIconDraft.id);
+  }
+  if (src) {
+    preview.src = src;
+    preview.style.display = 'block';
+  } else {
+    preview.style.display = 'none';
+  }
+}
+
+function applyDeckIconToForm(deckIcon) {
+  vdDeckIconDraft = deckIcon && deckIcon.source ? { ...deckIcon } : { source: 'auto' };
+  const sourceSel = document.getElementById('deck-icon-source');
+  if (sourceSel) {
+    sourceSel.value = vdDeckIconDraft.source === 'library' || vdDeckIconDraft.source === 'upload'
+      ? vdDeckIconDraft.source
+      : 'auto';
+  }
+  refreshDeckIconPreview().catch(() => {});
+}
+
+function collectDeckIconFromForm() {
+  const source = (document.getElementById('deck-icon-source') && document.getElementById('deck-icon-source').value) || 'auto';
+  if (source === 'auto') return { source: 'auto' };
+  if (source === 'library' && vdDeckIconDraft.source === 'library' && vdDeckIconDraft.id) {
+    return { source: 'library', id: vdDeckIconDraft.id };
+  }
+  if (source === 'upload' && vdDeckIconDraft.source === 'upload' && vdDeckIconDraft.dataUrl) {
+    return { source: 'upload', dataUrl: vdDeckIconDraft.dataUrl };
+  }
+  return { source: 'auto' };
+}
+
+function setupDeckIconForm() {
+  const chooseBtn = document.getElementById('deck-icon-choose-btn');
+  const sourceSel = document.getElementById('deck-icon-source');
+  const fileInput = document.getElementById('deck-icon-file');
+  if (sourceSel) {
+    sourceSel.addEventListener('change', () => {
+      if (sourceSel.value === 'library' && window.vdDeckIconPicker) {
+        window.vdDeckIconPicker.open((picked) => {
+          vdDeckIconDraft = picked;
+          refreshDeckIconPreview().catch(() => {});
+        });
+      } else {
+        refreshDeckIconPreview().catch(() => {});
+      }
+    });
+  }
+  if (chooseBtn) {
+    chooseBtn.addEventListener('click', () => {
+      const source = sourceSel ? sourceSel.value : 'library';
+      if (source === 'upload' && fileInput) {
+        fileInput.click();
+        return;
+      }
+      if (sourceSel) sourceSel.value = 'library';
+      if (window.vdDeckIconPicker) {
+        window.vdDeckIconPicker.open((picked) => {
+          vdDeckIconDraft = picked;
+          refreshDeckIconPreview().catch(() => {});
+        });
+      }
+    });
+  }
+  if (fileInput) {
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        vdDeckIconDraft = { source: 'upload', dataUrl: reader.result };
+        if (sourceSel) sourceSel.value = 'upload';
+        refreshDeckIconPreview().catch(() => {});
+      };
+      reader.readAsDataURL(file);
+    });
+  }
 }
 
 // Initialize component visibility dropdown after DOM is ready
@@ -2741,7 +2887,8 @@ if (window.electronAPI && typeof window.electronAPI.onViewToggle === 'function')
           'twitch-chat': 'twitch-chat-container',
           'recent-activity': 'recent-activity-container',
           'sound-controls': 'sound-controls',
-          'sound-grid': 'sound-grid'
+          'sound-grid': 'sound-grid',
+          'ai-dashboard-controls': 'ai-dashboard-controls',
         };
         componentId = shortToFull[target] || null;
       }
@@ -2764,173 +2911,41 @@ if (window.electronAPI && typeof window.electronAPI.onViewToggle === 'function')
   });
 }
 
-// Reset drop zone state
-function resetDropZone() {
-  const dropZone = document.getElementById('add-item-drop-zone');
-  if (dropZone) {
-    dropZone.classList.remove('drag-over');
-  }
-}
-
-// Initialize add item drop zone - minimal working example
-function initializeAddItemDropZone() {
-  console.log('=== INITIALIZING DROP ZONE ===');
-  const dropZone = document.getElementById('add-item-drop-zone');
-  console.log('Drop zone element found:', !!dropZone);
-  console.log('Drop zone element:', dropZone);
-  
-  if (!dropZone) {
-    console.error('Add item drop zone not found!');
-    return;
-  }
-  
-  // Check if already initialized to prevent duplicate listeners
-  if (dropZone.dataset.initialized === 'true') {
-    console.log('Drop zone already initialized, skipping...');
-    return;
-  }
-  
-  // Mark as initialized
-  dropZone.dataset.initialized = 'true';
-  
-  console.log('Add item drop zone initialized:', dropZone);
-  console.log('Drop zone visible:', dropZone.offsetWidth > 0 && dropZone.offsetHeight > 0);
-  
-  // Add click handler to open file dialog
-  console.log('Adding click handler...');
-  dropZone.addEventListener('click', () => {
-    console.log('Drop zone clicked');
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = '.mp3,.wav,.ogg,.exe,.lnk,.bat,.cmd,.app,.sh,.desktop';
-    fileInput.multiple = false;
-    
-    fileInput.addEventListener('change', (e) => {
-      if (e.target.files.length > 0) {
-        handleFileDrop(e.target.files[0]);
-      }
-    });
-    
-    fileInput.click();
-  });
-  
-  // Minimal working drag and drop handlers (based on your example)
-  console.log('Adding dragover handler...');
-  dropZone.addEventListener('dragover', (e) => {
-    console.log('=== DROP ZONE DRAGOVER ===');
-    console.log('Event target:', e.target);
-    console.log('Current target:', e.currentTarget);
-    console.log('Modal exists?', !!document.getElementById('settings-modal'));
-    console.log('Modal hidden?', document.getElementById('settings-modal')?.classList.contains('hidden'));
-    console.log('Modal display:', document.getElementById('settings-modal')?.style.display);
-    console.log('Modal pointer-events:', document.getElementById('settings-modal')?.style.pointerEvents);
-    console.log('Is drag mode?', isDragMode);
-    e.preventDefault(); // VERY IMPORTANT: enables dropping
-    e.stopPropagation();
-    dropZone.classList.add('drag-over');
-  });
-
-  console.log('Adding dragenter handler...');
-  dropZone.addEventListener('dragenter', (e) => {
-    console.log('dragenter event fired');
-    e.preventDefault();
-    e.stopPropagation();
-    dropZone.classList.add('drag-over');
-  });
-
-  console.log('Adding dragleave handler...');
-  dropZone.addEventListener('dragleave', (e) => {
-    console.log('dragleave event fired');
-    e.preventDefault();
-    e.stopPropagation();
-    dropZone.classList.remove('drag-over');
-  });
-
-  console.log('Adding drop handler...');
-  dropZone.addEventListener('drop', (e) => {
-    console.log('=== DROP ZONE DROP ===');
-    console.log('Event target:', e.target);
-    console.log('Current target:', e.currentTarget);
-    console.log('Files count:', e.dataTransfer.files.length);
-    console.log('Modal exists?', !!document.getElementById('settings-modal'));
-    console.log('Modal hidden?', document.getElementById('settings-modal')?.classList.contains('hidden'));
-    
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Always reset drop zone styling
-    dropZone.classList.remove('drag-over');
-
-    // Handle the dropped file(s)
-    for (const file of e.dataTransfer.files) {
-      console.log('Dropped file:', file.path);
-      handleFileDrop(file);
-      break; // Only handle first file
-    }
-
-    // Don't set drag-drop-ready state - let user interact with modal
-    const modal = document.getElementById('settings-modal');
-    if (modal) {
-      // Remove any existing drag-drop-ready class
-      modal.classList.remove('drag-drop-ready');
-      console.log('Modal ready for user interaction');
-    }
-
-    // Schedule re-initialization after a delay to ensure everything is ready
-    setTimeout(() => {
-      console.log('Drop zone ready for next drag - re-initializing...');
-      dropZone.classList.remove('drag-over');
-      // Re-initialize the drop zone to ensure it's ready for the next drag
-      initializeAddItemDropZone();
-    }, 100);
-  });
-  
-  console.log('=== DROP ZONE INITIALIZATION COMPLETE ===');
-}
-
-// Re-initialization function removed - no longer needed
-
-// Initialize add item drop zone with a delay to ensure DOM is ready
-setTimeout(() => {
-  console.log('About to initialize drop zone...');
-  const dropZone = document.getElementById('add-item-drop-zone');
-  console.log('Drop zone found during init:', !!dropZone);
-  if (dropZone) {
-    console.log('Drop zone element:', dropZone);
-    console.log('Drop zone visible:', dropZone.offsetWidth > 0 && dropZone.offsetHeight > 0);
-  }
-  initializeAddItemDropZone();
-  console.log('Drop zone initialization completed');
-}, 100);
-
-// Add modal focus handler to re-enable interactions when user focuses
-const modal = document.getElementById('settings-modal');
-if (modal) {
-  modal.addEventListener('focusin', () => {
-    console.log('Modal focused - re-enabling interactions');
-    modal.classList.remove('drag-drop-ready'); // accept interactions
-  });
-} else {
-  console.error('Modal not found during initialization!');
-}
-
-// Debug: Check if drop zone exists after initialization
-setTimeout(() => {
-  const dropZone = document.getElementById('add-item-drop-zone');
-  console.log('Drop zone check after init:', !!dropZone);
-  console.log('Drop zone visible:', dropZone?.offsetWidth > 0 && dropZone?.offsetHeight > 0);
-  console.log('Drop zone classes:', dropZone?.className);
-  console.log('Drop zone style:', dropZone?.style.cssText);
-}, 1000);
-
-// Initialize component visibility dropdown
-initializeVisibilityDropdown();
-
 // Load and display app version
 loadAppVersion();
 
 // Component Visibility Dropdown Functions
+function repairTwitchStatsVisibilityOnce() {
+  try {
+    if (localStorage.getItem('vdTwitchStatsKept') === '1') return;
+    const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+    if (prefs['twitch-stats-container'] === false) {
+      prefs['twitch-stats-container'] = true;
+      localStorage.setItem('vdVisibility', JSON.stringify(prefs));
+    }
+    localStorage.setItem('vdTwitchStatsKept', '1');
+  } catch (e) {}
+}
+
+function mergeProfileVisibility(profilePrefs) {
+  let stored = {};
+  try {
+    stored = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
+  } catch (e) {
+    stored = {};
+  }
+  const merged = { ...(profilePrefs || {}) };
+  Object.keys(stored).forEach((key) => {
+    merged[key] = stored[key];
+  });
+  try {
+    localStorage.setItem('vdVisibility', JSON.stringify(merged));
+  } catch (e) {}
+  if (typeof applyVisibilityPrefs === 'function') applyVisibilityPrefs();
+}
+
 function initializeVisibilityDropdown() {
+  repairTwitchStatsVisibilityOnce();
   console.log('Initializing visibility dropdown...'); // Debug log
   
   const toggleBtn = document.getElementById('visibility-toggle');
@@ -3156,8 +3171,7 @@ function applyVisibilityPrefs() {
     'toggle-twitch-chat': 'twitch-chat-container',
     'toggle-sound-controls': 'sound-controls',
     'toggle-queue-control': 'queue-control-widget',
-    'toggle-profile-widget': 'profile-control-widget',
-    'toggle-battle-widget': 'battle-control-widget'
+    'toggle-profile-panel': 'profile-panel'
   };
 
   let prefs = {};
@@ -3169,6 +3183,7 @@ function applyVisibilityPrefs() {
 
   Object.keys(map).forEach(checkboxId => {
     const componentId = map[checkboxId];
+    if (componentId === 'ai-dashboard-controls') return;
     const checkbox = document.getElementById(checkboxId);
     const component = document.getElementById(componentId);
     const visible = prefs.hasOwnProperty(componentId) ? !!prefs[componentId] : true;
@@ -3193,6 +3208,9 @@ function applyVisibilityPrefs() {
       updateBottomPaddingForPagination();
     }
   } catch (e) { console.warn('Failed to recompute pagination after applyVisibilityPrefs', e); }
+  if (window.vdRavenSetup && typeof window.vdRavenSetup.applyAiDashboardVisibility === 'function') {
+    window.vdRavenSetup.applyAiDashboardVisibility().catch(() => {});
+  }
 }
 }
 
@@ -3438,8 +3456,7 @@ if (statsFilter) {
 // Open settings modal when Preferences menu item is clicked
 if (window.electronAPI && window.electronAPI.onOpenPreferences) {
   window.electronAPI.onOpenPreferences(() => {
-    const settingsModal = document.getElementById('settings-modal');
-    if (settingsModal) settingsModal.classList.remove('hidden');
+    if (typeof openPreferencesModal === 'function') openPreferencesModal();
   });
 }
 
@@ -3541,9 +3558,6 @@ async function updateTwitchStats() {
     document.getElementById('subscriber-count').textContent = subStats.count.toLocaleString();
     document.getElementById('sub-points').textContent = subStats.points.toLocaleString();
 
-    // Respect persisted visibility preferences
-    try { applyVisibilityPrefs(); } catch (e) { /* ignore */ }
-    
     // Add debug info
     let debugDiv = document.getElementById('debug-info');
     if (debugDiv) {
@@ -3555,14 +3569,14 @@ async function updateTwitchStats() {
 
   } catch (error) {
     console.error('Error updating Twitch stats:', error);
-    // Hide stats on error
-    try {
-      const prefs = JSON.parse(localStorage.getItem('vdVisibility') || '{}');
-      const visible = prefs.hasOwnProperty('twitch-stats-container') ? !!prefs['twitch-stats-container'] : true;
-      if (!visible) statsContainer.classList.add('hidden');
-    } catch (err) {
-      statsContainer.classList.add('hidden');
-    }
+    const viewer = document.getElementById('viewer-count');
+    const follower = document.getElementById('follower-count');
+    const subscriber = document.getElementById('subscriber-count');
+    const points = document.getElementById('sub-points');
+    if (viewer && viewer.textContent === '...') viewer.textContent = '-';
+    if (follower && follower.textContent === '...') follower.textContent = '-';
+    if (subscriber && subscriber.textContent === '...') subscriber.textContent = '-';
+    if (points && points.textContent === '...') points.textContent = '-';
   }
 }
 
@@ -3836,13 +3850,27 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
   
   // Handle daily check-in redemptions first
   if (eventData.type === 'channel.channel_points_custom_reward_redemption.add') {
-    const rewardTitle = eventData.event.reward?.title || eventData.event.reward?.name || eventData.event.reward_title || '';
-    const configuredRewardName = dailyCheckinData.config.rewardName || 'Daily Check-In';
-    
-    // Check if this matches our daily check-in reward
-    if (rewardTitle.toLowerCase() === configuredRewardName.toLowerCase()) {
-      console.log('✅ Daily Check-In redemption detected!');
-      
+    const matchFn =
+      window.vdDailyCheckinReward && window.vdDailyCheckinReward.isDailyCheckinRewardRedemption;
+    const isDailyReward = matchFn
+      ? matchFn(eventData.event, dailyCheckinData.config)
+      : false;
+
+    if (isDailyReward) {
+      const rewardTitle =
+        eventData.event.reward?.title ||
+        eventData.event.reward?.name ||
+        eventData.event.reward_title ||
+        '';
+      console.log(
+        '✅ Daily Check-In redemption detected!',
+        rewardTitle,
+        'rewardId:',
+        eventData.event.reward?.id || eventData.event.reward_id,
+        'config.rewardId:',
+        dailyCheckinData.config.rewardId || '(title fallback)',
+      );
+
       // Process the daily check-in
       const checkinResult = await processDailyCheckin({
         user_id: eventData.event.user_id,
@@ -4122,17 +4150,15 @@ window.electronAPI.onTwitchConnected(() => {
   
   // Re-apply visibility prefs globally after connection changes
   try { applyVisibilityPrefs(); } catch (e) { /* ignore */ }
+  if (typeof refreshDailyCheckinEventSubWarning === 'function') {
+    refreshDailyCheckinEventSubWarning();
+  }
 });
 
 // Listen for Twitch disconnection
 window.electronAPI.onTwitchCleared(() => {
   updateChatVisibility(false);
   updateChatStatusIndicator(false);
-  // Hide stats when disconnected
-  const statsContainer = document.getElementById('twitch-stats-container');
-  if (statsContainer) {
-    statsContainer.classList.add('hidden');
-  }
   // Stop stats refresh
   stopStatsRefresh();
   // Clear chat messages when disconnected
@@ -4213,7 +4239,6 @@ async function handleTrigger(button) {
     audio.play().catch(error => {
     });
   } else if (button.type === "app") {
-    console.log(`🚀 Launching app: name="${button.name || button.label}", src="${button.src}", args="${button.args || 'none'}"`);
     // If the button has args, pass them along
     if (button.args) {
       window.electronAPI.launchApp({ path: button.src, args: button.args });
@@ -4222,7 +4247,7 @@ async function handleTrigger(button) {
     }
   } else if (button.type === "meld-scene") {
     if (button.sceneId && window.meldClient) {
-      window.meldClient.showScene(button.sceneId).catch(err => console.error('Meld showScene failed:', err));
+      window.meldClient.showScene(button.sceneId).catch((err) => console.error('Meld showScene failed:', err));
     } else {
       console.warn('Meld scene button missing sceneId or meldClient not loaded');
     }
@@ -4303,10 +4328,6 @@ async function handleMultiMediaTrigger(button) {
       if (item.type === 'video' && hasSeparateAudio) {
         console.log('🔇 Muting video because separate audio files are present');
         item.muted = true;
-      } else if (item.type === 'video') {
-        // Video with embedded audio: explicitly unmute so overlay plays sound
-        item.muted = false;
-        if (item.volume === undefined) item.volume = 1.0;
       }
       // Handle different image source types like alert system
       if (item.src instanceof File) {
@@ -4649,12 +4670,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   const form = e.target;
   const label = form.label.value.trim();
   
-  // Determine type from hidden input (set when opening form for audio/app/meld-scene)
   const typeInput = document.getElementById('type-input');
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
   const meldSceneSection = document.getElementById('meld-scene-section');
-  const type = (typeInput && typeInput.value) || (meldSceneSection && meldSceneSection.style.display !== 'none' ? 'meld-scene' : (audioFileSection && audioFileSection.style.display !== 'none' ? 'audio' : 'app'));
+  const meldVisible = meldSceneSection && !meldSceneSection.classList.contains('hidden') && meldSceneSection.style.display !== 'none';
+  const type = (typeInput && typeInput.value) || (meldVisible ? 'meld-scene' : (audioFileSection && audioFileSection.style.display !== 'none' ? 'audio' : 'app'));
   
   // Ensure we reference the hotkey input element safely
   const hotkeyInput = document.getElementById('hotkey-input');
@@ -4696,13 +4717,24 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   
   console.log(`🔍 Saving button with chatCommand:`, chatCommand);
   console.log(`🔍 Form values - enabled: ${chatCommandEnabled}, keyword: "${chatCommandKeyword}", redeemName: "${redeemName}", triggerMethod: "${triggerMethod}"`);
+  
+  // Get AI use settings (only for audio buttons)
+  const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+  const aiDescriptionInput = document.getElementById('ai-description-input');
+  const aiAllowed = type === 'audio' && aiAllowedCheckbox?.checked || false;
+  const aiDescription = type === 'audio' && aiDescriptionInput?.value?.trim() || '';
+  
+  console.log('AI use elements found:');
+  console.log('- Checkbox element:', aiAllowedCheckbox);
+  console.log('- Description input element:', aiDescriptionInput);
+  console.log('- AI allowed:', aiAllowed);
+  console.log('- AI description:', aiDescription);
 
-  // Meld-scene: submit with sceneId/sceneName only (guard against double submit)
   if (type === 'meld-scene') {
     if (window.__meldSceneSubmitInProgress) return;
     window.__meldSceneSubmitInProgress = true;
     const saveBtn = document.getElementById('save-sound');
-    if (saveBtn) saveBtn.disabled = true; // Prevent double submission
+    if (saveBtn) saveBtn.disabled = true;
     const meldSelect = document.getElementById('meld-scene-select');
     const sceneId = meldSelect && meldSelect.value ? meldSelect.value.trim() : '';
     const sceneName = (meldSelect && meldSelect.selectedOptions && meldSelect.selectedOptions[0]) ? meldSelect.selectedOptions[0].text : '';
@@ -4717,12 +4749,12 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       hotkey: completeHotkey,
       sceneId,
       sceneName,
-      editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined,
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex, 10) : undefined,
       chatCommand: chatCommand
     });
     window.electronAPI.refreshHotkeys();
     document.getElementById('settings-modal').classList.add('hidden');
-    // Main sends refresh-ui after save, so onRefreshUI will call loadButtons() once — don't call it here (avoids double render)
+    if (window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
     setTimeout(() => {
       const btn = document.getElementById('save-sound');
       if (btn) btn.disabled = false;
@@ -4773,15 +4805,16 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   }
 
   // If editing and no new file selected, use existing file
-  // CRITICAL: Clear any stale resolvedPath when editing without new file
-  if (isEditing && !fileInput.files.length) {
-    // Clear stale resolvedPath to prevent using wrong file from previous drag-and-drop
-    delete form.dataset.resolvedPath;
-    delete form.dataset.resolvedArgs;
-    
+  if (isEditing && !fileInput.files.length && !resolvedPath) {
     const existingFile = form.dataset.existingFile;
     if (!existingFile) return alert("No existing file found.");
 
+    // Get AI use settings (only for audio buttons)
+    const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+    const aiDescriptionInput = document.getElementById('ai-description-input');
+    const aiAllowed = type === 'audio' && aiAllowedCheckbox?.checked || false;
+    const aiDescription = type === 'audio' && aiDescriptionInput?.value?.trim() || '';
+    
     // Send update without file change
     window.electronAPI.addMedia({
       label,
@@ -4791,7 +4824,9 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       targetPath: existingFile,
       originalPath: existingFile,
       editingIndex: parseInt(form.dataset.editingIndex),
-      chatCommand: chatCommand
+      chatCommand: chatCommand,
+      aiAllowed: type === 'audio' ? aiAllowed : undefined,
+      description: type === 'audio' ? aiDescription : undefined
     });
     window.electronAPI.refreshHotkeys();
     
@@ -4823,39 +4858,68 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     console.log('Form submission - resolvedPath:', resolvedPath);
     console.log('Form submission - fileInput:', fileInput);
     console.log('Form submission - fileInput.files.length:', fileInput ? fileInput.files.length : 0);
-    console.log('Form submission - isEditing:', isEditing);
-    console.log('Form submission - editingIndex:', form.dataset.editingIndex);
     
-    let filePath = null;
+    let filePath = resolvedPath;
     let fileName = null;
     
-    // CRITICAL: Priority must be fileInput > resolvedPath
-    // fileInput is user-initiated (Browse button), resolvedPath is from drag-and-drop
-    // If both exist, fileInput takes precedence as it's more recent/explicit
-    if (fileInput && fileInput.files.length > 0) {
+    if (!filePath && fileInput && fileInput.files.length > 0) {
       const file = fileInput.files[0];
       console.log('Form submission - fileInput.files[0]:', file);
       console.log('Form submission - fileInput.files[0].name:', file.name);
+      console.log('Form submission - fileInput.files[0].type:', file.type);
+      console.log('Form submission - fileInput.files[0].size:', file.size);
+      console.log('Form submission - fileInput.files[0].path:', file.path);
       
-      // Use Electron's webUtils to get the file path
-      if (window.electronAPI && window.electronAPI.getFilePathFromFile) {
-        filePath = window.electronAPI.getFilePathFromFile(file);
-        console.log('Form submission - got file path from webUtils:', filePath);
-      } else {
-        console.warn('electronAPI.getFilePathFromFile not available, falling back to file.path');
+      // Check if file has a path (selected via Electron dialog)
+      if (file.path) {
         filePath = file.path;
+        console.log('Form submission - using file.path:', filePath);
+      } else {
+        // File doesn't have a path - need to save it first
+        // This happens when file is selected via browser file input
+        console.log('Form submission - file has no path, saving file directly to sounds directory...');
+        
+        try {
+          // Convert File to base64
+          const fileToBase64 = (file) => {
+            return new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.readAsDataURL(file);
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = error => reject(error);
+            });
+          };
+          
+          const base64Data = await fileToBase64(file);
+          
+          // Save file directly to sounds directory using the button label as filename
+          if (window.electronAPI && window.electronAPI.saveAudioFileToSounds) {
+            const result = await window.electronAPI.saveAudioFileToSounds({
+              base64Data: base64Data,
+              label: label, // Use the button label as the filename
+              originalName: file.name
+            });
+            
+            if (result.success) {
+              // File was already saved to sounds directory via saveAudioFileToSounds
+              // Pass the relative path directly - add-media handler will detect it's already in sounds directory
+              filePath = result.filePath;
+              console.log('Form submission - file saved to sounds directory, using relative path:', filePath);
+            } else {
+              throw new Error(result.error || 'Failed to save file');
+            }
+          } else {
+            throw new Error('saveAudioFileToSounds API not available');
+          }
+        } catch (error) {
+          console.error('Error saving file:', error);
+          return alert(`Error: Could not save file: ${error.message}\n\nPlease try selecting the file again.`);
+        }
       }
       
       fileName = file.name;
-      console.log('✅ Using fileInput file (priority):', filePath, fileName);
-      
-      // Clear resolvedPath when fileInput is used to prevent stale data
-      delete form.dataset.resolvedPath;
-      delete form.dataset.resolvedArgs;
     } else if (resolvedPath) {
-      filePath = resolvedPath;
       fileName = resolvedPath.split('\\').pop() || resolvedPath.split('/').pop();
-      console.log('✅ Using resolvedPath from drag-and-drop:', filePath, fileName);
     }
     
     // Validate that we have a valid file path
@@ -4880,11 +4944,6 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     let targetPath;
     if (type === 'app') {
       targetPath = filePath; // Use the actual file path for apps
-      console.log(`💾 Saving app button "${label}" with path: "${targetPath}"`);
-      // Validate that the file path matches the label (basic sanity check)
-      if (targetPath && label && !targetPath.toLowerCase().includes(label.toLowerCase()) && !label.toLowerCase().includes('postman')) {
-        console.warn(`⚠️ Warning: App path "${targetPath}" doesn't seem to match label "${label}"`);
-      }
     } else {
       const ext = fileName.split('.').pop();
       targetPath = `assets/sounds/${label}.${ext}`;
@@ -4892,10 +4951,6 @@ document.getElementById('settings-form').onsubmit = async (e) => {
 
     // Save args for app buttons
     const args = type === 'app' ? resolvedArgs : '';
-    
-    // Clear resolvedPath after using it to prevent stale data
-    delete form.dataset.resolvedPath;
-    delete form.dataset.resolvedArgs;
 
     console.log('Sending to addMedia:', {
       label,
@@ -4917,7 +4972,10 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       originalPath: filePath,
       args,
       editingIndex: isEditing ? parseInt(form.dataset.editingIndex) : undefined,
-      chatCommand: chatCommand
+      chatCommand: chatCommand,
+      aiAllowed: type === 'audio' ? aiAllowed : undefined,
+      description: type === 'audio' ? aiDescription : undefined,
+      deckIcon: collectDeckIconFromForm(),
     };
     
     console.log('Final addMediaData object:', addMediaData);
@@ -4967,8 +5025,6 @@ window.editButton = async (index) => {
   console.log(`🔍 editButton: Editing button at index ${index}:`, btn);
   console.log(`🔍 editButton: Button chatCommand data:`, btn.chatCommand);
   const settingsForm = document.getElementById('settings-form');
-  const saveBtn = document.getElementById('save-sound');
-  if (saveBtn) saveBtn.disabled = false;
   // Always set editingIndex for edit, and clear resolvedPath/existingFile for safety
   settingsForm.dataset.editingIndex = index;
   // Store stable id for in-place updates
@@ -5001,27 +5057,47 @@ window.editButton = async (index) => {
   // Toggle file input sections and required states based on type
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
+  const meldSceneSectionEdit = document.getElementById('meld-scene-section');
   const fileInput = document.getElementById('file-input');
   const appFileInput = document.getElementById('app-file-input');
-  const meldSceneSectionEdit = document.getElementById('meld-scene-section');
+  const typeInputEl = document.getElementById('type-input');
   if (btn.type === 'audio') {
+    if (typeInputEl) typeInputEl.value = 'audio';
     audioFileSection.style.display = '';
     appFileSection.style.display = 'none';
     if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
-    fileInput.required = false;
+    fileInput.required = false; // Not required when editing
     appFileInput.required = false;
   } else if (btn.type === 'meld-scene') {
+    if (typeInputEl) typeInputEl.value = 'meld-scene';
     audioFileSection.style.display = 'none';
     appFileSection.style.display = 'none';
-    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.remove('hidden'); meldSceneSectionEdit.style.display = ''; }
+    if (meldSceneSectionEdit) {
+      meldSceneSectionEdit.classList.remove('hidden');
+      meldSceneSectionEdit.style.display = '';
+    }
     fileInput.required = false;
     appFileInput.required = false;
+    const meldSelect = document.getElementById('meld-scene-select');
+    if (meldSelect && btn.sceneId) {
+      if (!meldSelect.querySelector(`option[value="${btn.sceneId}"]`)) {
+        const opt = document.createElement('option');
+        opt.value = btn.sceneId;
+        opt.textContent = btn.sceneName || btn.sceneId;
+        meldSelect.appendChild(opt);
+      }
+      meldSelect.value = btn.sceneId;
+    }
+    loadMeldScenes().then(() => {
+      if (meldSelect && btn.sceneId) meldSelect.value = btn.sceneId;
+    }).catch(() => {});
   } else {
+    if (typeInputEl) typeInputEl.value = 'app';
     audioFileSection.style.display = 'none';
     appFileSection.style.display = '';
     if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
     fileInput.required = false;
-    appFileInput.required = false;
+    appFileInput.required = false; // Not required when editing
   }
   // Set hotkey and parse modifiers
   const hotkeyInput = document.getElementById('hotkey-input');
@@ -5032,6 +5108,35 @@ window.editButton = async (index) => {
     hotkeyInput.value = '';
   }
   
+  // Set AI use fields (only for audio buttons)
+  if (btn.type === 'audio') {
+    const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+    const aiDescriptionInput = document.getElementById('ai-description-input');
+    const aiDescriptionContainer = document.getElementById('ai-description-container');
+    
+    if (aiAllowedCheckbox && aiDescriptionInput && aiDescriptionContainer) {
+      // Set checkbox state
+      const aiAllowed = btn.aiAllowed !== false; // Default to true if not explicitly false
+      aiAllowedCheckbox.checked = aiAllowed;
+      
+      // Set description if it exists
+      if (btn.description) {
+        aiDescriptionInput.value = btn.description;
+      } else {
+        aiDescriptionInput.value = '';
+      }
+      
+      // Show/hide description container based on checkbox state
+      if (aiAllowed) {
+        aiDescriptionContainer.style.display = 'block';
+      } else {
+        aiDescriptionContainer.style.display = 'none';
+      }
+    }
+  }
+  
+  applyDeckIconToForm(btn.deckIcon);
+
   // Set chat command fields
   const chatCommandEnabled = document.getElementById('chat-command-enabled');
   const chatCommandKeyword = document.getElementById('chat-command-keyword');
@@ -5092,31 +5197,6 @@ window.editButton = async (index) => {
   // Update modal title
   const buttonName = btn.name || btn.label || 'Unknown';
   document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : btn.type === 'multi-media' ? 'Multi-Media' : btn.type === 'meld-scene' ? 'Meld Scene' : 'App'}: ${buttonName}`;
-  // Handle meld-scene: show meld section and set scene select
-  if (btn.type === 'meld-scene') {
-    const typeInputEl = document.getElementById('type-input');
-    if (typeInputEl) typeInputEl.value = 'meld-scene';
-    if (audioFileSection) audioFileSection.style.display = 'none';
-    if (appFileSection) appFileSection.style.display = 'none';
-    const meldSection = document.getElementById('meld-scene-section');
-    if (meldSection) {
-      meldSection.classList.remove('hidden');
-      meldSection.style.display = '';
-    }
-    const meldSelect = document.getElementById('meld-scene-select');
-    if (meldSelect && btn.sceneId) {
-      if (!meldSelect.querySelector(`option[value="${btn.sceneId}"]`)) {
-        const opt = document.createElement('option');
-        opt.value = btn.sceneId;
-        opt.textContent = btn.sceneName || btn.sceneId;
-        meldSelect.appendChild(opt);
-      }
-      meldSelect.value = btn.sceneId;
-    }
-    // Avoid "invalid form control not focusable" when saving (hidden file inputs must not be required)
-    if (fileInput) fileInput.required = false;
-    if (appFileInput) appFileInput.required = false;
-  }
   // Handle multi-media buttons differently
   if (btn.type === 'multi-media') {
     // Close the regular settings modal
@@ -5191,10 +5271,14 @@ window.editButtonByEl = async (btnEl) => {
   try {
     const card = btnEl.closest && btnEl.closest('.sound-card');
     if (!card) return;
+    const bid = card.dataset.buttonId;
+    if (window.vdLicense && bid && window.vdLicense.isButtonLocked(bid)) {
+      window.vdLicense.showUpsell();
+      return;
+    }
     const config = await window.electronAPI.getConfig();
     let origIndex = -1;
     // Prefer stable id mapping if present
-    const bid = card.dataset.buttonId;
     if (bid && config && Array.isArray(config.buttons)) {
       origIndex = config.buttons.findIndex(b => b.id === bid);
     }
@@ -5409,8 +5493,8 @@ function closeSettingsModal() {
   const settingsModal = document.getElementById('settings-modal');
   if (settingsModal) {
     settingsModal.classList.add('hidden');
-    const form = document.getElementById('settings-form');
-    if (form) form.reset();
+    // Clear any form data if needed
+    clearSettingsForm();
   }
 }
 
@@ -5440,6 +5524,20 @@ document.addEventListener('DOMContentLoaded', () => {
     settingsCloseBtn.addEventListener('click', closeSettingsModal);
   }
   
+  // AI use checkbox toggle - show/hide description field
+  const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+  const aiDescriptionContainer = document.getElementById('ai-description-container');
+  
+  if (aiAllowedCheckbox && aiDescriptionContainer) {
+    aiAllowedCheckbox.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        aiDescriptionContainer.style.display = 'block';
+      } else {
+        aiDescriptionContainer.style.display = 'none';
+      }
+    });
+  }
+  
   // Multi-media modal close button
   const multiMediaCloseBtn = document.getElementById('multi-media-modal-close');
   if (multiMediaCloseBtn) {
@@ -5451,6 +5549,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (twitchAlertCloseBtn) {
     twitchAlertCloseBtn.addEventListener('click', closeTwitchAlertWidget);
   }
+
+  setupDeckIconForm();
   
   // Add click-outside-to-close functionality
   const settingsModal = document.getElementById('settings-modal');
@@ -5495,22 +5595,10 @@ document.addEventListener('keydown', (event) => {
       closeTwitchAlertWidget();
       return;
     }
-
-    // Close Battle modal
-    const battleModal = document.getElementById('battle-modal');
-    if (battleModal && !battleModal.classList.contains('hidden')) {
-      if (typeof closeBattleModal === 'function') closeBattleModal();
-      return;
-    }
     
-    // Close any other visible modals
-    const visibleModals = document.querySelectorAll('.modal:not(.hidden), [class*="modal"]:not(.hidden)');
-    visibleModals.forEach(modal => {
-      if (modal.style.display !== 'none' && modal.offsetParent !== null) {
-        modal.classList.add('hidden');
-        modal.style.display = 'none';
-      }
-    });
+    // Close the topmost open modal CONTAINER via its own close function (public/modal-escape.js).
+    // Never hide inner parts: that left the full-screen backdrop up and swallowed all input.
+    if (window.VDModalEscape) window.VDModalEscape.closeTopmost(window, document);
   }
 });
 
@@ -5518,57 +5606,160 @@ document.addEventListener('keydown', (event) => {
 window.electronAPI.onTriggerMedia(async (mediaId) => {
   console.log(`🔍 onTriggerMedia called for: "${mediaId}"`);
   const config = await window.electronAPI.getConfig();
-  if (!config || !Array.isArray(config.buttons)) {
-    console.warn('⚠️ No config or buttons array found');
-    return;
-  }
-  
-  // Debug: Log all buttons for comparison
-  console.log(`🔍 Searching through ${config.buttons.length} buttons for identifier: "${mediaId}"`);
-  config.buttons.forEach((btn, idx) => {
-    console.log(`  Button ${idx}: id="${btn.id || 'none'}", name="${btn.name || 'none'}", label="${btn.label || 'none'}", type="${btn.type}", hotkey="${btn.hotkey || 'none'}", src="${btn.src || 'none'}"`);
+  if (!config || !Array.isArray(config.buttons)) return;
+  const button = config.buttons.find(btn => {
+    // Check both name and label for compatibility - use exact match for precision
+    const name = btn.name || btn.label || '';
+    return name.toLowerCase() === mediaId.toLowerCase();
   });
-  
-  // Match by ID first (hotkeys always use IDs)
-  let button = config.buttons.find(btn => {
-    if (btn.id && btn.id === mediaId) {
-      console.log(`✅ Found button by ID match: id="${btn.id}", name="${btn.name || btn.label}", src="${btn.src || 'none'}"`);
-      return true;
-    }
-    return false;
-  });
-  
-  // Only fall back to name/label matching if ID match failed (for backward compatibility)
-  // This handles old hotkeys that might have been registered with name/label
-  if (!button) {
-    button = config.buttons.find(btn => {
-      const btnName = btn.name || btn.label || '';
-      if (btnName.toLowerCase() === mediaId.toLowerCase()) {
-        console.log(`⚠️ Found button by name/label (backward compat): name="${btnName}", id="${btn.id || 'none'}", src="${btn.src || 'none'}"`);
-        return true;
-      }
-      return false;
-    });
-    if (button) {
-      console.log(`⚠️ Matched by name/label (backward compat): "${button.name || button.label}" - hotkey should be re-registered with ID`);
-    }
-  }
-  
   if (button) {
-    console.log(`🎯 Triggering mapped button: "${button.name || button.label}" (ID: ${button.id || 'none'}) Type: ${button.type}`);
-    console.log(`🎯 Button src/path: "${button.src || button.path || 'none'}"`);
-    console.log(`🎯 Button args: ${button.args || 'none'}`);
+    console.log(`🎯 Triggering mapped button: "${button.name || button.label}" Type: ${button.type} Volume: ${button.volume}`);
     handleTrigger(button);
   } else {
-    console.warn(`⚠️ No button found for mapping trigger: "${mediaId}"`);
-    console.warn(`⚠️ Available identifiers: ${config.buttons.map(b => `${b.id || 'no-id'}:${b.name || b.label || 'unnamed'}`).join(', ')}`);
+    console.warn('⚠️ No button found for mapping trigger:', mediaId);
   }
 });
+
+let aiTtsAudio = null;
+if (window.electronAPI && typeof window.electronAPI.onPlayAiTts === 'function') {
+  window.electronAPI.onPlayAiTts(async (payload) => {
+    try {
+      const relativePath = payload && payload.relativePath;
+      const vol = typeof payload.volume === 'number' ? payload.volume : 1.0;
+      const play = async (url) => {
+        if (aiTtsAudio) {
+          try { aiTtsAudio.pause(); } catch (e) {}
+        }
+        aiTtsAudio = new Audio(url);
+        aiTtsAudio.volume = Math.max(0, Math.min(1, isNaN(vol) ? 1.0 : vol));
+        if (typeof window.applyVdTtsSink === 'function') {
+          await window.applyVdTtsSink(aiTtsAudio);
+        }
+        console.log('Playing Raven TTS via dashboard audio pipeline:', url);
+        await aiTtsAudio.play();
+      };
+      try {
+        if (payload && payload.audioUrl) {
+          await play(payload.audioUrl);
+          return;
+        }
+        if (relativePath) {
+          const audioPath = await window.electronAPI.getSoundPath(relativePath);
+          const cacheBuster = `?t=${Date.now()}`;
+          await play(audioPath + (String(audioPath).includes('?') ? '&' : '?') + cacheBuster);
+        }
+      } catch (err) {
+        console.warn('Raven TTS dashboard playback failed:', err);
+        if (payload && payload.audioUrl) {
+          await play(payload.audioUrl);
+        }
+      }
+    } catch (err) {
+      console.warn('Raven TTS dashboard playback failed:', err);
+    }
+  });
+}
+
+function getDroppedFilePath(file) {
+  if (!file) return '';
+  if (window.electronAPI && window.electronAPI.getPathForFile) {
+    const p = window.electronAPI.getPathForFile(file);
+    if (p) return p;
+  }
+  return file.path || '';
+}
+
+async function resolveDroppedAppPath(filePath) {
+  if (!filePath) return { path: '', args: '' };
+  const lower = filePath.toLowerCase();
+  if (!lower.endsWith('.lnk') && !lower.endsWith('.desktop')) {
+    return { path: filePath, args: '' };
+  }
+  try {
+    if (window.electronAPI && window.electronAPI.resolveShortcut) {
+      const shortcut = await window.electronAPI.resolveShortcut(filePath);
+      if (shortcut && shortcut.target) {
+        return { path: shortcut.target, args: shortcut.args || '' };
+      }
+    }
+  } catch (err) {
+    console.warn('Shortcut resolve failed:', err);
+  }
+  return { path: filePath, args: '' };
+}
+
+async function quickAddDroppedDeckFile(file) {
+  const fileName = file.name;
+  const filePath = getDroppedFilePath(file);
+  if (!filePath) {
+    console.warn('Dropped file has no path:', fileName);
+    handleFileDrop(file);
+    return { ok: false, reason: 'no_path' };
+  }
+  if (window.vdLicense && typeof window.vdLicense.canAddButton === 'function' && !window.vdLicense.canAddButton()) {
+    const max = window.vdLicense.getCachedDeckEntitlements()?.maxActiveButtons || 15;
+    window.vdLicense.showUpsell(
+      `Free plan includes ${max} active buttons. Upgrade in Preferences → License for unlimited buttons and Raven AI.`,
+    );
+    return { ok: false, reason: 'limit' };
+  }
+  const classify = (window.vdDeckDrop && window.vdDeckDrop.classifyDroppedFileName)
+    || ((name) => (name.match(/\.(exe|lnk|bat|cmd)$/i) ? 'app' : 'audio'));
+  const labelFrom = (window.vdDeckDrop && window.vdDeckDrop.labelFromFileName)
+    || ((name) => name.replace(/\.[^/.]+$/, ''));
+  const type = classify(fileName);
+  const label = labelFrom(fileName);
+  let originalPath = filePath;
+  let args = '';
+  if (type === 'app') {
+    const resolved = await resolveDroppedAppPath(filePath);
+    originalPath = resolved.path || filePath;
+    args = resolved.args || '';
+  }
+  const ext = fileName.split('.').pop();
+  const targetPath = type === 'app' ? originalPath : `assets/sounds/${label}.${ext}`;
+  window.electronAPI.addMedia({
+    label,
+    type,
+    hotkey: '',
+    volume: 1,
+    targetPath,
+    originalPath,
+    args,
+  });
+  return { ok: true };
+}
+
+async function addDroppedDeckFiles(files) {
+  let added = 0;
+  let stoppedForLimit = false;
+  for (const file of files) {
+    const result = await quickAddDroppedDeckFile(file);
+    if (result.ok) {
+      added += 1;
+      continue;
+    }
+    if (result.reason === 'limit') {
+      stoppedForLimit = true;
+      break;
+    }
+    if (result.reason === 'no_path') {
+      continue;
+    }
+  }
+  if (added > 0) {
+    window.electronAPI.refreshHotkeys();
+    setTimeout(() => loadButtons(), 120);
+  } else if (!stoppedForLimit && files.length > 0) {
+    handleFileDrop(files[0]);
+  }
+}
 
 function handleFileDrop(file) {
   console.log('🎵 handleFileDrop called with file:', file);
   console.log('  - File name:', file.name);
-  console.log('  - File path:', file.path);
+  const droppedPath = getDroppedFilePath(file);
+  console.log('  - File path:', droppedPath);
   console.log('  - File type:', file.type);
   console.log('  - File size:', file.size);
   
@@ -5583,33 +5774,11 @@ function handleFileDrop(file) {
     }
   }
 
-  // Supported extensions
-  const audioExts = ['mp3', 'wav', 'ogg'];
-  const appExts = [
-    'exe',    // Windows executable
-    'bat',    // Windows batch
-    'cmd',    // Windows command
-    'lnk',    // Windows shortcut
-    'app',    // macOS app bundle or Linux AppImage
-    'sh',     // Linux shell script
-    'desktop' // Linux desktop shortcut
-  ];
+  const classify = (window.vdDeckDrop && window.vdDeckDrop.classifyDroppedFileName)
+    || (() => 'audio');
+  const type = classify(file.name);
   const ext = file.name.split('.').pop().toLowerCase();
   console.log('File extension:', ext);
-  let type = 'audio';
-  if (appExts.includes(ext)) type = 'app';
-  
-  // Additional check: if the file has no extension or an unknown extension,
-  // but the name contains common app names, treat it as an app
-  if (type === 'audio' && (!ext || !audioExts.includes(ext))) {
-    const fileName = file.name.toLowerCase();
-    const appKeywords = ['spotify', 'chrome', 'firefox', 'edge', 'steam', 'discord', 'slack', 'teams', 'zoom', 'postman', 'vscode', 'notepad', 'calculator', 'paint', 'word', 'excel', 'powerpoint'];
-    if (appKeywords.some(keyword => fileName.includes(keyword))) {
-      type = 'app';
-      console.log('Detected as app based on filename containing app keyword');
-    }
-  }
-  
   console.log('Detected type:', type);
 
   // Get all required elements
@@ -5635,9 +5804,6 @@ function handleFileDrop(file) {
   hotkeyStatus.textContent = '';
   delete settingsForm.dataset.editingIndex;
   delete settingsForm.dataset.editingId;
-  delete settingsForm.dataset.resolvedPath;
-  delete settingsForm.dataset.resolvedArgs;
-  delete settingsForm.dataset.existingFile;
   
   // Clear chat command fields
   const chatCommandEnabled = document.getElementById('chat-command-enabled');
@@ -5648,6 +5814,16 @@ function handleFileDrop(file) {
   if (chatCommandKeyword) chatCommandKeyword.value = '';
   if (redeemName) redeemName.value = '';
   if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+  hideMeldSceneSection();
+  
+  // Clear AI use fields
+  const aiAllowedCheckbox = document.getElementById('ai-allowed-checkbox');
+  const aiDescriptionContainer = document.getElementById('ai-description-container');
+  const aiDescriptionInput = document.getElementById('ai-description-input');
+  if (aiAllowedCheckbox) aiAllowedCheckbox.checked = false;
+  if (aiDescriptionInput) aiDescriptionInput.value = '';
+  if (aiDescriptionContainer) aiDescriptionContainer.style.display = 'none';
+  applyDeckIconToForm({ source: 'auto' });
   
   document.querySelector('#settings-modal h2').textContent = 'Add New ' + (type === 'audio' ? 'Sound' : 'App');
   
@@ -5658,8 +5834,8 @@ function handleFileDrop(file) {
   // Handle shortcut resolution for app files
   if (type === 'app') {
     // Try to resolve as shortcut regardless of extension
-    console.log('  🔗 Attempting to resolve as shortcut:', file.path);
-    window.electronAPI.resolveShortcut(file.path).then(shortcut => {
+    console.log('  🔗 Attempting to resolve as shortcut:', droppedPath);
+    window.electronAPI.resolveShortcut(droppedPath).then(shortcut => {
       if (shortcut && shortcut.target) {
         console.log('  ✅ Shortcut resolved to:', shortcut);
         // Store the resolved path and args in the form
@@ -5668,19 +5844,19 @@ function handleFileDrop(file) {
         setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
       } else {
         console.warn('  ❌ Failed to resolve shortcut, using original file');
-        settingsForm.dataset.resolvedPath = file.path;
+        settingsForm.dataset.resolvedPath = droppedPath;
         settingsForm.dataset.resolvedArgs = '';
         setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
       }
     }).catch(error => {
       console.error('  ❌ Error resolving shortcut:', error);
-      settingsForm.dataset.resolvedPath = file.path;
+      settingsForm.dataset.resolvedPath = droppedPath;
       settingsForm.dataset.resolvedArgs = '';
       setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
     });
   } else {
     console.log('  🎵 Processing as audio file');
-    settingsForm.dataset.resolvedPath = file.path;
+    settingsForm.dataset.resolvedPath = droppedPath;
     settingsForm.dataset.resolvedArgs = '';
     setFileInForm(file, type, audioFileSection, appFileSection, fileInput, appFileInput);
   }
@@ -6018,14 +6194,20 @@ class ThemeManager {
 
     // Add custom CSS rules
     if (skinData.css && typeof skinData.css === 'string') {
+      let skinCss = skinData.css;
+      // Drop url(...) rules for optional skin assets that are not shipped (avoids ERR_FILE_NOT_FOUND noise)
+      skinCss = skinCss.replace(
+        /background-image\s*:\s*url\([^)]+\)\s*;?/gi,
+        '/* optional skin asset omitted */',
+      );
       // Warn if skin CSS appears to contain SCSS-style nesting (e.g., '&::after') which browsers won't parse
-      if (/&\s*[:.{\[]?/m.test(skinData.css)) {
+      if (/&\s*[:.{\[]?/m.test(skinCss)) {
         console.warn('Skin CSS contains SCSS-style nesting (&). This may not be valid CSS when injected. Consider using flat selectors.');
         try {
           if (window.notificationManager) window.notificationManager.show('Imported skin contains nested/SCSS syntax which may not apply correctly.', 'warning', 5000);
         } catch (e) {}
       }
-      cssContent += skinData.css;
+      cssContent += skinCss;
     }
 
     // Add custom component styles
@@ -6034,6 +6216,13 @@ class ThemeManager {
         if (typeof styles === 'object') {
           cssContent += `${selector} {\n`;
           for (const [property, value] of Object.entries(styles)) {
+            if (
+              typeof value === 'string' &&
+              property.toLowerCase() === 'background-image' &&
+              /^url\(/i.test(value)
+            ) {
+              continue;
+            }
             // Normalize font-family values for injected skins
             if (property.toLowerCase() === 'font-family' && typeof value === 'string') {
               const forceRoboto = localStorage.getItem('forceRobotoUI') === 'true';
@@ -6475,7 +6664,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setupOverlayWidget();
   setupHydrationSettings();
   setupAlertWidget();
-  setupBattleModal();
   initDailyCheckinSystem();
   // initialize left app menu
   if (typeof setupLeftAppMenu === 'function') {
@@ -6601,52 +6789,27 @@ function setupProfilePanelEventHandlers() {
   }
 }
 
-// Update the Profile dashboard widget label (current profile name)
-function updateProfileWidgetLabel() {
-  const el = document.getElementById('profile-widget-current');
-  if (!el) return;
-  const name = (typeof profileManager !== 'undefined' && profileManager && profileManager.profiles)
-    ? (profileManager.profiles.find(p => p.id === profileManager.currentProfile)?.name || 'Default')
-    : 'Default';
-  el.textContent = name;
-}
-
-// Profile/Battle: content shown in shared flyout menu to the left of the widget column
+// Open profile manager modal
 function openProfileModal() {
-  const flyout = document.getElementById('widget-flyout');
-  const profileBody = document.getElementById('profile-widget-body');
-  const battleBody = document.getElementById('battle-widget-body');
-  if (flyout && profileBody) {
-    document.getElementById('profile-control-widget')?.classList.remove('hidden');
-    flyout.classList.remove('battle-open');
-    flyout.classList.add('profile-open');
-    profileBody.classList.remove('hidden');
-    if (battleBody) battleBody.classList.add('hidden');
+  const modal = document.getElementById('profile-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    // Disable hotkeys when modal is open
     if (window.electronAPI && window.electronAPI.disableHotkeys) {
       window.electronAPI.disableHotkeys();
     }
   }
 }
 
+// Close profile manager modal
 function closeProfileModal() {
-  const flyout = document.getElementById('widget-flyout');
-  const profileBody = document.getElementById('profile-widget-body');
-  if (flyout && profileBody) {
-    flyout.classList.remove('profile-open');
-    profileBody.classList.add('hidden');
+  const modal = document.getElementById('profile-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    // Re-enable hotkeys when modal closes
     if (window.electronAPI && window.electronAPI.enableHotkeys) {
       window.electronAPI.enableHotkeys();
     }
-  }
-}
-
-function toggleProfileWidget() {
-  const flyout = document.getElementById('widget-flyout');
-  if (!flyout) return;
-  if (flyout.classList.contains('profile-open')) {
-    closeProfileModal();
-  } else {
-    openProfileModal();
   }
 }
 
@@ -6654,292 +6817,6 @@ function toggleProfileWidget() {
 if (window.electronAPI && window.electronAPI.onOpenProfileManager) {
   window.electronAPI.onOpenProfileManager(() => {
     openProfileModal();
-  });
-}
-
-// Battle modal - Twitch Battles (TikTok-style invites)
-const BATTLE_BACKEND_URL = 'http://localhost:4000';
-const BATTLE_OVERLAY_BASE = 'http://localhost:5173';
-const BATTLE_HEARTBEAT_INTERVAL = 25000;
-let battleCurrentRoomId = null;
-let battleTwitchLogin = '';
-let battleSocket = null;
-let battleHeartbeatTimer = null;
-let battlePendingInviteId = null;
-
-function getBattlesEnabled() {
-  try {
-    return localStorage.getItem('battles_enabled') !== 'false';
-  } catch (e) {
-    return true;
-  }
-}
-
-function setBattlesEnabled(enabled) {
-  try {
-    localStorage.setItem('battles_enabled', enabled ? 'true' : 'false');
-  } catch (e) {}
-  const widgetEl = document.getElementById('battle-widget-status');
-  if (widgetEl) widgetEl.textContent = enabled ? 'On' : 'Off';
-}
-
-function openBattleModal() {
-  const flyout = document.getElementById('widget-flyout');
-  const battleBody = document.getElementById('battle-widget-body');
-  const profileBody = document.getElementById('profile-widget-body');
-  if (!flyout || !battleBody) return;
-  document.getElementById('battle-control-widget')?.classList.remove('hidden');
-  flyout.classList.remove('profile-open');
-  flyout.classList.add('battle-open');
-  battleBody.classList.remove('hidden');
-  if (profileBody) profileBody.classList.add('hidden');
-  if (window.electronAPI && window.electronAPI.disableHotkeys) {
-    window.electronAPI.disableHotkeys();
-  }
-  const toggle = document.getElementById('battle-enabled-toggle');
-  if (toggle) toggle.checked = getBattlesEnabled();
-  const statusEl = document.getElementById('battle-status-text');
-  const hpRow = document.getElementById('battle-hp-row');
-  if (statusEl) statusEl.textContent = battleCurrentRoomId ? 'Battle in progress!' : 'Ready to invite';
-  if (hpRow) hpRow.style.display = battleCurrentRoomId ? 'block' : 'none';
-  battleConnect();
-  updateBattleOverlayUrl();
-}
-
-function closeBattleModal() {
-  const flyout = document.getElementById('widget-flyout');
-  const battleBody = document.getElementById('battle-widget-body');
-  if (flyout && battleBody) {
-    flyout.classList.remove('battle-open');
-    battleBody.classList.add('hidden');
-    if (window.electronAPI && window.electronAPI.enableHotkeys) {
-      window.electronAPI.enableHotkeys();
-    }
-  }
-  // Keep heartbeat running when flyout closed so we stay online for invites
-}
-
-function toggleBattleWidget() {
-  const flyout = document.getElementById('widget-flyout');
-  if (!flyout) return;
-  if (flyout.classList.contains('battle-open')) {
-    closeBattleModal();
-  } else {
-    openBattleModal();
-  }
-}
-
-function updateBattleOverlayUrl() {
-  const urlEl = document.getElementById('battle-overlay-url');
-  if (!urlEl) return;
-  const channel = battleTwitchLogin || battleCurrentRoomId || '';
-  urlEl.textContent = channel ? `${BATTLE_OVERLAY_BASE}?channel=${encodeURIComponent(channel)}` : BATTLE_OVERLAY_BASE + '?channel=';
-}
-
-function battleConnect() {
-  window.electronAPI?.getTwitchUsername?.().then(function (login) {
-    battleTwitchLogin = (login || '').toLowerCase();
-    if (!battleTwitchLogin) return;
-    refreshBattleOnline();
-    refreshBattleInvites();
-    updateBattleOverlayUrl();
-    if (typeof io !== 'undefined') {
-      if (battleSocket) battleSocket.disconnect();
-      battleSocket = io(BATTLE_BACKEND_URL);
-      battleSocket.on('connect', function () {
-        battleSocket.emit('dashboard:hello', { twitch_login: battleTwitchLogin });
-      });
-      battleSocket.on('battle:invite', function (data) {
-        battlePendingInviteId = data.id;
-        document.getElementById('battle-invite-from').textContent = data.from_user || 'someone';
-        document.getElementById('battle-invite-toast').classList.remove('hidden');
-      });
-      battleSocket.on('battle:accepted', function (data) {
-        battleCurrentRoomId = data.roomId;
-        document.getElementById('battle-status-text').textContent = 'Battle in progress!';
-        document.getElementById('battle-hp-row').style.display = 'block';
-        updateBattleOverlayUrl();
-        showCustomAlert('Battle started!', 'success');
-      });
-    }
-    if (getBattlesEnabled()) {
-      fetch(`${BATTLE_BACKEND_URL}/battles/heartbeat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ twitch_login: battleTwitchLogin, battles_enabled: true })
-      }).catch(function () {});
-      if (battleHeartbeatTimer) clearInterval(battleHeartbeatTimer);
-      battleHeartbeatTimer = setInterval(function () {
-        if (!getBattlesEnabled()) return;
-        fetch(`${BATTLE_BACKEND_URL}/battles/heartbeat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ twitch_login: battleTwitchLogin, battles_enabled: true })
-        }).catch(function () {});
-      }, BATTLE_HEARTBEAT_INTERVAL);
-    }
-  });
-}
-
-async function refreshBattleOnline() {
-  const list = document.getElementById('battle-online-list');
-  const empty = document.getElementById('battle-online-empty');
-  if (!list) return;
-  try {
-    const res = await fetch(`${BATTLE_BACKEND_URL}/battles/online`);
-    const users = await res.json();
-    const me = battleTwitchLogin;
-    const others = (users || []).filter(function (u) {
-      return u.login && u.login.toLowerCase() !== me;
-    });
-    if (empty) empty.style.display = others.length ? 'none' : 'block';
-    list.innerHTML = '';
-    others.forEach(function (u) {
-      const btn = document.createElement('button');
-      btn.textContent = u.login + ' (Invite)';
-      btn.style.cssText = 'display:block;width:100%;padding:8px 12px;margin-bottom:4px;text-align:left;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;cursor:pointer;color:var(--text-primary);';
-      btn.onclick = function () {
-        battleSendInvite(u.login);
-      };
-      list.appendChild(btn);
-    });
-  } catch (e) {
-    if (empty) empty.textContent = 'Could not load online users. Is the battles backend running?';
-  }
-}
-
-function battleSendInvite(toLogin) {
-  if (!battleTwitchLogin) return;
-  fetch(`${BATTLE_BACKEND_URL}/battles/invite`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: battleTwitchLogin, to: toLogin.toLowerCase() })
-  })
-    .then(function (r) {
-      return r.json().then(function (d) {
-        if (r.ok) showCustomAlert('Invite sent to ' + toLogin, 'success');
-        else showCustomAlert(d.error || 'Failed to send invite', 'error');
-      });
-    })
-    .catch(function () {
-      showCustomAlert('Could not send invite', 'error');
-    });
-}
-
-async function refreshBattleInvites() {
-  if (!battleTwitchLogin) return;
-  try {
-    const res = await fetch(`${BATTLE_BACKEND_URL}/battles/invites/pending?user=${encodeURIComponent(battleTwitchLogin)}`);
-    const invites = await res.json();
-    const container = document.getElementById('battle-pending-invites');
-    const list = document.getElementById('battle-invites-list');
-    if (!container || !list) return;
-    container.style.display = invites.length ? 'block' : 'none';
-    list.innerHTML = '';
-    (invites || []).forEach(function (inv) {
-      const div = document.createElement('div');
-      div.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px;margin-bottom:4px;background:var(--bg-tertiary);border-radius:6px;';
-      div.innerHTML = '<span>' + (inv.from_user || 'someone') + '</span><div><button class="battle-invite-accept-btn" data-id="' + inv.id + '" style="padding:4px 12px;margin-right:4px;background:#22c55e;color:white;border:none;border-radius:4px;cursor:pointer;">Accept</button><button class="battle-invite-decline-btn" data-id="' + inv.id + '" style="padding:4px 12px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;cursor:pointer;">Decline</button></div>';
-      list.appendChild(div);
-    });
-    list.querySelectorAll('.battle-invite-accept-btn').forEach(function (btn) {
-      btn.onclick = function () {
-        battleAcceptInvite(btn.getAttribute('data-id'));
-      };
-    });
-    list.querySelectorAll('.battle-invite-decline-btn').forEach(function (btn) {
-      btn.onclick = function () {
-        battleDeclineInvite(btn.getAttribute('data-id'));
-      };
-    });
-  } catch (e) {}
-}
-
-function battleAcceptInvite(inviteId) {
-  fetch(`${BATTLE_BACKEND_URL}/battles/invite/${inviteId}/accept`, { method: 'POST' })
-    .then(function (r) {
-      return r.json().then(function (d) {
-        if (r.ok) {
-          battleCurrentRoomId = d.room?.id;
-          document.getElementById('battle-status-text').textContent = 'Battle in progress!';
-          document.getElementById('battle-hp-row').style.display = 'block';
-          refreshBattleInvites();
-          document.getElementById('battle-invite-toast').classList.add('hidden');
-          battlePendingInviteId = null;
-          updateBattleOverlayUrl();
-          showCustomAlert('Battle started!', 'success');
-        } else {
-          showCustomAlert(d.error || 'Failed to accept', 'error');
-        }
-      });
-    })
-    .catch(function () {
-      showCustomAlert('Could not accept invite', 'error');
-    });
-}
-
-function battleDeclineInvite(inviteId) {
-  fetch(`${BATTLE_BACKEND_URL}/battles/invite/${inviteId}/decline`, { method: 'POST' })
-    .then(function (r) {
-      if (r.ok) {
-        refreshBattleInvites();
-        document.getElementById('battle-invite-toast').classList.add('hidden');
-        battlePendingInviteId = null;
-      }
-    })
-    .catch(function () {});
-}
-
-function setupBattleModal() {
-  const openBtn = document.getElementById('open-battle-modal-btn');
-  const closeBtn = document.getElementById('battle-modal-close');
-  const modal = document.getElementById('battle-modal');
-  const widgetStatus = document.getElementById('battle-widget-status');
-  if (widgetStatus) widgetStatus.textContent = getBattlesEnabled() ? 'On' : 'Off';
-  if (openBtn) openBtn.addEventListener('click', openBattleModal);
-  if (closeBtn) closeBtn.addEventListener('click', closeBattleModal);
-  if (modal) {
-    modal.addEventListener('click', function (e) {
-      if (e.target === modal) closeBattleModal();
-    });
-  }
-
-  document.getElementById('battle-enabled-toggle')?.addEventListener('change', function () {
-    const enabled = this.checked;
-    setBattlesEnabled(enabled);
-    if (enabled && battleTwitchLogin) {
-      fetch(`${BATTLE_BACKEND_URL}/battles/heartbeat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ twitch_login: battleTwitchLogin, battles_enabled: true })
-      }).catch(function () {});
-      if (battleHeartbeatTimer) clearInterval(battleHeartbeatTimer);
-      battleHeartbeatTimer = setInterval(function () {
-        if (!getBattlesEnabled()) return;
-        fetch(`${BATTLE_BACKEND_URL}/battles/heartbeat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ twitch_login: battleTwitchLogin, battles_enabled: true })
-        }).catch(function () {});
-      }, BATTLE_HEARTBEAT_INTERVAL);
-    } else if (battleHeartbeatTimer) {
-      clearInterval(battleHeartbeatTimer);
-      battleHeartbeatTimer = null;
-    }
-  });
-
-  document.getElementById('battle-invite-accept')?.addEventListener('click', function () {
-    if (battlePendingInviteId) battleAcceptInvite(battlePendingInviteId);
-  });
-  document.getElementById('battle-invite-decline')?.addEventListener('click', function () {
-    if (battlePendingInviteId) battleDeclineInvite(battlePendingInviteId);
-  });
-
-  document.getElementById('battle-copy-overlay-url')?.addEventListener('click', function () {
-    const url = document.getElementById('battle-overlay-url')?.textContent;
-    if (url && navigator.clipboard) {
-      navigator.clipboard.writeText(url).then(() => showCustomAlert('Overlay URL copied', 'success'));
-    }
   });
 }
 
@@ -7172,6 +7049,3158 @@ function setupOverlayWidget() {
     });
   }
   
+  // Setup AI Management Panel (Dashboard Widget)
+  // AI Status API base URL (Controller). Defaults to localhost:3004, but can be overridden:
+  // - URL param: ?aiStatusApi=http://localhost:3014  (will persist to localStorage)
+  // - localStorage: AI_STATUS_API_BASE_URL
+  // If neither is set, we will auto-discover (try 3004, then 3014).
+  function getStoredAIStatusApiBaseUrl() {
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      const fromParam = params.get('aiStatusApi');
+      if (fromParam) {
+        const normalized = fromParam.replace(/\/+$/, '');
+        localStorage.setItem('AI_STATUS_API_BASE_URL', normalized);
+        console.log('✅ AI Status API base URL set from URL param:', normalized);
+        return normalized;
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    const stored = (() => {
+      try { return localStorage.getItem('AI_STATUS_API_BASE_URL'); } catch (e) { return null; }
+    })();
+    return (stored || 'http://localhost:3004').replace(/\/+$/, '');
+  }
+
+  let AI_STATUS_API_BASE_URL = getStoredAIStatusApiBaseUrl();
+
+  function setAIStatusApiBaseUrl(url) {
+    const normalized = String(url || '').replace(/\/+$/, '');
+    if (!normalized) return;
+    AI_STATUS_API_BASE_URL = normalized;
+    try { localStorage.setItem('AI_STATUS_API_BASE_URL', normalized); } catch (e) {}
+    console.log('✅ Using AI Status API:', AI_STATUS_API_BASE_URL);
+  }
+
+  async function fetchWithTimeout(url, options, timeoutMs) {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), timeoutMs || 400);
+    try {
+      return await fetch(url, { ...(options || {}), signal: controller.signal });
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  async function discoverAIStatusApiBaseUrl(force) {
+    const stored = (() => { try { return localStorage.getItem('AI_STATUS_API_BASE_URL'); } catch (e) { return null; } })();
+    const candidates = [];
+    if (stored) candidates.push(String(stored).replace(/\/+$/, ''));
+    ['http://localhost:3004', 'http://localhost:3014'].forEach((url) => {
+      if (!candidates.includes(url)) candidates.push(url);
+    });
+
+    for (const base of candidates) {
+      try {
+        const r = await fetchWithTimeout(`${base}/api/ai/status`, {}, force ? 1200 : 800);
+        if (r && r.ok) {
+          setAIStatusApiBaseUrl(base);
+          return true;
+        }
+      } catch (e) {
+        // try next
+      }
+    }
+    console.debug('Could not auto-discover AI Status API port; defaulting to', AI_STATUS_API_BASE_URL);
+    return false;
+  }
+
+  function isOverlayDevPort(url) {
+    return /:3002(\/|$)/.test(String(url || ''));
+  }
+
+  async function discoverDevApiBaseUrl() {
+    const stored = (() => { try { return localStorage.getItem('DEV_API_BASE_URL'); } catch (e) { return null; } })();
+    const candidates = [];
+    if (stored && !isOverlayDevPort(stored)) candidates.push(String(stored).replace(/\/+$/, ''));
+    ['http://localhost:3003', 'http://localhost:3013'].forEach((url) => {
+      if (!candidates.includes(url)) candidates.push(url);
+    });
+    for (const base of candidates) {
+      try {
+        const r = await fetchWithTimeout(`${base}/api/dev/mode`, {}, 1200);
+        if (r && (r.ok || r.status === 405)) {
+          try { localStorage.setItem('DEV_API_BASE_URL', base); } catch (e) {}
+          return base;
+        }
+      } catch (e) {
+        // try next
+      }
+    }
+    return 'http://localhost:3003';
+  }
+
+  function setupAIManagementPanel() {
+    console.log('🤖 Setting up AI Management Panel');
+
+    (async () => {
+      if (!window.electronAPI || typeof window.electronAPI.licenseGetStatus !== 'function') return;
+      const status = await window.electronAPI.licenseGetStatus();
+      if (status && !status.aiAssistant) {
+        const panel = document.getElementById('ai-management-panel');
+        if (panel && !document.getElementById('ai-license-upsell')) {
+          const note = document.createElement('div');
+          note.id = 'ai-license-upsell';
+          note.style.cssText =
+            'margin-bottom:12px;padding:12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-tertiary);font-size:12px;line-height:1.45;';
+          note.innerHTML =
+            '<strong>VirtualDeck Pro required.</strong> Raven AI and voice assistant features need a one-time license. ' +
+            'Open <strong>Preferences → License</strong> to activate your key (BYOK for OpenAI / ElevenLabs).';
+          panel.prepend(note);
+        }
+      }
+    })();
+    
+    // Auto-detect controller port only when Raven is eligible to run.
+    (async () => {
+      if (window.vdServiceGates) await window.vdServiceGates.refreshRavenGate();
+      if (window.vdServiceGates && !window.vdServiceGates.shouldPollRavenController()) return;
+      discoverAIStatusApiBaseUrl(true).catch(() => {});
+    })();
+
+    async function refreshAiAudioOverlayUrl() {
+      const el = document.getElementById('ai-audio-overlay-url');
+      if (!el) return;
+      try {
+        const base = window.electronAPI && window.electronAPI.getOverlayUrl
+          ? await window.electronAPI.getOverlayUrl()
+          : 'http://localhost:8080/overlay';
+        const url = String(base || 'http://localhost:8080/overlay').replace(/\/+$/, '') + '?name=aiAudio';
+        el.textContent = url;
+      } catch (err) {
+        el.textContent = 'http://localhost:8080/overlay?name=aiAudio';
+      }
+    }
+    refreshAiAudioOverlayUrl();
+    const copyAiAudio = document.getElementById('copy-ai-audio-overlay-url');
+    if (copyAiAudio) {
+      copyAiAudio.addEventListener('click', async () => {
+        const el = document.getElementById('ai-audio-overlay-url');
+        const url = el ? el.textContent.trim() : '';
+        if (!url) return;
+        try {
+          await navigator.clipboard.writeText(url);
+          const original = copyAiAudio.textContent;
+          copyAiAudio.textContent = 'Copied';
+          setTimeout(() => { copyAiAudio.textContent = original || '📋 Copy'; }, 1200);
+        } catch (err) {
+          // prompt() is not supported in Electron; select the URL so it can be copied with Ctrl+C.
+          if (el && window.getSelection) {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+          if (typeof showCustomAlert === 'function') showCustomAlert('Copy failed - URL selected, press Ctrl+C', 'error');
+        }
+      });
+    }
+
+    async function setAIMode(mode) {
+      const selectedMode = String(mode || '').toUpperCase().trim();
+      if (!selectedMode) return;
+      console.log('🎯 Setting AI mode to:', selectedMode);
+      const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: selectedMode }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to set mode: ${response.statusText}`);
+      }
+      return await response.json().catch(() => ({}));
+    }
+    
+    // Setup AI On/Off Toggle (Dashboard)
+    setupAIDashboardToggle();
+    
+    // Setup compact AI dashboard controls
+    setupCompactAIDashboard();
+    
+    const segmentSelector = document.getElementById('ai-segment-selector');
+    const modeSelector = document.getElementById('ai-mode-selector');
+    const sayText = document.getElementById('ai-say-text');
+    const sayBtn = document.getElementById('ai-say-btn');
+    const triviaBtn = document.getElementById('ai-trivia-btn');
+    const qaBtn = document.getElementById('ai-qa-btn');
+    const dndBtn = document.getElementById('ai-dnd-btn');
+    const statusBtn = document.getElementById('ai-status-btn');
+    const settingsBtn = document.getElementById('ai-settings-btn');
+    const statusText = document.getElementById('ai-status-text');
+    
+    console.log('🔍 AI Management Panel elements found:', {
+      segmentSelector: !!segmentSelector,
+      modeSelector: !!modeSelector,
+      sayText: !!sayText,
+      sayBtn: !!sayBtn,
+      triviaBtn: !!triviaBtn,
+      qaBtn: !!qaBtn,
+      dndBtn: !!dndBtn,
+      statusBtn: !!statusBtn,
+      settingsBtn: !!settingsBtn,
+      statusText: !!statusText
+    });
+
+    const micSelect = document.getElementById('ai-copilot-mic-selector');
+    const micRefreshBtn = document.getElementById('ai-copilot-mic-refresh');
+    const micStatus = document.getElementById('ai-copilot-mic-status');
+
+    async function loadCopilotMics(opts) {
+      if (!micSelect) return false;
+      const quiet = !!(opts && opts.quiet);
+      if (!quiet || !micSelect.options.length || micSelect.value === '') {
+        micSelect.innerHTML = '<option value="">Scanning…</option>';
+      }
+      if (micStatus && !quiet) micStatus.textContent = 'Waiting for Raven…';
+      try {
+        const ready = await discoverAIStatusApiBaseUrl(true);
+        if (!ready) throw new Error('Raven status API is not up yet');
+        const res = await fetch(`${AI_STATUS_API_BASE_URL}/api/copilot/mic`);
+        if (!res.ok) {
+          const raw = await res.text().catch(() => '');
+          throw new Error(raw || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        const devices = Array.isArray(data.devices) ? data.devices : [];
+        const selected = String(data.selected || '').trim();
+        micSelect.innerHTML = '';
+        if (!devices.length) {
+          const empty = document.createElement('option');
+          empty.value = '';
+          empty.textContent = selected ? selected : 'No mics found';
+          micSelect.appendChild(empty);
+          if (selected) empty.value = selected;
+          if (micStatus) {
+            micStatus.textContent = selected
+              ? `Using saved mic: ${selected}`
+              : 'Raven is up, but no capture devices were listed. Click Scan after granting mic permission.';
+          }
+          return true;
+        }
+        devices.forEach((name) => {
+          const opt = document.createElement('option');
+          opt.value = name;
+          opt.textContent = name;
+          if (name === selected) opt.selected = true;
+          micSelect.appendChild(opt);
+        });
+        if (selected && !devices.includes(selected)) {
+          const opt = document.createElement('option');
+          opt.value = selected;
+          opt.textContent = `${selected} (saved)`;
+          opt.selected = true;
+          micSelect.appendChild(opt);
+        }
+        if (micStatus) {
+          micStatus.textContent = data.listening
+            ? `Listening on ${selected || micSelect.value}`
+            : `${devices.length} mic(s). ${selected ? 'Selected: ' + selected : 'Pick one to use for Copilot.'}`;
+        }
+        return true;
+      } catch (err) {
+        console.warn('Copilot mic list failed:', err);
+        micSelect.innerHTML = '<option value="">Raven not ready</option>';
+        if (micStatus) {
+          micStatus.textContent = 'Can’t reach Raven yet. Wait a few seconds after launch, or Tools → Raven AI → Start Raven AI, then Scan.';
+        }
+        return false;
+      }
+    }
+
+    if (micRefreshBtn) {
+      micRefreshBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        loadCopilotMics();
+      });
+    }
+    if (micSelect) {
+      micSelect.addEventListener('change', async () => {
+        const device = String(micSelect.value || '').trim();
+        if (!device) return;
+        try {
+          await discoverAIStatusApiBaseUrl(true);
+          const res = await fetch(`${AI_STATUS_API_BASE_URL}/api/copilot/mic`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device }),
+          });
+          if (!res.ok) {
+            const raw = await res.text().catch(() => '');
+            throw new Error(raw || `HTTP ${res.status}`);
+          }
+          if (micStatus) micStatus.textContent = `Using ${device}`;
+        } catch (err) {
+          console.error('Failed to set Copilot mic:', err);
+          if (micStatus) micStatus.textContent = 'Could not set mic. Is Raven running?';
+        }
+      });
+    }
+    loadCopilotMics();
+    let micRetries = 0;
+    const micRetryTimer = setInterval(async () => {
+      micRetries += 1;
+      const ok = await loadCopilotMics({ quiet: true });
+      if (ok || micRetries >= 20) clearInterval(micRetryTimer);
+    }, 2000);
+
+    const speakerSelect = document.getElementById('ai-speaker-selector');
+    const speakerRefreshBtn = document.getElementById('ai-speaker-refresh');
+    const speakerTestBtn = document.getElementById('ai-speaker-test');
+    const speakerStatus = document.getElementById('ai-speaker-status');
+    const TTS_SINK_KEY = 'VD_TTS_SINK';
+
+    function readSavedSpeaker() {
+      try {
+        return JSON.parse(localStorage.getItem(TTS_SINK_KEY) || '{}') || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function saveSpeakerChoice(deviceId, label) {
+      const payload = { deviceId: deviceId || '', label: label || '' };
+      try { localStorage.setItem(TTS_SINK_KEY, JSON.stringify(payload)); } catch (e) {}
+      discoverAIStatusApiBaseUrl(true).then(() => {
+        fetch(`${AI_STATUS_API_BASE_URL}/api/audio/output`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device: label || '' }),
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+
+    window.applyVdTtsSink = async function applyVdTtsSink(audio) {
+      const saved = readSavedSpeaker();
+      if (!saved.deviceId || !audio || typeof audio.setSinkId !== 'function') return;
+      try {
+        await audio.setSinkId(saved.deviceId);
+      } catch (err) {
+        console.warn('Could not route TTS to saved speaker; using default', err);
+      }
+    };
+
+    async function listBrowserSpeakers() {
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== 'function') {
+        return [];
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
+      } catch (e) {
+        // labels may still be empty; keep going
+      }
+      const all = await navigator.mediaDevices.enumerateDevices();
+      return all.filter((d) => d.kind === 'audiooutput');
+    }
+
+    async function loadSpeakers() {
+      if (!speakerSelect) return;
+      const saved = readSavedSpeaker();
+      speakerSelect.innerHTML = '<option value="">System default</option>';
+      let devices = [];
+      try {
+        devices = await listBrowserSpeakers();
+      } catch (err) {
+        console.warn('Browser speaker list failed:', err);
+      }
+      if (!devices.length) {
+        try {
+          await discoverAIStatusApiBaseUrl(true);
+          const res = await fetch(`${AI_STATUS_API_BASE_URL}/api/audio/output`);
+          if (res.ok) {
+            const data = await res.json();
+            (data.devices || []).forEach((name) => {
+              const opt = document.createElement('option');
+              opt.value = name;
+              opt.textContent = name;
+              if (saved.label && saved.label === name) opt.selected = true;
+              speakerSelect.appendChild(opt);
+            });
+            if (speakerStatus) {
+              speakerStatus.textContent = data.selected
+                ? `Raven speaker: ${data.selected}. Pick one for this PC.`
+                : 'Using Windows default. Choose a speaker if this PC’s default is silent.';
+            }
+            return;
+          }
+        } catch (err) {
+          console.warn('Raven speaker list failed:', err);
+        }
+      }
+      devices.forEach((d) => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || `Speaker ${d.deviceId.slice(0, 8)}`;
+        if (saved.deviceId && saved.deviceId === d.deviceId) opt.selected = true;
+        speakerSelect.appendChild(opt);
+      });
+      if (speakerStatus) {
+        const chosen = speakerSelect.selectedOptions[0];
+        speakerStatus.textContent = speakerSelect.value
+          ? `Playing Raven on ${chosen ? chosen.textContent : 'selected speaker'}`
+          : 'Using this PC’s Windows default output. Change it if you hear nothing.';
+      }
+    }
+
+    if (speakerRefreshBtn) {
+      speakerRefreshBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        loadSpeakers();
+      });
+    }
+    if (speakerSelect) {
+      speakerSelect.addEventListener('change', () => {
+        const opt = speakerSelect.selectedOptions[0];
+        saveSpeakerChoice(speakerSelect.value, opt ? opt.textContent : '');
+        if (speakerStatus) {
+          speakerStatus.textContent = speakerSelect.value
+            ? `Playing Raven on ${opt ? opt.textContent : 'selected speaker'}`
+            : 'Using this PC’s Windows default output.';
+        }
+      });
+    }
+    if (speakerTestBtn) {
+      speakerTestBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const saved = readSavedSpeaker();
+          if (saved.deviceId && typeof ctx.setSinkId === 'function') {
+            await ctx.setSinkId(saved.deviceId);
+          }
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.frequency.value = 440;
+          gain.gain.value = 0.12;
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.35);
+          if (speakerStatus) speakerStatus.textContent = 'Played a test beep on the selected output.';
+        } catch (err) {
+          console.warn('Speaker test failed:', err);
+          if (speakerStatus) speakerStatus.textContent = 'Test beep failed. Try Scan, then pick speakers again.';
+        }
+      });
+    }
+    loadSpeakers();
+
+    // Wake name (HOST_WAKE_NAMES in raven.env)
+    const wakePrimaryInput = document.getElementById('ai-wake-name-primary');
+    const wakeAliasesInput = document.getElementById('ai-wake-name-aliases');
+    const wakeSaveBtn = document.getElementById('ai-wake-name-save');
+    const wakeHint = document.getElementById('ai-wake-name-hint');
+    const wakeStatus = document.getElementById('ai-wake-name-status');
+
+    function applyWakeNameUi(primary, names) {
+      const p = primary || 'Raven';
+      if (wakeHint) {
+        wakeHint.textContent = `Say "Hey ${p}" to wake the assistant.`;
+      }
+      const macroPhrase = document.getElementById('macro-phrase');
+      if (macroPhrase) {
+        macroPhrase.placeholder = `${String(p).toLowerCase()} we are going live`;
+      }
+      if (wakePrimaryInput && document.activeElement !== wakePrimaryInput) {
+        wakePrimaryInput.value = p;
+      }
+      if (wakeAliasesInput && document.activeElement !== wakeAliasesInput) {
+        const aliases = (names || []).slice(1);
+        wakeAliasesInput.value = aliases.join(', ');
+      }
+    }
+
+    async function loadWakeNames() {
+      try {
+        const headers = await getAIConfigAuthHeaders();
+        const res = await fetch('http://localhost:8080/api/ai/wake-names', {
+          method: 'GET',
+          headers,
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        applyWakeNameUi(data.primary, data.names);
+      } catch (err) {
+        console.warn('Failed to load wake names:', err);
+      }
+    }
+
+    async function saveWakeNames() {
+      if (!wakePrimaryInput) return;
+      const primary = wakePrimaryInput.value.trim();
+      const aliasRaw = wakeAliasesInput ? wakeAliasesInput.value.trim() : '';
+      const parts = [primary];
+      if (aliasRaw) {
+        aliasRaw.split(',').forEach((s) => {
+          const t = s.trim();
+          if (t) parts.push(t);
+        });
+      }
+      const wakeNames = parts.join(', ');
+      if (wakeStatus) wakeStatus.textContent = 'Saving…';
+      try {
+        const headers = await getAIConfigAuthHeaders();
+        const res = await fetch('http://localhost:8080/api/ai/wake-names', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ wakeNames }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          if (wakeStatus) wakeStatus.textContent = data.error || 'Could not save wake name.';
+          return;
+        }
+        applyWakeNameUi(data.primary, data.names);
+        if (wakeStatus) {
+          wakeStatus.textContent = data.requiresRavenRestart
+            ? 'Saved. Use Tools → Raven AI → Restart Raven AI to apply the new wake name.'
+            : 'Saved. Wake name will apply when Raven reloads raven.env.';
+        }
+      } catch (err) {
+        console.warn('Failed to save wake names:', err);
+        if (wakeStatus) wakeStatus.textContent = 'Could not save wake name.';
+      }
+    }
+
+    if (wakeSaveBtn) {
+      wakeSaveBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        saveWakeNames();
+      });
+    }
+    loadWakeNames();
+
+    // Voice Picker - Load and select TTS voices from ElevenLabs
+    const voiceSelect = document.getElementById('ai-voice-selector');
+    const voiceRefreshBtn = document.getElementById('ai-voice-refresh');
+    const voicePreviewBtn = document.getElementById('ai-voice-preview');
+    const voiceStatus = document.getElementById('ai-voice-status');
+    const VOICE_CONFIG_KEY = 'VD_AI_VOICE_CONFIG';
+    let voicePreviewAudio = null;
+    let voicePreviewObjectUrl = null;
+
+    function setVoicePreviewButtonPlaying(playing) {
+      if (!voicePreviewBtn) return;
+      const icon = voicePreviewBtn.querySelector('.btn-icon');
+      const label = voicePreviewBtn.querySelector('.btn-label');
+      if (icon) icon.textContent = playing ? '⏹️' : '▶️';
+      if (label) label.textContent = playing ? 'Stop' : 'Play';
+      voicePreviewBtn.title = playing ? 'Stop voice preview' : 'Play voice preview';
+    }
+
+    async function stopVoicePreview() {
+      if (voicePreviewAudio) {
+        try { voicePreviewAudio.pause(); } catch (e) {}
+        voicePreviewAudio = null;
+      }
+      if (voicePreviewObjectUrl) {
+        try { URL.revokeObjectURL(voicePreviewObjectUrl); } catch (e) {}
+        voicePreviewObjectUrl = null;
+      }
+      setVoicePreviewButtonPlaying(false);
+    }
+
+    async function toggleVoicePreview() {
+      if (!voiceSelect || !voiceSelect.value) {
+        if (voiceStatus) voiceStatus.textContent = 'Select a voice to preview.';
+        return;
+      }
+      if (voicePreviewAudio && !voicePreviewAudio.paused) {
+        await stopVoicePreview();
+        if (voiceStatus) voiceStatus.textContent = 'Preview stopped.';
+        return;
+      }
+      await stopVoicePreview();
+      if (!window.electronAPI || typeof window.electronAPI.previewAiVoice !== 'function') {
+        if (voiceStatus) voiceStatus.textContent = 'Voice preview is only available in the desktop app.';
+        return;
+      }
+      const opt = voiceSelect.selectedOptions[0];
+      const previewUrl = opt && opt.dataset.previewUrl ? opt.dataset.previewUrl : null;
+      if (voiceStatus) voiceStatus.textContent = 'Loading voice preview…';
+      try {
+        const result = await window.electronAPI.previewAiVoice({
+          voiceId: voiceSelect.value,
+          previewUrl,
+        });
+        if (!result || !result.success) {
+          if (voiceStatus) voiceStatus.textContent = (result && result.error) || 'Preview failed.';
+          return;
+        }
+        const binary = atob(result.dataBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: result.mimeType || 'audio/mpeg' });
+        voicePreviewObjectUrl = URL.createObjectURL(blob);
+        voicePreviewAudio = new Audio(voicePreviewObjectUrl);
+        if (typeof window.applyVdTtsSink === 'function') {
+          await window.applyVdTtsSink(voicePreviewAudio);
+        }
+        voicePreviewAudio.onended = () => {
+          stopVoicePreview();
+          if (voiceStatus) voiceStatus.textContent = 'Preview finished.';
+        };
+        setVoicePreviewButtonPlaying(true);
+        if (voiceStatus) voiceStatus.textContent = 'Playing preview on your selected speaker (not the OBS overlay).';
+        await voicePreviewAudio.play();
+      } catch (err) {
+        console.warn('Voice preview failed:', err);
+        await stopVoicePreview();
+        if (voiceStatus) voiceStatus.textContent = 'Preview playback failed.';
+      }
+    }
+
+    // Helper: Get auth headers for AI config API calls
+    async function getAIConfigAuthHeaders() {
+      try {
+        if (window.electronAPI && window.electronAPI.getAuthToken) {
+          const token = await window.electronAPI.getAuthToken();
+          return {
+            'Content-Type': 'application/json',
+            'X-VD-Auth': token
+          };
+        }
+      } catch (err) {
+        console.warn('Could not get auth token:', err);
+      }
+      return { 'Content-Type': 'application/json' };
+    }
+
+    function readSavedVoice() {
+      try {
+        return JSON.parse(localStorage.getItem(VOICE_CONFIG_KEY) || '{}') || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    async function saveVoiceChoice(voiceId, voiceName) {
+      const payload = { voiceId: voiceId || '', voiceName: voiceName || '' };
+      try { localStorage.setItem(VOICE_CONFIG_KEY, JSON.stringify(payload)); } catch (e) {}
+      
+      // Send to backend API to update raven.env (uses VirtualDeck overlay server with auth)
+      try {
+        const headers = await getAIConfigAuthHeaders();
+        await fetch('http://localhost:8080/api/ai/voice', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({ voiceId: voiceId || '', voiceName: voiceName || '' }),
+        });
+      } catch (err) {
+        console.warn('Failed to save voice to backend:', err);
+      }
+    }
+
+    async function loadVoices(opts) {
+      if (!voiceSelect) return false;
+      const quiet = !!(opts && opts.quiet);
+      if (!quiet || !voiceSelect.options.length || voiceSelect.value === '') {
+        voiceSelect.innerHTML = '<option value="">Loading voices…</option>';
+      }
+      if (voiceStatus && !quiet) voiceStatus.textContent = 'Fetching voices from ElevenLabs…';
+      
+      try {
+        // Use VirtualDeck overlay server API (port 8080) with auth
+        const headers = await getAIConfigAuthHeaders();
+        const res = await fetch('http://localhost:8080/api/ai/voices', {
+          method: 'GET',
+          headers: headers
+        });
+        if (!res.ok) {
+          const raw = await res.text().catch(() => '');
+          throw new Error(raw || `HTTP ${res.status}`);
+        }
+        
+        const data = await res.json();
+        const voices = Array.isArray(data.voices) ? data.voices : [];
+        const saved = readSavedVoice();
+        
+        voiceSelect.innerHTML = '';
+        
+        if (!voices.length) {
+          if (voiceStatus) {
+            voiceStatus.textContent = 'No voices found. Check TTS_API_KEY in raven.env and ensure ElevenLabs account is active.';
+          }
+          return true;
+        }
+        
+        voices.forEach((voice) => {
+          const opt = document.createElement('option');
+          opt.value = voice.voice_id;
+          opt.textContent = voice.name;
+          if (voice.preview_url) {
+            opt.dataset.previewUrl = voice.preview_url;
+          }
+          if (saved.voiceId ? saved.voiceId === voice.voice_id : voice.isRavenDefault) opt.selected = true;
+          voiceSelect.appendChild(opt);
+        });
+        
+        if (voiceStatus) {
+          voiceStatus.textContent = saved.voiceId
+            ? `Voice: ${saved.voiceName || saved.voiceId}. ${voices.length} available.`
+            : `${voices.length} voice(s) available. Select one to use for TTS.`;
+        }
+        return true;
+      } catch (err) {
+        console.warn('Voice list failed:', err);
+        voiceSelect.innerHTML = '<option value="">Unable to load voices</option>';
+        if (voiceStatus) {
+          voiceStatus.textContent = 'Cannot load voices. Ensure Raven is running and TTS_API_KEY is configured in raven.env.';
+        }
+        return false;
+      }
+    }
+
+    if (voiceRefreshBtn) {
+      voiceRefreshBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        loadVoices();
+      });
+    }
+
+    if (voicePreviewBtn) {
+      voicePreviewBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        toggleVoicePreview();
+      });
+    }
+    
+    if (voiceSelect) {
+      voiceSelect.addEventListener('change', () => {
+        stopVoicePreview();
+        const opt = voiceSelect.selectedOptions[0];
+        const voiceId = voiceSelect.value;
+        const voiceName = opt ? opt.textContent : '';
+        saveVoiceChoice(voiceId, voiceName);
+        if (voiceStatus) {
+          voiceStatus.textContent = voiceId
+            ? `Voice set to: ${voiceName}`
+            : 'Using default voice.';
+        }
+        if (window.notificationManager) {
+          window.notificationManager.show(voiceId ? `Voice: ${voiceName}` : 'Using default voice', 'success');
+        }
+      });
+    }
+    
+    // Load voices on startup
+    loadVoices({ quiet: true });
+    
+    // Retry loading voices a few times in case Raven is still starting up
+    let voiceRetries = 0;
+    const voiceRetryTimer = setInterval(async () => {
+      voiceRetries += 1;
+      const ok = await loadVoices({ quiet: true });
+      if (ok || voiceRetries >= 15) clearInterval(voiceRetryTimer);
+    }, 3000);
+
+    // Personality Builder - Compose system prompt from dropdowns
+    const personalityTone = document.getElementById('ai-personality-tone');
+    const personalityEnergy = document.getElementById('ai-personality-energy');
+    const personalityHumor = document.getElementById('ai-personality-humor');
+    const personalityRole = document.getElementById('ai-personality-role');
+    const personalityRaw = document.getElementById('ai-personality-raw');
+    const personalitySaveBtn = document.getElementById('ai-personality-save');
+    const PERSONALITY_CONFIG_KEY = 'VD_AI_PERSONALITY_CONFIG';
+
+    function readSavedPersonality() {
+      try {
+        return JSON.parse(localStorage.getItem(PERSONALITY_CONFIG_KEY) || '{}') || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function savePersonalityConfig(config) {
+      try { localStorage.setItem(PERSONALITY_CONFIG_KEY, JSON.stringify(config)); } catch (e) {}
+    }
+
+    function composePersonalityPrompt(tone, energy, humor, role) {
+      const toneMap = {
+        'friendly': 'You are friendly and warm, making people feel welcome and comfortable.',
+        'professional': 'You are professional and articulate, maintaining a polished demeanor.',
+        'casual': 'You are casual and relaxed, speaking naturally like a friend.',
+        'enthusiastic': 'You are enthusiastic and excited, bringing positive energy.',
+        'sarcastic': 'You are sarcastic and sharp-witted, using dry humor and playful jabs.',
+        'witty': 'You are witty and clever, making smart observations and wordplay.'
+      };
+      
+      const energyMap = {
+        'high': 'You bring high energy and excitement to every interaction.',
+        'medium': 'You maintain a balanced, engaging energy level.',
+        'low': 'You are chill and laid-back, keeping things relaxed.',
+        'adaptive': 'You adapt your energy to match the chat vibe.'
+      };
+      
+      const humorMap = {
+        'none': 'You keep things serious and focused.',
+        'light': 'You occasionally make light jokes when appropriate.',
+        'moderate': 'You use humor regularly to keep things fun.',
+        'heavy': 'You frequently crack jokes and keep things lighthearted.',
+        'dry': 'You use dry, deadpan humor and subtle wit.',
+        'meme': 'You reference memes, internet culture, and current trends.'
+      };
+      
+      const roleMap = {
+        'companion': 'You are a gaming companion who plays alongside the streamer, reacting to gameplay and providing company.',
+        'coach': 'You are a gaming coach who provides tips, strategies, and constructive feedback.',
+        'commentator': 'You are a commentator who narrates and analyzes the action as it happens.',
+        'sidekick': 'You are a loyal sidekick who supports the streamer and hypes up their achievements.',
+        'assistant': 'You are an assistant who helps manage chat, answer questions, and keep things organized.',
+        'custom': ''
+      };
+      
+      const parts = [];
+      if (toneMap[tone]) parts.push(toneMap[tone]);
+      if (energyMap[energy]) parts.push(energyMap[energy]);
+      if (humorMap[humor]) parts.push(humorMap[humor]);
+      if (roleMap[role]) parts.push(roleMap[role]);
+      
+      return parts.join(' ');
+    }
+
+    function loadPersonalityUI() {
+      const saved = readSavedPersonality();
+      if (personalityTone && saved.tone) personalityTone.value = saved.tone;
+      if (personalityEnergy && saved.energy) personalityEnergy.value = saved.energy;
+      if (personalityHumor && saved.humor) personalityHumor.value = saved.humor;
+      if (personalityRole && saved.role) personalityRole.value = saved.role;
+      if (personalityRaw && saved.rawPrompt) personalityRaw.value = saved.rawPrompt;
+    }
+
+    async function savePersonality() {
+      const config = {
+        tone: personalityTone ? personalityTone.value : 'friendly',
+        energy: personalityEnergy ? personalityEnergy.value : 'medium',
+        humor: personalityHumor ? personalityHumor.value : 'moderate',
+        role: personalityRole ? personalityRole.value : 'companion',
+        rawPrompt: personalityRaw ? personalityRaw.value.trim() : ''
+      };
+      
+      savePersonalityConfig(config);
+      
+      // Compose or use raw prompt
+      const finalPrompt = config.rawPrompt || composePersonalityPrompt(config.tone, config.energy, config.humor, config.role);
+      
+      try {
+        // Use VirtualDeck overlay server API (port 8080) with auth
+        const headers = await getAIConfigAuthHeaders();
+        const res = await fetch('http://localhost:8080/api/ai/personality', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({ 
+            personality: config,
+            prompt: finalPrompt
+          }),
+        });
+        
+        if (!res.ok) {
+          const raw = await res.text().catch(() => '');
+          throw new Error(raw || `HTTP ${res.status}`);
+        }
+        
+        if (window.notificationManager) {
+          window.notificationManager.show('Personality saved successfully', 'success');
+        } else {
+          alert('Personality saved successfully');
+        }
+      } catch (err) {
+        console.error('Failed to save personality:', err);
+        alert(`Failed to save personality: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    if (personalitySaveBtn) {
+      personalitySaveBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        savePersonality();
+      });
+    }
+    
+    // Load saved personality on startup
+    loadPersonalityUI();
+
+    // Manual Speak (shared with dashboard Quick Say — vdRavenManualSpeak)
+    if (sayBtn && sayText && window.vdRavenManualSpeak) {
+      sayBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const text = String(sayText.value || '').trim();
+        if (!text) return;
+        sayBtn.disabled = true;
+        try {
+          const result = await window.vdRavenManualSpeak.speakManualText(text, { respectAiToggle: false });
+          if (result.ok) sayText.value = '';
+          window.vdRavenManualSpeak.presentSpeakResult(result);
+        } catch (err) {
+          console.error('❌ Manual speak failed:', err);
+          alert(err instanceof Error ? err.message : String(err));
+        } finally {
+          sayBtn.disabled = false;
+        }
+      });
+
+      sayText.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sayBtn.click();
+        }
+      });
+    }
+    
+    // AI Mode selector - change AI mode (CHILL, HYPE, QA, DND, etc.)
+    if (modeSelector) {
+      // Load current mode on startup
+      async function loadCurrentMode() {
+        try {
+          const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.mode) {
+              modeSelector.value = data.mode;
+              console.log('✅ Loaded current AI mode:', data.mode);
+            }
+          }
+        } catch (err) {
+          console.debug('Could not load current AI mode:', err);
+        }
+      }
+      
+      // Handle mode change
+      modeSelector.addEventListener('change', async (e) => {
+        const selectedMode = e.target.value;
+        console.log('🎯 Changing AI mode to:', selectedMode);
+        
+        try {
+          const result = await setAIMode(selectedMode);
+          console.log('✅ AI mode changed:', result);
+          
+          // Update status display
+          updateAIManagementStatus();
+          
+          // Show success notification if available
+          if (window.notificationManager) {
+            window.notificationManager.show(`AI mode set to ${selectedMode}`, 'success');
+          }
+        } catch (err) {
+          console.error('❌ Error changing AI mode:', err);
+          alert(`Error changing AI mode: ${err instanceof Error ? err.message : String(err)}`);
+          // Revert selector to previous value
+          loadCurrentMode();
+        }
+      });
+      
+      // Load current mode on startup
+      loadCurrentMode();
+      
+      // Update mode selector when status updates
+      const originalUpdateAIManagementStatus = window.updateAIManagementStatus;
+      if (originalUpdateAIManagementStatus) {
+        window.updateAIManagementStatus = async function() {
+          await originalUpdateAIManagementStatus();
+          // Update mode selector if mode changed externally
+          try {
+            const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
+            if (response.ok) {
+              const data = await response.json();
+              if (data.mode && modeSelector.value !== data.mode) {
+                modeSelector.value = data.mode;
+              }
+            }
+          } catch (err) {
+            // Silently fail
+          }
+        };
+      }
+    } else {
+      console.warn('⚠️ Mode selector not found');
+    }
+    
+    // Segment selector - update AI behavior
+    if (segmentSelector) {
+      segmentSelector.addEventListener('change', async (e) => {
+        const segment = e.target.value;
+        console.log('📺 Segment changed to:', segment);
+        
+        // Segment presets:
+        // - "normal/gaming/just-chatting" -> JUST_CHATTING (our main streamer mode)
+        // - "special-event/hype" -> HYPE
+        const segmentToMode = {
+          'normal': 'JUST_CHATTING',
+          'gaming': 'JUST_CHATTING',
+          'just-chatting': 'JUST_CHATTING',
+          'special-event': 'HYPE',
+          'hype': 'HYPE'
+        };
+        const targetMode = segmentToMode[segment] || 'JUST_CHATTING';
+        
+        try {
+          await setAIMode(targetMode);
+          if (modeSelector) modeSelector.value = targetMode;
+          updateAIManagementStatus();
+          if (window.notificationManager) {
+            window.notificationManager.show(`Segment: ${segment} → ${targetMode}`, 'info');
+          }
+        } catch (err) {
+          console.error('❌ Error applying segment preset:', err);
+          alert(`Error applying segment preset: ${err instanceof Error ? err.message : String(err)}`);
+        }
+        
+        // Update AI Control Panel if open
+        const segmentBehaviorEl = document.getElementById('segment-behavior');
+        if (segmentBehaviorEl) {
+          segmentBehaviorEl.value = (targetMode === 'HYPE') ? 'hype' : 'chatty';
+        }
+        const segmentSelectorEl = document.getElementById('segment-selector');
+        if (segmentSelectorEl) {
+          segmentSelectorEl.value = segment;
+        }
+      });
+    } else {
+      console.warn('⚠️ Segment selector not found');
+    }
+    
+    // Trivia button - open trivia modal
+    if (triviaBtn) {
+      console.log('✅ Trivia button found, adding click handler');
+      // Remove any existing listeners first
+      const newTriviaBtn = triviaBtn.cloneNode(true);
+      triviaBtn.parentNode.replaceChild(newTriviaBtn, triviaBtn);
+      
+      newTriviaBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('🎮 Trivia button clicked!');
+        try {
+          openTriviaModal();
+        } catch (err) {
+          console.error('❌ Error opening trivia modal:', err);
+          alert(`Error opening trivia modal: ${err.message}`);
+        }
+      });
+    } else {
+      console.error('❌ Trivia button NOT found! Looking for #ai-trivia-btn');
+      // Try to find it again after a delay
+      setTimeout(() => {
+        const retryBtn = document.getElementById('ai-trivia-btn');
+        if (retryBtn) {
+          console.log('✅ Found trivia button on retry');
+          retryBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🎮 Trivia button clicked (retry)!');
+            openTriviaModal();
+          });
+        } else {
+          console.error('❌ Trivia button still not found after retry');
+        }
+      }, 1000);
+    }
+    
+    // Q&A button - toggle Q&A mode
+    if (qaBtn) {
+      qaBtn.addEventListener('click', () => {
+        const qaEnabled = document.getElementById('qa-mode-enabled');
+        if (qaEnabled) {
+          const isEnabled = qaEnabled.checked;
+          qaEnabled.checked = !isEnabled;
+          
+          if (!isEnabled) {
+            // Starting Q&A
+            const qaStartBtn = document.getElementById('qa-start-btn');
+            if (qaStartBtn) {
+              qaStartBtn.click();
+            }
+            qaBtn.classList.add('active');
+            qaBtn.title = 'Q&A Mode Active - Click to Stop';
+          } else {
+            // Stopping Q&A
+            const qaStopBtn = document.getElementById('qa-stop-btn');
+            if (qaStopBtn) {
+              qaStopBtn.click();
+            }
+            qaBtn.classList.remove('active');
+            qaBtn.title = 'Toggle Q&A Mode';
+          }
+          updateAIStatus();
+        }
+      });
+    }
+    
+    // D&D button - toggle D&D campaign panel
+    if (dndBtn) {
+      dndBtn.addEventListener('click', () => {
+        const dndPanel = document.getElementById('dnd-campaign-panel');
+        if (dndPanel) {
+          const isVisible = dndPanel.style.display !== 'none';
+          dndPanel.style.display = isVisible ? 'none' : 'block';
+          
+          if (!isVisible) {
+            // Panel opened - load campaign state
+            loadDndCampaignState();
+            dndBtn.classList.add('active');
+            dndBtn.title = 'D&D Campaign Active - Click to Hide';
+          } else {
+            dndBtn.classList.remove('active');
+            dndBtn.title = 'D&D Campaign';
+          }
+        }
+      });
+    }
+    
+    // Setup D&D controls
+    setupDndControls();
+    
+    // Status button - show AI status/details (toggle status indicator visibility or open details)
+    if (statusBtn) {
+      statusBtn.addEventListener('click', () => {
+        // Toggle status indicator visibility or show detailed status
+        const statusIndicator = document.getElementById('ai-status-indicator');
+        if (statusIndicator) {
+          // If hidden, show it; if visible, could show more details
+          if (statusIndicator.style.display === 'none') {
+            statusIndicator.style.display = 'block';
+          } else {
+            // Already visible - could show a detailed modal or just highlight it
+            statusIndicator.style.animation = 'pulse 0.5s ease-in-out';
+            setTimeout(() => {
+              statusIndicator.style.animation = '';
+            }, 500);
+          }
+        }
+      });
+    }
+    
+    // Settings button - open AI settings
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', () => {
+      // Open overlay widget to AI Control Panel (Q&A tab)
+      const overlayWidget = document.getElementById('overlay-widget');
+      if (overlayWidget) {
+        overlayWidget.classList.remove('hidden');
+        // Switch to Q&A tab (default)
+        const qaTab = document.querySelector('.ai-tab-btn[data-tab="qa"]');
+        if (qaTab) {
+          qaTab.click();
+        }
+      }
+      });
+    }
+    
+    if (window.vdPoll) {
+      window.vdPoll.createAdaptivePoll({
+        baseIntervalMs: 5000,
+        maxIntervalMs: 60000,
+        when: () => {
+          const panel = document.getElementById('ai-management-panel');
+          return (
+            window.vdPoll.isElementActive(panel) &&
+            window.vdServiceGates &&
+            window.vdServiceGates.shouldPollRavenController()
+          );
+        },
+        tick: async () => {
+          await updateAIManagementStatus();
+          return true;
+        },
+      }).start();
+    } else {
+      setInterval(() => updateAIManagementStatus(), 5000);
+    }
+    
+    // Update D&D campaign state periodically (every 5 seconds)
+    setInterval(() => {
+      const dndPanel = document.getElementById('dnd-campaign-panel');
+      if (dndPanel && dndPanel.style.display !== 'none') {
+        loadDndCampaignState();
+      }
+    }, 5000);
+    
+    // Initial status update
+    updateAIManagementStatus();
+  }
+  
+  // Setup AI On/Off Toggle (Dashboard) - DISABLED
+  // This toggle is in the AI Management Panel which is hidden (CSS: display: none !important)
+  // The actual working toggle is in setupCompactAIDashboard()
+  function setupAIDashboardToggle() {
+    console.log('🔌 AI Dashboard Toggle setup skipped (panel is hidden)');
+    // Original implementation removed - AI Management Panel is not visible
+    // See setupCompactAIDashboard() for the active toggle
+  }
+  
+  // Setup Compact AI Dashboard Controls
+  function setupCompactAIDashboard() {
+    console.log('🔌 Setting up Compact AI Dashboard Controls');
+    
+    const dashboardToggle = document.getElementById('ai-dashboard-toggle');
+    const dashboardToggleLabel = document.getElementById('ai-dashboard-toggle-label');
+    const dashboardPresenterMode = document.getElementById('ai-dashboard-presenter-mode');
+    const dashboardSayText = document.getElementById('ai-dashboard-say-text');
+    const dashboardSayBtn = document.getElementById('ai-dashboard-say-btn');
+    const ravenCtl = window.vdRavenAiControl;
+    
+    if (!dashboardToggle || !dashboardPresenterMode || !ravenCtl) {
+      console.warn('⚠️ Compact AI dashboard elements not found');
+      return;
+    }
+    
+    // Load initial state from API once on startup
+    loadInitialAIState();
+    
+    function getPresenterMode() {
+      return ravenCtl.presenterModeFromSelect(dashboardPresenterMode.value);
+    }
+
+    async function postAIMode(mode, options) {
+      const allowOfflineMute = options && options.allowOfflineMute && mode === 'MUTED';
+      try {
+        await discoverAIStatusApiBaseUrl(true);
+      } catch (discoverErr) {
+        // continue — may still fail on fetch
+      }
+      try {
+        const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to set AI mode: ${response.statusText}`);
+        }
+        return await response.json().catch(() => ({}));
+      } catch (err) {
+        if (allowOfflineMute) {
+          console.warn('AI set to MUTED locally (Raven API unreachable):', err && err.message);
+          try {
+            localStorage.setItem('vdAiPendingMode', mode);
+          } catch (storageErr) {
+            // ignore
+          }
+          return { mode, offline: true };
+        }
+        throw err;
+      }
+    }
+
+    // Toggle handler (Raven bridge /api/ai/enabled + sidecar lifecycle)
+    dashboardToggle.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const isCurrentlyOn = dashboardToggleLabel.textContent === 'ON';
+      const isOn = !isCurrentlyOn;
+      
+      try {
+        console.log(`🔌 ${isOn ? 'Turning AI ON' : 'Turning AI OFF'}...`);
+        
+        if (!isOn) {
+          await ravenCtl.setAiSystemEnabled(false);
+          updateToggleUI(false);
+          const aiModeSelector = document.getElementById('ai-mode-selector');
+          if (aiModeSelector) aiModeSelector.value = 'MUTED';
+          return;
+        }
+
+        const result = await ravenCtl.setAiSystemEnabled(true, { presenterMode: getPresenterMode() });
+        if (result.bridge && result.bridge.offline) {
+          console.warn('Bridge unreachable after start; AI sidecar started locally');
+        }
+        updateToggleUI(true);
+        const aiModeSelector = document.getElementById('ai-mode-selector');
+        if (aiModeSelector) aiModeSelector.value = getPresenterMode();
+        
+      } catch (err) {
+        console.error('❌ Error toggling AI:', err);
+        if (isOn) {
+          alert(`Failed to enable AI: ${err.message}`);
+        } else {
+          updateToggleUI(false);
+        }
+      }
+    });
+    
+    // Presenter mode (Co-pilot vs On-stream → controller /api/ai/mode)
+    dashboardPresenterMode.addEventListener('change', async (e) => {
+      const mode = ravenCtl.presenterModeFromSelect(e.target.value);
+      const isOn = dashboardToggleLabel.textContent === 'ON';
+      
+      try {
+        if (isOn) {
+          await ravenCtl.postPresenterMode(mode);
+        }
+        const aiModeSelector = document.getElementById('ai-mode-selector');
+        if (aiModeSelector) aiModeSelector.value = mode;
+      } catch (err) {
+        console.error('❌ Error setting presenter mode:', err);
+        if (isOn) {
+          alert(`Failed to set presenter mode: ${err.message}`);
+        }
+      }
+    });
+    
+    // Update toggle UI helper
+    function updateToggleUI(isOn) {
+      dashboardToggleLabel.textContent = isOn ? 'ON' : 'OFF';
+      dashboardToggle.classList.toggle('off', !isOn);
+    }
+    
+    function getDashboardControllerBase() {
+      return AI_STATUS_API_BASE_URL || ravenCtl.getControllerBaseUrl();
+    }
+
+    // Controller /api/ai/status is source of truth; bridge /enabled only when it exists
+    async function loadInitialAIState() {
+      try {
+        await discoverAIStatusApiBaseUrl(true);
+      } catch (err) {
+        console.debug('Could not discover AI Status API:', err);
+      }
+      try {
+        const enabledState = await ravenCtl.resolveDashboardAiEnabled(
+          ravenCtl.getBridgeBaseUrl(),
+          getDashboardControllerBase(),
+        );
+        if (enabledState.ok && typeof enabledState.enabled === 'boolean') {
+          updateToggleUI(enabledState.enabled);
+        } else if (enabledState.source === 'bridge-legacy') {
+          updateToggleUI(true);
+        }
+      } catch (err) {
+        if (!ravenCtl.isNetworkUnreachableError(err)) {
+          console.debug('Could not load dashboard AI enabled state:', err);
+        }
+      }
+      try {
+        const response = await fetch(`${getDashboardControllerBase()}/api/ai/mode`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.mode === 'MUTED') {
+            updateToggleUI(false);
+          } else if (data.mode) {
+            updateToggleUI(true);
+            if (data.mode === 'COPILOT') dashboardPresenterMode.value = 'copilot';
+            else if (data.mode === 'CHAT' || data.mode === 'JUST_CHATTING') dashboardPresenterMode.value = 'onstream';
+            const aiModeSelector = document.getElementById('ai-mode-selector');
+            if (aiModeSelector) aiModeSelector.value = data.mode;
+          }
+        }
+      } catch (err) {
+        console.debug('Could not load initial AI mode:', err);
+      }
+    }
+    
+    // Connection status monitoring
+    const connectionStatusDot = document.getElementById('ai-connection-status');
+    const connectionStatusLabel = document.getElementById('ai-connection-label');
+    let lastConnectionCheck = 0;
+    let connectionCheckInterval = null;
+    
+    let connectionCheckInFlight = false;
+
+    async function checkConnectionStatus() {
+      const now = Date.now();
+      if (connectionCheckInFlight) return;
+      if (now - lastConnectionCheck < 3000) return;
+      lastConnectionCheck = now;
+
+      const wasConnected = connectionStatusLabel && connectionStatusLabel.classList.contains('connected');
+      if (!wasConnected) {
+        updateConnectionStatus('checking');
+      }
+      connectionCheckInFlight = true;
+      try {
+        let result = null;
+        if (window.electronAPI && typeof window.electronAPI.ravenConnectionStatus === 'function') {
+          result = await window.electronAPI.ravenConnectionStatus();
+        }
+        if (!result) {
+          await discoverAIStatusApiBaseUrl(false).catch(() => {});
+          result = await ravenCtl.checkDashboardConnection(
+            ravenCtl.getBridgeBaseUrl(),
+            getDashboardControllerBase(),
+          );
+        }
+        if (window.vdServiceGates && window.vdServiceGates.refreshRavenGate) {
+          window.vdServiceGates.refreshRavenGate().catch(() => {});
+        }
+        if (result && result.connected) {
+          updateConnectionStatus('connected');
+          if (connectionStatusLabel && result.source) {
+            const via = result.httpReachable === false ? 'process is running; status API not answering yet' : result.source;
+            connectionStatusLabel.title = `Raven reachable (${via})`;
+          }
+        } else {
+          updateConnectionStatus('disconnected');
+          if (connectionStatusLabel) {
+            connectionStatusLabel.title = 'Start Raven: Tools → Raven AI → Start Raven AI';
+          }
+        }
+      } catch (err) {
+        console.debug('Raven dashboard connection check failed:', err);
+        updateConnectionStatus('disconnected');
+      } finally {
+        connectionCheckInFlight = false;
+      }
+    }
+    
+    function updateConnectionStatus(status) {
+      if (!connectionStatusDot || !connectionStatusLabel) return;
+      
+      // Remove all status classes
+      connectionStatusDot.classList.remove('connected', 'disconnected', 'checking');
+      connectionStatusLabel.classList.remove('connected', 'disconnected', 'checking');
+      
+      // Add current status class
+      connectionStatusDot.classList.add(status);
+      connectionStatusLabel.classList.add(status);
+      
+      // Update label text
+      if (status === 'connected') {
+        connectionStatusLabel.textContent = 'Connected';
+      } else if (status === 'disconnected') {
+        connectionStatusLabel.textContent = 'Disconnected';
+      } else {
+        connectionStatusLabel.textContent = 'Checking...';
+      }
+    }
+    
+    window.addEventListener('vd-raven-refresh-connection', () => {
+      lastConnectionCheck = 0;
+      checkConnectionStatus();
+    });
+
+    if (window.vdPoll) {
+      window.vdPoll.createAdaptivePoll({
+        baseIntervalMs: 8000,
+        maxIntervalMs: 60000,
+        when: () => {
+          const dash = document.getElementById('ai-dashboard-controls');
+          return window.vdPoll.isElementActive(dash);
+        },
+        tick: async () => {
+          await checkConnectionStatus();
+          return true;
+        },
+      }).start();
+    } else {
+      checkConnectionStatus();
+      connectionCheckInterval = setInterval(checkConnectionStatus, 8000);
+    }
+    checkConnectionStatus();
+    
+    // Also check after toggle or mode change
+    const originalToggleClick = dashboardToggle.onclick;
+    dashboardToggle.addEventListener('click', () => {
+      setTimeout(checkConnectionStatus, 500);
+    }, { capture: false });
+    
+    dashboardPresenterMode.addEventListener('change', () => {
+      setTimeout(checkConnectionStatus, 500);
+    }, { capture: false });
+    
+    // Quick Say — same path as AI Audio Manual Speak (POST /api/dev/speak)
+    if (dashboardSayBtn && dashboardSayText && window.vdRavenManualSpeak) {
+      const quickSayStatus = document.getElementById('ai-dashboard-say-status');
+      const runQuickSay = async () => {
+        const text = dashboardSayText.value.trim();
+        if (!text) return;
+        dashboardSayBtn.disabled = true;
+        if (quickSayStatus) quickSayStatus.textContent = '';
+        try {
+          const result = await window.vdRavenManualSpeak.speakManualText(text, { respectAiToggle: true });
+          if (result.ok) {
+            dashboardSayText.value = '';
+            if (quickSayStatus) quickSayStatus.textContent = '';
+            window.vdRavenManualSpeak.presentSpeakResult(result, {
+              onSuccess: () => {
+                if (window.notificationManager) {
+                  window.notificationManager.show('Cashe will say it.', 'success');
+                }
+              },
+            });
+          } else if (!result.skipped) {
+            const msg = result.error || 'Could not speak';
+            if (quickSayStatus) quickSayStatus.textContent = msg;
+            window.vdRavenManualSpeak.presentSpeakResult(result);
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (quickSayStatus) quickSayStatus.textContent = msg;
+          console.error('❌ Quick Say failed:', err);
+          alert(msg);
+        } finally {
+          dashboardSayBtn.disabled = false;
+        }
+      };
+      dashboardSayBtn.addEventListener('click', () => {
+        runQuickSay();
+      });
+      dashboardSayText.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          runQuickSay();
+        }
+      });
+    }
+  }
+  
+  // Setup D&D Controls
+  function setupDndControls() {
+    const dndStartBtn = document.getElementById('dnd-start-btn');
+    const dndStopBtn = document.getElementById('dnd-stop-btn');
+    
+    if (!dndStartBtn) {
+      console.error('❌ D&D Start button not found!');
+      return;
+    }
+    if (!dndStopBtn) {
+      console.warn('⚠️ D&D Stop button not found');
+    }
+    console.log('✅ D&D controls setup: Start button found');
+    
+    // Start D&D Campaign
+    if (dndStartBtn) {
+      console.log('✅ D&D Start button found, attaching click handler');
+      dndStartBtn.addEventListener('click', async () => {
+        try {
+          console.log('🎲 Starting D&D campaign...');
+          console.log('   Button clicked, beginning startup sequence...');
+          
+          // Disable button immediately for feedback
+          if (dndStartBtn) {
+            dndStartBtn.disabled = true;
+            dndStartBtn.textContent = 'Starting...';
+          }
+          
+          // Step 1: Enable D&D mode first
+          console.log('   Step 1: Setting AI mode to DND...');
+          try {
+            const modeResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mode: 'DND' }),
+            });
+            
+            if (!modeResponse.ok) {
+              const errorText = await modeResponse.text();
+              console.warn(`⚠️ Mode API returned ${modeResponse.status}: ${errorText}`);
+              // Continue anyway - mode might already be set
+            } else {
+              console.log('   ✅ AI mode set to DND');
+            }
+          } catch (modeErr) {
+            console.error('❌ Error setting AI mode:', modeErr);
+            throw new Error(`Failed to set AI mode: ${modeErr.message}`);
+          }
+          
+          // Step 2: Enable D&D mode via D&D API
+          console.log('   Step 2: Enabling D&D mode...');
+          try {
+            const dndModeResponse = await fetch('http://localhost:3007/api/dnd/mode/enable', {
+              method: 'POST',
+            });
+            
+            if (!dndModeResponse.ok) {
+              const errorText = await dndModeResponse.text();
+              console.warn(`⚠️ D&D mode API error: ${dndModeResponse.status} ${errorText}`);
+              // Continue anyway - might already be enabled
+            } else {
+              console.log('   ✅ D&D mode enabled');
+            }
+          } catch (dndModeErr) {
+            console.error('❌ Error enabling D&D mode:', dndModeErr);
+            throw new Error(`Failed to enable D&D mode: ${dndModeErr.message}`);
+          }
+          
+          // Step 3: Check if campaign exists, if not start new series
+          console.log('   Step 3: Checking campaign state...');
+          let campaignState = null;
+          try {
+            const stateResponse = await fetch('http://localhost:3007/api/dnd/state');
+            
+            if (stateResponse.ok) {
+              campaignState = await stateResponse.json();
+              console.log('   ✅ Campaign state retrieved:', campaignState?.seriesId ? `Series ${campaignState.seriesId}` : 'No series');
+            } else {
+              console.log(`   ⚠️ No existing campaign found (${stateResponse.status})`);
+            }
+          } catch (stateErr) {
+            console.error('❌ Error checking campaign state:', stateErr);
+            throw new Error(`Failed to check campaign state: ${stateErr.message}`);
+          }
+          
+          if (!campaignState || !campaignState.seriesId) {
+            // Start new series with default party
+            console.log('   Step 4: Starting new campaign series...');
+            const defaultParty = {
+              characters: [
+                { name: 'Aria', class: 'Wizard', race: 'Elf', level: 3, xp: 900, xpToNext: 600, hp: 20, maxHp: 20, ac: 12, spellSlots: { '1': 4, '2': 2 }, skills: { 'Arcana': 5, 'Investigation': 4, 'History': 4 }, conditions: [], inventory: ['Staff', 'Spellbook'] },
+                { name: 'Thorin', class: 'Fighter', race: 'Dwarf', level: 3, xp: 900, xpToNext: 600, hp: 32, maxHp: 32, ac: 18, skills: { 'Athletics': 5, 'Intimidation': 3, 'Survival': 4 }, conditions: [], inventory: ['Longsword', 'Shield', 'Chainmail'] },
+                { name: 'Luna', class: 'Rogue', race: 'Halfling', level: 3, xp: 900, xpToNext: 600, hp: 24, maxHp: 24, ac: 15, skills: { 'Stealth': 7, 'Sleight of Hand': 6, 'Perception': 5 }, conditions: [], inventory: ['Daggers', 'Thieves\' Tools'] },
+                { name: 'Kael', class: 'Cleric', race: 'Human', level: 3, xp: 900, xpToNext: 600, hp: 28, maxHp: 28, ac: 16, spellSlots: { '1': 4, '2': 2 }, skills: { 'Medicine': 5, 'Religion': 4, 'Insight': 4 }, conditions: [], inventory: ['Mace', 'Holy Symbol', 'Chain Shirt'] },
+              ],
+              gold: 150,
+              level: 3,
+            };
+            
+            console.log('   Sending series start request...');
+            const seriesResponse = await fetch('http://localhost:3007/api/dnd/series/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ party: defaultParty }),
+            });
+            
+            if (!seriesResponse.ok) {
+              const errorText = await seriesResponse.text();
+              console.error(`❌ Series start failed: ${seriesResponse.status} ${errorText}`);
+              throw new Error(`Failed to start new campaign series: ${seriesResponse.status} ${errorText}`);
+            }
+            
+            campaignState = await seriesResponse.json();
+            console.log('   ✅ Started new D&D campaign series:', campaignState?.seriesId || 'Unknown ID');
+          } else {
+            console.log('   ✅ Using existing campaign');
+          }
+          
+          // Step 5: Update UI
+          console.log('   Step 5: Updating UI...');
+          if (dndStartBtn) {
+            dndStartBtn.disabled = true;
+            dndStartBtn.textContent = 'Started';
+          }
+          if (dndStopBtn) dndStopBtn.disabled = false;
+          
+          // Load and display campaign state
+          loadDndCampaignState();
+          
+          // Show success
+          if (window.notificationManager) {
+            window.notificationManager.show('D&D campaign started!', 'success');
+          }
+          
+          console.log('✅ D&D campaign started successfully');
+        } catch (err) {
+          console.error('❌ Error starting D&D campaign:', err);
+          
+          // Re-enable button on error
+          if (dndStartBtn) {
+            dndStartBtn.disabled = false;
+            dndStartBtn.textContent = 'Start';
+          }
+          
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          alert(`Error starting D&D campaign:\n\n${errorMsg}\n\nCheck console for details.`);
+        }
+      });
+    }
+    
+    // Stop D&D Campaign
+    if (dndStopBtn) {
+      dndStopBtn.addEventListener('click', async () => {
+        try {
+          console.log('🎲 Stopping D&D campaign...');
+          
+          // Disable D&D mode
+          const dndModeResponse = await fetch('http://localhost:3007/api/dnd/mode/disable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fallbackMode: 'JUST_CHATTING' }),
+          });
+          
+          // Set mode back to JUST_CHATTING
+          await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'JUST_CHATTING' }),
+          });
+          
+          // Update UI
+          if (dndStartBtn) dndStartBtn.disabled = false;
+          if (dndStopBtn) dndStopBtn.disabled = true;
+          
+          // Hide panel
+          const dndPanel = document.getElementById('dnd-campaign-panel');
+          if (dndPanel) {
+            dndPanel.style.display = 'none';
+          }
+          
+          const dndBtn = document.getElementById('ai-dnd-btn');
+          if (dndBtn) {
+            dndBtn.classList.remove('active');
+            dndBtn.title = 'D&D Campaign';
+          }
+          
+          if (window.notificationManager) {
+            window.notificationManager.show('D&D campaign stopped', 'info');
+          }
+          
+          console.log('✅ D&D campaign stopped');
+        } catch (err) {
+          console.error('❌ Error stopping D&D campaign:', err);
+          alert(`Error stopping D&D campaign: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    }
+  }
+  
+  // Load and display D&D campaign state
+  async function loadDndCampaignState() {
+    try {
+      const response = await fetch('http://localhost:3007/api/dnd/state');
+      if (!response.ok) {
+        // Campaign not started yet
+        const partyList = document.getElementById('dnd-party-list');
+        const locationEl = document.getElementById('dnd-location');
+        const goldEl = document.getElementById('dnd-gold');
+        const sessionInfo = document.getElementById('dnd-session-info');
+        
+        if (partyList) partyList.textContent = 'No campaign active';
+        if (locationEl) locationEl.textContent = '-';
+        if (goldEl) goldEl.textContent = '-';
+        if (sessionInfo) sessionInfo.textContent = 'Not started';
+        
+        const dndStartBtn = document.getElementById('dnd-start-btn');
+        const dndStopBtn = document.getElementById('dnd-stop-btn');
+        if (dndStartBtn) dndStartBtn.disabled = false;
+        if (dndStopBtn) dndStopBtn.disabled = true;
+        return;
+      }
+      
+      const state = await response.json();
+      
+      // Update session info
+      const sessionInfo = document.getElementById('dnd-session-info');
+      if (sessionInfo) {
+        sessionInfo.textContent = `Session ${state.sessionNumber || 1}`;
+      }
+      
+      // Update location
+      const locationEl = document.getElementById('dnd-location');
+      if (locationEl && state.story) {
+        locationEl.textContent = state.story.location || 'Unknown';
+      }
+      
+      // Update gold
+      const goldEl = document.getElementById('dnd-gold');
+      if (goldEl && state.party) {
+        goldEl.textContent = state.party.gold || 0;
+      }
+      
+      // Update party display
+      const partyList = document.getElementById('dnd-party-list');
+      if (partyList && state.party && state.party.characters) {
+        const partyHtml = state.party.characters.map(char => {
+          const hpPercent = Math.round((char.hp / char.maxHp) * 100);
+          const hpColor = hpPercent > 60 ? 'var(--success-color)' : hpPercent > 30 ? '#ffa500' : 'var(--error-color)';
+          const raceDisplay = char.race ? ` ${char.race}` : '';
+          return `
+            <div style="margin-bottom: 6px; padding: 6px; background: var(--bg-primary); border-radius: 4px; border-left: 3px solid ${hpColor};">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <span style="font-weight: 600; color: var(--text-primary);">${char.name}</span>
+                <span style="font-size: 9px; color: var(--text-tertiary);">Lv.${char.level} ${char.class}${raceDisplay}</span>
+              </div>
+              <div style="font-size: 9px; color: var(--text-secondary);">
+                HP: <span style="color: ${hpColor};">${char.hp}/${char.maxHp}</span> | AC: ${char.ac}
+                ${char.conditions && char.conditions.length > 0 ? ` | ${char.conditions.join(', ')}` : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+        partyList.innerHTML = partyHtml || 'No party members';
+      }
+      
+      // Update button states
+      const dndStartBtn = document.getElementById('dnd-start-btn');
+      const dndStopBtn = document.getElementById('dnd-stop-btn');
+      const dndModeStatus = await fetch('http://localhost:3007/api/dnd/mode/status').catch(() => null);
+      
+      if (dndModeStatus && dndModeStatus.ok) {
+        const modeData = await dndModeStatus.json();
+        const isActive = modeData.dndModeActive || modeData.isDndMode;
+        
+        if (dndStartBtn) dndStartBtn.disabled = isActive;
+        if (dndStopBtn) dndStopBtn.disabled = !isActive;
+      }
+    } catch (err) {
+      console.debug('Could not load D&D campaign state:', err);
+    }
+  }
+  
+  // Update AI Management Panel status indicator
+  async function updateAIManagementStatus() {
+    try {
+      const statusText = document.getElementById('ai-status-text');
+      const triviaBtn = document.getElementById('ai-trivia-btn');
+      const qaBtn = document.getElementById('ai-qa-btn');
+      
+      if (!statusText) return;
+      const mgmtPanel = document.getElementById('ai-management-panel');
+      if (window.vdPoll && !window.vdPoll.isElementActive(mgmtPanel)) return;
+      if (window.vdServiceGates && !window.vdServiceGates.shouldPollRavenController()) return;
+      
+      // Fetch detailed AI status from controller
+      let aiState = 'idle';
+      let aiStateDisplay = 'Idle';
+      let statusColor = 'var(--text-tertiary)';
+      
+      try {
+        const aiStatusResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/status`);
+        if (aiStatusResponse.ok) {
+          const aiStatus = await aiStatusResponse.json();
+          aiState = aiStatus.state || 'idle';
+          
+          // Update mode selector if mode is available
+          const modeSelector = document.getElementById('ai-mode-selector');
+          if (modeSelector && aiStatus.currentMode && modeSelector.value !== aiStatus.currentMode) {
+            modeSelector.value = aiStatus.currentMode;
+          }
+          
+          // Map states to display text and colors
+          const stateMap = {
+            'idle': { text: 'Idle', color: 'var(--text-tertiary)', emoji: '💤' },
+            'listening': { text: 'Listening...', color: 'var(--accent-primary)', emoji: '👂' },
+            'thinking': { text: 'Thinking...', color: '#ffa500', emoji: '🧠' },
+            'speaking': { text: 'Speaking...', color: '#28a745', emoji: '🗣️' },
+          };
+          
+          const stateInfo = stateMap[aiState] || stateMap['idle'];
+          aiStateDisplay = `${stateInfo.emoji} ${stateInfo.text}`;
+          statusColor = stateInfo.color;
+        }
+      } catch (e) {
+        // AI Status API might not be available, fall back to feature-based status
+        console.debug('AI Status API not available, using feature-based status');
+      }
+      
+      // Also check mode separately to ensure mode selector stays in sync
+      try {
+        const modeResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
+        if (modeResponse.ok) {
+          const modeData = await modeResponse.json();
+          const modeSelector = document.getElementById('ai-mode-selector');
+          if (modeSelector && modeData.mode && modeSelector.value !== modeData.mode) {
+            modeSelector.value = modeData.mode;
+          }
+        }
+      } catch (e) {
+        // Silently fail
+      }
+      
+      // Check trivia status (only when trivia UI is open)
+      let triviaActive = false;
+      const triviaOverlayOpen =
+        window.vdServiceGates && window.vdServiceGates.trivia && window.vdServiceGates.trivia.overlayVisible;
+      if (triviaOverlayOpen) {
+        try {
+          const triviaResponse = await fetch('http://localhost:3003/api/trivia/status');
+          if (triviaResponse.ok) {
+            const triviaStatus = await triviaResponse.json();
+            triviaActive = triviaStatus && triviaStatus.active;
+            if (window.vdServiceGates.trivia) {
+              window.vdServiceGates.trivia.sessionActive = triviaActive;
+            }
+          }
+        } catch (e) {
+          // Trivia API might not be available
+        }
+      }
+      
+      // Check Q&A status
+      const qaEnabled = document.getElementById('qa-mode-enabled');
+      const qaActive = qaEnabled && qaEnabled.checked;
+      
+      // Update buttons
+      if (triviaBtn) {
+        if (triviaActive) {
+          triviaBtn.classList.add('active');
+          triviaBtn.title = 'Trivia Active - Click to Stop';
+        } else {
+          triviaBtn.classList.remove('active');
+          triviaBtn.title = 'Start/Stop Trivia';
+        }
+      }
+      
+      if (qaBtn) {
+        if (qaActive) {
+          qaBtn.classList.add('active');
+          qaBtn.title = 'Q&A Mode Active - Click to Stop';
+        } else {
+          qaBtn.classList.remove('active');
+          qaBtn.title = 'Toggle Q&A Mode';
+        }
+      }
+      
+      // Update status text with AI state (or fallback to feature-based)
+      const statusDetails = document.getElementById('ai-status-details');
+      
+      if (aiState !== 'idle' || (!triviaActive && !qaActive)) {
+        // Show detailed AI state
+        statusText.textContent = aiStateDisplay;
+        statusText.style.color = statusColor;
+        
+        // Show additional details if available
+        if (statusDetails) {
+          try {
+            const aiStatusResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/status`);
+            if (aiStatusResponse.ok) {
+              const aiStatus = await aiStatusResponse.json();
+              const details = [];
+              if (aiStatus.queueDepth > 0) {
+                details.push(`${aiStatus.queueDepth} in queue`);
+              }
+              if (aiStatus.currentMode) {
+                details.push(`Mode: ${aiStatus.currentMode}`);
+                
+                // Update mode selector dropdown
+                const modeSelector = document.getElementById('ai-mode-selector');
+                if (modeSelector && modeSelector.value !== aiStatus.currentMode) {
+                  modeSelector.value = aiStatus.currentMode;
+                }
+                
+                // Update mode display text
+                const modeText = document.getElementById('ai-mode-text');
+                if (modeText) {
+                  const modeLabels = {
+                    'JUST_CHATTING': 'Just Chatting',
+                    'CHILL': 'Chill',
+                    'HYPE': 'Hype',
+                    'QA': 'Q&A',
+                    'STORYTIME': 'Storytime',
+                    'DND': 'D&D',
+                    'AFK': 'AFK',
+                    'SAFE': 'Safe',
+                    'MUTED': 'Muted'
+                  };
+                  modeText.textContent = modeLabels[aiStatus.currentMode] || aiStatus.currentMode;
+                }
+              }
+              statusDetails.textContent = details.length > 0 ? details.join(' • ') : '';
+            }
+          } catch (e) {
+            statusDetails.textContent = '';
+          }
+        }
+      } else {
+        // Fallback: show active features if AI is idle but features are active
+        const activeFeatures = [];
+        if (triviaActive) activeFeatures.push('Trivia');
+        if (qaActive) activeFeatures.push('Q&A');
+        
+        if (activeFeatures.length > 0) {
+          statusText.textContent = `Active: ${activeFeatures.join(', ')}`;
+          statusText.style.color = 'var(--accent-primary)';
+          if (statusDetails) statusDetails.textContent = '';
+        } else {
+          statusText.textContent = aiStateDisplay;
+          statusText.style.color = statusColor;
+          if (statusDetails) statusDetails.textContent = '';
+        }
+      }
+    } catch (err) {
+      console.debug('AI management status update failed:', err);
+    }
+  }
+  
+  // Setup AI Control Panel
+  function setupAIControlPanel() {
+    // Setup tab switching
+    const tabButtons = document.querySelectorAll('.ai-tab-btn');
+    const tabContents = document.querySelectorAll('.ai-tab-content');
+    
+    // Initialize: Show only the active tab (Analytics by default)
+    tabContents.forEach(content => {
+      content.style.display = 'none';
+    });
+    const activeTab = document.querySelector('.ai-tab-btn.active');
+    if (activeTab) {
+      const targetTab = activeTab.dataset.tab;
+      const targetContent = document.getElementById(`ai-tab-${targetTab}`);
+      if (targetContent) {
+        targetContent.style.display = 'block';
+      }
+    }
+    
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetTab = btn.dataset.tab;
+        
+        // Update button states
+        tabButtons.forEach(b => {
+          b.classList.remove('active');
+          b.style.borderBottom = 'none';
+          b.style.color = 'var(--text-secondary)';
+          b.style.fontWeight = 'normal';
+        });
+        btn.classList.add('active');
+        btn.style.borderBottom = '2px solid var(--accent-primary)';
+        btn.style.color = 'var(--accent-primary)';
+        btn.style.fontWeight = '600';
+        
+        // Show/hide tab contents
+        tabContents.forEach(content => {
+          content.style.display = 'none';
+        });
+        const targetContent = document.getElementById(`ai-tab-${targetTab}`);
+        if (targetContent) {
+          targetContent.style.display = 'block';
+        }
+      });
+    });
+    
+    // Setup Analytics Dashboard
+    setupAnalyticsDashboard();
+    
+    // Setup Q&A Mode controls
+    setupQAModeControls();
+    
+    // Setup Segment controls
+    setupSegmentControls();
+    
+    if (window.vdPoll) {
+      window.vdPoll.createAdaptivePoll({
+        baseIntervalMs: 8000,
+        maxIntervalMs: 60000,
+        when: () => {
+          const overlay = document.getElementById('overlay-widget');
+          const statusTab = document.getElementById('ai-tab-status');
+          const tabOn =
+            statusTab && (statusTab.style.display === 'block' || !statusTab.style.display);
+          return window.vdPoll.isElementActive(overlay) && tabOn;
+        },
+        tick: async () => {
+          await updateAIStatus();
+          return true;
+        },
+      }).start();
+    } else {
+      updateAIStatus();
+      setInterval(updateAIStatus, 8000);
+    }
+  }
+  
+  
+  // Setup Analytics Dashboard
+  function setupAnalyticsDashboard() {
+    console.log('📊 Setting up Analytics Dashboard');
+    
+    // Export buttons
+    const exportJsonBtn = document.getElementById('analytics-export-json');
+    const exportCsvBtn = document.getElementById('analytics-export-csv');
+    
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener('click', async () => {
+        try {
+          const response = await fetch('http://localhost:3005/api/analytics/export?format=json');
+          if (!response.ok) throw new Error('Export failed');
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `analytics-export-${Date.now()}.json`;
+          a.click();
+          window.URL.revokeObjectURL(url);
+        } catch (err) {
+          console.error('❌ Error exporting JSON:', err);
+          alert('Failed to export analytics data');
+        }
+      });
+    }
+    
+    if (exportCsvBtn) {
+      exportCsvBtn.addEventListener('click', async () => {
+        try {
+          const response = await fetch('http://localhost:3005/api/analytics/export?format=csv');
+          if (!response.ok) throw new Error('Export failed');
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `analytics-export-${Date.now()}.csv`;
+          a.click();
+          window.URL.revokeObjectURL(url);
+        } catch (err) {
+          console.error('❌ Error exporting CSV:', err);
+          alert('Failed to export analytics data');
+        }
+      });
+    }
+    
+    if (window.vdPoll) {
+      window.vdPoll.createAdaptivePoll({
+        baseIntervalMs: 5000,
+        maxIntervalMs: 60000,
+        when: () => {
+          const tab = document.getElementById('ai-tab-analytics');
+          return tab && tab.style.display === 'block';
+        },
+        tick: async () => updateAnalytics(),
+      }).start();
+    } else {
+      updateAnalytics();
+      setInterval(updateAnalytics, 5000);
+    }
+  }
+  
+  // Update Analytics Dashboard
+  async function updateAnalytics() {
+    try {
+      const tab = document.getElementById('ai-tab-analytics');
+      if (tab && tab.style.display !== 'block') return false;
+      const response = await fetch('http://localhost:3005/api/analytics/realtime');
+      if (!response.ok) return false;
+      
+      const data = await response.json();
+      
+      // Update real-time metrics
+      const responseRateEl = document.getElementById('analytics-response-rate');
+      const queueDepthEl = document.getElementById('analytics-queue-depth');
+      const totalCostEl = document.getElementById('analytics-total-cost');
+      const totalTokensEl = document.getElementById('analytics-total-tokens');
+      const totalResponsesEl = document.getElementById('analytics-total-responses');
+      const avgResponseTimeEl = document.getElementById('analytics-avg-response-time');
+      const uptimeEl = document.getElementById('analytics-uptime');
+      const lastMinuteEl = document.getElementById('analytics-last-minute');
+      const lastHourEl = document.getElementById('analytics-last-hour');
+      const costHourEl = document.getElementById('analytics-cost-hour');
+      
+      if (responseRateEl) responseRateEl.textContent = `${data.current.responseRate}/min`;
+      if (queueDepthEl) queueDepthEl.textContent = data.current.queueDepth;
+      if (totalCostEl) totalCostEl.textContent = `$${data.session.totalCost.toFixed(4)}`;
+      if (totalTokensEl) totalTokensEl.textContent = data.tokens.total.toLocaleString();
+      if (totalResponsesEl) totalResponsesEl.textContent = data.session.totalResponses;
+      if (avgResponseTimeEl) {
+        const avgMs = data.session.avgResponseTime || 0;
+        avgResponseTimeEl.textContent = avgMs > 1000 ? `${(avgMs / 1000).toFixed(1)}s` : `${Math.round(avgMs)}ms`;
+      }
+      if (uptimeEl) {
+        const seconds = data.current.uptime;
+        const hours = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+        uptimeEl.textContent = hours > 0 ? `${hours}h ${mins}m` : `${mins}m ${secs}s`;
+      }
+      if (lastMinuteEl) lastMinuteEl.textContent = data.recent.responsesLastMinute;
+      if (lastHourEl) lastHourEl.textContent = data.recent.responsesLastHour;
+      if (costHourEl) costHourEl.textContent = `$${data.recent.costLastHour.toFixed(4)}`;
+      
+      // Update top chatters
+      try {
+        const chattersResponse = await fetch('http://localhost:3005/api/analytics/top-chatters?limit=5');
+        if (chattersResponse.ok) {
+          const chattersData = await chattersResponse.json();
+          const chattersEl = document.getElementById('analytics-top-chatters');
+          if (chattersEl) {
+            if (chattersData.chatters && chattersData.chatters.length > 0) {
+              chattersEl.innerHTML = chattersData.chatters.map((chatter, idx) => 
+                `<div style="margin-bottom: 4px;">
+                  <span style="color: var(--text-primary); font-weight: 600;">${idx + 1}. ${chatter.username}</span>
+                  <span style="color: var(--text-tertiary); margin-left: 8px;">${chatter.messageCount} messages</span>
+                </div>`
+              ).join('');
+            } else {
+              chattersEl.textContent = 'No chat data yet';
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore errors for top chatters
+      }
+      return true;
+    } catch (err) {
+      if (window.vdPoll && window.vdPoll.isLocalFetchError(err)) return false;
+      console.debug('Analytics update failed:', err);
+      return false;
+    }
+  }
+  
+  // Setup Q&A Mode Controls
+  function setupQAModeControls() {
+    const qaStartBtn = document.getElementById('qa-start-btn');
+    const qaStopBtn = document.getElementById('qa-stop-btn');
+    const qaEnabledCheckbox = document.getElementById('qa-mode-enabled');
+    
+    if (qaStartBtn) {
+      qaStartBtn.addEventListener('click', async () => {
+        try {
+          console.log('🎯 Starting Q&A mode...');
+          
+          // Call API to set mode to QA
+          const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'QA' }),
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to start Q&A mode: ${response.statusText}`);
+          }
+          
+          const result = await response.json();
+          console.log('✅ Q&A mode started:', result);
+          
+          if (qaEnabledCheckbox) qaEnabledCheckbox.checked = true;
+          qaStartBtn.disabled = true;
+          if (qaStopBtn) qaStopBtn.disabled = false;
+          updateAIStatus();
+        } catch (err) {
+          console.error('❌ Error starting Q&A mode:', err);
+          alert(`Error starting Q&A mode: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    }
+    
+    if (qaStopBtn) {
+      qaStopBtn.addEventListener('click', async () => {
+        try {
+          console.log('🎯 Stopping Q&A mode...');
+          
+          // Call API to set mode back to JUST_CHATTING (default)
+          const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'JUST_CHATTING' }),
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to stop Q&A mode: ${response.statusText}`);
+          }
+          
+          const result = await response.json();
+          console.log('✅ Q&A mode stopped:', result);
+          
+          if (qaEnabledCheckbox) qaEnabledCheckbox.checked = false;
+          if (qaStartBtn) qaStartBtn.disabled = false;
+          qaStopBtn.disabled = true;
+          updateAIStatus();
+        } catch (err) {
+          console.error('❌ Error stopping Q&A mode:', err);
+          alert(`Error stopping Q&A mode: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    }
+    
+    // Check current mode on load
+    checkCurrentMode();
+  }
+  
+  // Check current mode and update UI
+  async function checkCurrentMode() {
+    try {
+      const response = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
+      if (response.ok) {
+        const data = await response.json();
+        const qaEnabledCheckbox = document.getElementById('qa-mode-enabled');
+        const qaStartBtn = document.getElementById('qa-start-btn');
+        const qaStopBtn = document.getElementById('qa-stop-btn');
+        
+        if (data.mode === 'QA') {
+          if (qaEnabledCheckbox) qaEnabledCheckbox.checked = true;
+          if (qaStartBtn) qaStartBtn.disabled = true;
+          if (qaStopBtn) qaStopBtn.disabled = false;
+        } else {
+          if (qaEnabledCheckbox) qaEnabledCheckbox.checked = false;
+          if (qaStartBtn) qaStartBtn.disabled = false;
+          if (qaStopBtn) qaStopBtn.disabled = true;
+        }
+      }
+    } catch (err) {
+      console.debug('Could not check current mode:', err);
+    }
+  }
+  
+  // Setup Segment Controls
+  function setupSegmentControls() {
+    const segmentSaveBtn = document.getElementById('segment-save-btn');
+    const quickBtns = document.querySelectorAll('.segment-quick-btn');
+    
+    if (segmentSaveBtn) {
+      segmentSaveBtn.addEventListener('click', async () => {
+        try {
+          const segmentSelector = document.getElementById('segment-selector');
+          const segmentBehavior = document.getElementById('segment-behavior');
+          const segment = segmentSelector ? segmentSelector.value : 'normal';
+          const behavior = segmentBehavior ? segmentBehavior.value : 'normal';
+          
+          // TODO: Call API to save segment settings
+          console.log('Saving segment settings:', { segment, behavior });
+          if (window.notificationManager) {
+            window.notificationManager.show('Segment settings saved!', 'success');
+          } else {
+            alert('Segment settings saved!');
+          }
+        } catch (err) {
+          console.error('Error saving segment settings:', err);
+        }
+      });
+    }
+    
+    quickBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const segment = btn.dataset.segment;
+        const segmentSelector = document.getElementById('segment-selector');
+        const segmentBehavior = document.getElementById('segment-behavior');
+        
+        if (segmentSelector) segmentSelector.value = segment;
+        
+        // Set appropriate behavior based on segment
+        const behaviorMap = {
+          'normal': 'normal',
+          'gaming': 'chatty',
+          'just-chatting': 'chatty',
+          'hype': 'hype'
+        };
+        if (segmentBehavior) {
+          segmentBehavior.value = behaviorMap[segment] || 'normal';
+        }
+        
+        console.log('Quick switch to segment:', segment);
+      });
+    });
+  }
+  
+  // Update AI Status Overview
+  async function updateAIStatus() {
+    const overlay = document.getElementById('overlay-widget');
+    if (window.vdPoll && !window.vdPoll.isElementActive(overlay)) return false;
+    const pollRaven = window.vdServiceGates && window.vdServiceGates.shouldPollRavenController();
+    // Also update mode selector if it exists
+    const modeSelector = document.getElementById('ai-mode-selector');
+    if (modeSelector && pollRaven) {
+      try {
+        const modeResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/mode`);
+        if (modeResponse.ok) {
+          const modeData = await modeResponse.json();
+          if (modeData.mode && modeSelector.value !== modeData.mode) {
+            modeSelector.value = modeData.mode;
+            
+            // Update mode display text
+            const modeText = document.getElementById('ai-mode-text');
+            if (modeText) {
+              const modeLabels = {
+                'JUST_CHATTING': 'Just Chatting',
+                'CHILL': 'Chill',
+                'HYPE': 'Hype',
+                'QA': 'Q&A',
+                'STORYTIME': 'Storytime',
+                'DND': 'D&D',
+                'AFK': 'AFK',
+                'SAFE': 'Safe',
+                'MUTED': 'Muted'
+              };
+              modeText.textContent = modeLabels[modeData.mode] || modeData.mode;
+            }
+          }
+        }
+      } catch (err) {
+        // Silently fail - API might not be available
+      }
+    }
+    try {
+      let triviaActive = false;
+      const triviaOpen =
+        window.vdServiceGates &&
+        window.vdServiceGates.trivia &&
+        (window.vdServiceGates.trivia.overlayVisible || window.vdServiceGates.trivia.sessionActive);
+      if (triviaOpen) {
+        try {
+          const triviaResponse = await fetch('http://localhost:3003/api/trivia/status');
+          if (triviaResponse.ok) {
+            const triviaStatus = await triviaResponse.json();
+            triviaActive = triviaStatus && triviaStatus.active;
+          }
+        } catch (e) {
+          // Trivia API might not be available
+        }
+      }
+      
+      const activeFeatures = [];
+      if (triviaActive) activeFeatures.push('Trivia');
+      
+      const qaEnabled = document.getElementById('qa-mode-enabled');
+      if (qaEnabled && qaEnabled.checked) activeFeatures.push('Q&A');
+      
+      const statusText = document.getElementById('ai-status-text');
+      const featuresText = document.getElementById('ai-features-text');
+      
+      if (statusText) {
+        statusText.textContent = activeFeatures.length > 0 ? 'Active' : 'Idle';
+      }
+      if (featuresText) {
+        featuresText.textContent = activeFeatures.length > 0 ? activeFeatures.join(', ') : 'None';
+      }
+      return true;
+    } catch (err) {
+      console.debug('AI status update failed:', err);
+      return false;
+    }
+  }
+  
+  // Trivia Controls
+  function setupTriviaControls() {
+    console.log('🎮 Setting up Trivia controls');
+    
+    // Category selector - show/hide custom category input
+    const categorySelect = document.getElementById('trivia-category');
+    const customCategoryInput = document.getElementById('trivia-custom-category');
+    if (categorySelect && customCategoryInput) {
+      categorySelect.addEventListener('change', (e) => {
+        if (e.target.value === 'custom') {
+          customCategoryInput.style.display = 'block';
+        } else {
+          customCategoryInput.style.display = 'none';
+        }
+      });
+    }
+    
+    // Start Trivia button
+    const startTriviaBtn = document.getElementById('start-trivia-btn');
+    if (startTriviaBtn) {
+      startTriviaBtn.addEventListener('click', async () => {
+        await startTriviaSession();
+      });
+    }
+    
+    // Stop Trivia button
+    const stopTriviaBtn = document.getElementById('stop-trivia-btn');
+    if (stopTriviaBtn) {
+      stopTriviaBtn.addEventListener('click', () => {
+        stopTriviaSession();
+      });
+    }
+    
+    // Award All Winners button
+    const awardAllBtn = document.getElementById('award-all-winners-btn');
+    if (awardAllBtn) {
+      awardAllBtn.addEventListener('click', async () => {
+        await awardAllWinners();
+      });
+    }
+    
+    // Export Winners button
+    const exportWinnersBtn = document.getElementById('export-winners-btn');
+    if (exportWinnersBtn) {
+      exportWinnersBtn.addEventListener('click', () => {
+        exportWinnersList();
+      });
+    }
+    
+    // Load pending awards on overlay widget open
+    const overlayWidget = document.getElementById('overlay-widget');
+    if (overlayWidget) {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+            if (!overlayWidget.classList.contains('hidden')) {
+              loadPendingAwards();
+              updateTriviaUI();
+            }
+          }
+        });
+      });
+      observer.observe(overlayWidget, { attributes: true });
+    }
+    
+    if (window.vdPoll) {
+      window.vdPoll.createAdaptivePoll({
+        baseIntervalMs: 5000,
+        maxIntervalMs: 60000,
+        when: () => {
+          const overlay = document.getElementById('overlay-widget');
+          if (!window.vdPoll.isElementActive(overlay)) return false;
+          if (window.vdServiceGates && window.vdServiceGates.trivia) {
+            window.vdServiceGates.trivia.overlayVisible = true;
+          }
+          const triviaTab = document.getElementById('ai-tab-trivia');
+          return triviaTab && triviaTab.style.display === 'block';
+        },
+        tick: async () => {
+          await updateTriviaUI();
+          return true;
+        },
+      }).start();
+    } else {
+      setInterval(() => updateTriviaUI(), 5000);
+    }
+  }
+  
+  // Start Trivia Session
+  async function startTriviaSession() {
+    try {
+      const categorySelect = document.getElementById('trivia-category');
+      const customCategoryInput = document.getElementById('trivia-custom-category');
+      const difficultySelect = document.getElementById('trivia-difficulty');
+      const questionCountInput = document.getElementById('trivia-question-count');
+      const startBtn = document.getElementById('start-trivia-btn');
+      const statusEl = document.getElementById('trivia-generating-status');
+      
+      const category = categorySelect.value === 'custom' 
+        ? customCategoryInput.value.trim() 
+        : categorySelect.value;
+      const difficulty = difficultySelect.value;
+      const questionCount = parseInt(questionCountInput.value) || 10;
+      
+      if (!category) {
+        alert('Please select or enter a category');
+        return;
+      }
+      
+      if (questionCount < 5 || questionCount > 50) {
+        alert('Question count must be between 5 and 50');
+        return;
+      }
+      
+      // Show generating status
+      startBtn.disabled = true;
+      statusEl.style.display = 'block';
+      statusEl.textContent = `Generating ${questionCount} questions...`;
+      
+      // Call trivia API to start session
+      const response = await fetch('http://localhost:3003/api/trivia/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category,
+          difficulty,
+          questionCount,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(errorData.error || `Failed to start trivia: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Trivia session started:', data);
+      
+      // Update UI to show active trivia panel
+      document.getElementById('trivia-start-panel').style.display = 'none';
+      document.getElementById('trivia-active-panel').style.display = 'block';
+      document.getElementById('trivia-winners-panel').style.display = 'none';
+      
+      statusEl.textContent = 'Trivia started!';
+      setTimeout(() => {
+        statusEl.style.display = 'none';
+      }, 2000);
+      
+      // Start updating trivia UI
+      updateTriviaUI();
+    } catch (err) {
+      console.error('❌ Error starting trivia:', err);
+      alert(`Error starting trivia: ${err.message}`);
+      document.getElementById('start-trivia-btn').disabled = false;
+      document.getElementById('trivia-generating-status').style.display = 'none';
+    }
+  }
+  
+  // Stop Trivia Session
+  async function stopTriviaSession() {
+    try {
+      if (!confirm('Stop trivia session? Winners list will be compiled automatically.')) {
+        return;
+      }
+      
+      const response = await fetch('http://localhost:3003/api/trivia/stop', {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to stop trivia: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Trivia session stopped:', data);
+      
+      // Update UI to show winners panel (works for both modal and overlay)
+      const activePanel = document.getElementById('trivia-active-panel');
+      const winnersPanel = document.getElementById('trivia-winners-panel');
+      
+      if (activePanel) activePanel.style.display = 'none';
+      if (winnersPanel) winnersPanel.style.display = 'block';
+      
+      // Load pending awards
+      loadPendingAwards();
+      
+      // Add "Back to Start" button after winners are displayed
+      setupTriviaResetButton();
+      
+      // Ensure modal stays open
+      const triviaModal = document.getElementById('trivia-modal');
+      if (triviaModal) {
+        triviaModal.classList.remove('hidden');
+      }
+    } catch (err) {
+      console.error('❌ Error stopping trivia:', err);
+      alert(`Error stopping trivia: ${err.message}`);
+    }
+  }
+  
+  // Update Trivia UI (current question, timer, leaderboard)
+  async function updateTriviaUI() {
+    try {
+      const response = await fetch('http://localhost:3003/api/trivia/status');
+      if (!response.ok) return;
+      
+      const data = await response.json();
+      
+      if (data.active) {
+        // Show active panel, hide start and winners
+        document.getElementById('trivia-start-panel').style.display = 'none';
+        document.getElementById('trivia-active-panel').style.display = 'block';
+        document.getElementById('trivia-winners-panel').style.display = 'none';
+        
+        // Update current question
+        if (data.currentQuestion) {
+          document.getElementById('trivia-question-number').textContent = data.currentQuestion.number || '-';
+          document.getElementById('trivia-total-questions').textContent = data.totalQuestions || '-';
+          document.getElementById('trivia-question-text').textContent = data.currentQuestion.text || '-';
+          document.getElementById('trivia-timer').textContent = formatTime(data.timeRemaining || 0);
+        }
+        
+        // Update leaderboard
+        if (data.leaderboard && data.leaderboard.length > 0) {
+          const leaderboardList = document.getElementById('trivia-leaderboard-list');
+          leaderboardList.innerHTML = data.leaderboard.slice(0, 10).map((user, idx) => 
+            `<div style="padding: 4px 0; border-bottom: 1px solid var(--border-color);">
+              <span style="font-weight: 600;">${idx + 1}.</span> 
+              <span>${user.displayName || user.username}</span> 
+              <span style="float: right; color: var(--accent-primary);">${user.totalPoints} pts</span>
+            </div>`
+          ).join('');
+        } else {
+          document.getElementById('trivia-leaderboard-list').innerHTML = 'No scores yet...';
+        }
+      } else {
+        // Not active - check if there are pending awards
+        try {
+          const pendingResponse = await fetch('http://localhost:3003/api/trivia/pending-awards');
+          if (pendingResponse.ok) {
+            const pendingData = await pendingResponse.json();
+            if (pendingData && pendingData.awards && pendingData.awards.length > 0) {
+              // Show winners panel (loadPendingAwards will handle this)
+              await loadPendingAwards();
+              return;
+            }
+          }
+        } catch (e) {
+          // Ignore errors
+        }
+        // No pending awards - reset to start
+        resetTriviaUI();
+      }
+    } catch (err) {
+      // Silently fail - trivia might not be active
+      console.debug('Trivia status update failed:', err);
+      resetTriviaUI();
+    }
+  }
+  
+  // Reset Trivia UI to start state
+  function resetTriviaUI() {
+    document.getElementById('trivia-start-panel').style.display = 'block';
+    document.getElementById('trivia-active-panel').style.display = 'none';
+    document.getElementById('trivia-winners-panel').style.display = 'none';
+    
+    // Remove reset button if it exists
+    const resetBtn = document.getElementById('trivia-reset-btn');
+    if (resetBtn) {
+      resetBtn.remove();
+    }
+  }
+  
+  // Setup "Back to Start" button in winners panel
+  function setupTriviaResetButton() {
+    const winnersPanel = document.getElementById('trivia-winners-panel');
+    const resetBtn = document.getElementById('trivia-reset-btn');
+    
+    if (winnersPanel && !resetBtn) {
+      // Create reset button
+      const btn = document.createElement('button');
+      btn.id = 'trivia-reset-btn';
+      btn.className = 'overlay-action-btn';
+      btn.style.cssText = 'width: 100%; margin-top: 12px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color);';
+      btn.textContent = '🔄 Back to Start New Trivia';
+      btn.onclick = resetTriviaUI;
+      
+      // Insert after award actions
+      const awardActions = document.getElementById('trivia-award-actions');
+      if (awardActions && awardActions.parentNode) {
+        awardActions.parentNode.insertBefore(btn, awardActions.nextSibling);
+      }
+    }
+  }
+  
+  // Load Pending Awards
+  async function loadPendingAwards() {
+    try {
+      const response = await fetch('http://localhost:3003/api/trivia/pending-awards');
+      if (!response.ok) {
+        // No pending awards
+        document.getElementById('trivia-winners-panel').style.display = 'none';
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (data && !data.awarded && data.awards && data.awards.length > 0) {
+        // Show winners panel
+        document.getElementById('trivia-winners-panel').style.display = 'block';
+        
+        // Update summary
+        document.getElementById('trivia-total-winners').textContent = data.totalAwards || 0;
+        document.getElementById('trivia-total-channel-points').textContent = data.totalChannelPoints || 0;
+        document.getElementById('trivia-award-status-text').textContent = 'Pending';
+        
+        // Update winners table
+        const tbody = document.getElementById('trivia-winners-table-body');
+        tbody.innerHTML = data.awards.map((award, idx) => 
+          `<tr>
+            <td style="padding: 6px; text-align: center;">${award.position || idx + 1}</td>
+            <td style="padding: 6px;">${award.displayName || award.username}</td>
+            <td style="padding: 6px; text-align: right;">${award.triviaPoints}</td>
+            <td style="padding: 6px; text-align: right; color: var(--accent-primary); font-weight: 600;">${award.channelPoints}</td>
+            <td style="padding: 6px; text-align: right;">${award.correctAnswers || 0}</td>
+          </tr>`
+        ).join('');
+        
+        // Enable award button
+        document.getElementById('award-all-winners-btn').disabled = false;
+        document.getElementById('award-all-winners-btn').textContent = `🎁 Award All Winners (${data.totalChannelPoints} points)`;
+      } else if (data && data.awarded) {
+        // Already awarded - add back to start option
+        document.getElementById('trivia-award-status-text').textContent = `Awarded on ${new Date(data.awardedAt).toLocaleString()}`;
+        document.getElementById('award-all-winners-btn').disabled = true;
+        document.getElementById('award-all-winners-btn').textContent = '✅ Already Awarded';
+        
+        // Add "Back to Start" button if not already present
+        setupTriviaResetButton();
+      } else {
+        // No pending awards - reset to start panel
+        resetTriviaUI();
+      }
+    } catch (err) {
+      console.error('❌ Error loading pending awards:', err);
+    }
+  }
+  
+  // Award All Winners
+  async function awardAllWinners() {
+    try {
+      const pendingAwards = await fetch('http://localhost:3003/api/trivia/pending-awards').then(r => r.json());
+      if (!pendingAwards || pendingAwards.awarded) {
+        alert('Awards already processed or no pending awards');
+        return;
+      }
+      
+      const confirmed = confirm(`Award ${pendingAwards.totalChannelPoints} channel points to ${pendingAwards.totalAwards} winners?`);
+      if (!confirmed) return;
+      
+      // Show progress
+      const progressEl = document.getElementById('trivia-award-progress');
+      const progressText = document.getElementById('trivia-award-progress-text');
+      const progressBar = document.getElementById('trivia-award-progress-bar');
+      const awardBtn = document.getElementById('award-all-winners-btn');
+      
+      progressEl.style.display = 'block';
+      awardBtn.disabled = true;
+      
+      // Call API to award all
+      const response = await fetch('http://localhost:3003/api/trivia/award-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to award winners: ${response.statusText}`);
+      }
+      
+      const results = await response.json();
+      console.log('✅ Awards completed:', results);
+      
+      // Hide progress, show results
+      progressEl.style.display = 'none';
+      const resultsEl = document.getElementById('trivia-award-results');
+      resultsEl.style.display = 'block';
+      
+      document.getElementById('trivia-award-successful').textContent = results.successful || 0;
+      document.getElementById('trivia-award-failed').textContent = results.failed || 0;
+      document.getElementById('trivia-award-skipped').textContent = results.skipped || 0;
+      
+      // Show failed users if any
+      if (results.errors && results.errors.length > 0) {
+        const failedList = document.getElementById('trivia-award-failed-list');
+        failedList.innerHTML = results.errors.map(err => 
+          `<li>${err.username}: ${err.error}</li>`
+        ).join('');
+        document.getElementById('trivia-award-failed-users').style.display = 'block';
+      }
+      
+      // Update button state
+      awardBtn.disabled = true;
+      awardBtn.textContent = '✅ Already Awarded';
+      document.getElementById('trivia-award-status-text').textContent = 'Awarded';
+      
+      alert(`Awarded ${results.successful} winners! ${results.failed > 0 ? `${results.failed} failed.` : ''}`);
+      
+      // Reload pending awards to refresh UI
+      await loadPendingAwards();
+      
+      // Setup reset button after awards are processed
+      setupTriviaResetButton();
+    } catch (err) {
+      console.error('❌ Error awarding winners:', err);
+      alert(`Error awarding winners: ${err.message}`);
+      document.getElementById('trivia-award-progress').style.display = 'none';
+      document.getElementById('award-all-winners-btn').disabled = false;
+    }
+  }
+  
+  // Export Winners List
+  function exportWinnersList() {
+    // TODO: Implement CSV export
+    alert('CSV export coming soon!');
+  }
+  
+  // Format Time (MM:SS)
+  function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  
+  // Open Trivia Modal
+  function openTriviaModal() {
+    console.log('🔄 Opening Trivia Modal...');
+    const triviaModal = document.getElementById('trivia-modal');
+    if (triviaModal) {
+      console.log('✅ Trivia modal found, removing hidden class');
+      console.log('   Modal classes before:', triviaModal.className);
+      triviaModal.classList.remove('hidden');
+      console.log('   Modal classes after:', triviaModal.className);
+      console.log('   Modal display style:', window.getComputedStyle(triviaModal).display);
+      
+      // Ensure modal is visible
+      triviaModal.style.display = 'flex';
+      
+      // Load current trivia status
+      updateTriviaUI();
+      loadPendingAwards();
+    } else {
+      console.error('❌ Trivia modal not found in DOM! Looking for #trivia-modal');
+      // Try to find it in different ways
+      const allModals = document.querySelectorAll('[id*="trivia"]');
+      console.log('   Found elements with "trivia" in ID:', Array.from(allModals).map(el => el.id));
+      alert('Trivia modal not found. Please refresh the page.');
+    }
+  }
+  
+  // Close Trivia Modal
+  function closeTriviaModal() {
+    const triviaModal = document.getElementById('trivia-modal');
+    if (triviaModal) {
+      triviaModal.classList.add('hidden');
+    }
+  }
+  
+  // Setup Trivia Modal
+  function setupTriviaModal() {
+    const closeBtn = document.getElementById('trivia-modal-close');
+    const triviaModal = document.getElementById('trivia-modal');
+    
+    if (closeBtn) {
+      closeBtn.addEventListener('click', closeTriviaModal);
+    } else {
+      console.warn('⚠️ Trivia modal close button not found');
+    }
+    
+    // Close modal when clicking outside
+    if (triviaModal) {
+      triviaModal.addEventListener('click', (e) => {
+        if (e.target === triviaModal) {
+          closeTriviaModal();
+        }
+      });
+    } else {
+      console.warn('⚠️ Trivia modal not found in DOM');
+    }
+  }
+  
+  // VTuber Controls
+  function setupVTuberControls() {
+    console.log('🎭 Setting up VTuber controls');
+    
+    // Load VTuber config when overlay widget opens
+    const overlayWidget = document.getElementById('overlay-widget');
+    if (overlayWidget) {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+            if (!overlayWidget.classList.contains('hidden')) {
+              loadVTuberConfig();
+            }
+          }
+        });
+      });
+      observer.observe(overlayWidget, { attributes: true });
+    }
+    
+    // Copy VTuber URL button
+    const copyVTuberUrlBtn = document.getElementById('copy-vtuber-url');
+    if (copyVTuberUrlBtn) {
+      copyVTuberUrlBtn.addEventListener('click', () => {
+        const urlEl = document.getElementById('vtuber-overlay-url');
+        const url = urlEl ? urlEl.textContent : 'http://localhost:8080/overlay?name=vtuberOverlay';
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(url).then(() => {
+            const originalText = copyVTuberUrlBtn.textContent;
+            copyVTuberUrlBtn.textContent = '✓';
+            setTimeout(() => {
+              copyVTuberUrlBtn.textContent = originalText;
+            }, 1500);
+          });
+        }
+      });
+    }
+    
+    // State buttons
+    const stateButtons = document.querySelectorAll('.vtuber-state-btn');
+    stateButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const state = btn.dataset.state;
+        setVTuberState(state);
+      });
+    });
+    
+    // Image upload inputs (will need IPC handler for file uploads)
+    const imageInputs = document.querySelectorAll('.vtuber-image-input');
+    imageInputs.forEach(input => {
+      input.addEventListener('change', (e) => {
+        const state = input.dataset.state;
+        const file = e.target.files[0];
+        if (file) {
+          console.log(`📤 Would upload ${state} image:`, file.name);
+          showCustomAlert('File upload via UI coming soon. For now, place images in: {userDataPath}/vtuber/images/', 'info');
+        }
+      });
+    });
+    
+    // Position controls
+    const applyPositionBtn = document.getElementById('apply-vtuber-position');
+    if (applyPositionBtn) {
+      applyPositionBtn.addEventListener('click', () => {
+        applyVTuberPosition();
+      });
+    }
+    
+    // VTuber type selector
+    const vtuberTypeSelect = document.getElementById('vtuber-type-select');
+    const iframeConfig = document.getElementById('vtuber-iframe-config');
+    const saveVTuberTypeBtn = document.getElementById('save-vtuber-type');
+    
+    if (vtuberTypeSelect) {
+      vtuberTypeSelect.addEventListener('change', (e) => {
+        const type = e.target.value;
+        if (type === 'iframe') {
+          iframeConfig.style.display = 'block';
+        } else {
+          iframeConfig.style.display = 'none';
+        }
+      });
+    }
+    
+    if (saveVTuberTypeBtn) {
+      saveVTuberTypeBtn.addEventListener('click', () => {
+        saveVTuberType();
+      });
+    }
+  }
+  
+  // Save VTuber type configuration
+  async function saveVTuberType() {
+    try {
+      const typeSelect = document.getElementById('vtuber-type-select');
+      const iframeUrl = document.getElementById('vtuber-iframe-url');
+      const type = typeSelect.value;
+      
+      let vtuberConfig = {
+        type: type === 'pngtuber' ? 'pngtuber' : 'vtuber',
+        vtuberConfig: {
+          type: type === 'pngtuber' ? null : type,
+          url: type === 'iframe' ? iframeUrl.value : null,
+          modelPath: null,
+        }
+      };
+      
+      const response = await fetch('http://localhost:8080/api/vtuber/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vtuberConfig)
+      });
+      
+      if (response.ok) {
+        const config = await response.json();
+        console.log('✅ VTuber type saved:', config);
+        showCustomAlert('VTuber type saved!', 'success');
+        loadVTuberConfig(); // Reload to update UI
+      } else {
+        console.error('❌ Failed to save VTuber type:', response.status);
+      }
+    } catch (err) {
+      console.error('❌ Error saving VTuber type:', err);
+    }
+  }
+  
+  // Load VTuber configuration
+  async function loadVTuberConfig() {
+    try {
+      const response = await fetch('http://localhost:8080/api/vtuber/config');
+      if (response.ok) {
+        const config = await response.json();
+        console.log('✅ VTuber config loaded:', config);
+        
+        // Update image status indicators
+        if (config.images) {
+          Object.keys(config.images).forEach(state => {
+            const statusEl = document.querySelector(`.image-status[data-state="${state}"]`);
+            if (statusEl) {
+              const imageInfo = config.images[state];
+              if (imageInfo && imageInfo.exists) {
+                statusEl.textContent = `✓ ${imageInfo.filename}`;
+                statusEl.style.color = 'var(--success, #4caf50)';
+              } else {
+                statusEl.textContent = 'No image';
+                statusEl.style.color = 'var(--text-tertiary, #999)';
+              }
+            }
+          });
+        }
+        
+        // Update VTuber type selector
+        const typeSelect = document.getElementById('vtuber-type-select');
+        const iframeConfig = document.getElementById('vtuber-iframe-config');
+        const iframeUrl = document.getElementById('vtuber-iframe-url');
+        
+        if (typeSelect) {
+          if (config.type === 'vtuber' && config.vtuberConfig && config.vtuberConfig.type) {
+            typeSelect.value = config.vtuberConfig.type;
+            if (config.vtuberConfig.type === 'iframe') {
+              iframeConfig.style.display = 'block';
+              if (iframeUrl && config.vtuberConfig.url) {
+                iframeUrl.value = config.vtuberConfig.url;
+              }
+            }
+          } else {
+            typeSelect.value = 'pngtuber';
+            if (iframeConfig) iframeConfig.style.display = 'none';
+          }
+        }
+        
+        // Update position controls
+        if (config.position) {
+          const pos = config.position;
+          const xInput = document.getElementById('vtuber-pos-x');
+          const yInput = document.getElementById('vtuber-pos-y');
+          const widthInput = document.getElementById('vtuber-width');
+          const heightInput = document.getElementById('vtuber-height');
+          const scaleInput = document.getElementById('vtuber-scale');
+          const opacityInput = document.getElementById('vtuber-opacity');
+          
+          if (xInput) xInput.value = pos.x || 0;
+          if (yInput) yInput.value = pos.y || 0;
+          if (widthInput) widthInput.value = pos.width || 500;
+          if (heightInput) heightInput.value = pos.height || 500;
+          if (scaleInput) scaleInput.value = config.scale || 1.0;
+          if (opacityInput) opacityInput.value = config.opacity || 1.0;
+        }
+      } else {
+        console.warn('⚠️ Could not load VTuber config:', response.status);
+      }
+    } catch (err) {
+      console.error('❌ Error loading VTuber config:', err);
+    }
+  }
+  
+  // Set VTuber state
+  async function setVTuberState(state) {
+    try {
+      const response = await fetch('http://localhost:8080/api/vtuber/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ VTuber state set:', result);
+        
+        // Update button states
+        document.querySelectorAll('.vtuber-state-btn').forEach(btn => {
+          btn.classList.remove('active');
+          if (btn.dataset.state === state) {
+            btn.classList.add('active');
+          }
+        });
+      } else {
+        console.error('❌ Failed to set VTuber state:', response.status);
+      }
+    } catch (err) {
+      console.error('❌ Error setting VTuber state:', err);
+    }
+  }
+  
+  // Apply VTuber position
+  async function applyVTuberPosition() {
+    try {
+      const x = parseInt(document.getElementById('vtuber-pos-x').value) || 0;
+      const y = parseInt(document.getElementById('vtuber-pos-y').value) || 0;
+      const width = parseInt(document.getElementById('vtuber-width').value) || 500;
+      const height = parseInt(document.getElementById('vtuber-height').value) || 500;
+      const scale = parseFloat(document.getElementById('vtuber-scale').value) || 1.0;
+      const opacity = parseFloat(document.getElementById('vtuber-opacity').value) || 1.0;
+      
+      const response = await fetch('http://localhost:8080/api/vtuber/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          position: { x, y, width, height, anchor: 'top-left' },
+          scale,
+          opacity
+        })
+      });
+      
+      if (response.ok) {
+        const config = await response.json();
+        console.log('✅ VTuber position updated:', config);
+        showCustomAlert('Position updated!', 'success');
+      } else {
+        console.error('❌ Failed to update position:', response.status);
+      }
+    } catch (err) {
+      console.error('❌ Error updating position:', err);
+    }
+  }
+  
+  setupAIControlPanel(); // Must be called before setupTriviaControls
+  setupVTuberControls();
+  setupTriviaControls();
+  setupAIManagementPanel(); // Setup the dashboard widget
+  setupTriviaModal(); // Setup trivia modal
   
   // Overlay Management Functionality
   if (createOverlayBtn && newOverlayNameInput) {
@@ -7179,55 +10208,42 @@ function setupOverlayWidget() {
       const overlayName = newOverlayNameInput.value.trim();
       const templateSelect = document.getElementById('overlay-template');
       const template = templateSelect ? templateSelect.value : 'center-media';
-
+      
       if (!overlayName) {
         showCustomAlert('Please enter a name for the overlay', 'error');
         return;
       }
-
-      // Map special templates to their predefined overlay names
-      let actualOverlayId;
-      let actualDisplayName;
-
-      if (template === 'alert') {
-        actualOverlayId = 'alertOverlay';
-        actualDisplayName = `${overlayName} (Alert Overlay)`;
-      } else if (template === 'confetti') {
-        actualOverlayId = 'confettiOverlay';
-        actualDisplayName = `${overlayName} (Confetti Overlay)`;
-      } else {
-        // Create overlay name that includes template info for custom overlays
-        actualOverlayId = overlayName.toLowerCase().replace(/\s+/g, '-');
-        actualDisplayName = `${overlayName} (${getTemplateDisplayName(template)})`;
+      
+      
+      // Create overlay name that includes template info
+      const overlayId = overlayName.toLowerCase().replace(/\s+/g, '-');
+      const displayName = `${overlayName} (${getTemplateDisplayName(template)})`;
+      
+      // Check for duplicate names
+      const savedOverlays = getSavedOverlays();
+      const isDuplicate = savedOverlays.some(overlay => 
+        overlay.id === overlayId || overlay.name.toLowerCase() === overlayName.toLowerCase()
+      );
+      
+      if (isDuplicate) {
+        showCustomAlert(`An overlay with the name "${overlayName}" already exists. Please choose a different name.`, 'error');
+        return;
       }
       
-      // Check for duplicate names (skip for predefined overlays like alert/confetti)
-      if (template !== 'alert' && template !== 'confetti') {
-        const savedOverlays = getSavedOverlays();
-        const isDuplicate = savedOverlays.some(overlay =>
-          overlay.id === actualOverlayId || overlay.name.toLowerCase() === overlayName.toLowerCase()
-        );
-
-        if (isDuplicate) {
-          showCustomAlert(`An overlay with the name "${overlayName}" already exists. Please choose a different name.`, 'error');
-          return;
-        }
-
-        // Save overlay to localStorage for custom overlays
-        savedOverlays.push({
-          id: actualOverlayId,
-          name: overlayName,
-          displayName: actualDisplayName,
-          template: template,
-          createdAt: new Date().toISOString()
-        });
-        saveOverlays(savedOverlays);
-      }
-
+      // Save overlay to localStorage
+      savedOverlays.push({
+        id: overlayId,
+        name: overlayName,
+        displayName: displayName,
+        template: template,
+        createdAt: new Date().toISOString()
+      });
+      saveOverlays(savedOverlays);
+      
       // Create new overlay option
       const option = document.createElement('option');
-      option.value = actualOverlayId;
-      option.textContent = actualDisplayName;
+      option.value = overlayId;
+      option.textContent = displayName;
       option.dataset.template = template;
       overlaySelect.appendChild(option);
       
@@ -7235,29 +10251,19 @@ function setupOverlayWidget() {
       newOverlayNameInput.value = '';
       
       // Show success message
-      const successMessage = (template === 'alert' || template === 'confetti')
-        ? `Overlay "${overlayName}" ready! Use the URL to add it to OBS.`
-        : `Overlay "${overlayName}" created successfully!`;
-      showCustomAlert(successMessage, 'success');
-
+      showCustomAlert(`Overlay "${overlayName}" created successfully!`, 'success');
+      
       // Update all overlay selects in forms
       updateAllOverlaySelects();
-
-      console.log(`✅ Created overlay: ${overlayName} (${template}) -> ${actualOverlayId}`);
+      
+      console.log(`✅ Created and saved new overlay: ${overlayName} with template: ${template}`);
     });
   }
   
   if (deleteOverlayBtn && overlaySelect) {
     deleteOverlayBtn.addEventListener('click', async () => {
       const selectedValue = overlaySelect.value;
-
-      // Prevent deletion of predefined overlays
-      const predefinedOverlays = ['alertOverlay', 'confettiOverlay'];
-      if (predefinedOverlays.includes(selectedValue)) {
-        showCustomAlert('Predefined overlays cannot be deleted.', 'warning');
-        return;
-      }
-
+      
       // Use custom confirm dialog instead of native confirm
       const overlayName = overlaySelect.options[overlaySelect.selectedIndex].textContent;
       if (confirm(`Are you sure you want to delete the "${overlayName}" overlay?`)) {
@@ -7351,110 +10357,6 @@ function setupOverlayWidget() {
           console.error('Failed to copy:', err);
           showCustomAlert('Failed to copy URL to clipboard', 'error');
         });
-      }
-    });
-  }
-  
-  // Progression system handlers
-  const openProgressionManagerBtn = document.getElementById('open-progression-manager');
-  const copyProgressionUrlBtn = document.getElementById('copy-progression-url');
-  
-  if (openProgressionManagerBtn) {
-    console.log('✅ Progression manager button found, adding click handler');
-    console.log('✅ Button element:', openProgressionManagerBtn);
-    console.log('✅ Button ID:', openProgressionManagerBtn.id);
-    console.log('✅ Button parent:', openProgressionManagerBtn.parentElement);
-    console.log('✅ Button closest widget:', openProgressionManagerBtn.closest('.overlay-widget, .alert-widget'));
-    
-    // Remove any existing listeners by cloning the element
-    const newBtn = openProgressionManagerBtn.cloneNode(true);
-    openProgressionManagerBtn.parentNode.replaceChild(newBtn, openProgressionManagerBtn);
-    
-    newBtn.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      console.log('🟢 PROGRESSION MANAGER button clicked from Overlay Widget');
-      console.log('🟢 Event target:', e.target);
-      console.log('🟢 Event currentTarget:', e.currentTarget);
-      console.log('🟢 Stack trace:');
-      console.trace();
-      openProgressionManager();
-    }, { once: false });
-  } else {
-    console.warn('⚠️ Progression manager button not found');
-  }
-  
-  if (copyProgressionUrlBtn) {
-    copyProgressionUrlBtn.addEventListener('click', () => {
-      const url = 'http://localhost:8080/progression';
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(url).then(() => {
-          showCustomAlert('Progression overlay URL copied to clipboard!', 'success');
-        }).catch(err => {
-          console.error('Failed to copy:', err);
-          showCustomAlert('Failed to copy URL to clipboard', 'error');
-        });
-      }
-    });
-  }
-
-  // Twitch Battles overlay URL (overlay app runs e.g. on 5173; backend on 4000)
-  const battleChannelInput = document.getElementById('battle-channel-input');
-  const battleOverlayUrlDisplay = document.getElementById('battle-overlay-url-display');
-  const copyBattleOverlayUrlBtn = document.getElementById('copy-battle-overlay-url');
-  const openBattleOverlayBtn = document.getElementById('open-battle-overlay');
-  const BATTLE_OVERLAY_BASE = 'http://localhost:5173';
-
-  function getBattleOverlayUrl() {
-    const channel = (battleChannelInput && battleChannelInput.value.trim()) || '';
-    return channel ? `${BATTLE_OVERLAY_BASE}?channel=${encodeURIComponent(channel)}` : BATTLE_OVERLAY_BASE + '?channel=';
-  }
-
-  function updateBattleOverlayUrlDisplay() {
-    if (battleOverlayUrlDisplay) battleOverlayUrlDisplay.textContent = getBattleOverlayUrl();
-  }
-
-  if (battleChannelInput) {
-    battleChannelInput.addEventListener('input', updateBattleOverlayUrlDisplay);
-    battleChannelInput.addEventListener('change', updateBattleOverlayUrlDisplay);
-  }
-
-  // Default channel to the authenticated Twitch user
-  if (window.electronAPI && window.electronAPI.getTwitchUsername) {
-    window.electronAPI.getTwitchUsername().then(function (username) {
-      if (username && battleChannelInput && !battleChannelInput.value.trim()) {
-        battleChannelInput.value = username;
-        battleChannelInput.placeholder = username;
-        updateBattleOverlayUrlDisplay();
-      }
-    });
-  }
-  updateBattleOverlayUrlDisplay();
-
-  if (copyBattleOverlayUrlBtn) {
-    copyBattleOverlayUrlBtn.addEventListener('click', () => {
-      const url = getBattleOverlayUrl();
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(url).then(() => {
-          showCustomAlert('Battle overlay URL copied to clipboard!', 'success');
-        }).catch(err => {
-          console.error('Failed to copy:', err);
-          showCustomAlert('Failed to copy URL to clipboard', 'error');
-        });
-      } else {
-        showCustomAlert('Copy this URL: ' + url, 'info');
-      }
-    });
-  }
-
-  if (openBattleOverlayBtn) {
-    openBattleOverlayBtn.addEventListener('click', () => {
-      const url = getBattleOverlayUrl();
-      if (window.electronAPI && window.electronAPI.openExternal) {
-        window.electronAPI.openExternal(url);
-      } else {
-        window.open(url, '_blank');
       }
     });
   }
@@ -7726,8 +10628,6 @@ function getTemplateDisplayName(template) {
   const templateNames = {
     'center-media': 'Center Media',
     'fullscreen-media': 'Full Screen',
-    'alert': 'Alert Overlay',
-    'confetti': 'Confetti Overlay',
     // Legacy templates (kept for backward compatibility)
     'text-only': 'Text Only',
     'custom': 'Custom'
@@ -7985,8 +10885,106 @@ function setupAlertWidget() {
   // Alert storage - make it globally accessible for window functions
   window.savedAlerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
   let savedAlerts = window.savedAlerts; // Keep local reference for backward compatibility
-  
-  
+
+  function getAlertTypeDisplayName(alertType) {
+    const typeNames = {
+      follower: 'Follower',
+      subscriber: 'Subscriber',
+      resubscriber: 'Resubscriber',
+      'gift-sub': 'Gift Sub',
+      'gift-sub-received': 'Gift Received',
+      raid: 'Raid',
+      bits: 'Bits',
+      'channel-points': 'Channel Point Redemption',
+      'daily-checkin': 'Daily Checkin',
+      'first-chat-walkon': 'Walk On (First Chat)',
+    };
+    return typeNames[alertType] || alertType;
+  }
+
+  function updateAlertList() {
+    if (!alertListContainer) return;
+
+    const alertTypeSelectEl = document.getElementById('alert-type');
+    const selectedType = alertTypeSelectEl ? alertTypeSelectEl.value : 'follower';
+
+    const filteredAlerts = savedAlerts.filter((alert) => alert.type === selectedType);
+
+    if (filteredAlerts.length === 0) {
+      alertListContainer.innerHTML = `
+        <div class="no-alerts">
+          <div style="margin-bottom: 15px;">No ${selectedType} alerts configured yet</div>
+          <div style="color: var(--text-secondary); font-size: 14px;">
+            Create a new ${selectedType} alert using the form on the left.
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    const firstAlert = filteredAlerts[0];
+    const thresholdInfo =
+      selectedType === 'bits' && firstAlert.bitsThreshold
+        ? `<div class="alert-item-threshold" style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px;">Min bits: ${firstAlert.bitsThreshold}</div>`
+        : '';
+
+    const variationsHtml = `
+      <div class="alert-variations-list">
+        <div class="variations-header">
+          <span>Variations (${filteredAlerts.length} total, ${filteredAlerts.filter((a) => a.enabled !== false).length} enabled):</span>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', true)" style="padding: 4px 8px; font-size: 12px;">Enable All</button>
+            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', false)" style="padding: 4px 8px; font-size: 12px;">Disable All</button>
+            <label class="random-toggle">
+              <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
+                     onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
+              Random Mode
+            </label>
+          </div>
+        </div>
+        <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
+          <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
+        </div>
+        <div class="variations-items">
+          ${filteredAlerts
+            .map(
+              (alert) => `
+            <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
+              <label class="variation-toggle">
+                <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
+                       onchange="toggleAlert('${alert.id}', this.checked)" />
+                <span class="variation-text">
+                  ${alert.enabled !== false ? '✓' : '○'} ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
+                  <span class="overlay-badge">${alert.overlay || 'main'}</span>
+                </span>
+              </label>
+              <div class="variation-actions">
+                <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
+                <button class="variation-btn test" onclick="testSavedAlert('${alert.id}')">Test</button>
+                <button class="variation-btn delete" onclick="deleteAlert('${alert.id}')">Delete</button>
+              </div>
+            </div>
+          `,
+            )
+            .join('')}
+        </div>
+      </div>
+    `;
+
+    alertListContainer.innerHTML = `
+      <div class="alert-group" data-alert-type="${selectedType}">
+        <div class="alert-group-header">
+          <div class="alert-item-type">${getAlertTypeDisplayName(selectedType)}</div>
+          ${thresholdInfo}
+        </div>
+        ${variationsHtml}
+      </div>
+      `;
+  }
+
+  window.getAlertTypeDisplayName = getAlertTypeDisplayName;
+  window.updateAlertList = updateAlertList;
+
   // Helper function to convert file to base64
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -8082,6 +11080,9 @@ function setupAlertWidget() {
       const dailyCheckinSettings = document.getElementById('daily-checkin-settings');
       if (dailyCheckinSettings) {
         dailyCheckinSettings.style.display = selectedType === 'daily-checkin' ? 'block' : 'none';
+        if (selectedType === 'daily-checkin') {
+          refreshDailyCheckinEventSubWarning();
+        }
       }
       
       // Update alert list to show only matching alerts
@@ -8474,115 +11475,105 @@ function setupAlertWidget() {
     // Process text with sample data for preview
     const processedText = replacePlaceholders(text, sampleUserData);
     
-    // Get styling values
-    const textPosition = alertTextPositionSelect ? alertTextPositionSelect.value : 'topCenter';
-    const fontFamily = alertFontFamilySelect ? alertFontFamilySelect.value : 'Arial, sans-serif';
-    const fontSize = alertFontSizeRange ? alertFontSizeRange.value + 'px' : '24px';
-    const fontWeight = alertFontWeightSelect ? alertFontWeightSelect.value : '700';
-    const textColor = alertTextColorInput ? alertTextColorInput.value : '#ffffff';
-    const textShadow = alertTextShadowSelect ? alertTextShadowSelect.value : '1px 1px 2px rgba(0,0,0,0.8)';
-    const textStroke = alertTextStrokeSelect ? alertTextStrokeSelect.value : '1px #000';
-    const animation = alertAnimationSelect ? alertAnimationSelect.value : 'none';
-    const animationDuration = alertAnimationDurationRange ? alertAnimationDurationRange.value + 's' : '1s';
-    const animationDelay = alertAnimationDelayRange ? alertAnimationDelayRange.value + 's' : '0s';
-    const animationIteration = alertAnimationIterationSelect ? alertAnimationIterationSelect.value : '1';
-    const animationEasing = alertAnimationEasingSelect ? alertAnimationEasingSelect.value : 'ease';
+    // Build the alert exactly as it will be saved/sent, then render it with the SAME
+    // renderer the overlay uses (public/alert-text-render.js) on a 1920x1080 stage
+    // scaled to the preview width - a true WYSIWYG of the browser source.
+    const previewAlert = {
+      textStyling: {
+        position: alertTextPositionSelect ? alertTextPositionSelect.value : 'topCenter',
+        fontFamily: alertFontFamilySelect ? alertFontFamilySelect.value : 'Arial, sans-serif',
+        fontSize: alertFontSizeRange ? alertFontSizeRange.value + 'px' : '64px',
+        fontWeight: alertFontWeightSelect ? alertFontWeightSelect.value : '700',
+        color: alertTextColorInput ? alertTextColorInput.value : '#ffffff',
+        textShadow: alertTextShadowSelect ? alertTextShadowSelect.value : '1px 1px 2px rgba(0,0,0,0.8)',
+        textStroke: alertTextStrokeSelect ? alertTextStrokeSelect.value : '1px #000'
+      },
+      animation: {
+        type: alertAnimationSelect ? alertAnimationSelect.value : 'none',
+        duration: alertAnimationDurationRange ? alertAnimationDurationRange.value + 's' : '1s',
+        delay: alertAnimationDelayRange ? alertAnimationDelayRange.value + 's' : '0s',
+        iteration: alertAnimationIterationSelect ? alertAnimationIterationSelect.value : '1',
+        easing: alertAnimationEasingSelect ? alertAnimationEasingSelect.value : 'ease'
+      }
+    };
+    const builtSlot = window.VDAlertText.alertToSlot(previewAlert, processedText);
+    const textPosition = builtSlot.position;
     
-    // Build text style
-    let textStyle = `
-      font-family: ${fontFamily};
-      font-size: ${fontSize};
-      font-weight: ${fontWeight};
-      color: ${textColor};
-      text-shadow: ${textShadow};
-      -webkit-text-stroke: ${textStroke};
-    `;
-    
-    // Add animation if selected
-    if (animation !== 'none') {
-      textStyle += `
-        animation: ${animation} ${animationDuration} ${animationEasing} ${animationDelay} ${animationIteration};
-      `;
-    }
-    
-    // Build position style for text
-    let positionStyle = '';
-    switch(textPosition) {
-      case 'topLeft':
-        positionStyle = 'top: 10%; left: 10%;';
-        break;
-      case 'topCenter':
-        positionStyle = 'top: 10%; left: 50%; transform: translateX(-50%);';
-        break;
-      case 'topRight':
-        positionStyle = 'top: 10%; right: 10%;';
-        break;
-      case 'midLeft':
-        positionStyle = 'top: 50%; left: 10%; transform: translateY(-50%);';
-        break;
-      case 'center':
-        positionStyle = 'top: 50%; left: 50%; transform: translate(-50%, -50%);';
-        break;
-      case 'midRight':
-        positionStyle = 'top: 50%; right: 10%; transform: translateY(-50%);';
-        break;
-      case 'bottomLeft':
-        positionStyle = 'bottom: 10%; left: 10%;';
-        break;
-      case 'bottomCenter':
-        positionStyle = 'bottom: 10%; left: 50%; transform: translateX(-50%);';
-        break;
-      case 'bottomRight':
-        positionStyle = 'bottom: 10%; right: 10%;';
-        break;
-    }
-    
-    let previewHTML = '<div class="alert-preview-content" style="position: relative; width: 100%; height: 300px; background: rgba(0,0,0,0.1); border: 1px solid var(--border-color);">';
-    
+    // Resolve the preview image src (same image the overlay shows, full opacity)
+    let previewImageSrc = null;
+    let previewImageLabel = null;
     if (imageFile) {
       if (imageFile instanceof File) {
-        // New file from input
-        const imageUrl = URL.createObjectURL(imageFile);
-        previewHTML += `<img src="${imageUrl}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
+        previewImageSrc = URL.createObjectURL(imageFile);
       } else if (imageFile.data) {
-        // Legacy base64 data
-        previewHTML += `<img src="${imageFile.data}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
+        previewImageSrc = imageFile.data;
       } else if (imageFile.path && window.electronAPI && window.electronAPI.getMediaFile) {
-        // Existing saved file with path - load from disk
         try {
           const result = await window.electronAPI.getMediaFile(imageFile.path);
-          if (result.success) {
-            previewHTML += `<img src="${result.data}" alt="Alert Image" style="position: absolute; max-width: 50%; max-height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.3;" />`;
-          } else {
-            // Fallback to placeholder if loading fails
-            previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name || 'Alert Image'}</div>`;
-          }
+          if (result.success) previewImageSrc = result.data;
+          else previewImageLabel = imageFile.name || 'Alert Image';
         } catch (error) {
           console.error('Error loading preview image:', error);
-          previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name || 'Alert Image'}</div>`;
+          previewImageLabel = imageFile.name || 'Alert Image';
         }
       } else if (imageFile.name) {
-        // Existing file (show placeholder)
-        previewHTML += `<div class="image-placeholder" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">📷 ${imageFile.name}</div>`;
+        previewImageLabel = imageFile.name;
       }
     }
     
-    // Add positioned text
-    previewHTML += `<div style="position: absolute; ${positionStyle} white-space: nowrap;">`;
-    previewHTML += `<p style="${textStyle} margin: 0;">${processedText}</p>`;
-    previewHTML += `</div>`;
-    
-    // Add info at bottom
-    previewHTML += `<div style="position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--text-tertiary); text-align: center;">`;
-    previewHTML += `<div><small>Position: ${textPosition} | Duration: ${duration}s</small></div>`;
-    if (soundFile) {
-      const soundName = soundFile.name || 'Existing Sound';
-      previewHTML += `<div><small>🔊 Sound: ${soundName}</small></div>`;
+    const wrap = document.createElement('div');
+    wrap.className = 'vd-alert-preview-wrap';
+    const viewport = document.createElement('div');
+    viewport.className = 'vd-alert-preview-viewport';
+    viewport.title = 'Preview of the 1920x1080 browser source';
+    const stage = document.createElement('div');
+    stage.className = 'vd-alert-preview-stage';
+    stage.setAttribute('data-vd-stage', 'preview');
+    if (previewImageSrc) {
+      const img = document.createElement('img');
+      img.className = 'media-element';
+      img.alt = 'Alert Image';
+      img.src = previewImageSrc;
+      img.style.cssText = window.VDAlertText.MEDIA_FILL_CSS;
+      stage.appendChild(img);
+    } else if (previewImageLabel) {
+      const ph = document.createElement('div');
+      ph.className = 'image-placeholder';
+      ph.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(3);';
+      ph.textContent = '📷 ' + previewImageLabel;
+      stage.appendChild(ph);
     }
-    previewHTML += `</div>`;
+    const textEl = window.VDAlertText.createTextSlotElement(document, builtSlot.position, builtSlot.slot);
+    textEl.style.setProperty('z-index', '100', 'important'); // overlay forces this too
+    stage.appendChild(textEl);
+    viewport.appendChild(stage);
+    wrap.appendChild(viewport);
     
-    previewHTML += '</div>';
-    alertPreviewArea.innerHTML = previewHTML;
+    const info = document.createElement('div');
+    info.className = 'vd-alert-preview-info';
+    const infoLine = document.createElement('div');
+    infoLine.textContent = 'Position: ' + textPosition + ' | Size: ' + builtSlot.slot.style.fontSize + ' on 1920x1080 | Duration: ' + duration + 's';
+    info.appendChild(infoLine);
+    if (soundFile) {
+      const soundLine = document.createElement('div');
+      soundLine.textContent = '🔊 Sound: ' + (soundFile.name || 'Existing Sound');
+      info.appendChild(soundLine);
+    }
+    wrap.appendChild(info);
+    
+    alertPreviewArea.innerHTML = '';
+    alertPreviewArea.appendChild(wrap);
+    
+    const fitPreviewStage = () => {
+      const w = viewport.clientWidth;
+      if (w > 0) window.VDAlertText.fitStage(stage, w, viewport.clientHeight || (w * 9 / 16));
+    };
+    fitPreviewStage();
+    if (window.ResizeObserver) {
+      if (alertPreviewArea._vdStageObserver) alertPreviewArea._vdStageObserver.disconnect();
+      alertPreviewArea._vdStageObserver = new ResizeObserver(fitPreviewStage);
+      alertPreviewArea._vdStageObserver.observe(viewport);
+    }
   }
   
   // Get display name for alert type
@@ -8850,11 +11841,13 @@ function setupAlertWidget() {
       const textStyling = {
         position: alertTextPositionSelect ? alertTextPositionSelect.value : 'topCenter',
         fontFamily: alertFontFamilySelect ? alertFontFamilySelect.value : 'Arial, sans-serif',
-        fontSize: alertFontSizeRange ? alertFontSizeRange.value + 'px' : '24px',
+        fontSize: alertFontSizeRange ? window.VDAlertText.normalizeFontSize(alertFontSizeRange.value, 64) : '64px',
         fontWeight: alertFontWeightSelect ? alertFontWeightSelect.value : '700',
         color: alertTextColorInput ? alertTextColorInput.value : '#ffffff',
         textShadow: alertTextShadowSelect ? alertTextShadowSelect.value : '1px 1px 2px rgba(0,0,0,0.8)',
-        textStroke: alertTextStrokeSelect ? alertTextStrokeSelect.value : '1px #000'
+        textStroke: alertTextStrokeSelect ? alertTextStrokeSelect.value : '1px #000',
+        // v2: fontSize is pixels on the 1920x1080 canvas (what the overlay always rendered)
+        styleVersion: window.VDAlertText.STYLE_VERSION
       };
       
       const animation = {
@@ -8907,6 +11900,7 @@ function setupAlertWidget() {
         // Include daily check-in config if this is a daily-checkin alert
         dailyCheckinConfig: type === 'daily-checkin' ? {
           enabled: document.getElementById('daily-checkin-enabled')?.checked ?? true,
+          rewardId: document.getElementById('daily-checkin-reward-id')?.value || '',
           rewardName: document.getElementById('daily-checkin-reward-name')?.value || 'Daily Check-In',
           chatResponse: document.getElementById('daily-checkin-chat-response')?.value || 'Welcome back {username}!',
           alreadyCheckedMessage: document.getElementById('daily-checkin-already-checked-message')?.value || 'You\'ve already checked in today!',
@@ -8919,6 +11913,9 @@ function setupAlertWidget() {
           username: u.username,
           display_name: u.display_name
         })) : [],
+        walkonShowProfilePicture: type === 'first-chat-walkon'
+          ? (document.getElementById('alert-walkon-show-profile')?.checked ?? true)
+          : undefined,
         variations: [],
         randomMode: false,
         createdAt: new Date().toISOString()
@@ -8986,6 +11983,9 @@ function setupAlertWidget() {
         }
         
         localStorage.setItem('twitchAlerts', JSON.stringify(savedAlerts));
+        if (type === 'daily-checkin') {
+          updateDailyCheckinConfig();
+        }
         console.log('💾 Saved to localStorage. Verifying overlay property persisted...');
         
         // Verify the alert was saved correctly with overlay
@@ -9148,6 +12148,8 @@ function setupAlertWidget() {
       selectedWalkonUsers = [];
       if (alertWalkonSelected) renderWalkonSelected();
       if (alertWalkonSearch) alertWalkonSearch.value = '';
+      const walkonShowProfileCheckbox = document.getElementById('alert-walkon-show-profile');
+      if (walkonShowProfileCheckbox) walkonShowProfileCheckbox.checked = true;
       if (alertWalkonFollowerList) {
         alertWalkonFollowerList.innerHTML = '';
         alertWalkonFollowerList.style.display = 'none';
@@ -9157,116 +12159,6 @@ function setupAlertWidget() {
     }
     
     updatePreview().catch(console.error);
-  }
-  
-  // Get display name for alert type
-  window.getAlertTypeDisplayName = function(alertType) {
-    const typeNames = {
-      'follower': 'Follower',
-      'subscriber': 'Subscriber', 
-      'resubscriber': 'Resubscriber',
-      'gift-sub': 'Gift Sub',
-      'gift-sub-received': 'Gift Received',
-      'raid': 'Raid',
-      'bits': 'Bits',
-      'channel-points': 'Channel Point Redemption',
-      'daily-checkin': 'Daily Checkin',
-      'first-chat-walkon': 'Walk On (First Chat)'
-    };
-    return typeNames[alertType] || alertType;
-  }
-
-  // Update alert list display - filtered by selected alert type
-  window.updateAlertList = function() {
-    if (!alertListContainer) return;
-    
-    // Get the currently selected alert type
-    const alertTypeSelect = document.getElementById('alert-type');
-    const selectedType = alertTypeSelect ? alertTypeSelect.value : 'follower';
-    
-    // Filter alerts by selected type
-    const filteredAlerts = savedAlerts.filter(alert => alert.type === selectedType);
-    
-    if (filteredAlerts.length === 0) {
-      alertListContainer.innerHTML = `
-        <div class="no-alerts">
-          <div style="margin-bottom: 15px;">No ${selectedType} alerts configured yet</div>
-          <div style="color: var(--text-secondary); font-size: 14px;">
-            Create a new ${selectedType} alert using the form on the left.
-          </div>
-        </div>
-      `;
-      return;
-    }
-    
-    // Render filtered alerts for the selected type
-    const firstAlert = filteredAlerts[0];
-    const thresholdInfo = selectedType === 'bits' && firstAlert.bitsThreshold 
-      ? `<div class="alert-item-threshold" style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px;">Min bits: ${firstAlert.bitsThreshold}</div>`
-      : '';
-    
-    // Create variations list from all alerts of this type
-    const variationsHtml = `
-      <div class="alert-variations-list">
-        <div class="variations-header">
-          <span>Variations (${filteredAlerts.length} total, ${filteredAlerts.filter(a => a.enabled !== false).length} enabled):</span>
-          <div style="display: flex; gap: 12px; align-items: center;">
-            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', true)" style="padding: 4px 8px; font-size: 12px;">Enable All</button>
-            <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', false)" style="padding: 4px 8px; font-size: 12px;">Disable All</button>
-            <label class="random-toggle">
-              <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
-                     onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
-              Random Mode
-            </label>
-          </div>
-        </div>
-        <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
-          <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
-        </div>
-
-        <!-- Test Overlay Buttons -->
-        <div class="overlay-test-controls" style="display: flex; gap: 8px; margin-bottom: 12px; padding: 8px; background: rgba(255, 193, 7, 0.1); border-radius: 4px;">
-          <button class="variation-btn test-alert" onclick="testAlert('${selectedType}')" style="padding: 6px 12px; font-size: 12px; background: #9147ff; color: white; border: none; border-radius: 4px; cursor: pointer;">
-            🚨 Test Alert
-          </button>
-          <button class="variation-btn test-confetti" onclick="testConfetti()" style="padding: 6px 12px; font-size: 12px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer;">
-            🎊 Test Confetti
-          </button>
-          <span style="font-size: 11px; color: var(--text-secondary); align-self: center;">
-            Test overlays (open in OBS first)
-          </span>
-        </div>
-        <div class="variations-items">
-          ${filteredAlerts.map((alert, index) => `
-            <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
-              <label class="variation-toggle">
-                <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
-                       onchange="toggleAlert('${alert.id}', this.checked)" />
-                <span class="variation-text">
-                  ${alert.enabled !== false ? '✓' : '○'} ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
-                  <span class="overlay-badge">${alert.overlay || 'main'}</span>
-                </span>
-              </label>
-              <div class="variation-actions">
-                <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
-                <button class="variation-btn test" onclick="testSavedAlert('${alert.id}')">Test</button>
-                <button class="variation-btn delete" onclick="deleteAlert('${alert.id}')">Delete</button>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    `;
-    
-    alertListContainer.innerHTML = `
-      <div class="alert-group" data-alert-type="${selectedType}">
-        <div class="alert-group-header">
-          <div class="alert-item-type">${getAlertTypeDisplayName(selectedType)}</div>
-          ${thresholdInfo}
-        </div>
-        ${variationsHtml}
-      </div>
-      `;
   }
   
   // Test saved alert
@@ -9415,7 +12307,7 @@ function setupAlertWidget() {
         alertFontFamilySelect.value = alertToEdit.textStyling.fontFamily;
       }
       if (alertFontSizeRange && alertToEdit.textStyling.fontSize) {
-        const fontSize = alertToEdit.textStyling.fontSize.replace('px', '');
+        const fontSize = window.VDAlertText.editorSliderValue(alertToEdit.textStyling.fontSize);
         alertFontSizeRange.value = fontSize;
         // Update the display value
         const fontSizeValue = document.getElementById('font-size-value');
@@ -9496,8 +12388,11 @@ function setupAlertWidget() {
       const enabledCheckbox = document.getElementById('daily-checkin-enabled');
       if (enabledCheckbox) enabledCheckbox.checked = config.enabled ?? true;
       
+      const rewardIdInput = document.getElementById('daily-checkin-reward-id');
+      if (rewardIdInput) rewardIdInput.value = config.rewardId || '';
       const rewardNameInput = document.getElementById('daily-checkin-reward-name');
       if (rewardNameInput) rewardNameInput.value = config.rewardName || 'Daily Check-In';
+      applyDailyCheckinRewardSelectFromConfig(config);
       
       const chatResponseInput = document.getElementById('daily-checkin-chat-response');
       if (chatResponseInput) chatResponseInput.value = config.chatResponse || 'Welcome back {username}!';
@@ -9530,6 +12425,12 @@ function setupAlertWidget() {
         renderWalkonFollowerList();
       }
       console.log('Loaded walk-on users for editing:', selectedWalkonUsers.length);
+    }
+    if (alertToEdit.type === 'first-chat-walkon') {
+      const walkonShowProfileCheckbox = document.getElementById('alert-walkon-show-profile');
+      if (walkonShowProfileCheckbox) {
+        walkonShowProfileCheckbox.checked = alertToEdit.walkonShowProfilePicture !== false;
+      }
     }
     
     // Store the alert ID and existing media for editing
@@ -9631,89 +12532,7 @@ function setupAlertWidget() {
   updateQueueWidgetStatus();
 }
 
-// Global functions for inline event handlers
-window.updateAlertList = function() {
-  const alertListContainer = document.getElementById('alert-list-container');
-  if (!alertListContainer) return;
-  
-  // Get the currently selected alert type
-  const alertTypeSelect = document.getElementById('alert-type');
-  const selectedType = alertTypeSelect ? alertTypeSelect.value : 'follower';
-  
-  // Filter alerts by selected type
-  const filteredAlerts = savedAlerts.filter(alert => alert.type === selectedType);
-  
-  if (filteredAlerts.length === 0) {
-    alertListContainer.innerHTML = `
-      <div class="no-alerts">
-        <div style="margin-bottom: 15px;">No ${selectedType} alerts configured yet</div>
-        <div style="color: var(--text-secondary); font-size: 14px;">
-          Create a new ${selectedType} alert using the form on the left.
-        </div>
-      </div>
-    `;
-    return;
-  }
-  
-  // Render filtered alerts for the selected type
-  const firstAlert = filteredAlerts[0];
-  const thresholdInfo = selectedType === 'bits' && firstAlert.bitsThreshold 
-    ? `<div class="alert-item-threshold" style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px;">Min bits: ${firstAlert.bitsThreshold}</div>`
-    : '';
-  
-  // Create variations list from all alerts of this type
-  const variationsHtml = `
-    <div class="alert-variations-list">
-      <div class="variations-header">
-        <span>Variations (${filteredAlerts.length} total, ${filteredAlerts.filter(a => a.enabled !== false).length} enabled):</span>
-        <div style="display: flex; gap: 12px; align-items: center;">
-          <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', true)" style="padding: 4px 8px; font-size: 12px;">Enable All</button>
-          <button class="variation-btn" onclick="toggleAllAlertsForType('${selectedType}', false)" style="padding: 4px 8px; font-size: 12px;">Disable All</button>
-          <label class="random-toggle">
-            <input type="checkbox" ${firstAlert.randomMode ? 'checked' : ''} 
-                   onchange="toggleRandomModeForType('${selectedType}', this.checked)" />
-            Random Mode
-          </label>
-        </div>
-      </div>
-      <div class="variations-help" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; padding: 8px; background: rgba(0, 122, 204, 0.1); border-radius: 4px;">
-        <strong>💡 Tip:</strong> Check the boxes to enable specific alerts. ${firstAlert.randomMode ? 'Random Mode will pick randomly from enabled alerts.' : 'The first enabled alert will be used.'}
-      </div>
-      <div class="variations-items">
-        ${filteredAlerts.map((alert, index) => `
-          <div class="variation-item ${alert.enabled !== false ? 'enabled' : 'disabled'}">
-            <label class="variation-toggle">
-              <input type="checkbox" ${alert.enabled !== false ? 'checked' : ''} 
-                     onchange="toggleAlert('${alert.id}', this.checked)" />
-              <span class="variation-text">
-                ${alert.enabled !== false ? '✓' : '○'} ${alert.text || '<em style="color: #888;">(Media Only)</em>'}
-                <span class="overlay-badge">${alert.overlay || 'main'}</span>
-              </span>
-            </label>
-            <div class="variation-actions">
-              <button class="variation-btn edit" onclick="editAlert('${alert.id}')">Edit</button>
-              <button class="variation-btn test" onclick="testSavedAlert('${alert.id}')">Test</button>
-              <button class="variation-btn delete" onclick="deleteAlert('${alert.id}')">Delete</button>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `;
-  
-  alertListContainer.innerHTML = `
-    <div class="alert-group" data-alert-type="${selectedType}">
-      <div class="alert-item">
-        <div class="alert-item-header">
-          <h4>${getAlertTypeDisplayName(selectedType)}</h4>
-          ${thresholdInfo}
-        </div>
-        ${variationsHtml}
-      </div>
-    </div>
-  `;
-};
-
+// Global functions for inline event handlers (updateAlertList is assigned inside setupAlertWidget)
 window.toggleAlert = function(alertId, enabled) {
   const alert = window.savedAlerts.find(a => a.id === alertId);
   if (alert) {
@@ -9722,45 +12541,6 @@ window.toggleAlert = function(alertId, enabled) {
     alertSystem.updateAlerts();
     updateAlertList();
     console.log('Toggled alert:', alertId, 'enabled:', enabled);
-  }
-};
-
-// Test functions for new overlays
-window.testAlert = function(alertType) {
-  console.log('🚨 Testing alert for type:', alertType);
-
-  // Create test data based on alert type
-  const testData = {
-    type: alertType,
-    user: 'TestUser',
-    message: 'This is a test alert!',
-    amount: alertType === 'donation' ? 5.00 : null,
-    bits: alertType === 'bits' ? 100 : null
-  };
-
-  if (window.electronAPI && window.electronAPI.triggerAlert) {
-    window.electronAPI.triggerAlert(testData);
-    showCustomAlert('🚨 Alert sent to overlay! Make sure alert overlay is open in OBS.', 'success');
-  } else {
-    console.error('Electron API not available for alert testing');
-    showCustomAlert('❌ Cannot test alert - Electron API not available', 'error');
-  }
-};
-
-window.testConfetti = function() {
-  console.log('🎊 Testing confetti effect');
-
-  const testData = {
-    count: 50,
-    duration: 2000
-  };
-
-  if (window.electronAPI && window.electronAPI.triggerConfetti) {
-    window.electronAPI.triggerConfetti(testData);
-    showCustomAlert('🎊 Confetti sent to overlay! Make sure confetti overlay is open in OBS.', 'success');
-  } else {
-    console.error('Electron API not available for confetti testing');
-    showCustomAlert('❌ Cannot test confetti - Electron API not available', 'error');
   }
 };
 
@@ -10017,33 +12797,16 @@ let alertQueue = {
           clearPrevious: true,
           durationMs: alertData.duration * 1000
         },
-        slots: processedText && processedText.trim() ? {
-          [alertData.textStyling?.position || 'topCenter']: {
-            text: processedText,
-            style: {
-              fontFamily: alertData.textStyling?.fontFamily || 'Arial, sans-serif',
-              fontSize: alertData.textStyling?.fontSize || '24px',
-              color: alertData.textStyling?.color || '#00ff00',
-              fontWeight: alertData.textStyling?.fontWeight || 'bold',
-              textShadow: alertData.textStyling?.textShadow || '2px 2px #000',
-              webkitTextStroke: alertData.textStyling?.textStroke || '1px #000',
-              textAlign: 'center',
-              zIndex: '1'
-            },
-            animation: (alertData.animation && alertData.animation.type && alertData.animation.type !== 'none') ? {
-              name: alertData.animation.type,
-              duration: alertData.animation.duration || '1s',
-              delay: alertData.animation.delay || '0s',
-              iterationCount: alertData.animation.iteration || '1',
-              timingFunction: alertData.animation.easing || 'ease'
-            } : null
-          }
-        } : {},
+        // Shared builder (public/alert-text-render.js) - identical to the editor preview.
+        slots: processedText && processedText.trim() ? (() => {
+          const built = window.VDAlertText.alertToSlot(alertData, processedText);
+          return { [built.position]: built.slot };
+        })() : {},
         centerMedia: [],
         fullscreenMedia: [] // New: fullscreen media support for alerts
       };
       
-      console.log('🎬 Payload animation data:', payload.slots[alertData.textStyling?.position || 'topCenter']?.animation);
+      console.log('🎬 Payload animation data:', payload.slots[window.VDAlertText.migrateAlertTextStyling(alertData.textStyling).position]?.animation);
       console.log('📦 Payload slots object:', payload.slots);
       console.log('📦 Payload slots keys:', Object.keys(payload.slots));
       console.log('📦 Payload slots topCenter:', payload.slots.topCenter);
@@ -10159,6 +12922,47 @@ let alertQueue = {
           payload.centerMedia.push(videoItem);
         } else {
           console.warn('🎬 Unknown video file format:', alertData.videoFile);
+        }
+      }
+
+      if (
+        alertData.type === 'first-chat-walkon' &&
+        alertData.walkonShowProfilePicture !== false &&
+        userData &&
+        window.electronAPI &&
+        typeof window.electronAPI.getTwitchProfileImage === 'function'
+      ) {
+        const rawUserId = userData.user_id || userData.id;
+        const profileUserId =
+          rawUserId && /^\d{1,20}$/.test(String(rawUserId)) ? String(rawUserId) : undefined;
+        const rawLogin = userData.username || userData.user_name || userData.user_login;
+        const profileLogin =
+          rawLogin && /^[a-zA-Z0-9_]{1,25}$/.test(String(rawLogin)) ? String(rawLogin) : undefined;
+        const WALKON_PROFILE_LOOKUP_MS = 2500;
+        try {
+          const profileResult = await Promise.race([
+            window.electronAPI.getTwitchProfileImage({
+              userId: profileUserId,
+              login: profileLogin,
+            }),
+            new Promise((resolve) => {
+              setTimeout(() => resolve({ profileImageUrl: null, timedOut: true }), WALKON_PROFILE_LOOKUP_MS);
+            }),
+          ]);
+          if (profileResult?.timedOut) {
+            console.warn('Walk-on profile image lookup timed out after', WALKON_PROFILE_LOOKUP_MS, 'ms');
+          }
+          if (profileResult?.profileImageUrl) {
+            payload.centerMedia.push({
+              type: 'image',
+              src: profileResult.profileImageUrl,
+              alt: 'Twitch profile',
+              walkonProfile: true,
+            });
+            console.log('👤 Added walk-on Twitch profile image to overlay');
+          }
+        } catch (profileErr) {
+          console.warn('Walk-on profile image lookup failed:', profileErr);
         }
       }
       
@@ -10341,7 +13145,7 @@ let alertSystem = {
     const alertsOfType = this.alerts.filter(a => a.type === eventType);
     if (alertsOfType.length === 0) {
       console.log(`⚠️ No alerts found for event type: ${eventType}`);
-      console.log(`💡 Create a "${eventType}" alert in Tools → Alerts to fix this`);
+      console.log(`💡 Create a "${eventType}" alert in Tools → Alert Widget to fix this`);
       return;
     }
     
@@ -10496,26 +13300,24 @@ window.resetWalkonTest = async function(skipConfirm = false) {
 // Usage: 
 //   testFirstChatWalkon('Iflewthetardis')
 //   testFirstChatWalkon('deathblade', 'DeathBlade', '87654321')
-//   testFirstChatWalkon('TestUser')  // Uses default TestUser
+//   testFirstChatWalkon('TestUser')  // Login-only lookup (no random user id)
 window.testFirstChatWalkon = function(username = 'TestUser', displayName = null, userId = null) {
   console.log('🧪 Testing first-chat walk-on event for:', username);
-  
-  // Generate a random user ID if not provided
-  if (!userId) {
-    userId = Math.floor(Math.random() * 100000000).toString();
-  }
   
   const display = displayName || (username.charAt(0).toUpperCase() + username.slice(1));
   const userLower = username.toLowerCase();
   
   // Simulate the event data that would come from main.js chat handler
+  const event = {
+    user_name: userLower,
+    display_name: display,
+  };
+  if (userId && /^\d{1,20}$/.test(String(userId))) {
+    event.user_id = String(userId);
+  }
   const eventData = {
     type: 'first-chat-walkon',
-    event: {
-      user_id: userId,
-      user_name: userLower,
-      display_name: display
-    }
+    event,
   };
   
   console.log('🧪 Simulating first-chat-walkon event:', eventData);
@@ -10524,9 +13326,8 @@ window.testFirstChatWalkon = function(username = 'TestUser', displayName = null,
   const userData = {
     username: userLower,
     display_name: display,
-    user_id: userId,
     user_name: userLower,
-    ...eventData.event
+    ...eventData.event,
   };
   
   // Trigger through the same path as real events - directly call alertSystem
@@ -10571,10 +13372,8 @@ function showOverlayWidget() {
 
 // Function to show alert widget
 function showAlertWidget() {
-  console.log('📢 showAlertWidget() function called');
   const alertWidget = document.getElementById('alert-widget');
   if (alertWidget) {
-    console.log('📢 Alert widget found, showing it');
     alertWidget.classList.remove('hidden');
     
     // Disable hotkeys when alert widget is open to prevent conflicts
@@ -10645,6 +13444,7 @@ let dailyCheckinData = {
   liveDays: [], // Array of date strings (YYYY-MM-DD) when stream was live
   config: {
     enabled: true,
+    rewardId: '',
     rewardName: 'Daily Check-In',
     chatResponse: 'Welcome back {username}! You\'ve checked in {total_checkins} times!',
     alreadyCheckedMessage: 'You\'ve already checked in today, {username}! Come back tomorrow!',
@@ -10668,8 +13468,24 @@ async function loadDailyCheckinData() {
         console.log('📊 Loaded daily check-in data:', Object.keys(dailyCheckinData.viewers).length, 'viewers');
       }
     }
+    syncDailyCheckinConfigFromSavedAlerts();
   } catch (error) {
     console.error('❌ Error loading daily check-in data:', error);
+  }
+}
+
+function syncDailyCheckinConfigFromSavedAlerts() {
+  try {
+    const alerts = JSON.parse(localStorage.getItem('twitchAlerts') || '[]');
+    const dailyAlert = alerts.find((a) => a.type === 'daily-checkin' && a.dailyCheckinConfig);
+    if (!dailyAlert || !dailyAlert.dailyCheckinConfig) return;
+    dailyCheckinData.config = {
+      ...dailyCheckinData.config,
+      ...dailyAlert.dailyCheckinConfig,
+    };
+    saveDailyCheckinData();
+  } catch (error) {
+    console.warn('Could not sync daily check-in config from saved alerts:', error);
   }
 }
 
@@ -10847,10 +13663,102 @@ async function sendTwitchChatMessage(message) {
   }
 }
 
+function readDailyCheckinRewardFromUI() {
+  const rewardNameInput = document.getElementById('daily-checkin-reward-name');
+  const rewardIdInput = document.getElementById('daily-checkin-reward-id');
+  const select = document.getElementById('daily-checkin-reward-select');
+  let rewardId = rewardIdInput?.value?.trim() || '';
+  let rewardName = rewardNameInput?.value?.trim() || 'Daily Check-In';
+  if (select && window.vdChannelRewards) {
+    const picked = window.vdChannelRewards.selectedRewardFromSelect(select);
+    if (picked.rewardId) {
+      rewardId = picked.rewardId;
+      if (rewardIdInput) rewardIdInput.value = rewardId;
+      if (picked.rewardName) rewardName = picked.rewardName;
+      if (rewardNameInput && picked.rewardName) rewardNameInput.value = picked.rewardName;
+    }
+  }
+  return { rewardId, rewardName };
+}
+
+function applyDailyCheckinRewardSelectFromConfig(config) {
+  const select = document.getElementById('daily-checkin-reward-select');
+  if (!select || !config) return;
+  if (config.rewardId) {
+    const opt = Array.from(select.options).find(
+      (o) => o.dataset && o.dataset.rewardId === String(config.rewardId),
+    );
+    if (opt) select.value = opt.value;
+  } else if (config.rewardName && window.vdChannelRewards) {
+    const opt = Array.from(select.options).find((o) => {
+      const t = (o.dataset && o.dataset.rewardTitle) || '';
+      return t.trim().toLowerCase() === String(config.rewardName).trim().toLowerCase();
+    });
+    if (opt) select.value = opt.value;
+  }
+}
+
+async function refreshDailyCheckinEventSubWarning() {
+  const el = document.getElementById('daily-checkin-eventsub-warning');
+  if (!el) return;
+  if (!window.electronAPI || !window.electronAPI.twitchEventSubHealth) {
+    el.style.display = 'none';
+    return;
+  }
+  try {
+    const health = await window.electronAPI.twitchEventSubHealth();
+    const issues = [];
+    if (health.scopeWarning) {
+      issues.push(health.scopeWarning);
+    } else if (health.missingScopes && health.missingScopes.includes('channel:read:redemptions')) {
+      issues.push('Missing scope channel:read:redemptions — reconnect Twitch in VirtualDeck.');
+    }
+    if (!health.eventSubWsOpen) {
+      issues.push('Twitch EventSub is not connected (WebSocket). Use Connect / reconnect Twitch.');
+    }
+    if (!health.hasChannelPointsSub) {
+      issues.push(
+        'No EventSub subscription for channel point redemptions (channel.channel_points_custom_reward_redemption.add). Reconnect Twitch after granting scopes.',
+      );
+    }
+    if (issues.length) {
+      el.style.display = 'block';
+      const subHint =
+        health.channelPointsSubscriptionIds && health.channelPointsSubscriptionIds.length
+          ? ` Active sub id(s): ${health.channelPointsSubscriptionIds.join(', ')}.`
+          : '';
+      el.innerHTML =
+        `<strong>Channel points may not trigger check-in</strong><ul style="margin:8px 0 0 16px;padding:0;">` +
+        issues.map((msg) => `<li>${msg}</li>`).join('') +
+        `</ul>${subHint ? `<div style="margin-top:8px;font-size:11px;">${subHint}</div>` : ''}`;
+    } else {
+      el.style.display = 'none';
+      el.textContent = '';
+    }
+    if (window.vdLog) {
+      window.vdLog('Daily check-in EventSub health', health);
+    }
+  } catch (err) {
+    console.warn('Could not load EventSub health for daily check-in:', err);
+  }
+}
+
+async function loadDailyCheckinRewardsFromTwitch() {
+  const select = document.getElementById('daily-checkin-reward-select');
+  const nameInput = document.getElementById('daily-checkin-reward-name');
+  if (!select) return;
+  await loadChannelRedemptions(select, nameInput, {
+    valueField: 'id',
+    placeholder: '-- Select reward --',
+  });
+  applyDailyCheckinRewardSelectFromConfig(dailyCheckinData.config);
+  updateDailyCheckinConfig();
+}
+
 // Update daily check-in config from UI
 function updateDailyCheckinConfig() {
   const enabled = document.getElementById('daily-checkin-enabled')?.checked ?? true;
-  const rewardName = document.getElementById('daily-checkin-reward-name')?.value || 'Daily Check-In';
+  const { rewardId, rewardName } = readDailyCheckinRewardFromUI();
   const chatResponse = document.getElementById('daily-checkin-chat-response')?.value || 'Welcome back {username}!';
   const alreadyCheckedMessage = document.getElementById('daily-checkin-already-checked-message')?.value || 'You\'ve already checked in today!';
   const showStreak = document.getElementById('daily-checkin-show-streak')?.checked ?? false;
@@ -10859,6 +13767,7 @@ function updateDailyCheckinConfig() {
   
   dailyCheckinData.config = {
     enabled,
+    rewardId,
     rewardName,
     chatResponse,
     alreadyCheckedMessage,
@@ -10878,8 +13787,12 @@ function loadDailyCheckinConfigToUI() {
   const enabledCheckbox = document.getElementById('daily-checkin-enabled');
   if (enabledCheckbox) enabledCheckbox.checked = config.enabled ?? true;
   
+  const rewardIdInput = document.getElementById('daily-checkin-reward-id');
+  if (rewardIdInput) rewardIdInput.value = config.rewardId || '';
+
   const rewardNameInput = document.getElementById('daily-checkin-reward-name');
   if (rewardNameInput) rewardNameInput.value = config.rewardName || 'Daily Check-In';
+  applyDailyCheckinRewardSelectFromConfig(config);
   
   const chatResponseInput = document.getElementById('daily-checkin-chat-response');
   if (chatResponseInput) chatResponseInput.value = config.chatResponse || 'Welcome back {username}!';
@@ -10906,6 +13819,18 @@ async function initDailyCheckinSystem() {
   
   // Load config to UI
   loadDailyCheckinConfigToUI();
+  refreshDailyCheckinEventSubWarning();
+
+  const loadRewardsBtn = document.getElementById('daily-checkin-load-rewards');
+  if (loadRewardsBtn) {
+    loadRewardsBtn.addEventListener('click', () => {
+      loadDailyCheckinRewardsFromTwitch().catch((err) => console.error('Load daily check-in rewards failed:', err));
+    });
+  }
+  const rewardSelect = document.getElementById('daily-checkin-reward-select');
+  if (rewardSelect) {
+    rewardSelect.addEventListener('change', updateDailyCheckinConfig);
+  }
   
   // Add change listeners to update config
   const fields = [
@@ -11374,15 +14299,12 @@ function setupLeftAppMenu() {
     });
   }
   
-  // Profile widget Manage button – toggle expand/collapse (content in widget)
-  const profileWidgetOpen = document.getElementById('profile-widget-open');
-  if (profileWidgetOpen) {
-    profileWidgetOpen.addEventListener('click', () => toggleProfileWidget());
-  }
-  // Battle widget Manage button – toggle expand/collapse (content in widget)
-  const battleWidgetOpen = document.getElementById('battle-widget-open');
-  if (battleWidgetOpen) {
-    battleWidgetOpen.addEventListener('click', () => toggleBattleWidget());
+  // Profile Manager button (on dashboard)
+  const openProfileManagerBtn = document.getElementById('open-profile-manager-btn');
+  if (openProfileManagerBtn) {
+    openProfileManagerBtn.addEventListener('click', () => {
+      openProfileModal();
+    });
   }
   
   // Tools menu wiring (new)
@@ -11530,11 +14452,50 @@ function setupLeftAppMenu() {
   const toolsAlerts = document.getElementById('menu-tools-alerts');
   if (toolsAlerts) {
     toolsAlerts.addEventListener('click', (e) => {
-      console.log('🔴 ALERT WIDGET button clicked from Tools menu');
       e.stopPropagation();
       showAlertWidget();
       if (toolsDropdown) toolsDropdown.classList.add('hidden');
       if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  function closeToolsMenu() {
+    if (toolsDropdown) toolsDropdown.classList.add('hidden');
+    if (toolsBtn) toolsBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  const toolsRavenStart = document.getElementById('menu-tools-raven-start');
+  const toolsRavenStop = document.getElementById('menu-tools-raven-stop');
+  const toolsRavenRestart = document.getElementById('menu-tools-raven-restart');
+  const toolsRavenSettings = document.getElementById('menu-tools-raven-settings');
+  if (toolsRavenStart && window.electronAPI && window.electronAPI.ravenStart) {
+    toolsRavenStart.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeToolsMenu();
+      await window.electronAPI.ravenStart();
+      window.dispatchEvent(new Event('vd-raven-refresh-connection'));
+      setTimeout(() => window.dispatchEvent(new Event('vd-raven-refresh-connection')), 2500);
+    });
+  }
+  if (toolsRavenStop && window.electronAPI && window.electronAPI.ravenStop) {
+    toolsRavenStop.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeToolsMenu();
+      await window.electronAPI.ravenStop();
+    });
+  }
+  if (toolsRavenRestart && window.electronAPI && window.electronAPI.ravenRestart) {
+    toolsRavenRestart.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeToolsMenu();
+      await window.electronAPI.ravenRestart();
+    });
+  }
+  if (toolsRavenSettings && window.electronAPI && window.electronAPI.ravenOpenEnvFile) {
+    toolsRavenSettings.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeToolsMenu();
+      window.electronAPI.ravenOpenEnvFile();
     });
   }
   
@@ -14279,6 +17240,8 @@ function setupButtonTypeSelection() {
   const selectionModal = document.getElementById('button-type-modal');
   const audioOption = document.querySelector('[data-type="audio"]');
   const multiMediaOption = document.querySelector('[data-type="multi-media"]');
+  const meldSceneOption = document.querySelector('[data-type="meld-scene"]');
+  const macroOption = document.querySelector('[data-type="macro"]');
   const cancelBtn = document.querySelector('.cancel-selection');
 
   // Audio option clicked
@@ -14299,12 +17262,21 @@ function setupButtonTypeSelection() {
     });
   }
 
-  // Meld Scene option clicked
-  const meldSceneOption = document.querySelector('[data-type="meld-scene"]');
   if (meldSceneOption) {
     meldSceneOption.addEventListener('click', () => {
       selectionModal.classList.add('hidden');
       openMeldSceneForm();
+    });
+  }
+
+  if (macroOption) {
+    macroOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      if (typeof window.createNewMacro === 'function') {
+        window.createNewMacro();
+      } else if (typeof showCustomAlert === 'function') {
+        showCustomAlert('Macro editor is not loaded yet. Try Edit → Preferences → Manage Macros.', 'error');
+      }
     });
   }
 
@@ -14326,6 +17298,76 @@ function setupButtonTypeSelection() {
 function setupMeldLoadScenesButton() {
   const btn = document.getElementById('meld-load-scenes');
   if (btn) btn.addEventListener('click', () => loadMeldScenes());
+}
+
+async function loadMeldScenes() {
+  const select = document.getElementById('meld-scene-select');
+  const status = document.getElementById('meld-scene-status');
+  if (!select || !window.meldClient) {
+    if (status) status.textContent = 'Meld client not loaded.';
+    return;
+  }
+  if (status) status.textContent = 'Loading…';
+  try {
+    const scenes = await window.meldClient.getScenes();
+    select.innerHTML = '<option value="">— Select a scene —</option>';
+    scenes.forEach(({ id, name }) => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = name || id;
+      select.appendChild(opt);
+    });
+    if (status) status.textContent = scenes.length ? `${scenes.length} scene(s)` : 'No scenes';
+  } catch (err) {
+    if (status) status.textContent = 'Failed — is Meld Studio running?';
+    select.innerHTML = '<option value="">— Is Meld Studio running? —</option>';
+    console.warn('Load Meld scenes failed:', err);
+  }
+}
+
+function hideMeldSceneSection() {
+  const meldSection = document.getElementById('meld-scene-section');
+  if (meldSection) {
+    meldSection.classList.add('hidden');
+    meldSection.style.display = 'none';
+  }
+}
+
+function openMeldSceneForm() {
+  window.__meldSceneSubmitInProgress = false;
+  const settingsForm = document.getElementById('settings-form');
+  settingsForm.reset();
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'meld-scene';
+  delete settingsForm.dataset.editingIndex;
+  delete settingsForm.dataset.editingId;
+  delete settingsForm.dataset.resolvedPath;
+  delete settingsForm.dataset.resolvedArgs;
+  delete settingsForm.dataset.existingFile;
+  if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
+  const hkIn = document.getElementById('hotkey-input');
+  if (hkIn) hkIn.value = '';
+  const hkStatus = document.getElementById('hotkey-status');
+  if (hkStatus) hkStatus.textContent = '';
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  const meldSection = document.getElementById('meld-scene-section');
+  if (audioFileSection) audioFileSection.style.display = 'none';
+  if (appFileSection) appFileSection.style.display = 'none';
+  if (meldSection) {
+    meldSection.classList.remove('hidden');
+    meldSection.style.display = '';
+  }
+  const fileInput = document.getElementById('file-input');
+  const appFileInput = document.getElementById('app-file-input');
+  if (fileInput) fileInput.required = false;
+  if (appFileInput) appFileInput.required = false;
+  document.getElementById('settings-modal-title').textContent = 'Add Meld Scene Button';
+  const saveBtn = document.getElementById('save-sound');
+  if (saveBtn) saveBtn.disabled = false;
+  document.getElementById('settings-modal').classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
+  loadMeldScenes();
 }
 
 function setupOverlayPreview() {
@@ -14353,12 +17395,19 @@ function setupOverlayPreview() {
 function openAudioForm() {
   const settingsForm = document.getElementById('settings-form');
   settingsForm.reset();
-  const saveBtn = document.getElementById('save-sound');
-  if (saveBtn) saveBtn.disabled = false;
   
   // Set the form type to 'audio'
   const typeInput = document.getElementById('type-input');
   if (typeInput) typeInput.value = 'audio';
+  hideMeldSceneSection();
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  if (audioFileSection) audioFileSection.style.display = '';
+  if (appFileSection) appFileSection.style.display = 'none';
+  const fileInput = document.getElementById('file-input');
+  const appFileInput = document.getElementById('app-file-input');
+  if (fileInput) fileInput.required = true;
+  if (appFileInput) appFileInput.required = false;
   
   // Stop any active hotkey recording and clear displayed status/value
   if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
@@ -14404,86 +17453,11 @@ function openAudioForm() {
   
   document.getElementById('settings-modal-title').textContent = 'Add New Audio Button';
   
-  // Show audio section, hide app and meld
-  const meldSection = document.getElementById('meld-scene-section');
-  if (meldSection) { meldSection.classList.add('hidden'); meldSection.style.display = 'none'; }
-  
   // Show settings modal
   document.getElementById('settings-modal').classList.remove('hidden');
   if (window.electronAPI && window.electronAPI.disableHotkeys) {
     window.electronAPI.disableHotkeys();
   }
-}
-
-async function loadMeldScenes() {
-  const select = document.getElementById('meld-scene-select');
-  const status = document.getElementById('meld-scene-status');
-  if (!select || !window.meldClient) {
-    if (status) status.textContent = 'Meld client not loaded.';
-    return;
-  }
-  if (status) status.textContent = 'Loading…';
-  try {
-    const scenes = await window.meldClient.getScenes();
-    select.innerHTML = '<option value="">— Select a scene —</option>';
-    scenes.forEach(({ id, name }) => {
-      const opt = document.createElement('option');
-      opt.value = id;
-      opt.textContent = name || id;
-      select.appendChild(opt);
-    });
-    if (status) status.textContent = scenes.length ? `${scenes.length} scene(s)` : 'No scenes';
-  } catch (err) {
-    if (status) status.textContent = 'Failed';
-    select.innerHTML = '<option value="">— Is Meld Studio running? —</option>';
-    console.warn('Load Meld scenes failed:', err);
-  }
-}
-
-function openMeldSceneForm() {
-  window.__meldSceneSubmitInProgress = false; // allow new submit
-  const settingsForm = document.getElementById('settings-form');
-  settingsForm.reset();
-  const typeInput = document.getElementById('type-input');
-  if (typeInput) typeInput.value = 'meld-scene';
-  delete settingsForm.dataset.editingIndex;
-  delete settingsForm.dataset.editingId;
-  delete settingsForm.dataset.resolvedPath;
-  delete settingsForm.dataset.resolvedArgs;
-  delete settingsForm.dataset.existingFile;
-  if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
-  const hkIn = document.getElementById('hotkey-input');
-  if (hkIn) hkIn.value = '';
-  const hkStatus = document.getElementById('hotkey-status');
-  if (hkStatus) hkStatus.textContent = '';
-  const chatCommandEnabled = document.getElementById('chat-command-enabled');
-  const chatCommandKeyword = document.getElementById('chat-command-keyword');
-  const redeemName = document.getElementById('redeem-name');
-  const chatCommandSettings = document.getElementById('chat-command-settings');
-  if (chatCommandEnabled) chatCommandEnabled.checked = false;
-  if (chatCommandKeyword) chatCommandKeyword.value = '';
-  if (redeemName) redeemName.value = '';
-  if (chatCommandSettings) chatCommandSettings.style.display = 'none';
-  const audioFileSection = document.getElementById('audio-file-section');
-  const appFileSection = document.getElementById('app-file-section');
-  const meldSection = document.getElementById('meld-scene-section');
-  if (audioFileSection) audioFileSection.style.display = 'none';
-  if (appFileSection) appFileSection.style.display = 'none';
-  if (meldSection) {
-    meldSection.classList.remove('hidden');
-    meldSection.style.display = '';
-  }
-  // So browser validation doesn't block submit: file inputs are hidden for Meld
-  const fileInput = document.getElementById('file-input');
-  const appFileInput = document.getElementById('app-file-input');
-  if (fileInput) fileInput.required = false;
-  if (appFileInput) appFileInput.required = false;
-  document.getElementById('settings-modal-title').textContent = 'Add Meld Scene Button';
-  const saveBtn = document.getElementById('save-sound');
-  if (saveBtn) saveBtn.disabled = false;
-  document.getElementById('settings-modal').classList.remove('hidden');
-  if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
-  loadMeldScenes();
 }
 
 // Preferences Modal Functions
@@ -14492,6 +17466,12 @@ function openPreferencesModal() {
   if (preferencesModal) {
     preferencesModal.classList.remove('hidden');
     loadPreferences();
+    if (window.vdLicense && typeof window.vdLicense.loadLicensePreferencesPanel === 'function') {
+      window.vdLicense.loadLicensePreferencesPanel();
+    }
+    if (window.vdRavenSetup && typeof window.vdRavenSetup.refreshRavenSetupPanel === 'function') {
+      window.vdRavenSetup.refreshRavenSetupPanel();
+    }
   }
 }
 
@@ -14508,11 +17488,46 @@ function loadPreferences() {
   
   // Update checkboxes
   document.getElementById('auto-update-checkbox').checked = preferences.autoUpdate !== false; // default to true
+  
+  // Load Discord settings
+  if (preferences.discord) {
+    const discord = preferences.discord;
+    if (document.getElementById('discord-webhook-url')) {
+      document.getElementById('discord-webhook-url').value = discord.webhookUrl || '';
+    }
+    if (document.getElementById('discord-bot-token')) {
+      document.getElementById('discord-bot-token').value = discord.botToken || '';
+    }
+    if (document.getElementById('discord-channel-id')) {
+      document.getElementById('discord-channel-id').value = discord.defaultChannelId || '';
+    }
+    if (document.getElementById('discord-username')) {
+      document.getElementById('discord-username').value = discord.username || 'VirtualDeck';
+    }
+  }
+  
+  // Load auth token path
+  if (window.electronAPI && window.electronAPI.getAuthTokenPath) {
+    window.electronAPI.getAuthTokenPath().then(tokenPath => {
+      const tokenPathInput = document.getElementById('auth-token-path');
+      if (tokenPathInput) {
+        tokenPathInput.value = tokenPath;
+      }
+    }).catch(err => {
+      console.error('Failed to load auth token path:', err);
+    });
+  }
 }
 
 function savePreferences() {
   const preferences = {
-    autoUpdate: document.getElementById('auto-update-checkbox').checked
+    autoUpdate: document.getElementById('auto-update-checkbox').checked,
+    discord: {
+      webhookUrl: document.getElementById('discord-webhook-url')?.value.trim() || '',
+      botToken: document.getElementById('discord-bot-token')?.value.trim() || '',
+      defaultChannelId: document.getElementById('discord-channel-id')?.value.trim() || '',
+      username: document.getElementById('discord-username')?.value.trim() || 'VirtualDeck'
+    }
   };
   
   // Save to localStorage
@@ -14521,6 +17536,11 @@ function savePreferences() {
   // Send preferences to main process if available
   if (window.electronAPI && window.electronAPI.savePreferences) {
     window.electronAPI.savePreferences(preferences);
+  }
+  
+  // Also update config with Discord settings for JARVIS tools
+  if (window.electronAPI && window.electronAPI.updateConfig) {
+    window.electronAPI.updateConfig({ discord: preferences.discord });
   }
   
   // Show success message
@@ -14532,17 +17552,36 @@ function savePreferences() {
   closePreferencesModal();
 }
 
+function applyUpdateStatusToPreferences(status) {
+  const textEl = document.getElementById('update-status-text');
+  const progressEl = document.getElementById('update-download-progress');
+  if (!textEl) return;
+  if (!status) {
+    textEl.textContent = '';
+    if (progressEl) progressEl.classList.add('hidden');
+    return;
+  }
+  if (status.message) textEl.textContent = status.message;
+  if (progressEl) {
+    if (status.phase === 'downloading' && typeof status.percent === 'number') {
+      progressEl.classList.remove('hidden');
+      progressEl.value = status.percent;
+    } else if (status.phase === 'downloaded' || status.phase === 'idle') {
+      progressEl.classList.add('hidden');
+      progressEl.value = 0;
+    }
+  }
+}
+
 function checkForUpdatesFromPreferences() {
-  // Send check for updates request to main process
   if (window.electronAPI && window.electronAPI.checkForUpdates) {
+    applyUpdateStatusToPreferences({ phase: 'checking', message: 'Checking for updates…' });
     window.electronAPI.checkForUpdates();
-    if (window.notificationManager) {
-      window.notificationManager.show('Checking for updates...', 'info');
-    }
   } else {
-    if (window.notificationManager) {
-      window.notificationManager.show('Update checking not available in development mode', 'warning');
-    }
+    applyUpdateStatusToPreferences({
+      phase: 'error',
+      message: 'Updates are only available in the installed Windows build.',
+    });
   }
 }
 
@@ -14570,6 +17609,31 @@ function initializePreferencesModal() {
   const checkUpdatesBtn = document.getElementById('check-updates-button');
   if (checkUpdatesBtn) {
     checkUpdatesBtn.addEventListener('click', checkForUpdatesFromPreferences);
+  }
+
+  if (window.electronAPI && typeof window.electronAPI.onUpdateStatus === 'function') {
+    window.electronAPI.onUpdateStatus((status) => applyUpdateStatusToPreferences(status));
+  }
+
+  // Copy token path button
+  const copyTokenPathBtn = document.getElementById('copy-token-path');
+  if (copyTokenPathBtn) {
+    copyTokenPathBtn.addEventListener('click', async () => {
+      const tokenPathInput = document.getElementById('auth-token-path');
+      if (tokenPathInput && tokenPathInput.value) {
+        try {
+          await navigator.clipboard.writeText(tokenPathInput.value);
+          if (window.notificationManager) {
+            window.notificationManager.show('Token path copied to clipboard!', 'success');
+          }
+        } catch (err) {
+          console.error('Failed to copy token path:', err);
+          if (window.notificationManager) {
+            window.notificationManager.show('Failed to copy token path', 'error');
+          }
+        }
+      }
+    });
   }
 
   // Twitch Setup button
@@ -14675,9 +17739,9 @@ window.testTwitchEventPipeline = function() {
   if (alerts.length === 0) {
     console.log('❌ NO ALERTS CONFIGURED!');
     console.log('💡 This is why you\'re not seeing alerts.');
-    console.log('💡 Go to Tools → Alerts to create alerts.');
+    console.log('💡 Go to Tools → Alert Widget to create alerts.');
     console.log('');
-    alert('⚠️ No alerts configured!\n\nYou need to create alerts in Tools → Alerts first.\n\nCreate at least:\n• 1 "Follower" alert\n• 1 "Subscriber" alert');
+    alert('⚠️ No alerts configured!\n\nYou need to create alerts in Tools → Alert Widget first.\n\nCreate at least:\n• 1 "Follower" alert\n• 1 "Subscriber" alert');
     return;
   }
   
@@ -14768,7 +17832,7 @@ window.testTwitchEventPipeline = function() {
     const alertsForType = alerts.filter(a => a.type === alertType && a.enabled !== false);
     if (alertsForType.length === 0) {
       console.log(`❌ No enabled alerts found for type "${alertType}"!`);
-      console.log('💡 Create a "Follower" alert in Tools → Alerts');
+      console.log('💡 Create a "Follower" alert in Tools → Alert Widget');
     } else {
       console.log(`✅ Found ${alertsForType.length} enabled alert(s) for "${alertType}"`);
       
@@ -14850,7 +17914,7 @@ window.testTwitchEventPipeline = function() {
     const alertsForType = alerts.filter(a => a.type === alertType && a.enabled !== false);
     if (alertsForType.length === 0) {
       console.log(`❌ No enabled alerts found for type "${alertType}"!`);
-      console.log('💡 Create a "Subscriber" alert in Tools → Alerts');
+      console.log('💡 Create a "Subscriber" alert in Tools → Alert Widget');
     } else {
       console.log(`✅ Found ${alertsForType.length} enabled alert(s) for "${alertType}"`);
       
@@ -14904,7 +17968,7 @@ window.testTwitchEventPipeline = function() {
   console.log('─────────────────────────────────────────────────────────');
   console.log('1. Did you see alerts appear on screen?');
   console.log('2. Check the console messages above for errors');
-  console.log('3. Make sure you have alerts created in Tools → Alerts');
+  console.log('3. Make sure you have alerts created in Tools → Alert Widget');
   console.log('4. Make sure your alerts are ENABLED (not disabled)');
   console.log('5. Check if you have an overlay URL open in OBS');
   console.log('6. Look for any error messages in red above');
@@ -14912,10 +17976,10 @@ window.testTwitchEventPipeline = function() {
   console.log('🔍 If alerts didn\'t show:');
   console.log('─────────────────────────────────────────────────────────');
   if (enabledFollowerAlerts.length === 0) {
-    console.log('❌ Create/enable a "Follower" alert in Tools → Alerts');
+    console.log('❌ Create/enable a "Follower" alert in Tools → Alert Widget');
   }
   if (enabledSubscriberAlerts.length === 0) {
-    console.log('❌ Create/enable a "Subscriber" alert in Tools → Alerts');
+    console.log('❌ Create/enable a "Subscriber" alert in Tools → Alert Widget');
   }
   console.log('• Check that your overlay is properly connected');
   console.log('• Verify alert queue is working (check alertQueue in console)');
@@ -14936,7 +18000,7 @@ window.testTwitchEventPipeline = function() {
     if (enabledSubscriberAlerts.length === 0) {
       summaryMessage += '• No enabled subscriber alerts\n';
     }
-    summaryMessage += '\n💡 Create/enable alerts in Tools → Alerts';
+    summaryMessage += '\n💡 Create/enable alerts in Tools → Alert Widget';
   } else {
     summaryMessage += '✅ Alerts are configured correctly!\n\n';
     summaryMessage += 'Check console (F12) for detailed logs.\n';
@@ -14949,790 +18013,94 @@ window.testTwitchEventPipeline = function() {
 // Add a shorter alias for quick testing
 window.testTwitchEvents = window.testTwitchEventPipeline;
 
-// ========== Progression System Management ==========
+/* ========================================================
+ * JARVIS Tool API Integration
+ * ======================================================== */
 
-// Open progression manager modal
-async function openProgressionManager() {
-  console.log('🔵 Opening progression manager modal...');
-  
-  // Close overlay widget if it's open (so modal is visible)
-  const overlayWidget = document.getElementById('overlay-widget');
-  if (overlayWidget && !overlayWidget.classList.contains('hidden')) {
-    console.log('🔵 Closing overlay widget to show progression modal');
-    overlayWidget.classList.add('hidden');
-  }
-  
-  // Also close alert widget if it's open
-  const alertWidget = document.getElementById('alert-widget');
-  if (alertWidget && !alertWidget.classList.contains('hidden')) {
-    console.log('🔵 Closing alert widget to show progression modal');
-    alertWidget.classList.add('hidden');
-  }
-  
-  const modal = document.getElementById('progression-manager-modal');
-  if (!modal) {
-    console.error('Progression manager modal not found!');
-    showCustomAlert('Progression manager modal not found. Please restart the app.', 'error');
-    return;
-  }
-  
-  // Debug: Check all parent elements for visibility issues
-  console.log('🔍 Checking parent chain:');
-  let el = modal;
-  while (el) {
-    console.log(el.tagName, el.id || el.className, {
-      display: getComputedStyle(el).display,
-      visibility: getComputedStyle(el).visibility,
-      opacity: getComputedStyle(el).opacity
-    });
-    el = el.parentElement;
-  }
-  
-  // Remove hidden class first
-  modal.classList.remove('hidden');
-  
-  // Force a reflow to ensure browser recalculates layout
-  void modal.offsetHeight; // Forces reflow
-  
-  // Use requestAnimationFrame to defer the style changes to next paint
-  requestAnimationFrame(() => {
-    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex !important; justify-content: center; align-items: center; z-index: 100000; padding: 20px; box-sizing: border-box;';
+// Handle JARVIS scene change requests
+if (window.electronAPI && window.electronAPI.onJarvisChangeScene) {
+  window.electronAPI.onJarvisChangeScene(async (data) => {
+    console.log('[JARVIS] Scene change requested:', data.sceneName);
     
-    // Force another reflow after setting styles
-    void modal.offsetHeight;
-    
-    console.log('Modal opened, classes:', modal.className);
-    console.log('Modal display:', window.getComputedStyle(modal).display);
-    console.log('Modal z-index:', window.getComputedStyle(modal).zIndex);
-    console.log('Modal visibility:', window.getComputedStyle(modal).visibility);
-    console.log('Modal opacity:', window.getComputedStyle(modal).opacity);
-    console.log('🔵 Progression modal should now be visible!');
-  });
-  
-  // Load progressions list
-  await loadProgressionsList();
-  
-  // Setup close button if not already set up
-  const closeBtn = document.getElementById('progression-manager-close');
-  if (closeBtn && !closeBtn.hasAttribute('data-listener-attached')) {
-    closeBtn.setAttribute('data-listener-attached', 'true');
-    closeBtn.addEventListener('click', () => {
-      console.log('Closing progression manager...');
-      modal.classList.add('hidden');
-      modal.style.display = 'none';
-    });
-  }
-  
-  // Setup create button if not already set up
-  const createBtn = document.getElementById('create-new-progression');
-  if (createBtn && !createBtn.hasAttribute('data-listener-attached')) {
-    createBtn.setAttribute('data-listener-attached', 'true');
-    createBtn.addEventListener('click', () => {
-      openProgressionEditor(null);
-    });
-  }
-  
-  // Setup test redeem button
-  const testRedeemBtn = document.getElementById('test-progression-redeem');
-  if (testRedeemBtn && !testRedeemBtn.hasAttribute('data-listener-attached')) {
-    testRedeemBtn.setAttribute('data-listener-attached', 'true');
-    testRedeemBtn.addEventListener('click', () => {
-      testProgressionRedeem();
-    });
-  }
-}
-
-// Test a single progression (called from progression card)
-window.testSingleProgression = async function(progressionId) {
-  try {
-    const result = await window.electronAPI.getProgressions();
-    const progression = result.progressions.find(p => p.id === progressionId);
-    
-    if (!progression) {
-      showCustomAlert('Progression not found!', 'error');
-      return;
-    }
-    
-    openProgressionTestModal(progression);
-  } catch (error) {
-    console.error('Error testing progression:', error);
-    showCustomAlert('Error: ' + error.message, 'error');
-  }
-};
-
-// Test progression redeem (with selection)
-async function testProgressionRedeem() {
-  try {
-    const result = await window.electronAPI.getProgressions();
-    const progressions = result.progressions || [];
-    
-    if (progressions.length === 0) {
-      showCustomAlert('No progressions configured yet. Create one first!', 'error');
-      return;
-    }
-    
-    // If only one progression, open it directly
-    if (progressions.length === 1) {
-      openProgressionTestModal(progressions[0]);
-      return;
-    }
-    
-    // Show custom alert to select which progression
-    const listHtml = progressions.map((prog, i) => 
-      `<button onclick="window.testSingleProgression('${prog.id}')" style="width:100%;padding:12px;margin:5px 0;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:6px;cursor:pointer;color:var(--text-primary);text-align:left;">
-        ${i + 1}. ${prog.name} (${prog.redeemKeyword})
-      </button>`
-    ).join('');
-    
-    showCustomAlert(`<div style="max-height:400px;overflow-y:auto;">${listHtml}</div>`, 'info');
-  } catch (error) {
-    console.error('Error testing progression redeem:', error);
-    showCustomAlert('Error: ' + error.message, 'error');
-  }
-}
-
-// Open progression test modal
-function openProgressionTestModal(progression) {
-  const modal = document.getElementById('progression-test-modal');
-  if (!modal) {
-    showCustomAlert('Test modal not found!', 'error');
-    return;
-  }
-  
-  // Populate progression info
-  const currentStage = progression.stages[progression.currentStageIndex];
-  document.getElementById('test-prog-name').textContent = progression.name;
-  document.getElementById('test-prog-keyword').textContent = progression.redeemKeyword;
-  document.getElementById('test-prog-stage').textContent = progression.currentStageIndex + 1;
-  document.getElementById('test-prog-total').textContent = progression.stages.length;
-  document.getElementById('test-prog-count').textContent = progression.currentCount;
-  document.getElementById('test-prog-required').textContent = currentStage ? currentStage.requiredCount : 0;
-  
-  // Store progression ID for later
-  modal.dataset.progressionId = progression.id;
-  
-  // Setup handlers
-  setupProgressionTestHandlers();
-  
-  // Show modal
-  modal.classList.remove('hidden');
-  void modal.offsetHeight;
-  requestAnimationFrame(() => {
-    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex !important; justify-content: center; align-items: center; z-index: 100001; padding: 20px; box-sizing: border-box;';
-  });
-}
-
-// Setup progression test modal handlers
-function setupProgressionTestHandlers() {
-  const modal = document.getElementById('progression-test-modal');
-  const closeBtn = document.getElementById('progression-test-close');
-  const cancelBtn = document.getElementById('progression-test-cancel');
-  const sendBtn = document.getElementById('progression-test-send');
-  
-  if (closeBtn && !closeBtn.hasAttribute('data-test-listener')) {
-    closeBtn.setAttribute('data-test-listener', 'true');
-    closeBtn.addEventListener('click', () => {
-      modal.classList.add('hidden');
-      modal.style.display = 'none';
-    });
-  }
-  
-  if (cancelBtn && !cancelBtn.hasAttribute('data-test-listener')) {
-    cancelBtn.setAttribute('data-test-listener', 'true');
-    cancelBtn.addEventListener('click', () => {
-      modal.classList.add('hidden');
-      modal.style.display = 'none';
-    });
-  }
-  
-  if (sendBtn && !sendBtn.hasAttribute('data-test-listener')) {
-    sendBtn.setAttribute('data-test-listener', 'true');
-    sendBtn.addEventListener('click', async () => {
-      const progressionId = modal.dataset.progressionId;
-      const username = document.getElementById('test-progression-username').value || 'TestUser';
-      
-      // Get the progression
-      const result = await window.electronAPI.getProgressions();
-      const progression = result.progressions.find(p => p.id === progressionId);
-      
-      if (!progression) {
-        showCustomAlert('Progression not found!', 'error');
-        return;
+    if (typeof window.meldClient !== 'undefined' && window.meldClient.showScene) {
+      try {
+        // Meld's showScene needs a scene id; resolve a scene name to its id first
+        let sceneId = data.sceneName;
+        try {
+          const scenes = await window.meldClient.getScenes();
+          const hit = scenes.find((s) => s.name === data.sceneName || s.id === data.sceneName)
+            || scenes.find((s) => String(s.name).toLowerCase() === String(data.sceneName).toLowerCase());
+          if (hit) sceneId = hit.id;
+        } catch (_) { /* fall through with the raw value */ }
+        const result = await window.meldClient.showScene(sceneId);
+        console.log('[JARVIS] Scene change result:', result);
+      } catch (error) {
+        console.error('[JARVIS] Error changing scene:', error);
       }
-      
-      // Send test redemption
-      await sendTestRedemption(progression, username);
-      
-      // Refresh progression info in the modal
-      setTimeout(async () => {
-        const updatedResult = await window.electronAPI.getProgressions();
-        const updatedProg = updatedResult.progressions.find(p => p.id === progressionId);
-        if (updatedProg) {
-          const currentStage = updatedProg.stages[updatedProg.currentStageIndex];
-          document.getElementById('test-prog-stage').textContent = updatedProg.currentStageIndex + 1;
-          document.getElementById('test-prog-count').textContent = updatedProg.currentCount;
-          document.getElementById('test-prog-required').textContent = currentStage ? currentStage.requiredCount : 0;
-        }
-      }, 300);
-      
-      // Don't close modal - let user test multiple times
-      // modal.classList.add('hidden');
-      // modal.style.display = 'none';
-    });
-  }
-}
-
-// Helper to send test redemption (global so it can be used from anywhere)
-window.sendTestRedemption = async function sendTestRedemption(progression, username) {
-  try {
-    
-    // Send fake Twitch redemption event
-    const fakeEvent = {
-      type: 'redeem',
-      user_name: username,
-      user: username,
-      event: {
-        user_name: username,
-        user_login: username.toLowerCase(),
-        reward: {
-          title: progression.redeemKeyword,
-          name: progression.redeemKeyword
-        },
-        user_input: ''
-      }
-    };
-    
-    console.log('🧪 Sending test redemption:', fakeEvent);
-    
-    // Send the event through the Twitch event system
-    if (window.electronAPI && window.electronAPI.sendFakeTwitchEventHandle) {
-      const sendResult = await window.electronAPI.sendFakeTwitchEventHandle(fakeEvent);
-      console.log('Test event sent:', sendResult);
-      showCustomAlert(`Test redeem sent for "${progression.name}" by ${username}! Check the progression overlay.`, 'success');
-      
-      // Refresh the list to show updated counts
-      setTimeout(async () => {
-        await loadProgressionsList();
-      }, 500);
     } else {
-      showCustomAlert('Test event API not available', 'error');
+      console.warn('[JARVIS] Meld client not available');
     }
-  } catch (error) {
-    console.error('Error testing progression redeem:', error);
-    showCustomAlert('Error: ' + error.message, 'error');
-  }
-}
-
-// Load progressions list
-async function loadProgressionsList() {
-  console.log('Loading progressions list...');
-  const listContainer = document.getElementById('progressions-list');
-  const noMessage = document.getElementById('no-progressions-message');
-  
-  if (!listContainer) {
-    console.warn('Progressions list container not found!');
-    return;
-  }
-  
-  try {
-    console.log('Fetching progressions from backend...');
-    
-    if (!window.electronAPI || !window.electronAPI.getProgressions) {
-      console.error('electronAPI.getProgressions not available!');
-      listContainer.innerHTML = '<div style="padding:20px;color:red;">Error: Progression API not available. Please restart the app.</div>';
-      return;
-    }
-    
-    const result = await window.electronAPI.getProgressions();
-    console.log('Progressions result:', result);
-    const progressions = result.progressions || [];
-    
-    if (progressions.length === 0) {
-      listContainer.innerHTML = '';
-      if (noMessage) noMessage.style.display = 'block';
-      return;
-    }
-    
-    if (noMessage) noMessage.style.display = 'none';
-    
-    listContainer.innerHTML = progressions.map(prog => {
-      const currentStage = prog.stages[prog.currentStageIndex];
-      return `
-        <div class="progression-card" style="padding:15px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;">
-          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;">
-            <div>
-              <h4 style="margin:0 0 5px 0;">${prog.name}</h4>
-              <div style="font-size:12px;color:var(--text-tertiary);">
-                Redeem: <code>${prog.redeemKeyword}</code> | 
-                Action: <span style="color:var(--accent);">${prog.actionWord || 'contributed'}</span> | 
-                Stage ${prog.currentStageIndex + 1}/${prog.stages.length} | 
-                ${prog.currentCount}/${currentStage ? currentStage.requiredCount : 0}
-              </div>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button onclick="testSingleProgression('${prog.id}')" style="padding:6px 12px;background:#10b981;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">🧪 Test</button>
-              <button onclick="openProgressionEditor('${prog.id}')" style="padding:6px 12px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Edit</button>
-              <button onclick="resetProgression('${prog.id}')" style="padding:6px 12px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:4px;cursor:pointer;font-size:12px;">Reset</button>
-              <button onclick="deleteProgression('${prog.id}')" style="padding:6px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Delete</button>
-            </div>
-          </div>
-          <div style="font-size:12px;color:var(--text-secondary);">
-            Total Redeems: ${prog.totalRedeems} | 
-            Top Contributor: ${prog.topRedeemers && prog.topRedeemers.length > 0 ? prog.topRedeemers[0].username + ' (' + prog.topRedeemers[0].count + ')' : 'None yet'}
-          </div>
-        </div>
-      `;
-    }).join('');
-  } catch (error) {
-    console.error('Error loading progressions:', error);
-    showCustomAlert('Failed to load progressions: ' + error.message, 'error');
-  }
-}
-
-// Open progression editor (global so onclick handlers can call it)
-window.openProgressionEditor = async function openProgressionEditor(progressionId) {
-  console.log('📝 Opening progression editor for:', progressionId || 'new progression');
-  
-  const editorModal = document.getElementById('progression-editor-modal');
-  const managerModal = document.getElementById('progression-manager-modal');
-  
-  if (!editorModal) {
-    showCustomAlert('Progression editor modal not found!', 'error');
-    return;
-  }
-  
-  // Close manager modal
-  if (managerModal) {
-    managerModal.classList.add('hidden');
-    managerModal.style.display = 'none';
-  }
-  
-  // Reset form
-  const form = document.getElementById('progression-form');
-  form.reset();
-  form.dataset.progressionId = ''; // Clear progression ID
-  document.getElementById('progression-stages-list').innerHTML = '';
-  document.getElementById('progression-editor-title').textContent = 'New Progression';
-  
-  // Load existing progression if editing
-  if (progressionId) {
-    const result = await window.electronAPI.getProgressions();
-    const progression = result.progressions.find(p => p.id === progressionId);
-    if (progression) {
-      await loadProgressionIntoEditor(progression);
-    }
-  } else {
-    // Add one default stage for new progressions
-    addProgressionStage();
-  }
-  
-  // Setup form handlers
-  setupProgressionEditorHandlers();
-  
-  // Show modal
-  editorModal.classList.remove('hidden');
-  void editorModal.offsetHeight;
-  requestAnimationFrame(() => {
-    editorModal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex !important; justify-content: center; align-items: center; z-index: 100001; padding: 20px; box-sizing: border-box;';
   });
 }
 
-// Setup progression editor event handlers
-function setupProgressionEditorHandlers() {
-  const form = document.getElementById('progression-form');
-  const closeBtn = document.getElementById('progression-editor-close');
-  const cancelBtn = document.getElementById('progression-form-cancel');
-  const addStageBtn = document.getElementById('add-progression-stage');
-  const uniformCheckbox = document.getElementById('progression-uniform-count');
-  const uniformCountValue = document.getElementById('progression-uniform-count-value');
-  const displayModeSelect = document.getElementById('progression-display-mode');
-  const durationContainer = document.getElementById('progression-duration-container');
-  const helpBtn = document.getElementById('progression-placeholders-help');
-  
-  // Help button (placeholders guide)
-  if (helpBtn && !helpBtn.hasAttribute('data-editor-listener')) {
-    helpBtn.setAttribute('data-editor-listener', 'true');
-    helpBtn.addEventListener('click', () => {
-      openPlaceholdersGuide();
-    });
-  }
-  
-  // Close button
-  if (closeBtn && !closeBtn.hasAttribute('data-editor-listener')) {
-    closeBtn.setAttribute('data-editor-listener', 'true');
-    closeBtn.addEventListener('click', () => {
-      closeProgressionEditor();
-    });
-  }
-  
-  // Cancel button
-  if (cancelBtn && !cancelBtn.hasAttribute('data-editor-listener')) {
-    cancelBtn.setAttribute('data-editor-listener', 'true');
-    cancelBtn.addEventListener('click', () => {
-      closeProgressionEditor();
-    });
-  }
-  
-  // Add stage button
-  if (addStageBtn && !addStageBtn.hasAttribute('data-editor-listener')) {
-    addStageBtn.setAttribute('data-editor-listener', 'true');
-    addStageBtn.addEventListener('click', () => {
-      addProgressionStage();
-    });
-  }
-  
-  // Uniform count checkbox
-  if (uniformCheckbox && !uniformCheckbox.hasAttribute('data-editor-listener')) {
-    uniformCheckbox.setAttribute('data-editor-listener', 'true');
-    uniformCheckbox.addEventListener('change', () => {
-      if (uniformCheckbox.checked) {
-        uniformCountValue.style.display = 'block';
-        // Hide individual stage count inputs
-        document.querySelectorAll('.stage-required-count').forEach(input => {
-          input.style.display = 'none';
-        });
+// Handle JARVIS scene list requests
+if (window.electronAPI && window.electronAPI.onJarvisGetScenes) {
+  window.electronAPI.onJarvisGetScenes(async () => {
+    console.log('[JARVIS] Scene list requested');
+    
+    if (typeof window.meldClient !== 'undefined' && window.meldClient.getScenes) {
+      try {
+        const scenes = await window.meldClient.getScenes();
+        console.log('[JARVIS] Returning scenes:', scenes);
+        window.electronAPI.sendJarvisScenesResponse(scenes);
+      } catch (error) {
+        console.error('[JARVIS] Error getting scenes:', error);
+        window.electronAPI.sendJarvisScenesResponse([]);
+      }
+    } else {
+      console.warn('[JARVIS] Meld client not available');
+      window.electronAPI.sendJarvisScenesResponse([]);
+    }
+  });
+}
+
+// Scene provider bridge: main process asks the Meld client for scenes / to switch scene
+if (window.electronAPI && window.electronAPI.onSceneProviderRequest) {
+  window.electronAPI.onSceneProviderRequest(async (req) => {
+    const reply = (msg) => window.electronAPI.sendSceneProviderResponse({ reqId: req.reqId, ...msg });
+    if (typeof window.meldClient === 'undefined' || !window.meldClient.getScenes) {
+      reply({ ok: false, error: 'Meld client not loaded' });
+      return;
+    }
+    try {
+      if (req.op === 'list') {
+        reply({ ok: true, scenes: await window.meldClient.getScenes() });
+      } else if (req.op === 'show') {
+        const r = await window.meldClient.showScene(req.sceneId);
+        reply(r && r.ok ? { ok: true } : { ok: false, error: 'Meld did not switch scene (' + ((r && r.reason) || 'unknown') + ')' });
       } else {
-        uniformCountValue.style.display = 'none';
-        // Show individual stage count inputs
-        document.querySelectorAll('.stage-required-count').forEach(input => {
-          input.style.display = 'block';
-        });
+        reply({ ok: false, error: 'Unknown scene request' });
       }
-    });
-  }
-  
-  // Display mode change
-  if (displayModeSelect && !displayModeSelect.hasAttribute('data-editor-listener')) {
-    displayModeSelect.setAttribute('data-editor-listener', 'true');
-    displayModeSelect.addEventListener('change', () => {
-      if (displayModeSelect.value === 'duration') {
-        durationContainer.style.display = 'block';
-      } else {
-        durationContainer.style.display = 'none';
-      }
-    });
-    
-    // Set initial state
-    if (displayModeSelect.value === 'duration') {
-      durationContainer.style.display = 'block';
-    } else {
-      durationContainer.style.display = 'none';
-    }
-  }
-  
-  // Form submit
-  if (form && !form.hasAttribute('data-editor-listener')) {
-    form.setAttribute('data-editor-listener', 'true');
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      await saveProgression();
-    });
-  }
-}
-
-// Close progression editor
-function closeProgressionEditor() {
-  const editorModal = document.getElementById('progression-editor-modal');
-  if (editorModal) {
-    editorModal.classList.add('hidden');
-    editorModal.style.display = 'none';
-  }
-  
-  // Reopen manager modal
-  openProgressionManager();
-}
-
-// Add a stage to the progression
-let stageCounter = 0;
-function addProgressionStage(stageData = null) {
-  const stagesList = document.getElementById('progression-stages-list');
-  if (!stagesList) return;
-  
-  const stageId = stageData?.id || `stage_${Date.now()}_${stageCounter++}`;
-  const stageNum = stagesList.children.length + 1;
-  
-  const existingMedia = stageData?.mediaPath ? `<div style="color:var(--text-secondary);font-size:12px;margin-top:4px;">Current: ${stageData.mediaPath.split(/[\\/]/).pop()}</div>` : '';
-  const existingAudio = stageData?.audioPath ? `<div style="color:var(--text-secondary);font-size:12px;margin-top:4px;">Current: ${stageData.audioPath.split(/[\\/]/).pop()}</div>` : '';
-  
-  const stageHtml = `
-    <div class="progression-stage-item" data-stage-id="${stageId}" 
-         data-media-path="${stageData?.mediaPath || ''}" 
-         data-media-type="${stageData?.mediaType || ''}"
-         data-audio-path="${stageData?.audioPath || ''}"
-         style="padding:15px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:8px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <h4 style="margin:0;">Stage ${stageNum}</h4>
-        <button type="button" class="remove-stage-btn" data-stage-id="${stageId}" style="padding:6px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Remove</button>
-      </div>
-      
-      <div style="display:grid;gap:12px;">
-        <div class="stage-required-count">
-          <label style="display:block;margin-bottom:5px;font-weight:600;font-size:14px;">Redeems Required</label>
-          <input type="number" class="stage-count-input" data-stage-id="${stageId}" min="1" value="${stageData?.requiredCount || 5}" required style="width:100%;padding:8px;border-radius:4px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-        </div>
-        
-        <div>
-          <label style="display:block;margin-bottom:5px;font-weight:600;font-size:14px;">Media File (Image/GIF/Video)</label>
-          <input type="file" class="stage-media-input" data-stage-id="${stageId}" accept="image/*,video/*" style="width:100%;padding:8px;border-radius:4px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-          ${existingMedia}
-          <div class="stage-media-preview" data-stage-id="${stageId}" style="margin-top:8px;min-height:40px;display:none;"></div>
-        </div>
-        
-        <div>
-          <label style="display:block;margin-bottom:5px;font-weight:600;font-size:14px;">Audio File (Optional)</label>
-          <input type="file" class="stage-audio-input" data-stage-id="${stageId}" accept="audio/*" style="width:100%;padding:8px;border-radius:4px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-          ${existingAudio}
-        </div>
-      </div>
-    </div>
-  `;
-  
-  stagesList.insertAdjacentHTML('beforeend', stageHtml);
-  
-  // Add remove handler
-  const removeBtn = stagesList.querySelector(`[data-stage-id="${stageId}"].remove-stage-btn`);
-  if (removeBtn) {
-    removeBtn.addEventListener('click', () => {
-      const stageItem = stagesList.querySelector(`[data-stage-id="${stageId}"].progression-stage-item`);
-      if (stageItem) {
-        stageItem.remove();
-        // Renumber remaining stages
-        renumberStages();
-      }
-    });
-  }
-  
-  // Add media preview handler
-  const mediaInput = stagesList.querySelector(`[data-stage-id="${stageId}"].stage-media-input`);
-  if (mediaInput) {
-    mediaInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        const preview = stagesList.querySelector(`[data-stage-id="${stageId}"].stage-media-preview`);
-        if (preview) {
-          preview.style.display = 'block';
-          if (file.type.startsWith('image/')) {
-            preview.innerHTML = `<img src="${URL.createObjectURL(file)}" style="max-width:200px;max-height:150px;border-radius:4px;">`;
-          } else if (file.type.startsWith('video/')) {
-            preview.innerHTML = `<video src="${URL.createObjectURL(file)}" style="max-width:200px;max-height:150px;border-radius:4px;" controls></video>`;
-          }
-        }
-      }
-    });
-  }
-}
-
-// Renumber stages
-function renumberStages() {
-  const stages = document.querySelectorAll('.progression-stage-item');
-  stages.forEach((stage, index) => {
-    const header = stage.querySelector('h4');
-    if (header) {
-      header.textContent = `Stage ${index + 1}`;
+    } catch (error) {
+      reply({ ok: false, error: (error && error.message) || String(error) });
     }
   });
 }
 
-// Load progression into editor
-async function loadProgressionIntoEditor(progression) {
-  document.getElementById('progression-editor-title').textContent = 'Edit Progression';
-  document.getElementById('progression-name').value = progression.name || '';
-  document.getElementById('progression-redeem-keyword').value = progression.redeemKeyword || '';
-  document.getElementById('progression-action-word').value = progression.actionWord || 'contributed';
-  document.getElementById('progression-overlay-text').value = progression.overlayText || '';
-  document.getElementById('progression-chat-command').value = progression.chatCommand || '';
-  document.getElementById('progression-chat-message').value = progression.chatMessage || '';
-  document.getElementById('progression-display-mode').value = progression.displayMode || 'always';
-  document.getElementById('progression-duration').value = progression.duration || 10;
-  document.getElementById('progression-persistence').value = progression.persistenceMode || 'permanent';
-  document.getElementById('progression-uniform-count').checked = progression.uniformCount || false;
-  
-  if (progression.uniformCount) {
-    document.getElementById('progression-uniform-count-value').style.display = 'block';
-    document.getElementById('progression-uniform-count-input').value = progression.stages[0]?.requiredCount || 5;
-  }
-  
-  // Load stages
-  if (progression.stages && progression.stages.length > 0) {
-    progression.stages.forEach(stage => {
-      addProgressionStage(stage);
-    });
-  }
-  
-  // Store progression ID for update
-  document.getElementById('progression-form').dataset.progressionId = progression.id;
-}
+// Handle JARVIS refresh browser sources requests
+if (window.electronAPI && window.electronAPI.onJarvisRefreshBrowserSources) {
+  window.electronAPI.onJarvisRefreshBrowserSources(async (data) => {
+    console.log('[JARVIS] Refresh browser sources requested:', data);
 
-// Save progression
-async function saveProgression() {
-  try {
-    console.log('💾 Saving progression...');
-    
-    const form = document.getElementById('progression-form');
-    const progressionId = form.dataset.progressionId;
-    
-    const uniformCount = document.getElementById('progression-uniform-count').checked;
-    const uniformCountValue = uniformCount ? parseInt(document.getElementById('progression-uniform-count-input').value) : null;
-    
-    // Collect stage data
-    const stages = [];
-    const stageItems = document.querySelectorAll('.progression-stage-item');
-    
-    for (let i = 0; i < stageItems.length; i++) {
-      const stageItem = stageItems[i];
-      const stageId = stageItem.dataset.stageId;
-      const countInput = stageItem.querySelector('.stage-count-input');
-      const mediaInput = stageItem.querySelector('.stage-media-input');
-      const audioInput = stageItem.querySelector('.stage-audio-input');
-      
-      const requiredCount = uniformCount ? uniformCountValue : parseInt(countInput.value);
-      
-      const stage = {
-        id: stageId,
-        requiredCount: requiredCount
-      };
-      
-      // Check for existing media data
-      const existingMediaPath = stageItem.dataset.mediaPath;
-      const existingMediaType = stageItem.dataset.mediaType;
-      const existingAudioPath = stageItem.dataset.audioPath;
-      
-      // Handle media file
-      if (mediaInput && mediaInput.files && mediaInput.files.length > 0) {
-        const file = mediaInput.files[0];
-        const filePath = window.electronAPI.getFilePathFromFile(file);
-        
-        if (filePath) {
-          // Save media file
-          const mediaResult = await window.electronAPI.saveProgressionMedia({
-            sourcePath: filePath,
-            progressionId: progressionId || 'temp_' + Date.now(),
-            stageId: stageId,
-            mediaType: file.type.startsWith('image/') ? 'image' : 'video',
-            originalName: file.name
-          });
-          
-          if (mediaResult.success) {
-            stage.mediaPath = mediaResult.filePath;
-            stage.mediaType = file.type.startsWith('image/') ? 'image' : 'video';
-          }
-        }
-      } else if (existingMediaPath) {
-        // Use existing media if no new file uploaded
-        stage.mediaPath = existingMediaPath;
-        stage.mediaType = existingMediaType;
+    if (typeof window.meldClient !== 'undefined' && window.meldClient.refreshBrowserSources) {
+      try {
+        const result = await window.meldClient.refreshBrowserSources(data.layerName, data.waitForSceneName);
+        console.log('[JARVIS] Browser sources refresh result:', result);
+      } catch (err) {
+        console.error('[JARVIS] Failed to refresh browser sources:', err);
       }
-      
-      // Handle audio file
-      if (audioInput && audioInput.files && audioInput.files.length > 0) {
-        const file = audioInput.files[0];
-        const filePath = window.electronAPI.getFilePathFromFile(file);
-        
-        if (filePath) {
-          const audioResult = await window.electronAPI.saveProgressionMedia({
-            sourcePath: filePath,
-            progressionId: progressionId || 'temp_' + Date.now(),
-            stageId: stageId,
-            mediaType: 'audio',
-            originalName: file.name
-          });
-          
-          if (audioResult.success) {
-            stage.audioPath = audioResult.filePath;
-          }
-        }
-      } else if (existingAudioPath) {
-        // Use existing audio if no new file uploaded
-        stage.audioPath = existingAudioPath;
-      }
-      
-      stages.push(stage);
-    }
-    
-    if (stages.length === 0) {
-      showCustomAlert('Please add at least one stage!', 'error');
-      return;
-    }
-    
-    // Build progression object
-    const progression = {
-      id: progressionId,
-      name: document.getElementById('progression-name').value,
-      redeemKeyword: document.getElementById('progression-redeem-keyword').value,
-      targetOverlay: 'progressionOverlay', // Always use dedicated progression overlay
-      actionWord: document.getElementById('progression-action-word').value || 'contributed',
-      overlayText: document.getElementById('progression-overlay-text').value,
-      chatCommand: document.getElementById('progression-chat-command').value,
-      chatMessage: document.getElementById('progression-chat-message').value,
-      displayMode: document.getElementById('progression-display-mode').value,
-      duration: parseInt(document.getElementById('progression-duration').value),
-      persistenceMode: document.getElementById('progression-persistence').value,
-      uniformCount: uniformCount,
-      stages: stages,
-      currentStageIndex: 0,
-      currentCount: 0,
-      totalRedeems: 0,
-      topRedeemers: []
-    };
-    
-    console.log('Saving progression:', progression);
-    
-    // Save to backend
-    const result = await window.electronAPI.saveProgression(progression);
-    
-    if (result.success) {
-      showCustomAlert('Progression saved successfully!', 'success');
-      closeProgressionEditor();
-      // Refresh the manager list
-      await loadProgressionsList();
     } else {
-      showCustomAlert('Failed to save progression: ' + result.error, 'error');
+      console.warn('[JARVIS] meldClient.refreshBrowserSources not available');
     }
-  } catch (error) {
-    console.error('Error saving progression:', error);
-    showCustomAlert('Error saving progression: ' + error.message, 'error');
-  }
+  });
 }
-
-// Reset progression
-window.resetProgression = async function(progressionId) {
-  if (!confirm('Reset this progression? This will clear all progress and leaderboard data.')) {
-    return;
-  }
-  
-  try {
-    const result = await window.electronAPI.resetProgression(progressionId);
-    if (result.success) {
-      showCustomAlert('Progression reset successfully!', 'success');
-      await loadProgressionsList();
-    } else {
-      showCustomAlert('Failed to reset progression: ' + result.error, 'error');
-    }
-  } catch (error) {
-    console.error('Error resetting progression:', error);
-    showCustomAlert('Error resetting progression: ' + error.message, 'error');
-  }
-};
-
-// Delete progression
-window.deleteProgression = async function(progressionId) {
-  if (!confirm('Delete this progression? This action cannot be undone.')) {
-    return;
-  }
-  
-  try {
-    const result = await window.electronAPI.deleteProgression(progressionId);
-    if (result.success) {
-      showCustomAlert('Progression deleted successfully!', 'success');
-      await loadProgressionsList();
-    } else {
-      showCustomAlert('Failed to delete progression: ' + result.error, 'error');
-    }
-  } catch (error) {
-    console.error('Error deleting progression:', error);
-    showCustomAlert('Error deleting progression: ' + error.message, 'error');
-  }
-};
-
-// Progression system is initialized via setupOverlayWidget()
-console.log('✅ Progression system functions loaded');

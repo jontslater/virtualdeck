@@ -24,70 +24,72 @@
     <div class="menu-item" id="menu-file" aria-haspopup="true">
       <button id="menu-file-btn" class="menu-button" aria-expanded="false" aria-controls="menu-file-dropdown">File</button>
       <div id="menu-file-dropdown" class="menu-dropdown hidden" role="menu" aria-label="File menu">
-        <button id="menu-file-quit" class="menu-dropdown-item" role="menuitem">Quit</button>
+        <div class="menu-dropdown-content">
+          <button id="menu-file-quit" class="menu-dropdown-item" role="menuitem">Quit</button>
+        </div>
       </div>
     </div>
     <div class="menu-item" id="menu-edit" aria-haspopup="true">
       <button id="menu-edit-btn" class="menu-button" aria-expanded="false" aria-controls="menu-edit-dropdown">Edit</button>
       <div id="menu-edit-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Edit menu">
-        <button id="menu-edit-preferences" class="menu-dropdown-item" role="menuitem">Preferences</button>
+        <div class="menu-dropdown-content">
+          <button id="menu-edit-preferences" class="menu-dropdown-item" role="menuitem">Preferences</button>
+        </div>
       </div>
     </div>
     <div class="menu-item" id="menu-view" aria-haspopup="true">
       <button id="menu-view-btn" class="menu-button" aria-expanded="false" aria-controls="menu-view-dropdown">View</button>
       <div id="menu-view-dropdown" class="menu-dropdown hidden" role="menu" aria-label="View menu">
-        <button id="menu-view-showall" class="menu-dropdown-item" role="menuitem">Show All</button>
-        <button id="menu-view-hideall" class="menu-dropdown-item" role="menuitem">Hide All</button>
-  <div class="menu-divider"></div>
-        <button data-toggle="toggle-sound-grid" class="menu-dropdown-item" role="menuitem">Sound Grid</button>
-        <button data-toggle="toggle-twitch-stats" class="menu-dropdown-item" role="menuitem">Twitch Statistics</button>
-        <button data-toggle="toggle-recent-activity" class="menu-dropdown-item" role="menuitem">Recent Activity</button>
-        <button data-toggle="toggle-twitch-chat" class="menu-dropdown-item" role="menuitem">Twitch Chat</button>
-        <button data-toggle="toggle-sound-controls" class="menu-dropdown-item" role="menuitem">Sound Controls</button>
-        <button data-toggle="toggle-queue-control" class="menu-dropdown-item" role="menuitem">Alert Queue</button>
-        <button data-toggle="toggle-profile-widget" class="menu-dropdown-item" role="menuitem">Profile</button>
-        <button data-toggle="toggle-battle-widget" class="menu-dropdown-item" role="menuitem">Battle</button>
+        <div class="menu-dropdown-content">
+          <button id="menu-view-showall" class="menu-dropdown-item" role="menuitem">Show All</button>
+          <button id="menu-view-hideall" class="menu-dropdown-item" role="menuitem">Hide All</button>
+          <div class="menu-divider"></div>
+          <button data-toggle="toggle-sound-grid" class="menu-dropdown-item" role="menuitem">Sound Grid</button>
+          <button data-toggle="toggle-twitch-stats" class="menu-dropdown-item" role="menuitem">Twitch Statistics</button>
+          <button data-toggle="toggle-recent-activity" class="menu-dropdown-item" role="menuitem">Recent Activity</button>
+          <button data-toggle="toggle-twitch-chat" class="menu-dropdown-item" role="menuitem">Twitch Chat</button>
+          <button data-toggle="toggle-sound-controls" class="menu-dropdown-item" role="menuitem">Sound Controls</button>
+          <button data-toggle="toggle-queue-control" class="menu-dropdown-item" role="menuitem">Alert Queue</button>
+          <button data-toggle="toggle-profile-panel" class="menu-dropdown-item" role="menuitem">Profile Panel</button>
+          <button data-toggle="toggle-ai-dashboard" class="menu-dropdown-item" role="menuitem">AI Dashboard</button>
+          <button id="menu-view-ai-audio-settings" class="menu-dropdown-item" role="menuitem">AI Audio Settings…</button>
+        </div>
       </div>
     </div>
     <div class="menu-item" id="menu-tools" aria-haspopup="true">
       <button id="menu-tools-btn" class="menu-button" aria-expanded="false" aria-controls="menu-tools-dropdown">Tools</button>
       <div id="menu-tools-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Tools menu">
-        <button id="menu-tools-overlay" class="menu-dropdown-item" role="menuitem">Overlay Controls</button>
-        <button id="menu-tools-alerts" class="menu-dropdown-item" role="menuitem">Alert Widget</button>
-        <!-- Test Twitch Events button - commented out but function available via console: testTwitchEvents()
-        <button id="menu-tools-test-twitch" class="menu-dropdown-item" role="menuitem">🧪 Test Twitch Events</button>
-        -->
-        <div class="menu-divider"></div>
-        <button id="menu-tools-devtools" class="menu-dropdown-item" role="menuitem">Developer Tools</button>
-        <button id="menu-tools-reload" class="menu-dropdown-item" role="menuitem">Reload Application</button>
-        <!-- Twitch Setup submenu commented out - preserving code for future use
-        <div class="menu-item" id="menu-tools-twitch-sub" aria-haspopup="true">
-          <button id="menu-tools-twitch-btn" class="menu-dropdown-item" aria-expanded="false" aria-controls="menu-tools-twitch-dropdown">Twitch Setup ▸</button>
-          <div id="menu-tools-twitch-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Twitch Setup submenu" style="left:100%; top:0;">
-            <button id="menu-tools-twitch-activity" class="menu-dropdown-item" role="menuitem">View Twitch Events / Test Events</button>
-            <button id="menu-tools-twitch-eventsub" class="menu-dropdown-item" role="menuitem">EventSub Subscriptions (Select)</button>
-            <button id="menu-tools-twitch-mapping" class="menu-dropdown-item" role="menuitem">Twitch Event Mapping</button>
-            <div class="menu-divider"></div>
-            <button id="menu-tools-twitch-clear" class="menu-dropdown-item" role="menuitem">Clear Twitch Credentials</button>
+        <div class="menu-dropdown-content">
+          <button id="menu-tools-overlay" class="menu-dropdown-item" role="menuitem">Overlay Controls</button>
+          <button id="menu-tools-alerts" class="menu-dropdown-item" role="menuitem">Alert Widget</button>
+          <button id="menu-tools-raid-favorites" class="menu-dropdown-item" role="menuitem">Raid Favorites</button>
+          <div class="menu-divider"></div>
+          <div class="menu-dropdown-section-label" style="padding: 6px 12px 4px; font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.04em;">Raven AI</div>
+          <button id="menu-tools-raven-start" class="menu-dropdown-item" role="menuitem">Start Raven AI</button>
+          <button id="menu-tools-raven-stop" class="menu-dropdown-item" role="menuitem">Stop Raven AI</button>
+          <button id="menu-tools-raven-restart" class="menu-dropdown-item" role="menuitem">Restart Raven AI</button>
+          <button id="menu-tools-raven-settings" class="menu-dropdown-item" role="menuitem">Open Raven settings…</button>
+          <div class="menu-divider"></div>
+          <button id="menu-tools-devtools" class="menu-dropdown-item" role="menuitem">Developer Tools</button>
+          <button id="menu-tools-reload" class="menu-dropdown-item" role="menuitem">Reload Application</button>
+          <div class="menu-divider"></div>
+          <div id="menu-tools-themes" class="menu-dropdown-section">
+            <div id="menu-tools-themes-container"></div>
           </div>
-        </div>
-        -->
-        <div class="menu-divider"></div>
-        <div id="menu-tools-themes" class="menu-dropdown-section">
-          <!-- Themes will be populated dynamically -->
-          <div id="menu-tools-themes-container"></div>
         </div>
       </div>
     </div>
     <div class="menu-item" id="menu-help" aria-haspopup="true">
       <button id="menu-help-btn" class="menu-button" aria-expanded="false" aria-controls="menu-help-dropdown">Help</button>
       <div id="menu-help-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Help menu">
-        <button id="menu-help-bug-report" class="menu-dropdown-item" role="menuitem">Report Bug</button>
-        <div class="menu-divider"></div>
-        <button id="menu-help-commands" class="menu-dropdown-item" role="menuitem">Chat Commands</button>
-        <button id="menu-help-placeholders" class="menu-dropdown-item" role="menuitem">Twitch Placeholders Guide</button>
-        <div class="menu-divider"></div>
-        <button id="menu-help-about" class="menu-dropdown-item" role="menuitem">About</button>
+        <div class="menu-dropdown-content">
+          <button id="menu-help-bug-report" class="menu-dropdown-item" role="menuitem">Report Bug</button>
+          <div class="menu-divider"></div>
+          <button id="menu-help-commands" class="menu-dropdown-item" role="menuitem">Chat Commands</button>
+          <button id="menu-help-placeholders" class="menu-dropdown-item" role="menuitem">Twitch Placeholders Guide</button>
+          <div class="menu-divider"></div>
+          <button id="menu-help-about" class="menu-dropdown-item" role="menuitem">About</button>
+        </div>
       </div>
     </div>
   </nav>
@@ -121,8 +123,8 @@
       <input type="checkbox" id="toggle-twitch-chat" checked style="display: none;">
       <input type="checkbox" id="toggle-sound-controls" checked style="display: none;">
       <input type="checkbox" id="toggle-queue-control" checked style="display: none;">
-      <input type="checkbox" id="toggle-profile-widget" checked style="display: none;">
-      <input type="checkbox" id="toggle-battle-widget" checked style="display: none;">
+      <input type="checkbox" id="toggle-profile-panel" checked style="display: none;">
+      <input type="checkbox" id="toggle-ai-dashboard" checked style="display: none;">
       
       <!-- Hidden buttons that View menu delegates to -->
       <button id="hide-all-components" style="display: none;">Hide All</button>
@@ -131,17 +133,12 @@
   </div>
   
   <div class="container">
-    <div class="hotkey-info">
-      <div class="hotkey-help">
-        <small>💡 Tip: Press Ctrl+Shift+T to cycle through themes</small>
-      </div>
-    </div>
   <!-- Twitch connect UI moved to application Tools menu; on-screen button removed -->
     
     
     <!-- Main Content Area -->
     <!-- Twitch Statistics Display -->
-    <div id="twitch-stats-container" class="hidden">
+    <div id="twitch-stats-container">
       <div class="stats-grid">
         <div class="stat-item" data-stat="viewers">
           <div class="stat-content">
@@ -184,110 +181,57 @@
       </div>
     </div>
 
-    <!-- Dashboard widgets column: Alert Queue + Profile + Battle, with flyout menu to the left -->
-    <div id="dashboard-widgets-column" class="dashboard-widgets-column">
-      <!-- Flyout menu (appears to the left when Profile or Battle Manage is opened) -->
-      <div id="widget-flyout" class="widget-flyout">
-        <div id="profile-widget-body" class="widget-flyout-panel hidden">
-          <label class="widget-body-label">Current Profile</label>
-          <select id="profile-selector" class="profile-selector widget-select">
-            <option value="default">Default Profile</option>
-          </select>
-          <div class="widget-btn-grid">
-            <button id="profile-create" class="profile-btn widget-btn widget-btn-primary">➕ New</button>
-            <button id="profile-duplicate" class="profile-btn widget-btn">📋 Duplicate</button>
-            <button id="profile-rename" class="profile-btn widget-btn">✏️ Rename</button>
-            <button id="profile-delete" class="profile-btn widget-btn widget-btn-danger">🗑️ Delete</button>
-          </div>
-        </div>
-        <div id="battle-widget-body" class="widget-flyout-panel hidden">
-          <label class="widget-body-toggle">
-            <input type="checkbox" id="battle-enabled-toggle" />
-            <span>Enable battles (appear online)</span>
-          </label>
-          <div id="battle-status" class="widget-battle-status">
-            <strong>Status:</strong> <span id="battle-status-text">Ready to invite</span>
-            <div id="battle-hp-row" style="display:none;"><strong>Battle active:</strong> Team A vs Team B</div>
-          </div>
-          <div id="battle-pending-invites" class="widget-section" style="display:none;">
-            <strong>Pending invites:</strong>
-            <div id="battle-invites-list"></div>
-          </div>
-          <div class="widget-section">
-            <strong>Invite to battle:</strong>
-            <div id="battle-online-list" class="widget-online-list">
-              <span id="battle-online-empty" class="widget-muted">No one online. Enable battles and ask others to do the same.</span>
-            </div>
-          </div>
-          <div class="widget-section widget-border-top">
-            <label class="widget-muted">Overlay URL (OBS Browser Source):</label>
-            <div class="widget-overlay-row">
-              <code id="battle-overlay-url">http://localhost:5173?channel=</code>
-              <button id="battle-copy-overlay-url" class="copy-btn" title="Copy URL">📋</button>
-            </div>
-          </div>
-        </div>
+    <!-- Alert Queue Control Widget -->
+    <div id="queue-control-widget" class="queue-control-widget">
+      <div class="queue-widget-header">
+        <span class="queue-widget-title">Alert Queue</span>
+        <div class="queue-widget-status" id="queue-widget-status">0</div>
       </div>
-
-      <!-- Widgets stacked with Alert Queue at bottom -->
-      <div id="queue-control-widget" class="queue-control-widget">
-        <div class="queue-widget-header">
-          <span class="queue-widget-title">Alert Queue</span>
-          <div class="queue-widget-status" id="queue-widget-status">0</div>
-        </div>
-        <div class="queue-widget-actions">
-          <button id="queue-widget-clear" class="queue-widget-btn" title="Clear Queue">
-            <span class="btn-icon">🗑️</span>
-            <span class="btn-label">Clear</span>
-          </button>
-          <button id="queue-widget-skip" class="queue-widget-btn" title="Skip Current">
-            <span class="btn-icon">⏭️</span>
-            <span class="btn-label">Skip</span>
-          </button>
-          <button id="queue-widget-stop" class="queue-widget-btn" title="Stop Current">
-            <span class="btn-icon">⏹️</span>
-            <span class="btn-label">Stop</span>
-          </button>
-        </div>
-      </div>
-
-      <div id="profile-control-widget" class="queue-control-widget profile-control-widget">
-        <div class="queue-widget-header">
-          <span class="queue-widget-title">Profile</span>
-          <span class="queue-widget-status profile-widget-current" id="profile-widget-current">Default</span>
-        </div>
-        <div class="queue-widget-actions">
-          <button id="profile-widget-open" class="queue-widget-btn" title="Manage profiles">
-            <span class="btn-icon">👤</span>
-            <span class="btn-label">Manage</span>
-          </button>
-        </div>
-      </div>
-
-      <div id="battle-control-widget" class="queue-control-widget battle-control-widget">
-        <div class="queue-widget-header">
-          <span class="queue-widget-title">Battle</span>
-          <span class="queue-widget-status battle-widget-status" id="battle-widget-status">Off</span>
-        </div>
-        <div class="queue-widget-actions">
-          <button id="battle-widget-open" class="queue-widget-btn" title="Manage battles">
-            <span class="btn-icon">⚔️</span>
-            <span class="btn-label">Manage</span>
-          </button>
-        </div>
+      <div class="queue-widget-actions">
+        <button id="queue-widget-clear" class="queue-widget-btn" title="Clear Queue">
+          <span class="btn-icon">🗑️</span>
+          <span class="btn-label">Clear</span>
+        </button>
+        <button id="queue-widget-skip" class="queue-widget-btn" title="Skip Current">
+          <span class="btn-icon">⏭️</span>
+          <span class="btn-label">Skip</span>
+        </button>
+        <button id="queue-widget-stop" class="queue-widget-btn" title="Stop Current">
+          <span class="btn-icon">⏹️</span>
+          <span class="btn-label">Stop</span>
+        </button>
       </div>
     </div>
 
-    <!-- Profile modal no longer used - content lives in widget (kept for main process / hotkey compatibility) -->
-    <div id="profile-modal" class="modal-overlay hidden" aria-hidden="true"></div>
 
-    <!-- Battle modal no longer used - content lives in widget -->
-    <div id="battle-modal" class="modal-overlay hidden" aria-hidden="true"></div>
-    <div id="battle-invite-toast" class="hidden" style="position:fixed;bottom:24px;right:24px;z-index:100000;padding:16px 20px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);max-width:320px;">
-      <div style="font-weight:600;margin-bottom:8px;">Battle invite from <span id="battle-invite-from"></span></div>
-      <div style="display:flex;gap:8px;">
-        <button id="battle-invite-accept" style="padding:8px 16px;background:#22c55e;color:white;border:none;border-radius:6px;cursor:pointer;">Accept</button>
-        <button id="battle-invite-decline" style="padding:8px 16px;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:6px;cursor:pointer;">Decline</button>
+    <!-- Profile Management Panel -->
+    <div id="profile-panel" class="profile-panel">
+      <div class="profile-header">
+        <span class="profile-icon">👤</span>
+        <span class="profile-title">Profile</span>
+      </div>
+      <div class="profile-current">
+        <select id="profile-selector" class="profile-selector">
+          <option value="default">Default Profile</option>
+        </select>
+      </div>
+      <div class="profile-actions">
+        <button id="profile-create" class="profile-btn" title="Create New Profile">
+          <span class="btn-icon">➕</span>
+          <span class="btn-label">New</span>
+        </button>
+        <button id="profile-duplicate" class="profile-btn" title="Duplicate Current Profile">
+          <span class="btn-icon">📋</span>
+          <span class="btn-label">Duplicate</span>
+        </button>
+        <button id="profile-rename" class="profile-btn" title="Rename Current Profile">
+          <span class="btn-icon">✏️</span>
+          <span class="btn-label">Rename</span>
+        </button>
+        <button id="profile-delete" class="profile-btn" title="Delete Current Profile">
+          <span class="btn-icon">🗑️</span>
+          <span class="btn-label">Delete</span>
+        </button>
       </div>
     </div>
 
@@ -297,9 +241,41 @@
       </button>
       <span class="drag-status">Sound buttons are locked</span>
     </div>
+
+    <!-- AI Dashboard Controls - Compact Integration -->
+    <div id="ai-dashboard-controls" class="hidden" aria-hidden="true">
+      <div class="ai-control-group">
+        <div class="ai-control-label">🤖 AI System</div>
+        <label class="ai-toggle-switch" id="ai-dashboard-toggle">
+          <span class="ai-toggle-label" id="ai-dashboard-toggle-label">ON</span>
+          <div class="ai-toggle-switch-bg"></div>
+        </label>
+      </div>
+      <div class="ai-control-group">
+        <div class="ai-control-label">
+          Connection
+          <span id="ai-connection-status" class="ai-connection-status" title="AI connection status">●</span>
+        </div>
+        <span id="ai-connection-label" class="ai-connection-label">Checking...</span>
+      </div>
+      <div class="ai-control-group">
+        <div class="ai-control-label">Presenter mode</div>
+        <select id="ai-dashboard-presenter-mode" class="ai-control-select" title="Co-pilot = off-mic assistant; On-stream = live chat mode">
+          <option value="copilot">Co-pilot</option>
+          <option value="onstream">On-stream</option>
+        </select>
+      </div>
+      <div class="ai-control-group">
+        <div class="ai-control-label">Quick Say</div>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <input id="ai-dashboard-say-text" type="text" placeholder="Type for AI to speak..." style="flex: 1; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 12px;" />
+          <button id="ai-dashboard-say-btn" style="background: var(--accent-primary); color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap;" title="Speak">🔊</button>
+        </div>
+        <div id="ai-dashboard-say-status" class="ai-dashboard-say-status" role="status" style="margin-top: 4px; font-size: 11px; color: var(--text-secondary); min-height: 1.2em;"></div>
+      </div>
+    </div>
     
     <div class="main-content">
-      <div id="meld-buttons-sidebar" class="meld-buttons-sidebar" aria-label="Meld scene buttons"></div>
       <div id="sound-grid"></div>
       <!-- Removed static Add Sound card -->
       
@@ -356,9 +332,17 @@
         <button class="selection-option" data-type="meld-scene">
           <div class="option-icon">📺</div>
           <div class="option-content">
-            <div class="option-title">Meld Scene Button</div>
-            <div class="option-description">Switch to a Meld Studio scene</div>
+            <div class="option-title">Meld Button</div>
+            <div class="option-description">Switch to a Meld Studio scene with click, hotkey, chat, or redeem</div>
             <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">Requires Meld Studio running</div>
+          </div>
+        </button>
+        <button class="selection-option" data-type="macro">
+          <div class="option-icon">🎬</div>
+          <div class="option-content">
+            <div class="option-title">Macro</div>
+            <div class="option-description">Create a multi-step macro (hotkey, voice phrase, or deck trigger)</div>
+            <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">Opens the macro editor</div>
           </div>
         </button>
       </div>
@@ -423,11 +407,44 @@
           </label>
           <label for="volume-input" class="volume-label">Volume: <span id="volume-value">100%</span></label>
           <input type="range" id="volume-input" name="volume" min="0" max="100" value="100" />
+          <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color, #333);">
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; cursor: pointer;">
+              <input type="checkbox" id="ai-allowed-checkbox" name="aiAllowed" />
+              <span>For AI use</span>
+            </label>
+            <div id="ai-description-container" style="display: none;">
+              <label for="ai-description-input" style="display: block; margin-bottom: 5px; font-size: 14px;">
+                Description for AI (when to use this sound):
+              </label>
+              <textarea 
+                id="ai-description-input" 
+                name="aiDescription" 
+                placeholder="e.g., Drum roll - use after jokes or punchlines"
+                style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid var(--border-color, #333); border-radius: 4px; background: var(--bg-primary, #000); color: var(--text-primary, #fff); font-size: 14px; font-family: inherit; resize: vertical;"
+              ></textarea>
+              <div style="margin-top: 5px; font-size: 12px; color: var(--text-secondary, #999);">
+                💡 Describe when Cashe should use this sound (e.g., "Celebration sound - use for subs, raids, big wins")
+              </div>
+            </div>
+          </div>
         </div>
         <div id="app-file-section">
           <label>App File:
             <input type="file" name="app-file" id="app-file-input" accept=".exe,.bat,.cmd,.lnk,.app,.sh,.desktop" required />
           </label>
+        </div>
+        <div id="deck-icon-section" class="form-section" style="margin-top: 12px;">
+          <label for="deck-icon-source">Button icon</label>
+          <select id="deck-icon-source" class="preference-input" style="width: 100%; margin-top: 4px;">
+            <option value="auto">Automatic (app icon for apps)</option>
+            <option value="library">Icon library</option>
+            <option value="upload">Custom image upload</option>
+          </select>
+          <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
+            <img id="deck-icon-preview" width="40" height="40" alt="" style="border-radius: 8px; background: var(--bg-tertiary); display: none;" />
+            <button type="button" id="deck-icon-choose-btn" class="form-button">Choose icon…</button>
+            <input type="file" id="deck-icon-file" accept="image/*" hidden />
+          </div>
         </div>
         <div id="meld-scene-section" class="hidden">
           <label>Meld Studio scene:
@@ -436,7 +453,7 @@
             </select>
             <span id="meld-scene-status" style="margin-left: 8px; font-size: 12px; color: var(--text-secondary);"></span>
           </label>
-          <p style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;">Open Meld Studio and ensure your project has scenes, then click "Load scenes" below or reopen this form.</p>
+          <p style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;">Open Meld Studio with your project, then load scenes.</p>
           <button type="button" id="meld-load-scenes" class="form-button" style="margin-top: 8px;">Load scenes from Meld</button>
         </div>
         <!-- Multi-Media Form Button -->
@@ -632,47 +649,6 @@
           </tbody>
         </table>
 
-        <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">🎯 Progression System</h3>
-        <table class="placeholders-table">
-          <tbody>
-            <tr>
-              <td><code>{username}</code></td>
-              <td>Username who redeemed</td>
-              <td>contributor123</td>
-            </tr>
-            <tr>
-              <td><code>{action}</code></td>
-              <td><strong>Your custom action word</strong></td>
-              <td>watered, built, fed (based on your Action Word setting)</td>
-            </tr>
-            <tr>
-              <td><code>{object}</code></td>
-              <td>The progression name</td>
-              <td>Building a House</td>
-            </tr>
-            <tr>
-              <td><code>{count}</code></td>
-              <td>Total redemptions across all stages</td>
-              <td>15</td>
-            </tr>
-            <tr>
-              <td><code>{stage}</code></td>
-              <td>Current stage number</td>
-              <td>2</td>
-            </tr>
-            <tr>
-              <td><code>{total_stages}</code></td>
-              <td>Total number of stages</td>
-              <td>5</td>
-            </tr>
-            <tr>
-              <td><code>{required}</code></td>
-              <td><strong>(Overlay Text only)</strong> Redeems required for current stage</td>
-              <td>10</td>
-            </tr>
-          </tbody>
-        </table>
-
         <h3 style="margin: 20px 0 10px 0; color: var(--text-primary); border-bottom: 2px solid var(--accent); padding-bottom: 5px;">💡 Usage Examples</h3>
         <div class="usage-examples">
           <div class="example-item">
@@ -697,18 +673,6 @@
             <strong>Daily Check-In:</strong>
             <code>Welcome back {username}! You've checked in {total_checkins} times!</code>
             <div class="example-result">→ Welcome back dailyviewer! You've checked in 42 times!</div>
-          </div>
-          
-          <div class="example-item">
-            <strong>Progression Chat Message (Action Word: "watered"):</strong>
-            <code>{username} {action} the tree! {count} total contributions (Stage {stage}/{total_stages})</code>
-            <div class="example-result">→ contributor123 watered the tree! 15 total contributions (Stage 2/5)</div>
-          </div>
-          
-          <div class="example-item">
-            <strong>Progression Overlay Text:</strong>
-            <code>Stage {stage}: {count}/{required}</code>
-            <div class="example-result">→ Stage 2: 3/10</div>
           </div>
         </div>
 
@@ -1084,6 +1048,149 @@
     </div>
   </div>
 
+  <!-- Trivia Modal -->
+  <div id="trivia-modal" class="hidden">
+    <div class="modal-content trivia-modal-content">
+      <div class="modal-header">
+        <h2>🎮 Trivia System</h2>
+        <button id="trivia-modal-close" class="modal-close">✕</button>
+      </div>
+      <div class="trivia-modal-body" style="padding: 20px; max-height: 80vh; overflow-y: auto;">
+        <div class="overlay-info" style="margin-bottom: 16px;">
+          <p style="margin: 0; color: var(--text-secondary); font-size: 12px;"><strong>Automated trivia system</strong> with GPT-generated questions and bulk award system. Answers are auto-detected from chat messages.</p>
+        </div>
+        
+        <!-- Start Trivia Panel -->
+        <div id="trivia-start-panel" style="margin-top: 20px; padding: 16px; background: var(--bg-secondary); border-radius: 8px;">
+          <h5 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 14px; font-weight: 600;">Start Trivia Session</h5>
+          
+          <div class="setting-group" style="margin-bottom: 12px;">
+            <label for="trivia-category" style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 4px;">Category:</label>
+            <select id="trivia-category" class="custom-select" style="width: 100%;">
+              <option value="general">General Knowledge</option>
+              <option value="movies-tv">Movies & TV</option>
+              <option value="music">Music</option>
+              <option value="sports">Sports</option>
+              <option value="history">History</option>
+              <option value="pop-culture">Pop Culture</option>
+              <option value="fun">Fun & Random</option>
+              <option value="all">All Categories</option>
+              <option value="custom">Custom Category</option>
+            </select>
+            <input type="text" id="trivia-custom-category" class="custom-input" placeholder="Enter custom category..." style="width: 100%; margin-top: 8px; display: none;">
+          </div>
+          
+          <div class="setting-group" style="margin-bottom: 12px;">
+            <label for="trivia-difficulty" style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 4px;">Difficulty:</label>
+            <select id="trivia-difficulty" class="custom-select" style="width: 100%;">
+              <option value="easy">Easy</option>
+              <option value="medium" selected>Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
+          
+          <div class="setting-group" style="margin-bottom: 16px;">
+            <label for="trivia-question-count" style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 4px;">Number of Questions:</label>
+            <input type="number" id="trivia-question-count" value="10" min="5" max="50" class="custom-input" style="width: 100%;">
+            <small style="color: var(--text-tertiary); font-size: 11px; display: block; margin-top: 4px;">5-50 questions (GPT-generated)</small>
+          </div>
+          
+          <button id="start-trivia-btn" class="overlay-action-btn" style="width: 100%; background: var(--accent-primary); color: white; font-weight: 600;">
+            🎮 Generate Questions & Start Trivia
+          </button>
+          <small id="trivia-generating-status" style="color: var(--text-tertiary); font-size: 11px; display: none; margin-top: 8px; text-align: center;">Generating questions...</small>
+        </div>
+        
+        <!-- Active Trivia Panel -->
+        <div id="trivia-active-panel" style="margin-top: 20px; padding: 16px; background: var(--bg-secondary); border-radius: 8px; display: none;">
+          <h5 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 14px; font-weight: 600;">Active Trivia Session</h5>
+          
+          <div id="trivia-current-question" style="margin-bottom: 12px; padding: 12px; background: var(--bg-primary); border-radius: 6px; border-left: 3px solid var(--accent-primary);">
+            <div style="font-size: 12px; color: var(--text-tertiary); margin-bottom: 4px;">Question <span id="trivia-question-number">-</span> of <span id="trivia-total-questions">-</span></div>
+            <div id="trivia-question-text" style="font-size: 14px; color: var(--text-primary); font-weight: 500; margin-bottom: 8px;">-</div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="font-size: 12px; color: var(--text-secondary);">Time remaining:</div>
+              <div id="trivia-timer" style="font-size: 16px; font-weight: 600; color: var(--accent-primary); font-family: 'Roboto Mono', monospace;">--:--</div>
+            </div>
+          </div>
+          
+          <div id="trivia-leaderboard" style="margin-bottom: 16px; max-height: 200px; overflow-y: auto;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Leaderboard (Top 10):</div>
+            <div id="trivia-leaderboard-list" style="font-size: 11px; color: var(--text-secondary);">
+              No scores yet...
+            </div>
+          </div>
+          
+          <button id="stop-trivia-btn" class="overlay-action-btn danger" style="width: 100%;">⏹️ Stop Trivia Session</button>
+        </div>
+        
+        <!-- Winners Panel -->
+        <div id="trivia-winners-panel" style="margin-top: 20px; padding: 16px; background: var(--bg-secondary); border-radius: 8px; display: none;">
+          <h5 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 14px; font-weight: 600;">Trivia Winners</h5>
+          
+          <div id="trivia-winners-summary" style="margin-bottom: 16px; padding: 12px; background: var(--bg-primary); border-radius: 6px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px;">
+              <div><strong>Total Winners:</strong> <span id="trivia-total-winners">0</span></div>
+              <div><strong>Total Channel Points:</strong> <span id="trivia-total-channel-points">0</span></div>
+            </div>
+            <div id="trivia-award-status" style="margin-top: 8px; font-size: 11px; color: var(--text-tertiary);">
+              Status: <span id="trivia-award-status-text">Pending</span>
+            </div>
+          </div>
+          
+          <div id="trivia-winners-list" style="margin-bottom: 16px; max-height: 300px; overflow-y: auto;">
+            <table style="width: 100%; font-size: 11px; border-collapse: collapse;">
+              <thead>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                  <th style="text-align: left; padding: 6px; color: var(--text-secondary); font-weight: 600;">Rank</th>
+                  <th style="text-align: left; padding: 6px; color: var(--text-secondary); font-weight: 600;">Username</th>
+                  <th style="text-align: right; padding: 6px; color: var(--text-secondary); font-weight: 600;">Trivia Pts</th>
+                  <th style="text-align: right; padding: 6px; color: var(--text-secondary); font-weight: 600;">Channel Pts</th>
+                  <th style="text-align: right; padding: 6px; color: var(--text-secondary); font-weight: 600;">Correct</th>
+                </tr>
+              </thead>
+              <tbody id="trivia-winners-table-body">
+                <tr>
+                  <td colspan="5" style="text-align: center; padding: 20px; color: var(--text-tertiary);">No winners yet...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+          <div id="trivia-award-actions" style="display: flex; gap: 8px;">
+            <button id="award-all-winners-btn" class="overlay-action-btn" style="flex: 1; background: var(--accent-primary); color: white; font-weight: 600;">
+              🎁 Award All Winners
+            </button>
+            <button id="export-winners-btn" class="overlay-action-btn" style="flex: 0 0 auto;">
+              📋 Export
+            </button>
+          </div>
+          
+          <div id="trivia-award-progress" style="margin-top: 12px; padding: 12px; background: var(--bg-primary); border-radius: 6px; display: none;">
+            <div style="font-size: 12px; color: var(--text-primary); margin-bottom: 8px;">
+              Awarding points... <span id="trivia-award-progress-text">0/0</span>
+            </div>
+            <div style="width: 100%; height: 8px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden;">
+              <div id="trivia-award-progress-bar" style="height: 100%; background: var(--accent-primary); width: 0%; transition: width 0.3s;"></div>
+            </div>
+          </div>
+          
+          <div id="trivia-award-results" style="margin-top: 12px; padding: 12px; background: var(--bg-primary); border-radius: 6px; display: none;">
+            <div style="font-size: 12px; color: var(--text-primary);">
+              <div>✅ Successful: <span id="trivia-award-successful">0</span></div>
+              <div>❌ Failed: <span id="trivia-award-failed">0</span></div>
+              <div>⏭️ Skipped: <span id="trivia-award-skipped">0</span></div>
+            </div>
+            <div id="trivia-award-failed-users" style="margin-top: 8px; font-size: 11px; color: var(--text-error); display: none;">
+              <strong>Failed Users:</strong>
+              <ul id="trivia-award-failed-list" style="margin: 4px 0 0 20px; padding: 0;"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Preferences Modal -->
   <div id="preferences-modal" class="hidden">
     <div class="modal-content preferences-modal-content">
@@ -1102,6 +1209,97 @@
           </div>
         </div>
 
+        <!-- Discord Integration Section -->
+        <div class="preferences-section">
+          <h3>Discord Integration</h3>
+          <div class="preference-item">
+            <label for="discord-webhook-url">Webhook URL (Recommended)</label>
+            <input type="text" id="discord-webhook-url" class="preference-input" placeholder="https://discord.com/api/webhooks/..." />
+            <small>Discord webhook URL for posting notifications. Create one in your Discord server settings.</small>
+          </div>
+          <div class="preference-item">
+            <label for="discord-bot-token">Bot Token (Advanced)</label>
+            <input type="password" id="discord-bot-token" class="preference-input" placeholder="Bot token (optional)" />
+            <small>Alternative to webhook: Discord bot token. Do not share this with anyone.</small>
+          </div>
+          <div class="preference-item">
+            <label for="discord-channel-id">Default Channel ID</label>
+            <input type="text" id="discord-channel-id" class="preference-input" placeholder="Channel ID (optional with webhook)" />
+            <small>Default Discord channel ID for bot messages. Not needed if using webhook.</small>
+          </div>
+          <div class="preference-item">
+            <label for="discord-username">Username Override</label>
+            <input type="text" id="discord-username" class="preference-input" placeholder="VirtualDeck" />
+            <small>Display name for webhook messages (webhook mode only)</small>
+          </div>
+        </div>
+
+        <!-- Macros Section -->
+        <div class="preferences-section">
+          <h3>Macros</h3>
+          <div class="preference-item">
+            <button id="preferences-macros-manage" class="preference-button">Manage Macros</button>
+            <small>Create and edit macro sequences (voice phrase or button → ordered tool steps)</small>
+          </div>
+        </div>
+
+        <!-- License Section -->
+        <div class="preferences-section" id="license-preferences-section">
+          <h3>License</h3>
+          <p id="license-status-message" class="license-status-message">Loading license status…</p>
+          <div class="preference-item">
+            <label for="license-key-input">License key</label>
+            <div class="license-key-row">
+              <input type="password" id="license-key-input" class="preference-input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" />
+              <button type="button" id="license-key-toggle-visibility" class="preference-button" title="Show or hide license key">Show</button>
+            </div>
+            <small>VirtualDeck Pro unlocks the AI assistant (bring your own API keys) and unlimited buttons. One-time purchase via Lemon Squeezy.</small>
+          </div>
+          <div class="preference-item license-actions">
+            <button type="button" id="license-activate-btn" class="preference-button primary">Activate license</button>
+            <button type="button" id="license-deactivate-btn" class="preference-button">Deactivate on this PC</button>
+            <button type="button" id="license-revalidate-btn" class="preference-button">Re-check license</button>
+            <a id="license-purchase-link" href="#" target="_blank" rel="noopener" class="preference-button link-button">Get VirtualDeck Pro</a>
+          </div>
+        </div>
+
+        <div class="preferences-section" id="raven-api-preferences-section">
+          <h3>Raven AI — API keys</h3>
+          <p id="raven-api-intro" class="raven-api-intro">
+            Raven is BYOK (bring your own keys). Defaults: <strong>OpenAI</strong> for chat (<code>LLM_API_KEY</code>) and
+            <strong>ElevenLabs</strong> for voice (<code>TTS_API_KEY</code>). Other providers supported by Raven can be set via
+            <code>LLM_PROVIDER</code> / <code>TTS_PROVIDER</code> in <code>raven.env</code>.
+          </p>
+          <p id="raven-api-status-line" class="raven-api-status-line">Checking Raven configuration…</p>
+          <div class="preference-item">
+            <label for="raven-llm-api-key">OpenAI / LLM API key</label>
+            <input type="password" id="raven-llm-api-key" class="preference-input" autocomplete="off" spellcheck="false" placeholder="sk-…" />
+          </div>
+          <div class="preference-item">
+            <label for="raven-tts-api-key">ElevenLabs / TTS API key</label>
+            <input type="password" id="raven-tts-api-key" class="preference-input" autocomplete="off" spellcheck="false" placeholder="xi-…" />
+          </div>
+          <div class="preference-item license-actions">
+            <button type="button" id="raven-api-save-btn" class="preference-button primary">Save Raven API keys</button>
+            <button type="button" id="raven-api-test-llm-btn" class="preference-button">Test OpenAI key</button>
+            <button type="button" id="raven-open-env-btn" class="preference-button">Open raven.env file…</button>
+          </div>
+          <p id="raven-api-save-message" class="raven-api-save-message" role="status"></p>
+        </div>
+
+        <!-- Security Section -->
+        <div class="preferences-section">
+          <h3>Security</h3>
+          <div class="preference-item">
+            <label>Multi-PC Sync Token Path</label>
+            <div class="token-path-container">
+              <input type="text" id="auth-token-path" class="token-path-input" readonly />
+              <button id="copy-token-path" class="preference-button" title="Copy path to clipboard">Copy Path</button>
+            </div>
+            <small>Copy this path to sync VirtualDeck authentication across multiple PCs</small>
+          </div>
+        </div>
+
         <!-- Updates Section -->
         <div class="preferences-section">
           <h3>Updates</h3>
@@ -1116,12 +1314,389 @@
             <button id="check-updates-button" class="preference-button">Check for Updates Now</button>
             <small>Manually check if a new version is available</small>
           </div>
+          <div class="preference-item" id="update-status-container">
+            <div id="update-status-text" class="update-status-text" aria-live="polite"></div>
+            <progress id="update-download-progress" class="update-download-progress hidden" max="100" value="0"></progress>
+          </div>
         </div>
 
         <!-- Action Buttons -->
         <div class="preferences-actions">
           <button type="button" id="save-preferences" class="preference-button primary">Save Preferences</button>
           <button type="button" id="cancel-preferences" class="preference-button">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Audio Settings Modal -->
+  <div id="ai-audio-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="ai-audio-modal-title">
+    <div class="modal-content preferences-modal-content ai-audio-modal-content">
+      <div class="modal-header">
+        <h2 id="ai-audio-modal-title">AI Audio Settings</h2>
+        <button id="ai-audio-modal-close" class="modal-close" type="button" aria-label="Close">✕</button>
+      </div>
+      <div id="ai-management-panel" class="ai-management-panel">
+      <div class="ai-management-header">
+        <span class="ai-management-icon">🤖</span>
+        <span class="ai-management-title">AI Audio Settings</span>
+      </div>
+      
+      <!-- Note about toggle location -->
+      <div style="margin-bottom: 12px; padding: 10px; background: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 11px; color: var(--text-secondary);">
+          💡 Use the <strong>AI System toggle and mode selector</strong> in the compact dashboard above to control AI on/off and modes.
+        </div>
+      </div>
+      
+      <div class="ai-management-current">
+        <select id="ai-segment-selector" class="ai-management-selector" style="margin-bottom: 8px;">
+          <option value="normal">Normal Chat</option>
+          <option value="gaming">Gaming</option>
+          <option value="just-chatting">Just Chatting</option>
+          <option value="hype">Hype Mode</option>
+          <option value="copilot">Copilot (gaming help)</option>
+          <option value="special-event">Special Event</option>
+        </select>
+        <select id="ai-mode-selector" class="ai-management-selector">
+          <option value="JUST_CHATTING">Just Chatting</option>
+          <option value="CHILL">Chill</option>
+          <option value="HYPE">Hype</option>
+          <option value="QA">Q&A</option>
+          <option value="STORYTIME">Storytime</option>
+          <option value="DND">D&D</option>
+          <option value="COPILOT">Copilot (gaming help)</option>
+          <option value="AFK">AFK</option>
+          <option value="SAFE">Safe</option>
+          <option value="MUTED">Muted</option>
+        </select>
+      </div>
+
+      <!-- Wake name -->
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">🗣️ Wake name</div>
+        <label style="font-size: 10px; color: var(--text-tertiary); display: block; margin-bottom: 3px;">Primary (say &quot;Hey …&quot;)</label>
+        <input id="ai-wake-name-primary" class="preference-input" type="text" maxlength="32" placeholder="Raven" style="width: 100%; margin-bottom: 8px;" />
+        <label style="font-size: 10px; color: var(--text-tertiary); display: block; margin-bottom: 3px;">Extra aliases (comma-separated, optional)</label>
+        <input id="ai-wake-name-aliases" class="preference-input" type="text" placeholder="Ree, Dash" style="width: 100%; margin-bottom: 8px;" />
+        <button id="ai-wake-name-save" class="ai-management-btn" style="width: 100%; justify-content: center;" title="Save wake name to raven.env">
+          <span class="btn-icon">💾</span>
+          <span class="btn-label">Save wake name</span>
+        </button>
+        <div id="ai-wake-name-hint" style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Say &quot;Hey Raven&quot; to wake the assistant.</div>
+        <div id="ai-wake-name-status" style="margin-top: 4px; font-size: 10px; color: var(--text-secondary);"></div>
+      </div>
+
+      <!-- Voice Picker -->
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">🎙️ AI Voice</div>
+        <div style="display: flex; gap: 8px;">
+          <select id="ai-voice-selector" class="ai-management-selector" style="margin-bottom: 0; flex: 1;">
+            <option value="">Loading voices…</option>
+          </select>
+          <button id="ai-voice-preview" class="ai-management-btn" style="min-width: 72px; justify-content: center;" title="Play or stop voice preview">
+            <span class="btn-icon">▶️</span>
+            <span class="btn-label">Play</span>
+          </button>
+          <button id="ai-voice-refresh" class="ai-management-btn" style="min-width: 72px; justify-content: center;" title="Refresh voice list">
+            <span class="btn-icon">🔄</span>
+            <span class="btn-label">Refresh</span>
+          </button>
+        </div>
+        <div id="ai-voice-status" style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Select TTS voice from your ElevenLabs account. Requires TTS_API_KEY in raven.env.</div>
+      </div>
+
+      <!-- Personality Builder -->
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">🧠 AI Personality</div>
+        
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div>
+            <label style="font-size: 10px; color: var(--text-tertiary); display: block; margin-bottom: 3px;">Tone</label>
+            <select id="ai-personality-tone" class="ai-management-selector" style="margin-bottom: 0;">
+              <option value="friendly">Friendly & Warm</option>
+              <option value="professional">Professional</option>
+              <option value="casual">Casual & Relaxed</option>
+              <option value="enthusiastic">Enthusiastic</option>
+              <option value="sarcastic">Sarcastic</option>
+              <option value="witty">Witty & Clever</option>
+            </select>
+          </div>
+          
+          <div>
+            <label style="font-size: 10px; color: var(--text-tertiary); display: block; margin-bottom: 3px;">Energy Level</label>
+            <select id="ai-personality-energy" class="ai-management-selector" style="margin-bottom: 0;">
+              <option value="high">High Energy</option>
+              <option value="medium" selected>Medium Energy</option>
+              <option value="low">Low Energy / Chill</option>
+              <option value="adaptive">Adaptive (Match Chat)</option>
+            </select>
+          </div>
+          
+          <div>
+            <label style="font-size: 10px; color: var(--text-tertiary); display: block; margin-bottom: 3px;">Humor Style</label>
+            <select id="ai-personality-humor" class="ai-management-selector" style="margin-bottom: 0;">
+              <option value="none">No Humor</option>
+              <option value="light">Light Jokes</option>
+              <option value="moderate" selected>Moderate Humor</option>
+              <option value="heavy">Lots of Jokes</option>
+              <option value="dry">Dry Humor</option>
+              <option value="meme">Meme Culture</option>
+            </select>
+          </div>
+          
+          <div>
+            <label style="font-size: 10px; color: var(--text-tertiary); display: block; margin-bottom: 3px;">Role/Character</label>
+            <select id="ai-personality-role" class="ai-management-selector" style="margin-bottom: 0;">
+              <option value="companion">Gaming Companion</option>
+              <option value="coach">Gaming Coach</option>
+              <option value="commentator">Commentator</option>
+              <option value="sidekick">Sidekick</option>
+              <option value="assistant">Assistant</option>
+              <option value="custom">Custom (use raw prompt)</option>
+            </select>
+          </div>
+        </div>
+        
+        <button id="ai-personality-save" class="ai-management-btn" style="width: 100%; margin-top: 10px; justify-content: center;" title="Save personality settings">
+          <span class="btn-icon">💾</span>
+          <span class="btn-label">Save Personality</span>
+        </button>
+        
+        <!-- Advanced: Raw Prompt Override -->
+        <details id="ai-personality-advanced" style="margin-top: 8px;">
+          <summary style="font-size: 10px; color: var(--text-secondary); cursor: pointer; user-select: none;">⚙️ Advanced: Raw Prompt</summary>
+          <textarea id="ai-personality-raw" placeholder="Custom system prompt (overrides dropdowns above)..." style="width: 100%; min-height: 80px; margin-top: 6px; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 11px; font-family: monospace; resize: vertical;"></textarea>
+          <div style="font-size: 9px; color: var(--text-tertiary); margin-top: 4px;">Leave empty to use personality dropdowns. When filled, this overrides the composed personality prompt.</div>
+        </details>
+      </div>
+
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Copilot microphone</div>
+        <div style="display: flex; gap: 8px;">
+          <select id="ai-copilot-mic-selector" class="ai-management-selector" style="margin-bottom: 0; flex: 1;">
+            <option value="">Loading mics…</option>
+          </select>
+          <button id="ai-copilot-mic-refresh" class="ai-management-btn" style="min-width: 72px; justify-content: center;" title="Refresh microphone list">
+            <span class="btn-icon">🔄</span>
+            <span class="btn-label">Scan</span>
+          </button>
+        </div>
+        <div id="ai-copilot-mic-status" style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Used when AI mode is Copilot. Raven lists mics after it finishes starting.</div>
+      </div>
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Raven speaker / output</div>
+        <div style="display: flex; gap: 8px;">
+          <select id="ai-speaker-selector" class="ai-management-selector" style="margin-bottom: 0; flex: 1;">
+            <option value="">System default</option>
+          </select>
+          <button id="ai-speaker-refresh" class="ai-management-btn" style="min-width: 72px; justify-content: center;" title="Refresh speaker list">
+            <span class="btn-icon">🔄</span>
+            <span class="btn-label">Scan</span>
+          </button>
+          <button id="ai-speaker-test" class="ai-management-btn" style="min-width: 72px; justify-content: center;" title="Play a short beep on the selected speaker">
+            <span class="btn-icon">🔈</span>
+            <span class="btn-label">Test</span>
+          </button>
+        </div>
+        <div id="ai-speaker-status" style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Pick the speakers or headset on this PC. Leave System default if you just want Windows’ current output. This is per machine — not CABLE Input unless you choose it.</div>
+      </div>
+
+      <!-- Manual TTS: type something and have Cashe say it out loud -->
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Manual Speak</div>
+        <div style="display: flex; gap: 8px;">
+          <input id="ai-say-text" type="text" placeholder="Type something for Cashe to say..." style="flex: 1; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 12px;" />
+          <button id="ai-say-btn" class="ai-management-btn" style="min-width: 80px; justify-content: center;" title="Make Cashe speak">
+            <span class="btn-icon">🗣️</span>
+            <span class="btn-label">Say</span>
+          </button>
+        </div>
+        <div style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Uses controller Dev API (default `http://localhost:3003/api/dev/speak`; port 3002 is the overlay dev server).</div>
+      </div>
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">OBS / stream audio</div>
+        <div class="url-display" style="display: flex; gap: 8px; align-items: center;">
+          <code id="ai-audio-overlay-url" style="flex: 1; font-size: 11px; overflow-wrap: anywhere;">http://localhost:8080/overlay?name=aiAudio</code>
+          <button id="copy-ai-audio-overlay-url" class="ai-management-btn" style="min-width: 72px; justify-content: center;" title="Copy AI audio overlay URL">📋 Copy</button>
+        </div>
+        <div style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Add this as a Browser Source in OBS (64×64 is enough). Enable <strong>Control audio via OBS</strong>, uncheck <strong>Shutdown source when not visible</strong>, and keep the source in every scene. Don’t also capture VirtualDeck’s desktop audio or you’ll hear her twice on stream.</div>
+      </div>
+      <div class="ai-management-actions">
+        <button id="ai-trivia-btn" class="ai-management-btn" title="Open Trivia">
+          <span class="btn-icon">🎮</span>
+          <span class="btn-label">Trivia</span>
+        </button>
+        <button id="ai-qa-btn" class="ai-management-btn" title="Toggle Q&A Mode">
+          <span class="btn-icon">💬</span>
+          <span class="btn-label">Q&A</span>
+        </button>
+        <button id="ai-dnd-btn" class="ai-management-btn" title="D&D Campaign">
+          <span class="btn-icon">🎲</span>
+          <span class="btn-label">D&D</span>
+        </button>
+        <button id="ai-status-btn" class="ai-management-btn" title="AI Status">
+          <span class="btn-icon">📊</span>
+          <span class="btn-label">Status</span>
+        </button>
+        <button id="ai-settings-btn" class="ai-management-btn" title="AI Settings">
+          <span class="btn-icon">⚙️</span>
+          <span class="btn-label">Settings</span>
+        </button>
+      </div>
+      <!-- D&D Campaign Panel (hidden by default) -->
+      <div id="dnd-campaign-panel" class="dnd-campaign-panel" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h4 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--text-primary);">🎲 D&D Campaign</h4>
+          <div id="dnd-session-info" style="font-size: 10px; color: var(--text-tertiary);">Session 1</div>
+        </div>
+        
+        <!-- Party Display -->
+        <div id="dnd-party-display" style="margin-bottom: 12px;">
+          <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Party</div>
+          <div id="dnd-party-list" style="font-size: 11px; color: var(--text-secondary);">
+            No party loaded
+          </div>
+        </div>
+        
+        <!-- Campaign Info -->
+        <div id="dnd-campaign-info" style="margin-bottom: 12px; padding: 8px; background: var(--bg-primary); border-radius: 6px; font-size: 10px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div>
+              <span style="color: var(--text-tertiary);">Location:</span>
+              <span id="dnd-location" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">-</span>
+            </div>
+            <div>
+              <span style="color: var(--text-tertiary);">Gold:</span>
+              <span id="dnd-gold" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">-</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- D&D Controls -->
+        <div style="display: flex; gap: 6px;">
+          <button id="dnd-start-btn" class="ai-management-btn" style="flex: 1; padding: 8px; font-size: 11px;">
+            <span class="btn-icon">▶️</span>
+            <span class="btn-label">Start</span>
+          </button>
+          <button id="dnd-stop-btn" class="ai-management-btn" style="flex: 1; padding: 8px; font-size: 11px;" disabled>
+            <span class="btn-icon">⏹️</span>
+            <span class="btn-label">Stop</span>
+          </button>
+        </div>
+      </div>
+      <div id="ai-status-indicator" class="ai-status-indicator" style="margin-top: 12px; padding: 10px; background: var(--bg-secondary); border-radius: 6px; border: 1px solid var(--border-color); text-align: center;">
+        <div style="font-size: 9px; color: var(--text-tertiary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">AI Status</div>
+        <div id="ai-status-text" style="font-size: 13px; font-weight: 600; color: var(--text-primary); transition: color 0.3s;">💤 Idle</div>
+        <div id="ai-status-details" style="font-size: 9px; color: var(--text-tertiary); margin-top: 4px; min-height: 12px;"></div>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <!-- Raid Favorites Modal -->
+  <div id="raid-favorites-modal" class="hidden">
+    <div class="modal-content preferences-modal-content raid-favorites-modal">
+      <div class="modal-header">
+        <h2>Raid Favorites</h2>
+        <button id="raid-favorites-modal-close" class="modal-close" type="button">✕</button>
+      </div>
+      <div id="raid-scope-banner" class="raid-scope-banner hidden" role="status"></div>
+      <div class="raid-favorites-layout">
+        <section class="raid-section">
+          <h3>Favorites</h3>
+          <div class="raid-add-form">
+            <input type="text" id="raid-favorites-add-login" placeholder="Twitch login" maxlength="25" />
+            <input type="text" id="raid-favorites-add-note" placeholder="Optional note" />
+            <button type="button" id="raid-favorites-add-btn" class="preference-button primary">Add</button>
+          </div>
+          <div id="raid-favorites-list" class="raid-favorites-list"></div>
+        </section>
+        <section class="raid-section">
+          <div class="raid-section-header">
+            <h3>Who is live?</h3>
+            <button type="button" id="raid-live-refresh-btn" class="preference-button">Refresh</button>
+            <button type="button" id="raid-cancel-btn" class="preference-button">Cancel raid</button>
+          </div>
+          <div id="raid-live-panel" class="raid-live-panel"></div>
+        </section>
+        <section class="raid-section">
+          <h3>Previously raided</h3>
+          <div id="raid-history-list" class="raid-history-list"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Macros Manager Modal -->
+  <div id="macros-modal" class="hidden">
+    <div class="modal-content preferences-modal-content">
+      <div class="modal-header">
+        <h2>Macro Manager</h2>
+        <button id="macros-modal-close" class="modal-close">✕</button>
+      </div>
+      <div class="macros-content">
+        <div class="macros-toolbar">
+          <button id="add-macro-btn" class="preference-button primary">+ New Macro</button>
+        </div>
+        <div id="macros-list" class="macros-list">
+          <!-- Macros will be populated here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Macro Edit Modal -->
+  <div id="macro-edit-modal" class="hidden">
+    <div class="modal-content preferences-modal-content">
+      <div class="modal-header">
+        <h2 id="macro-edit-title">Edit Macro</h2>
+        <button id="macro-edit-close" class="modal-close">✕</button>
+      </div>
+      <div class="macro-edit-content">
+        <div class="preference-item">
+          <label for="macro-name">Macro Name</label>
+          <input type="text" id="macro-name" class="preference-input" placeholder="Going Live" required />
+        </div>
+        <div class="preference-item">
+          <label for="macro-description">Description</label>
+          <input type="text" id="macro-description" class="preference-input" placeholder="Prepare stream for going live" />
+        </div>
+        <div class="preference-item">
+          <label for="macro-phrase">Voice Trigger Phrase</label>
+          <input type="text" id="macro-phrase" class="preference-input" placeholder="raven we are going live" title="Voice phrase uses your configured wake name" />
+          <small>The exact phrase that will trigger this macro (case-insensitive)</small>
+        </div>
+        <div class="preference-item">
+          <label for="macro-hotkey">Global Hotkey (optional)</label>
+          <div class="macro-hotkey-row">
+            <input type="text" id="macro-hotkey" class="preference-input" readonly placeholder="Click here, then press a key combo" />
+            <button type="button" id="macro-hotkey-clear" class="preference-button small">Clear</button>
+          </div>
+          <small id="macro-hotkey-status">Runs this macro from anywhere, without the AI assistant. Backspace clears, Esc cancels.</small>
+        </div>
+        <div class="preference-item">
+          <label>
+            <input type="checkbox" id="macro-enabled" checked />
+            Enabled
+          </label>
+        </div>
+
+        <div class="preference-item">
+          <h4>Steps</h4>
+          <div id="macro-steps-list" class="macro-steps-list">
+            <!-- Steps will be added here -->
+          </div>
+          <button id="add-step-btn" class="preference-button">+ Add Step</button>
+        </div>
+
+        <div id="macro-test-results" class="macro-test-results hidden" role="status"></div>
+
+        <div class="preferences-actions">
+          <button type="button" id="save-macro-btn" class="preference-button primary">Save Macro</button>
+          <button type="button" id="test-macro-btn" class="preference-button" title="Run the saved macro now">Test</button>
+          <button type="button" id="delete-macro-btn" class="preference-button danger">Delete</button>
+          <button type="button" id="cancel-macro-btn" class="preference-button">Cancel</button>
         </div>
       </div>
     </div>
@@ -1175,12 +1750,331 @@
         </div>
       </div>
       
+      <!-- AI Control Panel -->
+      <div class="overlay-section" style="background: var(--bg-primary); border: 2px solid var(--accent-primary); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+        <h3 style="margin: 0 0 16px 0; color: var(--accent-primary); font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 24px;">🤖</span>
+          AI Control Panel
+        </h3>
+        <p style="margin: 0 0 20px 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5;">
+          Central hub for managing AI features: Trivia, Q&A, Segments, and more.
+        </p>
+        
+        <!-- AI Status Overview -->
+        <div id="ai-status-overview" style="margin-bottom: 20px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--accent-primary);">
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 11px; margin-bottom: 12px;">
+            <div>
+              <div style="color: var(--text-tertiary); margin-bottom: 4px;">AI Status:</div>
+              <div id="ai-status-text" style="color: var(--text-primary); font-weight: 600;">Active</div>
+            </div>
+            <div>
+              <div style="color: var(--text-tertiary); margin-bottom: 4px;">Current Mode:</div>
+              <div id="ai-mode-text" style="color: var(--text-primary); font-weight: 600;">Normal</div>
+            </div>
+            <div>
+              <div style="color: var(--text-tertiary); margin-bottom: 4px;">Active Features:</div>
+              <div id="ai-features-text" style="color: var(--text-primary); font-weight: 600;">-</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Feature Tabs (Q&A, Segments, and Analytics) -->
+        <div style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid var(--border-color);">
+          <button class="ai-tab-btn active" data-tab="analytics" style="padding: 8px 16px; background: transparent; border: none; border-bottom: 2px solid var(--accent-primary); color: var(--accent-primary); font-weight: 600; cursor: pointer; font-size: 13px;">
+            📊 Analytics
+          </button>
+          <button class="ai-tab-btn" data-tab="qa" style="padding: 8px 16px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 13px;">
+            💬 Q&A Mode
+          </button>
+          <button class="ai-tab-btn" data-tab="segments" style="padding: 8px 16px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 13px;">
+            📺 Segments
+          </button>
+        </div>
+        
+        <!-- Analytics Tab Content -->
+        <div id="ai-tab-analytics" class="ai-tab-content" style="display: block;">
+          <h5 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 14px; font-weight: 600;">Stream Analytics Dashboard</h5>
+          
+          <!-- Real-time Metrics -->
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
+            <div style="padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--accent-primary);">
+              <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 4px;">Response Rate</div>
+              <div id="analytics-response-rate" style="font-size: 20px; font-weight: 700; color: var(--accent-primary);">0/min</div>
+            </div>
+            <div style="padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--success-color);">
+              <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 4px;">Queue Depth</div>
+              <div id="analytics-queue-depth" style="font-size: 20px; font-weight: 700; color: var(--success-color);">0</div>
+            </div>
+            <div style="padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--warning-color);">
+              <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 4px;">Total Cost</div>
+              <div id="analytics-total-cost" style="font-size: 20px; font-weight: 700; color: var(--warning-color);">$0.00</div>
+            </div>
+            <div style="padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--text-secondary);">
+              <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 4px;">Total Tokens</div>
+              <div id="analytics-total-tokens" style="font-size: 20px; font-weight: 700; color: var(--text-primary);">0</div>
+            </div>
+          </div>
+          
+          <!-- Session Stats -->
+          <div style="margin-bottom: 20px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Session Statistics</div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 11px;">
+              <div>
+                <span style="color: var(--text-tertiary);">Total Responses:</span>
+                <span id="analytics-total-responses" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">0</span>
+              </div>
+              <div>
+                <span style="color: var(--text-tertiary);">Avg Response Time:</span>
+                <span id="analytics-avg-response-time" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">0ms</span>
+              </div>
+              <div>
+                <span style="color: var(--text-tertiary);">Uptime:</span>
+                <span id="analytics-uptime" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">0s</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Recent Activity -->
+          <div style="margin-bottom: 20px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Recent Activity</div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 11px;">
+              <div>
+                <span style="color: var(--text-tertiary);">Last Minute:</span>
+                <span id="analytics-last-minute" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">0</span>
+              </div>
+              <div>
+                <span style="color: var(--text-tertiary);">Last Hour:</span>
+                <span id="analytics-last-hour" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">0</span>
+              </div>
+              <div>
+                <span style="color: var(--text-tertiary);">Cost/Hour:</span>
+                <span id="analytics-cost-hour" style="color: var(--text-primary); font-weight: 600; margin-left: 4px;">$0.00</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Top Chatters -->
+          <div style="margin-bottom: 20px; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Top Chatters</div>
+            <div id="analytics-top-chatters" style="font-size: 11px; color: var(--text-secondary);">
+              Loading...
+            </div>
+          </div>
+          
+          <!-- Export Buttons -->
+          <div style="display: flex; gap: 8px;">
+            <button id="analytics-export-json" class="overlay-action-btn" style="flex: 1; font-size: 11px; padding: 8px;">
+              📥 Export JSON
+            </button>
+            <button id="analytics-export-csv" class="overlay-action-btn" style="flex: 1; font-size: 11px; padding: 8px;">
+              📥 Export CSV
+            </button>
+          </div>
+        </div>
+        
+        <!-- Q&A Mode Tab Content -->
+        <div id="ai-tab-qa" class="ai-tab-content" style="display: none;">
+          <h5 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 14px; font-weight: 600;">Q&A Mode Controls</h5>
+          <div class="setting-group" style="margin-bottom: 12px;">
+            <label for="qa-mode-enabled" style="color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="qa-mode-enabled" class="custom-checkbox">
+              Enable Q&A Mode
+            </label>
+            <small style="color: var(--text-tertiary); font-size: 11px; display: block; margin-top: 4px;">AI will actively answer questions from chat.</small>
+          </div>
+          
+          <div class="setting-group" style="margin-bottom: 12px;">
+            <label for="qa-response-style" style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 4px;">Response Style:</label>
+            <select id="qa-response-style" class="custom-select" style="width: 100%;">
+              <option value="concise">Concise</option>
+              <option value="detailed" selected>Detailed</option>
+              <option value="humorous">Humorous</option>
+            </select>
+          </div>
+          
+          <div class="setting-group" style="margin-bottom: 16px;">
+            <label for="qa-question-detection" style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 4px;">Question Detection:</label>
+            <select id="qa-question-detection" class="custom-select" style="width: 100%;">
+              <option value="auto" selected>Auto-detect questions</option>
+              <option value="keywords">Keyword-based</option>
+              <option value="all">Respond to all messages</option>
+            </select>
+          </div>
+          
+          <div style="display: flex; gap: 8px;">
+            <button id="qa-start-btn" class="overlay-action-btn" style="flex: 1; background: var(--accent-primary); color: white; font-weight: 600;">
+              ▶️ Start Q&A Mode
+            </button>
+            <button id="qa-stop-btn" class="overlay-action-btn danger" style="flex: 1;" disabled>
+              ⏹️ Stop Q&A Mode
+            </button>
+          </div>
+        </div>
+        
+        <!-- Segments Tab Content -->
+        <div id="ai-tab-segments" class="ai-tab-content" style="display: none;">
+          <h5 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 14px; font-weight: 600;">Stream Segment Controls</h5>
+          <div class="setting-group" style="margin-bottom: 12px;">
+            <label for="segment-selector" style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 4px;">Active Segment:</label>
+            <select id="segment-selector" class="custom-select" style="width: 100%;">
+              <option value="normal">Normal Chat</option>
+              <option value="gaming">Gaming Session</option>
+              <option value="just-chatting">Just Chatting</option>
+              <option value="afk">AFK / Break</option>
+              <option value="qa">Q&A Session</option>
+            </select>
+            <small style="color: var(--text-tertiary); font-size: 11px; display: block; margin-top: 4px;">Sets AI behavior based on stream activity.</small>
+          </div>
+          
+          <div class="setting-group" style="margin-bottom: 12px;">
+            <label for="segment-behavior" style="color: var(--text-secondary); font-size: 12px; display: block; margin-bottom: 4px;">AI Behavior:</label>
+            <select id="segment-behavior" class="custom-select" style="width: 100%;">
+              <option value="normal">Normal</option>
+              <option value="chatty">Chatty</option>
+              <option value="hype">Hype</option>
+              <option value="calm">Calm</option>
+            </select>
+          </div>
+          
+          <button id="segment-save-btn" class="overlay-action-btn" style="width: 100%; margin-bottom: 16px;">
+            💾 Save Segment Settings
+          </button>
+          
+          <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;">Quick Switch:</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <button class="segment-quick-btn overlay-action-btn" data-segment="normal" style="font-size: 11px; padding: 8px;">Normal</button>
+              <button class="segment-quick-btn overlay-action-btn" data-segment="gaming" style="font-size: 11px; padding: 8px;">Gaming</button>
+              <button class="segment-quick-btn overlay-action-btn" data-segment="just-chatting" style="font-size: 11px; padding: 8px;">Just Chatting</button>
+              <button class="segment-quick-btn overlay-action-btn" data-segment="afk" style="font-size: 11px; padding: 8px;">AFK</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- VTuber/PNGtuber Controls (separate section, not in tabs) -->
+      <div class="overlay-section">
+        <h4>VTuber/PNGtuber Controls</h4>
+        <div class="overlay-info">
+          <p><strong>Note:</strong> Upload PNG images for each avatar state. Images are stored in your VirtualDeck user data folder.</p>
+        </div>
+        
+        <div class="overlay-url-display" style="margin-top: 16px;">
+          <label>VTuber Overlay URL:</label>
+          <div class="url-display">
+            <code id="vtuber-overlay-url">http://localhost:8080/overlay?name=vtuberOverlay</code>
+            <button id="copy-vtuber-url" class="copy-btn" title="Copy URL">📋</button>
+          </div>
+        </div>
+        
+        <div style="margin-top: 20px;">
+          <h5 style="margin: 0 0 12px 0; color: var(--text-primary); font-size: 13px; font-weight: 600;">Avatar State</h5>
+          <div class="text-box-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <button class="overlay-test-btn vtuber-state-btn" data-state="idle">Idle</button>
+            <button class="overlay-test-btn vtuber-state-btn" data-state="talking">Talking</button>
+            <button class="overlay-test-btn vtuber-state-btn" data-state="excited">Excited</button>
+            <button class="overlay-test-btn vtuber-state-btn" data-state="happy">Happy</button>
+            <button class="overlay-test-btn vtuber-state-btn" data-state="sad">Sad</button>
+            <button class="overlay-test-btn vtuber-state-btn" data-state="thinking">Thinking</button>
+            <button class="overlay-test-btn vtuber-state-btn" data-state="confused">Confused</button>
+          </div>
+        </div>
+        
+        <div style="margin-top: 24px;">
+          <h5 style="margin: 0 0 12px 0; color: var(--text-primary); font-size: 13px; font-weight: 600;">Upload Images</h5>
+          <div class="media-controls" style="gap: 12px;">
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;">
+              <label style="color: var(--text-secondary); font-size: 12px;">Idle:</label>
+              <input type="file" class="vtuber-image-input custom-input" data-state="idle" accept="image/png,image/jpeg,image/webp" style="flex: 0 0 auto; min-width: 200px;">
+              <span class="image-status" data-state="idle" style="color: var(--text-tertiary); font-size: 11px; white-space: nowrap;">No image</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;">
+              <label style="color: var(--text-secondary); font-size: 12px;">Talking:</label>
+              <input type="file" class="vtuber-image-input custom-input" data-state="talking" accept="image/png,image/jpeg,image/webp" style="flex: 0 0 auto; min-width: 200px;">
+              <span class="image-status" data-state="talking" style="color: var(--text-tertiary); font-size: 11px; white-space: nowrap;">No image</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;">
+              <label style="color: var(--text-secondary); font-size: 12px;">Excited:</label>
+              <input type="file" class="vtuber-image-input custom-input" data-state="excited" accept="image/png,image/jpeg,image/webp" style="flex: 0 0 auto; min-width: 200px;">
+              <span class="image-status" data-state="excited" style="color: var(--text-tertiary); font-size: 11px; white-space: nowrap;">No image</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;">
+              <label style="color: var(--text-secondary); font-size: 12px;">Happy:</label>
+              <input type="file" class="vtuber-image-input custom-input" data-state="happy" accept="image/png,image/jpeg,image/webp" style="flex: 0 0 auto; min-width: 200px;">
+              <span class="image-status" data-state="happy" style="color: var(--text-tertiary); font-size: 11px; white-space: nowrap;">No image</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;">
+              <label style="color: var(--text-secondary); font-size: 12px;">Sad:</label>
+              <input type="file" class="vtuber-image-input custom-input" data-state="sad" accept="image/png,image/jpeg,image/webp" style="flex: 0 0 auto; min-width: 200px;">
+              <span class="image-status" data-state="sad" style="color: var(--text-tertiary); font-size: 11px; white-space: nowrap;">No image</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;">
+              <label style="color: var(--text-secondary); font-size: 12px;">Thinking:</label>
+              <input type="file" class="vtuber-image-input custom-input" data-state="thinking" accept="image/png,image/jpeg,image/webp" style="flex: 0 0 auto; min-width: 200px;">
+              <span class="image-status" data-state="thinking" style="color: var(--text-tertiary); font-size: 11px; white-space: nowrap;">No image</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;">
+              <label style="color: var(--text-secondary); font-size: 12px;">Confused:</label>
+              <input type="file" class="vtuber-image-input custom-input" data-state="confused" accept="image/png,image/jpeg,image/webp" style="flex: 0 0 auto; min-width: 200px;">
+              <span class="image-status" data-state="confused" style="color: var(--text-tertiary); font-size: 11px; white-space: nowrap;">No image</span>
+            </div>
+          </div>
+        </div>
+        
+        <div style="margin-top: 24px;">
+          <h5 style="margin: 0 0 12px 0; color: var(--text-primary); font-size: 13px; font-weight: 600;">VTuber Type</h5>
+          <div class="media-controls" style="margin-bottom: 16px;">
+            <select id="vtuber-type-select" class="custom-select" style="min-width: 200px;">
+              <option value="pngtuber">PNGtuber (Static Images)</option>
+              <option value="iframe">Web-Based VTuber (Iframe)</option>
+              <option value="vseeface">VSeeFace (Window Capture)</option>
+              <option value="vtubestudio">VTube Studio (Window Capture)</option>
+              <option value="live2d">Live2D (SDK - Coming Soon)</option>
+            </select>
+          </div>
+          <div id="vtuber-iframe-config" style="display: none; margin-bottom: 16px;">
+            <label style="color: var(--text-secondary); font-size: 11px; display: block; margin-bottom: 4px;">Iframe URL:</label>
+            <input type="text" id="vtuber-iframe-url" class="custom-input" placeholder="https://example.com/vtuber" style="width: 100%;">
+            <button id="save-vtuber-type" class="overlay-action-btn" style="margin-top: 8px;">Save VTuber Type</button>
+          </div>
+        </div>
+        
+        <div style="margin-top: 24px;">
+          <h5 style="margin: 0 0 12px 0; color: var(--text-primary); font-size: 13px; font-weight: 600;">Position & Size</h5>
+          <div class="resolution-controls" style="margin-bottom: 12px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="color: var(--text-secondary); font-size: 11px;">X Position:</label>
+              <input type="number" id="vtuber-pos-x" value="0" class="custom-input" style="min-width: 100px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="color: var(--text-secondary); font-size: 11px;">Y Position:</label>
+              <input type="number" id="vtuber-pos-y" value="0" class="custom-input" style="min-width: 100px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="color: var(--text-secondary); font-size: 11px;">Width:</label>
+              <input type="number" id="vtuber-width" value="500" class="custom-input" style="min-width: 100px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="color: var(--text-secondary); font-size: 11px;">Height:</label>
+              <input type="number" id="vtuber-height" value="500" class="custom-input" style="min-width: 100px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="color: var(--text-secondary); font-size: 11px;">Scale:</label>
+              <input type="number" id="vtuber-scale" value="1.0" step="0.1" min="0.1" max="5.0" class="custom-input" style="min-width: 100px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="color: var(--text-secondary); font-size: 11px;">Opacity:</label>
+              <input type="number" id="vtuber-opacity" value="1.0" step="0.1" min="0" max="1" class="custom-input" style="min-width: 100px;">
+            </div>
+          </div>
+          <button id="apply-vtuber-position" class="overlay-action-btn">Apply Position</button>
+        </div>
+      </div>
+      
       <div class="overlay-section">
         <h4>Custom Overlay Management</h4>
         <div class="overlay-info">
           <p><strong>Note:</strong> All overlays are configured for 1920x1080 resolution.</p>
-          <p><strong>Predefined Overlays:</strong> Alert Overlay and Confetti Overlay are built-in and ready to use immediately.</p>
-          <p><strong>Custom Overlays:</strong> Create your own overlays using the templates above.</p>
         </div>
         <div class="overlay-management">
           <div class="overlay-create">
@@ -1188,8 +2082,6 @@
             <select id="overlay-template" class="custom-select">
               <option value="center-media">Center Media (Current)</option>
               <option value="fullscreen-media">Full Screen Media</option>
-              <option value="alert">Alert Overlay (Streamlabs-style)</option>
-              <option value="confetti">Confetti Overlay (Celebration)</option>
             </select>
             <button id="create-overlay" class="overlay-action-btn">Create Overlay</button>
           </div>
@@ -1197,10 +2089,8 @@
             <label for="overlay-select">Select Overlay:</label>
             <select id="overlay-select" class="custom-select">
               <option value="main">Main Overlay</option>
-              <option value="alertOverlay">Alert Overlay (Predefined)</option>
-              <option value="confettiOverlay">Confetti Overlay (Predefined)</option>
             </select>
-            <button id="delete-overlay" class="overlay-action-btn danger" title="Only custom overlays can be deleted">Delete Selected</button>
+            <button id="delete-overlay" class="overlay-action-btn danger">Delete Selected</button>
           </div>
           <div class="overlay-url-display">
             <label>Overlay URL:</label>
@@ -1216,164 +2106,6 @@
             </div>
           </div>
         </div>
-      </div>
-      
-      <div class="overlay-section">
-        <h4>Hydration Tracker</h4>
-        <div class="overlay-info">
-          <p>Track your water intake with an animated overlay that updates when viewers redeem a specific channel point reward.</p>
-        </div>
-        <button id="open-hydration-settings" class="overlay-action-btn" style="width: 100%; padding: 12px; margin-bottom: 12px;">⚙️ Configure Hydration Tracker</button>
-        <div class="overlay-url-display">
-          <label>Hydration Overlay URL:</label>
-          <div class="url-display">
-            <code>http://localhost:8080/hydration</code>
-            <button id="copy-hydration-url" class="copy-btn" title="Copy URL">📋</button>
-          </div>
-          <small style="color: var(--text-tertiary); display: block; margin-top: 8px;">Add this as a Browser Source in OBS (1920x1080)</small>
-        </div>
-      </div>
-      
-      <!-- Progression System -->
-      <div class="overlay-section">
-        <h4>Progression System</h4>
-        <div class="overlay-info">
-          <p>Create multi-stage progressions that advance when viewers redeem channel points. Perfect for building projects, leveling up characters, or any goal-based interaction.</p>
-          <p style="margin-top:8px;font-size:13px;">Choose per progression: display on your main overlay or use a dedicated progression overlay.</p>
-        </div>
-        <button id="open-progression-manager" class="overlay-action-btn" style="width: 100%; padding: 12px; margin-bottom: 12px;">⚙️ Manage Progressions</button>
-        <div class="overlay-url-display">
-          <label>Dedicated Progression Overlay:</label>
-          <div class="url-display">
-            <code>http://localhost:8080/progression</code>
-            <button id="copy-progression-url" class="copy-btn" title="Copy URL">📋</button>
-          </div>
-          <small style="color: var(--text-tertiary); display: block; margin-top: 8px;">Optional dedicated overlay. Or choose "Main Overlay" when creating progressions.</small>
-        </div>
-      </div>
-
-      <!-- Twitch Battles Overlay -->
-      <div class="overlay-section">
-        <h4>Twitch Battles</h4>
-        <div class="overlay-info">
-          <p>Run a TikTok-style battle between two streamers. Viewers cheer, sub, or gift to deal damage. Add the overlay as a Browser Source in OBS; run the battles backend and overlay app when using this feature.</p>
-        </div>
-        <div class="overlay-list" style="margin-bottom: 12px;">
-          <label for="battle-channel-input">Channel (defaults to your connected Twitch account):</label>
-          <input type="text" id="battle-channel-input" placeholder="Uses connected account" class="custom-input" style="max-width: 200px; margin-right: 8px;" />
-        </div>
-        <div class="overlay-url-display">
-          <label>Battle Overlay URL:</label>
-          <div class="url-display">
-            <code id="battle-overlay-url-display">http://localhost:5173?channel=</code>
-            <button id="copy-battle-overlay-url" class="copy-btn" title="Copy URL">📋</button>
-            <button id="open-battle-overlay" class="overlay-action-btn" style="margin-left: 8px;">Open in browser</button>
-          </div>
-          <small style="color: var(--text-tertiary); display: block; margin-top: 8px;">Use this URL in OBS Browser Source. Start the overlay app (e.g. <code>cd overlay &amp;&amp; npm run dev</code>) and battles backend separately.</small>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Hydration Settings Modal -->
-  <div id="hydration-settings-modal" class="modal-overlay hidden" style="z-index: 10002;">
-    <div class="modal-content" style="max-width: 700px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-        <h2 style="margin:0;">Hydration Tracker Settings</h2>
-        <button id="hydration-settings-close" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-primary);">&times;</button>
-      </div>
-      
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
-        <!-- Left Column - Tracking Settings -->
-        <div>
-          <h3 style="margin-bottom:15px;font-size:16px;border-bottom:2px solid var(--accent);padding-bottom:8px;">Tracking Settings</h3>
-          
-          <div style="margin-bottom:15px;">
-            <label style="display:block;margin-bottom:5px;font-weight:600;">Stream Goal (oz)</label>
-            <input type="number" id="hydration-goal" min="1" max="500" value="64" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-            <small style="color:var(--text-tertiary);">Total water goal for the stream</small>
-          </div>
-          
-          <div style="margin-bottom:15px;">
-            <label style="display:block;margin-bottom:5px;font-weight:600;">Increment per Redeem (oz)</label>
-            <input type="number" id="hydration-increment" min="1" max="100" value="8" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-            <small style="color:var(--text-tertiary);">Water amount added per redemption</small>
-          </div>
-          
-          <div style="margin-bottom:15px;">
-            <label style="display:block;margin-bottom:5px;font-weight:600;">Redemption Keyword</label>
-            <input type="text" id="hydration-keyword" placeholder="hydrate" value="hydrate" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-            <small style="color:var(--text-tertiary);">Channel point reward name to trigger (case-insensitive)</small>
-          </div>
-          
-          <div style="margin-bottom:15px;">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-              <input type="checkbox" id="hydration-reset-on-live" checked style="width:auto;">
-              <span style="font-weight:600;">Auto-reset when stream goes live</span>
-            </label>
-            <small style="color:var(--text-tertiary);display:block;margin-left:28px;">Automatically reset progress when you start streaming</small>
-          </div>
-          
-          <div style="margin-bottom:15px;">
-            <button id="hydration-manual-reset" style="width:100%;padding:10px;background:#dc3545;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Reset Progress to 0</button>
-          </div>
-        </div>
-        
-        <!-- Right Column - Appearance Settings -->
-        <div>
-          <h3 style="margin-bottom:15px;font-size:16px;border-bottom:2px solid var(--accent);padding-bottom:8px;">Appearance</h3>
-          
-          <div style="margin-bottom:15px;">
-            <label style="display:block;margin-bottom:5px;font-weight:600;">Gauge Style</label>
-            <div style="display:flex;gap:10px;">
-              <label style="flex:1;cursor:pointer;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:6px;text-align:center;transition:all 0.2s;">
-                <input type="radio" name="gauge-style" value="vertical" style="display:none;">
-                <span>Vertical Bar</span>
-              </label>
-              <label style="flex:1;cursor:pointer;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:6px;text-align:center;transition:all 0.2s;">
-                <input type="radio" name="gauge-style" value="circular" checked style="display:none;">
-                <span>Circular</span>
-              </label>
-              <label style="flex:1;cursor:pointer;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:6px;text-align:center;transition:all 0.2s;">
-                <input type="radio" name="gauge-style" value="horizontal" style="display:none;">
-                <span>Horizontal Bar</span>
-              </label>
-            </div>
-          </div>
-          
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">
-            <div>
-              <label style="display:block;margin-bottom:5px;font-weight:600;">Water Color</label>
-              <input type="color" id="hydration-water-color" value="#4fc3f7" style="width:100%;height:40px;border:none;border-radius:6px;cursor:pointer;">
-            </div>
-            <div>
-              <label style="display:block;margin-bottom:5px;font-weight:600;">Text Color</label>
-              <input type="color" id="hydration-text-color" value="#ffffff" style="width:100%;height:40px;border:none;border-radius:6px;cursor:pointer;">
-            </div>
-          </div>
-          
-          <div style="margin-bottom:15px;">
-            <label style="display:block;margin-bottom:5px;font-weight:600;">Gauge Size</label>
-            <input type="range" id="hydration-size" min="50" max="500" value="200" style="width:100%;">
-            <div style="text-align:center;color:var(--text-tertiary);"><span id="hydration-size-value">200</span>px</div>
-          </div>
-          
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">
-            <div>
-              <label style="display:block;margin-bottom:5px;font-weight:600;">Position X (%)</label>
-              <input type="number" id="hydration-pos-x" min="0" max="100" value="50" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-            </div>
-            <div>
-              <label style="display:block;margin-bottom:5px;font-weight:600;">Position Y (%)</label>
-              <input type="number" id="hydration-pos-y" min="0" max="100" value="50" style="width:100%;padding:8px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <div style="display:flex;gap:10px;margin-top:20px;padding-top:20px;border-top:1px solid var(--border-color);">
-        <button id="hydration-test" style="flex:1;padding:12px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Test Update (+8 oz)</button>
-        <button id="hydration-save" style="flex:1;padding:12px;background:#28a745;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Save Settings</button>
       </div>
     </div>
   </div>
@@ -1449,6 +2181,10 @@
           <small style="display: block; margin-top: 5px; color: var(--text-secondary); font-size: 12px;">
             Click followers to add/remove them, or manually enter a username. Alert will only trigger for selected users on their first chat message.
           </small>
+          <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px; cursor: pointer; font-size: 13px;">
+            <input type="checkbox" id="alert-walkon-show-profile" checked />
+            Show Twitch profile picture on overlay with walk-on sound
+          </label>
           <button 
             id="alert-walkon-reset-test" 
             style="margin-top: 8px; padding: 6px 12px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; width: 100%;"
@@ -1466,16 +2202,101 @@
           <small style="display: block; margin-top: 5px; color: #888;">Choose which overlay this alert will display on</small>
         </div>
 
-        <div class="alert-settings">
-          <div class="setting-group">
-            <label for="alert-text">Alert Text (Optional):</label>
-            <input type="text" id="alert-text" placeholder="Welcome {username}!" />
-            <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
-              Use placeholders: {username}, {display_name}, {tier}, {viewers}, {bits}, {months}, {moderator}, {reason}. Leave empty for media-only alerts.
-            </small>
+        <div class="alert-settings alert-editor-sections">
+          <section class="alert-form-section alert-form-section--message">
+            <h4 class="alert-form-section-title">Message &amp; duration</h4>
+            <div class="alert-settings-primary">
+              <div class="setting-group">
+                <label for="alert-text">Alert Text (Optional):</label>
+                <input type="text" id="alert-text" placeholder="Welcome {username}!" />
+                <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                  Use placeholders: {username}, {display_name}, {tier}, {viewers}, {bits}, {months}, {moderator}, {reason}. Leave empty for media-only alerts.
+                </small>
+              </div>
+
+              <div class="setting-group">
+                <label for="alert-duration">Duration (seconds):</label>
+                <input type="number" id="alert-duration" min="1" max="60" value="5" />
+              </div>
+
+              <div class="setting-group" id="bits-threshold-group" style="display: none;">
+                <label for="alert-bits-threshold">Minimum Bits (threshold):</label>
+                <input type="number" id="alert-bits-threshold" min="1" max="100000" value="10" placeholder="10" />
+                <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                  Alert only triggers if bits amount meets or exceeds this threshold
+                </small>
+              </div>
+            </div>
+          </section>
+
+          <!-- Media Files -->
+          <section class="alert-form-section alert-form-section--media">
+          <div class="media-files-group">
+            <h4>Sound &amp; media</h4>
+            
+            <div class="setting-group">
+              <label for="alert-sound">Sound File:</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="file" id="alert-sound" accept="audio/*" style="flex: 1;" />
+                <button type="button" id="remove-alert-sound" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
+              </div>
+              <label for="alert-sound-volume" class="volume-label">Volume: <span id="alert-sound-volume-value">100%</span></label>
+              <input type="range" id="alert-sound-volume" name="alert-sound-volume" min="0" max="100" value="100" />
+              <div class="audio-note" style="margin-top: 6px; padding: 6px; background: rgba(0, 150, 255, 0.1); border: 1px solid rgba(0, 150, 255, 0.3); border-radius: 4px; font-size: 12px; color: #4fc3f7;">
+                🔊 Audio plays through the overlay in OBS
+              </div>
+            </div>
+            
+            <div class="setting-group">
+              <label for="alert-image">Image File:</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="file" id="alert-image" accept="image/*" style="flex: 1;" />
+                <button type="button" id="remove-alert-image" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
+              </div>
+            </div>
+            
+            <div class="setting-group">
+              <label for="alert-video">Video File:</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="file" id="alert-video" accept="video/*" style="flex: 1;" />
+                <button type="button" id="remove-alert-video" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
+              </div>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                Supports MP4, WebM, MOV, AVI
+              </small>
+              
+              <!-- Video Settings (shown when video is selected) -->
+              <div id="alert-video-settings" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
+                <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--text-secondary);">Video Settings</h4>
+                
+                <div style="margin-bottom: 10px;">
+                  <label for="alert-video-display-mode">Display Mode:</label>
+                  <select id="alert-video-display-mode" style="width: 100%; margin-top: 4px;">
+                    <option value="center">Center Media (Text can overlay)</option>
+                    <option value="fullscreen">Full Screen (Text overlays video)</option>
+                  </select>
+                  <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                    Full screen mode allows text to appear over the video
+                  </small>
+                </div>
+                
+                <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                  <input type="checkbox" id="alert-video-loop" />
+                  <span style="margin-left: 6px;">Loop Video</span>
+                </label>
+                
+                <label for="alert-video-volume" class="volume-label" style="display: block; margin-bottom: 8px;">
+                  Volume: <span id="alert-video-volume-value">100%</span>
+                </label>
+                <input type="range" id="alert-video-volume" name="alert-video-volume" min="0" max="100" value="100" style="width: 100%;" />
+                
+              </div>
+            </div>
           </div>
-          
+          </section>
+
           <!-- Text Styling & Animation Section -->
+          <section class="alert-form-section alert-form-section--style">
           <div class="section text-styling-animation-section">
             <h4>Text Styling & Animation</h4>
             
@@ -1540,8 +2361,8 @@
             <div class="styling-row">
               <div class="setting-group">
                 <label for="alert-font-size">Font Size:</label>
-                <input type="range" id="alert-font-size" min="12" max="72" value="24" />
-                <div class="range-value" id="font-size-value">24px</div>
+                <input type="range" id="alert-font-size" min="12" max="300" value="64" title="Size in pixels on the 1920x1080 stream canvas" />
+                <div class="range-value" id="font-size-value">64px</div>
               </div>
             </div>
             
@@ -1646,22 +2467,10 @@
               </div>
             </div>
           </div>
-          
-          <div class="setting-group">
-            <label for="alert-duration">Duration (seconds):</label>
-            <input type="number" id="alert-duration" min="1" max="60" value="5" />
-          </div>
-          
-          <div class="setting-group" id="bits-threshold-group" style="display: none;">
-            <label for="alert-bits-threshold">Minimum Bits (threshold):</label>
-            <input type="number" id="alert-bits-threshold" min="1" max="100000" value="10" placeholder="10" />
-            <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
-              Alert only triggers if bits amount meets or exceeds this threshold
-            </small>
-          </div>
-          
+          </section>
+
           <!-- Daily Check-In Settings -->
-          <div id="daily-checkin-settings" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
+          <div id="daily-checkin-settings" class="alert-form-section alert-form-section--checkin" style="display: none; margin-top: 0; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
             <h4 style="margin: 0 0 10px 0; font-size: 14px; color: var(--text-primary);">Daily Check-In Configuration</h4>
             
             <div class="setting-group" style="margin-bottom: 12px;">
@@ -1674,11 +2483,21 @@
               </small>
             </div>
             
+            <div id="daily-checkin-eventsub-warning" class="daily-checkin-eventsub-warning" style="display: none; margin-bottom: 12px; padding: 10px; background: rgba(255, 152, 0, 0.12); border: 1px solid rgba(255, 152, 0, 0.45); border-radius: 6px; font-size: 12px; color: var(--text-primary);"></div>
+
             <div class="setting-group" style="margin-bottom: 12px;">
-              <label for="daily-checkin-reward-name">Channel Point Reward Name:</label>
+              <label for="daily-checkin-reward-select">Channel Point Reward (from Twitch):</label>
+              <div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
+                <select id="daily-checkin-reward-select" style="flex: 1; padding: 6px;">
+                  <option value="">-- Load rewards from Twitch --</option>
+                </select>
+                <button type="button" id="daily-checkin-load-rewards" class="action-btn secondary" style="white-space: nowrap;">Load</button>
+              </div>
+              <input type="hidden" id="daily-checkin-reward-id" value="" />
+              <label for="daily-checkin-reward-name" style="margin-top: 8px; display: block;">Reward name (fallback if ID not set):</label>
               <input type="text" id="daily-checkin-reward-name" placeholder="Daily Check-In" value="Daily Check-In" style="width: 100%; margin-top: 4px;" />
               <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
-                The name of your Twitch Channel Point reward for daily check-ins
+                Pick your live reward from the dropdown (saved by reward ID). Title matching is only a fallback.
               </small>
             </div>
             
@@ -1738,70 +2557,6 @@
               </small>
             </div>
           </div>
-          
-          <!-- Media Files - Grouped together -->
-          <div class="media-files-group">
-            <h4>Media Files</h4>
-            
-            <div class="setting-group">
-              <label for="alert-sound">Sound File:</label>
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <input type="file" id="alert-sound" accept="audio/*" style="flex: 1;" />
-                <button type="button" id="remove-alert-sound" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
-              </div>
-              <label for="alert-sound-volume" class="volume-label">Volume: <span id="alert-sound-volume-value">100%</span></label>
-              <input type="range" id="alert-sound-volume" name="alert-sound-volume" min="0" max="100" value="100" />
-              <div class="audio-note" style="margin-top: 6px; padding: 6px; background: rgba(0, 150, 255, 0.1); border: 1px solid rgba(0, 150, 255, 0.3); border-radius: 4px; font-size: 12px; color: #4fc3f7;">
-                🔊 Audio plays through the overlay in OBS
-              </div>
-            </div>
-            
-            <div class="setting-group">
-              <label for="alert-image">Image File:</label>
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <input type="file" id="alert-image" accept="image/*" style="flex: 1;" />
-                <button type="button" id="remove-alert-image" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
-              </div>
-            </div>
-            
-            <div class="setting-group">
-              <label for="alert-video">Video File:</label>
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <input type="file" id="alert-video" accept="video/*" style="flex: 1;" />
-                <button type="button" id="remove-alert-video" class="action-btn danger" style="display: none; padding: 4px 8px; font-size: 12px;">Remove</button>
-              </div>
-              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
-                Supports MP4, WebM, MOV, AVI
-              </small>
-              
-              <!-- Video Settings (shown when video is selected) -->
-              <div id="alert-video-settings" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
-                <h4 style="margin: 0 0 10px 0; font-size: 13px; color: var(--text-secondary);">Video Settings</h4>
-                
-                <div style="margin-bottom: 10px;">
-                  <label for="alert-video-display-mode">Display Mode:</label>
-                  <select id="alert-video-display-mode" style="width: 100%; margin-top: 4px;">
-                    <option value="center">Center Media (Text can overlay)</option>
-                    <option value="fullscreen">Full Screen (Text overlays video)</option>
-                  </select>
-                  <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
-                    Full screen mode allows text to appear over the video
-                  </small>
-                </div>
-                
-                <label style="display: flex; align-items: center; margin-bottom: 8px;">
-                  <input type="checkbox" id="alert-video-loop" />
-                  <span style="margin-left: 6px;">Loop Video</span>
-                </label>
-                
-                <label for="alert-video-volume" class="volume-label" style="display: block; margin-bottom: 8px;">
-                  Volume: <span id="alert-video-volume-value">100%</span>
-                </label>
-                <input type="range" id="alert-video-volume" name="alert-video-volume" min="0" max="100" value="100" style="width: 100%;" />
-                
-              </div>
-            </div>
-          </div>
         </div>
 
         <div class="alert-actions">
@@ -1809,25 +2564,24 @@
           <button id="clear-alerts" class="action-btn danger">Clear All Alerts</button>
         </div>
         
-        <!-- Alert Preview Section -->
-        <div class="alert-preview">
-          <h4>Alert Preview</h4>
-          <div id="alert-preview-area" class="preview-area">
-            <div class="preview-placeholder">Configure an alert to see preview</div>
+        <div class="alert-preview-list-panel">
+          <div class="alert-preview">
+            <h4>Alert Preview</h4>
+            <div id="alert-preview-area" class="preview-area">
+              <div class="preview-placeholder">Configure an alert to see preview</div>
+            </div>
           </div>
-        </div>
 
-        <!-- Saved Alerts Section -->
-        <div class="saved-alerts-section">
-          <h4>Saved <span id="selected-alert-type-name">Follower</span> Alerts</h4>
-          <div id="alert-list-container" class="alert-list-container">
-            <div class="no-alerts">No alerts configured yet</div>
+          <div class="saved-alerts-section">
+            <h4>Saved <span id="selected-alert-type-name">Follower</span> Alerts</h4>
+            <div id="alert-list-container" class="alert-list-container">
+              <div class="no-alerts">No alerts configured yet</div>
+            </div>
           </div>
         </div>
         
       </div>
     </div>
-  </div>
   </div>
 
   <!-- Daily Check-In Statistics Modal -->
@@ -1936,174 +2690,30 @@
     </div>
   </div>
 
-  <!-- Progression Manager Modal -->
-  <div id="progression-manager-modal" class="modal-overlay hidden" style="z-index: 100000;">
-    <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-        <h2 style="margin:0;">Progression Manager</h2>
-        <button id="progression-manager-close" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-primary);">&times;</button>
-      </div>
-      
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
-        <button id="create-new-progression" style="padding:12px;background:var(--accent);color:white;border:none;border-radius:6px;font-weight:600;cursor:pointer;">+ Create New Progression</button>
-        <button id="test-progression-redeem" style="padding:12px;background:#10b981;color:white;border:none;border-radius:6px;font-weight:600;cursor:pointer;">🧪 Test Redeem</button>
-      </div>
-      
-      <div id="progressions-list" style="display:grid;gap:15px;">
-        <!-- Progression cards will be inserted here -->
-      </div>
-      
-      <div id="no-progressions-message" style="text-align:center;padding:40px;color:var(--text-secondary);">
-        <p>No progressions yet. Create your first progression to get started!</p>
-      </div>
-    </div>
-  </div>
-  
-  <!-- Progression Test Modal -->
-  <div id="progression-test-modal" class="modal-overlay hidden" style="z-index: 100001;">
-    <div class="modal-content" style="max-width: 500px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-        <h2 style="margin:0;">Test Progression Redeem</h2>
-        <button id="progression-test-close" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-primary);">&times;</button>
-      </div>
-      
-      <div style="display:grid;gap:15px;">
-        <div>
-          <label style="display:block;margin-bottom:8px;font-weight:600;">Test Username</label>
-          <input type="text" id="test-progression-username" value="TestUser" placeholder="Enter username" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-          <small style="color:var(--text-tertiary);">The username that will trigger the redeem</small>
-        </div>
-        
-        <div id="test-progression-info" style="padding:12px;background:var(--bg-secondary);border-radius:6px;border:1px solid var(--border-color);">
-          <div style="font-size:14px;margin-bottom:8px;"><strong>Progression:</strong> <span id="test-prog-name">--</span></div>
-          <div style="font-size:12px;color:var(--text-tertiary);"><strong>Redeem:</strong> <span id="test-prog-keyword">--</span></div>
-          <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;"><strong>Current:</strong> Stage <span id="test-prog-stage">1</span>/<span id="test-prog-total">1</span> (<span id="test-prog-count">0</span>/<span id="test-prog-required">0</span>)</div>
-        </div>
-        
-        <div style="padding:12px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:6px;">
-          <div style="font-size:13px;line-height:1.5;">
-            <strong>What this test does:</strong><br>
-            • Simulates a Twitch channel point redemption<br>
-            • Increments the progression counter<br>
-            • Advances to next stage when threshold is met<br>
-            • Updates the progression overlay<br>
-            • Sends chat message (if configured)<br>
-            • Updates leaderboard
-          </div>
-        </div>
-        
-        <div style="display:flex;gap:10px;">
-          <button type="button" id="progression-test-cancel" style="flex:1;padding:10px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:6px;cursor:pointer;color:var(--text-primary);">Cancel</button>
-          <button type="button" id="progression-test-send" style="flex:1;padding:10px;background:#10b981;color:white;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Send Test Redeem</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  
-  <!-- Progression Editor Modal -->
-  <div id="progression-editor-modal" class="modal-overlay hidden" style="z-index: 100002;">
-    <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-        <h2 style="margin:0;" id="progression-editor-title">New Progression</h2>
-        <div style="display: flex; gap: 8px;">
-          <button id="progression-placeholders-help" class="help-btn" title="View Placeholders Guide" style="background: var(--accent); color: white; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;">?</button>
-          <button id="progression-editor-close" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-primary);">&times;</button>
-        </div>
-      </div>
-      
-      <form id="progression-form" style="display:grid;gap:20px;">
-        <!-- Basic Info -->
-        <div>
-          <label style="display:block;margin-bottom:8px;font-weight:600;">Progression Name</label>
-          <input type="text" id="progression-name" required placeholder="e.g., Building a House" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-        </div>
-        
-        <div>
-          <label style="display:block;margin-bottom:8px;font-weight:600;">Redeem Keyword</label>
-          <input type="text" id="progression-redeem-keyword" required placeholder="e.g., build" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-          <small style="color:var(--text-tertiary);">Channel point reward name that triggers this progression</small>
-        </div>
-        
-        <div>
-          <label style="display:block;margin-bottom:8px;font-weight:600;">Action Word</label>
-          <input type="text" id="progression-action-word" placeholder="e.g., watered, built, fed" value="contributed" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-          <small style="color:var(--text-tertiary);">Used in {action} variable. Example: "watered" → "{username} watered the tree"</small>
-        </div>
-        
-        <div>
-          <label style="display:block;margin-bottom:8px;font-weight:600;">Chat Command (Optional)</label>
-          <input type="text" id="progression-chat-command" placeholder="e.g., !progress" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-          <small style="color:var(--text-tertiary);">Command viewers can use to see leaderboard</small>
-        </div>
-        
-        <div>
-          <label style="display:block;margin-bottom:8px;font-weight:600;">Overlay Text (Optional)</label>
-          <input type="text" id="progression-overlay-text" placeholder="e.g., {username} is {action} the {object}!" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-          <small style="color:var(--text-tertiary);">Text shown on overlay. Variables: {username}, {action}, {object}, {stage}, {count}, {required}, {total_stages}</small>
-        </div>
-        
-        <div>
-          <label style="display:block;margin-bottom:8px;font-weight:600;">Chat Message Template (Optional)</label>
-          <input type="text" id="progression-chat-message" placeholder="{username} {action} the {object}! {count} total" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-          <small style="color:var(--text-tertiary);">Variables: {username}, {action} (uses your action word), {object}, {count}, {stage}, {total_stages}</small>
-        </div>
-        
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
-          <div>
-            <label style="display:block;margin-bottom:8px;font-weight:600;">Display Mode</label>
-            <select id="progression-display-mode" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-              <option value="always">Always Visible</option>
-              <option value="duration" selected>Show During Redeem</option>
-            </select>
-          </div>
-          
-          <div id="progression-duration-container" style="display:block;">
-            <label style="display:block;margin-bottom:8px;font-weight:600;">Duration (seconds)</label>
-            <input type="number" id="progression-duration" min="1" max="60" value="10" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-          </div>
-        </div>
-        
-        <div>
-          <label style="display:block;margin-bottom:8px;font-weight:600;">State Persistence</label>
-          <select id="progression-persistence" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-            <option value="permanent">Permanent (Saves across sessions)</option>
-            <option value="session">Session Only (Resets on app restart)</option>
-          </select>
-        </div>
-        
-        <div>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-            <input type="checkbox" id="progression-uniform-count" style="cursor:pointer;">
-            <span>Use same redeem count for all stages</span>
-          </label>
-        </div>
-        
-        <div id="progression-uniform-count-value" style="display:none;">
-          <label style="display:block;margin-bottom:8px;font-weight:600;">Redeems Required Per Stage</label>
-          <input type="number" id="progression-uniform-count-input" min="1" value="5" style="width:100%;padding:10px;border-radius:6px;background:var(--bg-secondary);border:1px solid var(--border-color);color:var(--text-primary);">
-        </div>
-        
-        <!-- Stages -->
-        <div>
-          <h3 style="margin-bottom:15px;font-size:16px;border-bottom:2px solid var(--accent);padding-bottom:8px;">Stages</h3>
-          <div id="progression-stages-list" style="display:grid;gap:15px;">
-            <!-- Stages will be inserted here -->
-          </div>
-          <button type="button" id="add-progression-stage" style="width:100%;padding:10px;margin-top:15px;background:var(--bg-secondary);border:1px dashed var(--border-color);border-radius:6px;cursor:pointer;color:var(--text-primary);">+ Add Stage</button>
-        </div>
-        
-        <div style="display:flex;gap:10px;justify-content:flex-end;">
-          <button type="button" id="progression-form-cancel" style="padding:10px 20px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:6px;cursor:pointer;color:var(--text-primary);">Cancel</button>
-          <button type="submit" style="padding:10px 20px;background:var(--accent);color:white;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Save Progression</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="dialog-shim.js"></script>
+  <script src="vd-console.js"></script>
+  <script src="daily-checkin-reward.js"></script>
+  <script src="channel-rewards-ui.js"></script>
+  <script src="vd-poll.js"></script>
+  <script src="vd-service-gates.js"></script>
+  <script src="deck-icon-catalog.js"></script>
+  <script src="deck-icon-picker.js"></script>
+  <script src="raven-ai-control.js"></script>
+  <script src="raven-manual-speak.js"></script>
+  <script src="input-focus-guard.js"></script>
+  <script src="modal-escape.js"></script>
+  <script src="meldClient.js"></script>
   <script src="AddEditButtonForm.js"></script>
-  <script src="meld-client.js"></script>
+  <script src="alert-text-render.js"></script>
+  <script src="license-ui.js"></script>
+  <script src="raven-setup-ui.js"></script>
+  <script src="deck-drop-utils.js"></script>
   <script src="script.js"></script>
+  <script src="macro-hotkeys.js"></script>
+  <script src="macro-scene-picker.js"></script>
+  <script src="macros-ui.js"></script>
+  <script src="raid-favorites-ui.js"></script>
+  <script src="ai-audio-modal.js"></script>
   <script src="../TwitchConnected/tc.js"></script>
 </body>
 </html> 

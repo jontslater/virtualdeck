@@ -1,0 +1,44 @@
+# Raven Voice AI Configuration Template
+# Users MUST fill in their own API keys after installation (BYOK - Bring Your Own Key)
+# SECURITY: NEVER commit this file with actual API keys - it serves as a template only
+
+# ===== Voice-Only Mode (no VTube Studio / Live2D) =====
+RAVEN_VOICE_ONLY=1
+VTUBE_STUDIO_ENABLED=false
+COPILOT_AVATAR=0
+
+# ===== LLM Provider Configuration =====
+# Supported providers: openai, anthropic, together, etc.
+LLM_PROVIDER=openai
+LLM_API_KEY=
+LLM_MODEL=gpt-4
+
+# ===== TTS Provider Configuration =====
+# Supported providers: elevenlabs, azure, google, etc.
+TTS_PROVIDER=elevenlabs
+TTS_API_KEY=
+TTS_VOICE_ID=wJqPPQ618aTW29mptyoc
+
+# Wake phrase: say "Hey <name>" (first name is primary; optional aliases comma-separated)
+HOST_WAKE_NAMES=Raven
+
+# ===== VirtualDeck JARVIS Integration =====
+# This connects Raven to VirtualDeck's tool server (already running on port 8091)
+# DO NOT CHANGE unless you modify VirtualDeck's JARVIS port
+JARVIS_BASE_URL=http://127.0.0.1:8091
+VIRTUALDECK_JARVIS_URL=http://127.0.0.1:8091
+
+# ===== WebSocket Bridge Configuration =====
+# WebSocket bridge for VirtualDeck communication
+# DO NOT CHANGE unless ports conflict with other services
+VIRTUALDECK_WS_PORT=8081
+VIRTUALDECK_WS_URL=ws://localhost:8081
+
+# ===== Raven Bridge HTTP =====
+# Raven bridge (macro whitelist + AI macro triggers). This is NOT VirtualDeck's overlay
+# server on 8080: its /api/ai/* routes require the VirtualDeck auth token (401 otherwise).
+VIRTUALDECK_HTTP_URL=http://localhost:3000
+
+# ===== Director Mode =====
+# Initial mode for Raven's director (COPILOT, AUTO, etc.)
+DIRECTOR_INITIAL_MODE=COPILOT

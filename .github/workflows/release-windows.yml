@@ -1,18 +1,15 @@
-# Manual Windows test installers (does not replace tag-based release.yml).
-# Checks out the requested git ref so build scripts and app code come from that branch.
-name: Windows test installer
+name: Release Windows installer
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
-      ref:
-        description: Git branch or tag to build (VirtualDeck checkout)
-        required: true
-        default: cursor/licensing-v1-2-212e
-      upload_draft_prerelease:
-        description: Also upload installer to a draft GitHub prerelease (updater-safe)
-        type: boolean
-        default: true
+      aituber_ref:
+        description: AITuber git ref (branch, tag, or SHA) for Raven staging
+        required: false
+        default: main
 
 permissions:
   contents: write
@@ -25,18 +22,18 @@ env:
   LEMONSQUEEZY_VARIANT_ID: '2268234'
 
 jobs:
-  test-installer:
+  release:
     runs-on: windows-latest
     steps:
-      - name: Checkout VirtualDeck at ref
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref }}
+      - name: Checkout VirtualDeck
+        uses: actions/checkout@v5
 
       - name: Checkout AITuber (Raven source)
-        uses: actions/checkout@v4
+        id: aituber_release
+        uses: actions/checkout@v5
         with:
           repository: jontslater/AITuber
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.aituber_ref || 'main' }}
           path: vendor/AITuber
           token: ${{ secrets.AITUBER_CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
 
@@ -47,18 +44,26 @@ jobs:
             echo "AITuber checkout failed: vendor/AITuber/.git missing"
             exit 1
           fi
+          echo "AITuber ref: $(cd vendor/AITuber && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)"
           echo "AITuber checkout OK at $(cd vendor/AITuber && git rev-parse --short HEAD)"
-          if [ -n "${{ secrets.AITUBER_CHECKOUT_TOKEN }}" ]; then
-            echo "AITUBER_CHECKOUT_TOKEN: configured"
-          else
-            echo "AITUBER_CHECKOUT_TOKEN: not set (using GITHUB_TOKEN fallback)"
-          fi
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
+
+      - name: Verify tag matches package.json version
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "Tag v$TAG does not match package.json version $PKG"
+            exit 1
+          fi
+          echo "Releasing version $PKG"
 
       - name: Install dependencies
         run: npm ci
@@ -66,37 +71,14 @@ jobs:
       - name: Install ffmpeg (Raven TTS playback)
         run: choco install ffmpeg -y
 
-      - name: Run tests
-        run: npm test
+      - name: Test release metadata
+        run: node test-release-metadata.js
 
-      - name: Stage Raven + build NSIS (no publish)
+      - name: Stage Raven + build and publish
         env:
           AITUBER_ROOT: ${{ github.workspace }}/vendor/AITuber
-        run: npm run build:win:with-raven
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:win:publish:raven
 
       - name: List dist artifacts
         run: dir dist
-
-      - name: Upload Windows installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: VirtualDeck-Windows-test-${{ github.run_number }}
-          path: |
-            dist/*.exe
-            dist/*.blockmap
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload draft prerelease (optional)
-        if: inputs.upload_draft_prerelease == true
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v1.2.0-test.${{ github.run_number }}
-          name: VirtualDeck v1.2.0-test.${{ github.run_number }} (test build)
-          body: |
-            **Test installer** built from ref `${{ inputs.ref }}` (workflow run ${{ github.run_id }}).
-            Draft prerelease — not `latest`; electron-updater will not offer this build.
-          draft: true
-          prerelease: true
-          files: dist/*.exe
-          generate_release_notes: false

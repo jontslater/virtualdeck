@@ -20,8 +20,8 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            width: var(--overlay-width);
-            height: var(--overlay-height);
+            width: 100vw;
+            height: 100vh;
             margin: 0;
             padding: 0;
             overflow: hidden;
@@ -56,12 +56,15 @@
         }
 
         /* Overlay Content Container */
+        /* Fixed 1920x1080 stage, scaled to fit the browser source (see fitOverlayStage).
+           All text sizes/positions are canvas px, identical to the editor preview. */
         .overlay-content {
-            width: 100%;
-            height: 100%;
+            width: var(--overlay-width);
+            height: var(--overlay-height);
             position: absolute;
             top: 0;
             left: 0;
+            transform-origin: 0 0;
             /* Remove flexbox centering to avoid conflicts with absolute positioning */
         }
 
@@ -70,29 +73,46 @@
             position: absolute;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
             object-fit: contain;
             /* Enhanced visibility for streaming alerts */
-            filter: drop-shadow(0 0 1.04vw rgba(0, 0, 0, 0.8));
-            border-radius: 0.42vw;
+            filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
+            border-radius: 8px;
         }
 
         .media-element.hidden {
             display: none;
         }
 
+        .walkon-profile-image {
+            position: absolute;
+            left: 50%;
+            top: 42%;
+            transform: translate(-50%, -50%);
+            width: 220px;
+            height: 220px;
+            max-width: 422px;
+            max-height: 422px;
+            object-fit: cover;
+            border-radius: 50%;
+            border: 4px solid rgba(255, 255, 255, 0.95);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65);
+            z-index: 2;
+            animation: zoomIn 0.6s ease-out;
+        }
+
         /* Text Elements */
         .text-element {
             position: absolute;
             color: white;
-            text-shadow: 0.21vw 0.21vw 0.42vw rgba(0, 0, 0, 1.0), -0.1vw -0.1vw 0.21vw rgba(0, 0, 0, 0.8);
-            font-size: 3.33vw; /* 64px at 1920px width, scaled up for visibility */
+            text-shadow: 4px 4px 8px rgba(0, 0, 0, 1.0), -2px -2px 4px rgba(0, 0, 0, 0.8);
+            font-size: 64px;
             font-weight: bold;
             text-align: center;
             white-space: nowrap;
             /* Enhanced visibility for streaming alerts over images */
-            filter: drop-shadow(0 0 0.63vw rgba(0, 0, 0, 0.9));
+            filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.9));
             z-index: 100;
         }
 
@@ -132,156 +152,6 @@
             50% { transform: scale(1.05); opacity: 1; }
             70% { transform: scale(0.9); }
             100% { transform: scale(1); }
-        }
-
-        @keyframes elasticIn {
-            0% { transform: scale(0.3); opacity: 0; }
-            55% { transform: scale(1.15); opacity: 1; }
-            65% { transform: scale(0.95); }
-            75% { transform: scale(1.02); }
-            100% { transform: scale(1); }
-        }
-
-        @keyframes backInDown {
-            0% { transform: translateY(-1200px) scale(0.7); opacity: 0.7; }
-            80% { transform: translateY(0px) scale(0.7); opacity: 0.7; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-
-        @keyframes backInUp {
-            0% { transform: translateY(1200px) scale(0.7); opacity: 0.7; }
-            80% { transform: translateY(0px) scale(0.7); opacity: 0.7; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-
-        @keyframes backInLeft {
-            0% { transform: translateX(-2000px) scale(0.7); opacity: 0.7; }
-            80% { transform: translateX(0px) scale(0.7); opacity: 0.7; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-
-        @keyframes backInRight {
-            0% { transform: translateX(2000px) scale(0.7); opacity: 0.7; }
-            80% { transform: translateX(0px) scale(0.7); opacity: 0.7; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-
-        @keyframes lightSpeedInRight {
-            0% { transform: translateX(100%) skewX(-30deg); opacity: 0; }
-            60% { transform: skewX(20deg); opacity: 1; }
-            80% { transform: skewX(-5deg); }
-            100% { transform: translateX(0%); skewX(0deg); }
-        }
-
-        @keyframes lightSpeedInLeft {
-            0% { transform: translateX(-100%) skewX(30deg); opacity: 0; }
-            60% { transform: skewX(-20deg); opacity: 1; }
-            80% { transform: skewX(5deg); }
-            100% { transform: translateX(0%); skewX(0deg); }
-        }
-
-        @keyframes jackInTheBox {
-            0% { opacity: 0; transform: scale(0.1) rotate(30deg); transform-origin: center bottom; }
-            50% { transform: rotate(-10deg); }
-            70% { transform: rotate(3deg); }
-            100% { opacity: 1; transform: scale(1) rotate(0deg); }
-        }
-
-        /* Exit Animations */
-        @keyframes fadeOut {
-            from { opacity: 1; }
-            to { opacity: 0; }
-        }
-
-        @keyframes slideOutLeft {
-            from { transform: translateX(0); opacity: 1; }
-            to { transform: translateX(-100%); opacity: 0; }
-        }
-
-        @keyframes slideOutRight {
-            from { transform: translateX(0); opacity: 1; }
-            to { transform: translateX(100%); opacity: 0; }
-        }
-
-        @keyframes slideOutUp {
-            from { transform: translateY(0); opacity: 1; }
-            to { transform: translateY(-100%); opacity: 0; }
-        }
-
-        @keyframes slideOutDown {
-            from { transform: translateY(0); opacity: 1; }
-            to { transform: translateY(100%); opacity: 0; }
-        }
-
-        @keyframes zoomOut {
-            from { transform: scale(1); opacity: 1; }
-            to { transform: scale(0.3); opacity: 0; }
-        }
-
-        @keyframes bounceOut {
-            0% { transform: scale(1); opacity: 1; }
-            25% { transform: scale(0.95); }
-            50% { opacity: 1; transform: scale(1.11); }
-            100% { opacity: 0; transform: scale(0.3); }
-        }
-
-        /* Advanced Animations */
-        @keyframes heartBeat {
-            0% { transform: scale(1); }
-            14% { transform: scale(1.3); }
-            28% { transform: scale(1); }
-            42% { transform: scale(1.3); }
-            70% { transform: scale(1); }
-        }
-
-        @keyframes pulseGlow {
-            0% { box-shadow: 0 0 5px rgba(255,255,255,0.5); }
-            50% { box-shadow: 0 0 20px rgba(255,255,255,0.8), 0 0 30px rgba(255,255,255,0.6); }
-            100% { box-shadow: 0 0 5px rgba(255,255,255,0.5); }
-        }
-
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
-            20%, 40%, 60%, 80% { transform: translateX(10px); }
-        }
-
-        @keyframes tada {
-            0% { transform: scale(1) rotate(0deg); }
-            10%, 20% { transform: scale(0.9) rotate(-3deg); }
-            30%, 50%, 70%, 90% { transform: scale(1.1) rotate(3deg); }
-            40%, 60%, 80% { transform: scale(1.1) rotate(-3deg); }
-            100% { transform: scale(1) rotate(0deg); }
-        }
-
-        @keyframes swing {
-            20% { transform: rotate(15deg); }
-            40% { transform: rotate(-10deg); }
-            60% { transform: rotate(5deg); }
-            80% { transform: rotate(-5deg); }
-            100% { transform: rotate(0deg); }
-        }
-
-        /* Streamlabs-style Alert Animations */
-        @keyframes streamlabsBounce {
-            0% { transform: translateY(0px) scale(0.8); opacity: 0; }
-            10% { transform: translateY(-10px) scale(0.9); opacity: 0.5; }
-            20% { transform: translateY(-20px) scale(1.0); opacity: 0.7; }
-            30% { transform: translateY(-25px) scale(1.05); opacity: 0.9; }
-            40% { transform: translateY(-20px) scale(1.02); opacity: 1; }
-            100% { transform: translateY(0px) scale(1); opacity: 1; }
-        }
-
-        @keyframes streamlabsSlide {
-            0% { transform: translateX(-50px) scale(0.9); opacity: 0; }
-            50% { transform: translateX(10px) scale(1.02); opacity: 0.9; }
-            100% { transform: translateX(0px) scale(1); opacity: 1; }
-        }
-
-        @keyframes streamlabsFade {
-            0% { opacity: 0; transform: scale(0.95); }
-            50% { opacity: 0.8; transform: scale(1.02); }
-            100% { opacity: 1; transform: scale(1); }
         }
         
         @keyframes pulse {
@@ -369,6 +239,9 @@
     </div>
 
     <script>
+/*__VD_ALERT_TEXT_RENDER__*/
+    </script>
+    <script>
         // Overlay Configuration
         const OVERLAY_CONFIG = {
             name: '{{OVERLAY_NAME}}',
@@ -376,11 +249,6 @@
             chromaColor: '{{CHROMA_COLOR}}',
             layout: '{{LAYOUT_CLASS}}'
         };
-
-        // When loaded with ?preview=1 we're the dashboard preview — never play audio (only OBS overlay should)
-        const urlParams = new URLSearchParams(window.location.search || '');
-        const IS_PREVIEW = urlParams.get('preview') === '1';
-        if (IS_PREVIEW) console.log('🔇 Overlay running as preview — audio disabled');
 
         // Global variables
         let overlayWS = null;
@@ -391,7 +259,22 @@
         const MESSAGE_DEDUP_WINDOW = 5000; // 5 seconds
 
         // Initialize overlay
+        // Scale the 1920x1080 stage to the browser source size (scale 1 at 1920x1080).
+        function fitOverlayStage() {
+            const stage = document.querySelector('.overlay-content');
+            if (!stage) return;
+            if (window.VDAlertText) {
+                window.VDAlertText.fitStage(stage, window.innerWidth, window.innerHeight);
+            } else {
+                const s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080) || 1;
+                stage.style.transformOrigin = '0 0';
+                stage.style.transform = s === 1 ? 'none' : 'scale(' + s + ')';
+            }
+        }
+        window.addEventListener('resize', fitOverlayStage);
+
         function initOverlay() {
+            fitOverlayStage();
             console.log('🚀 Initializing overlay:', OVERLAY_CONFIG.name);
             console.log('🎨 Background mode:', OVERLAY_CONFIG.backgroundMode);
             console.log('🎯 Layout:', OVERLAY_CONFIG.layout);
@@ -403,7 +286,7 @@
         // WebSocket connection
         function connectWebSocket() {
             try {
-                const wsUrl = `ws://localhost:8080?overlay=${OVERLAY_CONFIG.name}`;
+                const wsUrl = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}?overlay=${encodeURIComponent(OVERLAY_CONFIG.name)}`;
                 console.log('🔗 Connecting to:', wsUrl);
                 
                 overlayWS = new WebSocket(wsUrl);
@@ -669,7 +552,7 @@
                 left: ${payload.position?.left || '50%'};
                 transform: translate(-50%, -50%);
                 color: ${payload.color || 'white'};
-                font-size: ${payload.fontSize || '24px'};
+                font-size: ${window.VDAlertText ? window.VDAlertText.normalizeFontSize(payload.fontSize, 24) : (payload.fontSize || '24px')};
                 font-weight: ${payload.fontWeight || 'bold'};
                 text-align: center;
                 text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
@@ -679,31 +562,51 @@
             document.querySelector('.overlay-content').appendChild(textDiv);
         }
 
+        function isAllowedWalkonProfileImageSrc(src) {
+            if (!src || typeof src !== 'string') return false;
+            try {
+                const parsed = new URL(src);
+                return parsed.protocol === 'https:' && parsed.hostname === 'static-cdn.jtvnw.net';
+            } catch (e) {
+                return false;
+            }
+        }
+
         // Handle image
         function handleImage(payload) {
+            const src = payload.src || payload.url || '';
+            if (payload.walkonProfile && !isAllowedWalkonProfileImageSrc(src)) {
+                console.warn('🚫 Blocked walk-on profile image URL (Twitch CDN only):', src);
+                return;
+            }
+
             const img = document.createElement('img');
-            img.className = 'media-element';
-            img.src = payload.src || payload.url || '';
-            img.style.cssText = `
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100vw;
-                height: 100vh;
-                object-fit: contain;
-                animation: fadeIn 0.5s ease-in-out;
-                filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
-                border-radius: 8px;
-                z-index: 1;
-            `;
+            img.className = payload.walkonProfile ? 'walkon-profile-image' : 'media-element';
+            img.src = src;
+            if (!payload.walkonProfile) {
+                img.style.cssText = `
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    object-fit: contain;
+                    animation: fadeIn 0.5s ease-in-out;
+                    filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
+                    border-radius: 8px;
+                    z-index: 1;
+                `;
+            }
             
             img.onload = () => {
                 console.log('🖼️ Image loaded successfully:', img.src);
                 console.log('🖼️ Image dimensions:', img.naturalWidth, 'x', img.naturalHeight);
                 console.log('🖼️ Image display size:', img.offsetWidth, 'x', img.offsetHeight);
-                // Force image to stay behind text when it loads
-                img.style.setProperty('z-index', '1', 'important');
-                console.log('🎯 Image z-index forced to 1 on load');
+                if (!payload.walkonProfile) {
+                    // Force image to stay behind text when it loads
+                    img.style.setProperty('z-index', '1', 'important');
+                    console.log('🎯 Image z-index forced to 1 on load');
+                }
                 
                 // Also ensure all text elements are brought to front
                 const textElements = document.querySelectorAll('.text-element');
@@ -733,10 +636,9 @@
             video.className = 'media-element';
             
             // Set muted FIRST (before src) for autoplay to work reliably in browsers
-            // In preview mode (dashboard iframe) always mute so only OBS overlay has audio
-            video.muted = IS_PREVIEW || (payload.muted !== false);
+            video.muted = payload.muted !== false; // Default to muted unless explicitly set to false
             video.loop = payload.loop || false;
-            video.volume = IS_PREVIEW ? 0 : (payload.volume || 1.0);
+            video.volume = payload.volume || 1.0;
             
             // Set autoplay attribute BEFORE setting src
             video.setAttribute('autoplay', '');
@@ -757,8 +659,8 @@
                 position: absolute;
                 top: 0;
                 left: 0;
-                width: 100vw;
-                height: 100vh;
+                width: 100%;
+                height: 100%;
                 object-fit: contain;
                 animation: fadeIn 0.5s ease-in-out;
                 filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.8));
@@ -859,120 +761,9 @@
         // Render text slot
         function renderTextSlot(position, slotData) {
             console.log('📝 Rendering text slot:', position, slotData);
-            
-            const textElement = document.createElement('div');
-            textElement.className = 'text-element';
-            textElement.textContent = slotData.text;
-            
-            // Apply styling
-            const style = slotData.style || {};
-            
-            // Apply webkit-text-stroke if specified
-            const webkitTextStroke = style.webkitTextStroke || '';
-
-            // Convert pixel font sizes to viewport units for better scaling
-            let fontSize = style.fontSize || '64px';
-            console.log('🎯 Original fontSize:', fontSize);
-            if (typeof fontSize === 'string' && fontSize.endsWith('px')) {
-                const pxValue = parseInt(fontSize);
-                // Convert to viewport width units with more aggressive scaling
-                // Use a larger multiplier to make text more prominent in overlays
-                const vwValue = (pxValue / 1920) * 150; // Increased scaling for better visibility
-                fontSize = `${vwValue.toFixed(2)}vw`;
-                console.log('🎯 Converted', pxValue, 'px to', fontSize);
-            } else {
-                console.log('🎯 Using fontSize as-is:', fontSize);
-            }
-
-            // Build positioning styles based on position
-            let positioningStyles = '';
-            let flexDirection = 'row'; // Default for horizontal centering
-
-            switch (position) {
-                case 'topCenter':
-                    positioningStyles = 'top: 8vh; left: 0; right: 0; width: 100vw;';
-                    flexDirection = 'row';
-                    break;
-                case 'topLeft':
-                    positioningStyles = 'top: 8vh; left: 5vw; width: auto;';
-                    flexDirection = 'row';
-                    break;
-                case 'topRight':
-                    positioningStyles = 'top: 8vh; right: 5vw; width: auto;';
-                    flexDirection = 'row';
-                    break;
-                case 'midLeft':
-                    positioningStyles = 'top: 50vh; left: 5vw; width: auto; transform: translateY(-50%);';
-                    flexDirection = 'row';
-                    break;
-                case 'center':
-                    positioningStyles = 'top: 50vh; left: 0; right: 0; width: 100vw; height: auto; transform: translateY(-50%);';
-                    flexDirection = 'row';
-                    break;
-                case 'midRight':
-                    positioningStyles = 'top: 50vh; right: 5vw; width: auto; transform: translateY(-50%);';
-                    flexDirection = 'row';
-                    break;
-                case 'bottomCenter':
-                    positioningStyles = 'bottom: 8vh; left: 0; right: 0; width: 100vw;';
-                    flexDirection = 'row';
-                    break;
-                case 'bottomLeft':
-                    positioningStyles = 'bottom: 8vh; left: 5vw; width: auto;';
-                    flexDirection = 'row';
-                    break;
-                case 'bottomRight':
-                    positioningStyles = 'bottom: 8vh; right: 5vw; width: auto;';
-                    flexDirection = 'row';
-                    break;
-                default:
-                    positioningStyles = 'top: 50vh; left: 0; right: 0; width: 100vw; transform: translateY(-50%);';
-                    flexDirection = 'row';
-            }
-            
-            textElement.style.cssText = `
-                position: absolute;
-                color: ${style.color || 'white'};
-                font-family: ${style.fontFamily || 'Arial, sans-serif'};
-                font-size: ${fontSize};
-                font-weight: ${style.fontWeight || 'bold'};
-                text-shadow: ${style.textShadow || '0.16vw 0.16vw 0.31vw rgba(0, 0, 0, 0.9)'};
-                -webkit-text-stroke: ${webkitTextStroke};
-                text-align: center;
-                white-space: nowrap;
-                z-index: ${style.zIndex || '100'};
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                flex-direction: ${flexDirection};
-                min-height: 1em; /* Ensure text has height for centering */
-                pointer-events: none;
-                margin: 0;
-                padding: 0;
-                /* Enhanced visibility for streaming */
-                filter: drop-shadow(0 0 0.42vw rgba(0, 0, 0, 0.8));
-                ${positioningStyles}
-            `;
-            
-            // Apply animation if specified
-            if (slotData.animation && slotData.animation.name !== 'none') {
-                const anim = slotData.animation;
-                console.log('🎬 Applying animation:', anim);
-                
-                // Build animation string
-                let animationString = anim.name;
-                if (anim.duration) animationString += ` ${anim.duration}`;
-                if (anim.timingFunction) animationString += ` ${anim.timingFunction}`;
-                if (anim.delay) animationString += ` ${anim.delay}`;
-                if (anim.iterationCount) animationString += ` ${anim.iterationCount}`;
-                animationString += ' forwards';
-                
-                textElement.style.animation = animationString;
-                textElement.style.animationFillMode = 'both';
-                console.log('🎬 Animation string:', animationString);
-            } else {
-                console.log('🎬 No animation or animation is "none"');
-            }
+            // Shared renderer (public/alert-text-render.js) - same code the alert editor preview uses.
+            const textElement = window.VDAlertText.createTextSlotElement(document, position, slotData);
+            console.log('🎬 Text slot css:', textElement.style.cssText);
             
             document.querySelector('.overlay-content').appendChild(textElement);
             
@@ -1021,8 +812,7 @@
         function handleAudio(payload) {
             const audio = document.createElement('audio');
             audio.src = payload.src || payload.url || '';
-            audio.muted = IS_PREVIEW; // No audio in dashboard preview
-            audio.volume = IS_PREVIEW ? 0 : (payload.volume || 1.0);
+            audio.volume = payload.volume || 1.0;
             audio.loop = payload.loop || false;
             audio.autoplay = true;
             

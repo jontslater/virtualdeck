@@ -27,7 +27,44 @@ window.twitchConfig = {
   channel: localStorage.getItem('twitch_channel') || '',
 };
 
-window.twitchConnectionState = 'disconnected'; // Initial state
+window.twitchConnectionState = 'disconnected'; // live chat connected (not merely saved session)
+
+function applyTwitchConnectedUi() {
+  window.twitchConnectionState = 'connected';
+  const twitchBtn = document.getElementById('twitch-connect');
+  if (twitchBtn) {
+    twitchBtn.classList.remove('disconnected');
+    twitchBtn.classList.add('connected');
+    twitchBtn.setAttribute('title', 'Connected to Twitch');
+    twitchBtn.style.backgroundColor = '#6441a5';
+    twitchBtn.setAttribute('aria-label', 'Connected to Twitch');
+  }
+}
+
+function applyTwitchDisconnectedUi() {
+  window.twitchConnectionState = 'disconnected';
+  const twitchBtn = document.getElementById('twitch-connect');
+  if (twitchBtn) {
+    twitchBtn.classList.remove('connected');
+    twitchBtn.classList.add('disconnected');
+    twitchBtn.setAttribute('title', 'Connect to Twitch');
+    twitchBtn.style.backgroundColor = '';
+    twitchBtn.setAttribute('aria-label', 'Connect to Twitch');
+  }
+}
+
+async function refreshTwitchSessionFromDisk() {
+  if (!window.electronAPI || !window.electronAPI.twitchOAuthRestoreSession) return;
+  try {
+    const result = await window.electronAPI.twitchOAuthRestoreSession();
+    if (result && result.ok && result.username) {
+      window.twitchConfig.channel = result.username;
+      try { localStorage.setItem('twitch_channel', result.username); } catch (e) {}
+    }
+  } catch (e) {
+    console.warn('Twitch session restore failed:', e);
+  }
+}
 
 function showTwitchConfigModal() {
   let modal = document.getElementById('twitch-modal');
@@ -47,61 +84,58 @@ function showTwitchConfigModal() {
     modal.style.maxWidth = '420px';
     modal.style.width = '95%';
     modal.innerHTML = `
-      <h2 style="text-align:center; margin-bottom:18px;">Twitch Login</h2>
-
-      <div id="oauth-status" style="margin-bottom:15px; padding:10px; background:#e8f5e8; border:1px solid #4caf50; border-radius:6px; display:none;">
-        <div style="color:#2e7d32; font-weight:bold;">✅ Connected as: <span id="connected-username"></span></div>
-        <button id="twitch-logout" style="margin-top:8px; background:#f44336; color:white; border:none; padding:6px 12px; border-radius:4px; font-size:12px; cursor:pointer;">Logout</button>
-      </div>
-
-      <!-- Always-visible logout/reset button -->
-      <div style="margin-bottom:15px; padding:8px; background:#fff3e0; border:1px solid #ff9800; border-radius:4px;">
-        <button id="twitch-logout-reset" style="background:#ff9800; color:white; border:none; padding:6px 12px; border-radius:4px; font-size:12px; cursor:pointer;">
-          🔄 Reset OAuth
-        </button>
-        <span style="margin-left:8px; font-size:11px; color:#666;">Clear stored tokens & reset authentication</span>
-      </div>
-
-      <div style="text-align:center; margin-bottom:20px;">
-        <button id="twitch-oauth-login" style="background:#9147ff;color:white;font-weight:bold;padding:15px 30px;border:none;border-radius:8px;font-size:1.2em;cursor:pointer;min-width:200px;">
-          🔵 Login with Twitch
-        </button>
-        <p style="margin-top:10px; font-size:12px; color:#666;">
-          Connect your Twitch account to enable chat commands and alerts
-        </p>
-      </div>
-
-      <div style="border-top:1px solid #ccc; padding-top:15px; margin-top:15px;">
-        <button id="toggle-advanced" style="background:none;border:none;color:#666;text-decoration:underline;cursor:pointer;font-size:12px;">
-          ⚙️ Advanced Settings
-        </button>
-
-        <div id="advanced-settings" style="display:none; margin-top:10px; padding:10px; background:#f5f5f5; border-radius:6px;">
-          <p style="font-size:11px; color:#666; margin-bottom:10px;">
-            Only change these if you want to use your own Twitch application instead of the default VirtualDeck app.
-          </p>
-
-          <label for="twitch-clientid" style="font-weight:bold; font-size:12px;">CLIENT ID:</label><br>
-          <div style="position:relative;margin-bottom:10px;">
-            <input id="twitch-clientid" type="password" style="width:100%;box-sizing:border-box;padding:6px;padding-right:30px;font-size:12px;background:#222;color:#fff;border-radius:4px;border:1px solid #ccc;" />
-            <button id="twitch-clientid-toggle" aria-label="Show client id" title="Show/Hide" style="position:absolute;right:5px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#fff;cursor:pointer;font-size:12px;line-height:1;padding:2px">👁</button>
-          </div>
-
-          <label for="twitch-clientsecret" style="font-weight:bold; font-size:12px;">CLIENT SECRET:</label><br>
-          <div style="position:relative;margin-bottom:10px;">
-            <input id="twitch-clientsecret" type="password" style="width:100%;box-sizing:border-box;padding:6px;padding-right:30px;font-size:12px;background:#222;color:#fff;border-radius:4px;border:1px solid #ccc;" />
-            <button id="twitch-clientsecret-toggle" aria-label="Show client secret" title="Show/Hide" style="position:absolute;right:5px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#fff;cursor:pointer;font-size:12px;line-height:1;padding:2px">👁</button>
-          </div>
-
-          <button id="twitch-save-config" style="width:100%;background:#2196f3;color:white;font-weight:bold;padding:8px 0;border:none;border-radius:4px;font-size:12px;cursor:pointer;">Save Custom Settings</button>
+      <h2 style="text-align:center; margin-bottom:18px;">Connect to Twitch</h2>
+      <p style="font-size:13px;color:#444;text-align:center;margin:0 0 16px;">Authorize VirtualDeck with your Twitch account. Tokens are stored securely on this device.</p>
+      <button id="twitch-oauth-connect" type="button" style="width:100%;padding:14px;background:#9146FF;color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer;margin-bottom:12px;">Connect with Twitch</button>
+      <div id="twitch-oauth-progress" style="display:none;margin-bottom:12px;padding:12px;background:#f4f0ff;border-radius:8px;font-size:13px;color:#222;">
+        <div id="twitch-oauth-progress-msg" style="margin-bottom:8px;">Starting…</div>
+        <div id="twitch-oauth-user-code-wrap" style="display:none;">
+          <div style="font-size:12px;color:#555;margin-bottom:4px;">Enter this code on Twitch:</div>
+          <div id="twitch-oauth-user-code" style="font-size:22px;font-weight:800;letter-spacing:2px;color:#9146FF;"></div>
+          <button id="twitch-oauth-open-browser" type="button" style="margin-top:8px;padding:8px 12px;background:#6441a5;color:#fff;border:none;border-radius:6px;cursor:pointer;">Open Twitch</button>
         </div>
+        <button id="twitch-oauth-cancel-flow" type="button" style="margin-top:10px;padding:6px 10px;background:#eee;border:none;border-radius:6px;cursor:pointer;">Cancel</button>
       </div>
-
-      <button id="twitch-cancel" style="width:100%;margin-top:15px;background:#eee;color:#222;padding:8px 0;border:none;border-radius:6px;font-size:1em;cursor:pointer;">Cancel</button>
+      <p id="twitch-oauth-missing-client" style="display:none;font-size:12px;color:#b00020;margin:0 0 12px;">Twitch Client ID is not configured in this build. Use manual token entry below or contact support.</p>
+      <details style="margin-bottom:12px;">
+        <summary style="cursor:pointer;color:#555;font-size:13px;">Advanced: manual token entry</summary>
+        <div style="margin-top:12px;">
+          <label for="twitch-oauth" style="font-weight:bold;">ACCESS_TOKEN:</label><br>
+          <div style="position:relative;margin-bottom:14px;">
+            <input id="twitch-oauth" type="password" style="width:100%;box-sizing:border-box;padding:8px;padding-right:40px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" />
+            <button id="twitch-oauth-toggle" aria-label="Show token" title="Show/Hide" type="button" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#fff;cursor:pointer;font-size:16px;line-height:1;padding:4px">👁</button>
+          </div>
+          <label for="twitch-clientid" style="font-weight:bold;">CLIENT_ID:</label><br>
+          <div style="position:relative;margin-bottom:14px;">
+            <input id="twitch-clientid" type="password" style="width:100%;box-sizing:border-box;padding:8px;padding-right:40px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" />
+            <button id="twitch-clientid-toggle" aria-label="Show client id" title="Show/Hide" type="button" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#fff;cursor:pointer;font-size:16px;line-height:1;padding:4px">👁</button>
+          </div>
+          <label for="twitch-channel" style="font-weight:bold;">TWITCH_USER_NAME:</label><br>
+          <input id="twitch-channel" type="text" style="width:100%;box-sizing:border-box;margin-bottom:14px;padding:8px;font-size:1em;background:#222;color:#fff;border-radius:6px;border:1px solid #ccc;" /><br>
+          <button id="twitch-save" type="button" style="width:100%;background:#a6f34a;color:#222;font-weight:bold;padding:10px 0;border:none;border-radius:6px;font-size:1.1em;cursor:pointer;">Connect manually</button>
+        </div>
+      </details>
+      <button id="twitch-disconnect" type="button" style="width:100%;margin-bottom:8px;background:#fff;color:#b00020;border:1px solid #e0b4b4;padding:8px 0;border-radius:6px;font-size:0.95em;cursor:pointer;">Disconnect Twitch</button>
+      <button id="twitch-cancel" type="button" style="width:100%;background:#eee;color:#222;padding:8px 0;border:none;border-radius:6px;font-size:1em;cursor:pointer;">Close</button>
     `;
     document.body.appendChild(modal);
     // Wire up show/hide toggles for sensitive fields
     try {
+      const oauthInput = document.getElementById('twitch-oauth');
+      const oauthToggle = document.getElementById('twitch-oauth-toggle');
+      if (oauthInput && oauthToggle) {
+        oauthToggle.addEventListener('click', () => {
+          if (oauthInput.type === 'password') {
+            oauthInput.type = 'text';
+            oauthToggle.textContent = '😑';
+            oauthToggle.setAttribute('aria-label', 'Hide token');
+          } else {
+            oauthInput.type = 'password';
+            oauthToggle.textContent = '👁';
+            oauthToggle.setAttribute('aria-label', 'Show token');
+          }
+        });
+      }
       const clientInput = document.getElementById('twitch-clientid');
       const clientToggle = document.getElementById('twitch-clientid-toggle');
       if (clientInput && clientToggle) {
@@ -117,217 +151,156 @@ function showTwitchConfigModal() {
           }
         });
       }
-
-      const secretInput = document.getElementById('twitch-clientsecret');
-      const secretToggle = document.getElementById('twitch-clientsecret-toggle');
-      if (secretInput && secretToggle) {
-        secretToggle.addEventListener('click', () => {
-          if (secretInput.type === 'password') {
-            secretInput.type = 'text';
-            secretToggle.textContent = '😑';
-            secretToggle.setAttribute('aria-label', 'Hide client secret');
-          } else {
-            secretInput.type = 'password';
-            secretToggle.textContent = '👁';
-            secretToggle.setAttribute('aria-label', 'Show client secret');
-          }
-        });
-      }
   } catch (e) { console.warn('Could not wire toggles:', e); }
 
-  // Load OAuth configuration
-  loadOAuthConfig();
+  // Load values from localStorage if they exist
+    document.getElementById('twitch-oauth').value = localStorage.getItem('twitch_oauth') || '';
+    document.getElementById('twitch-clientid').value = localStorage.getItem('twitch_clientid') || '';
+    document.getElementById('twitch-channel').value = localStorage.getItem('twitch_channel') || '';
+    const progressBox = document.getElementById('twitch-oauth-progress');
+    const progressMsg = document.getElementById('twitch-oauth-progress-msg');
+    const userCodeWrap = document.getElementById('twitch-oauth-user-code-wrap');
+    const userCodeEl = document.getElementById('twitch-oauth-user-code');
+    const missingClientEl = document.getElementById('twitch-oauth-missing-client');
+    const connectBtn = document.getElementById('twitch-oauth-connect');
 
-  // Toggle advanced settings
-  document.getElementById('toggle-advanced').onclick = () => {
-    const advanced = document.getElementById('advanced-settings');
-    const button = document.getElementById('toggle-advanced');
-    if (advanced.style.display === 'none') {
-      advanced.style.display = 'block';
-      button.textContent = '⚙️ Hide Advanced Settings';
-    } else {
-      advanced.style.display = 'none';
-      button.textContent = '⚙️ Advanced Settings';
-    }
-  };
-
-  // Save custom configuration button (only in advanced settings)
-  document.getElementById('twitch-save-config').onclick = async () => {
-    const clientId = document.getElementById('twitch-clientid').value.trim();
-    const clientSecret = document.getElementById('twitch-clientsecret').value.trim();
-
-    if (!clientId || !clientSecret) {
-      alert('Please enter both Client ID and Client Secret');
-      return;
+    if (window.electronAPI && window.electronAPI.twitchOAuthGetStatus) {
+      window.electronAPI.twitchOAuthGetStatus().then((status) => {
+        if (status && !status.clientIdConfigured && missingClientEl) {
+          missingClientEl.style.display = 'block';
+          if (connectBtn) connectBtn.disabled = true;
+        }
+      }).catch(() => {});
     }
 
-    // Save to main process with custom flag
-    if (window.electronAPI && window.electronAPI.setOAuthConfig) {
-      window.electronAPI.setOAuthConfig({
-        clientId: clientId,
-        clientSecret: clientSecret,
-        useCustomCredentials: true
-      });
-
-      alert('Custom configuration saved! You can now login with Twitch using your credentials.');
+    if (connectBtn) {
+      connectBtn.onclick = async () => {
+        if (!window.electronAPI || !window.electronAPI.twitchOAuthStart) {
+          alert('Twitch OAuth is not available in this environment.');
+          return;
+        }
+        if (progressBox) progressBox.style.display = 'block';
+        if (progressMsg) progressMsg.textContent = 'Starting Twitch login…';
+        connectBtn.disabled = true;
+        const result = await window.electronAPI.twitchOAuthStart();
+        connectBtn.disabled = false;
+        if (result && result.ok) {
+          modal.remove();
+          connectToTwitch();
+          return;
+        }
+        if (progressMsg) {
+          progressMsg.textContent = (result && result.error)
+            ? `Login failed: ${result.error}`
+            : 'Login failed. Try again or use manual token entry.';
+        }
+      };
     }
-  };
 
-  // OAuth login button - works immediately with default or custom credentials
-  document.getElementById('twitch-oauth-login').onclick = () => {
-    console.log('Login button clicked!');
-    console.log('electronAPI available:', !!window.electronAPI);
-
-    if (window.electronAPI && window.electronAPI.startOAuthLogin) {
-      console.log('Sending OAuth login request...');
-      document.getElementById('twitch-oauth-login').textContent = '🔄 Connecting...';
-      document.getElementById('twitch-oauth-login').disabled = true;
-
-      window.electronAPI.startOAuthLogin();
-    } else {
-      console.error('Electron OAuth API not available!');
-      alert('OAuth functionality not available. Make sure you\'re running the latest version of VirtualDeck.');
+    const cancelFlowBtn = document.getElementById('twitch-oauth-cancel-flow');
+    if (cancelFlowBtn) {
+      cancelFlowBtn.onclick = () => {
+        if (window.electronAPI && window.electronAPI.twitchOAuthCancel) {
+          window.electronAPI.twitchOAuthCancel();
+        }
+        if (progressBox) progressBox.style.display = 'none';
+        if (connectBtn) connectBtn.disabled = false;
+      };
     }
-  };
 
-  // Logout button (when connected)
-  document.getElementById('twitch-logout').onclick = () => {
-    if (window.electronAPI && window.electronAPI.logoutOAuth) {
-      if (confirm('Are you sure you want to logout from Twitch? This will disconnect chat and stop alerts.')) {
-        document.getElementById('twitch-logout').textContent = 'Logging out...';
-        document.getElementById('twitch-logout').disabled = true;
+    const openBrowserBtn = document.getElementById('twitch-oauth-open-browser');
+    if (openBrowserBtn) {
+      openBrowserBtn.onclick = () => {
+        const uri = openBrowserBtn.dataset.verificationUri;
+        if (uri) window.open(uri, '_blank');
+      };
+    }
 
-        window.electronAPI.logoutOAuth();
+    document.getElementById('twitch-save').onclick = () => {
+      window.twitchConfig.oauth = document.getElementById('twitch-oauth').value.trim();
+      window.twitchConfig.clientId = document.getElementById('twitch-clientid').value.trim();
+      window.twitchConfig.channel = document.getElementById('twitch-channel').value.trim();
+      localStorage.setItem('twitch_channel', window.twitchConfig.channel);
+      localStorage.removeItem('twitch_oauth');
+      localStorage.removeItem('twitch_clientid');
+      modal.remove();
+      if (window.electronAPI && window.electronAPI.sendTwitchConnect) {
+        window.electronAPI.sendTwitchConnect({
+          username: window.twitchConfig.channel,
+          oauth: window.twitchConfig.oauth,
+          clientId: window.twitchConfig.clientId
+        });
+      } else if (window.ipcRenderer) {
+        window.ipcRenderer.send('twitch-connect', {
+          username: window.twitchConfig.channel,
+          oauth: window.twitchConfig.oauth,
+          clientId: window.twitchConfig.clientId
+        });
       }
-    }
-  };
+      connectToTwitch();
+    };
 
-  // Reset OAuth button (always visible)
-  document.getElementById('twitch-logout-reset').onclick = () => {
-    if (window.electronAPI && window.electronAPI.logoutOAuth) {
-      if (confirm('This will clear all stored OAuth tokens and reset authentication. Continue?')) {
-        document.getElementById('twitch-logout-reset').textContent = '🔄 Resetting...';
-        document.getElementById('twitch-logout-reset').disabled = true;
-
-        window.electronAPI.logoutOAuth();
-      }
-    }
-  };
-
-  // Listen for OAuth success
-  if (window.electronAPI && window.electronAPI.onOAuthSuccess) {
-    window.electronAPI.onOAuthSuccess((data) => {
-      console.log('OAuth success:', data);
-      document.getElementById('connected-username').textContent = data.username;
-      document.getElementById('oauth-status').style.display = 'block';
-      document.getElementById('twitch-oauth-login').textContent = 'Connected!';
-      document.getElementById('twitch-oauth-login').disabled = true;
-
-      // Store username for connection
-      localStorage.setItem('twitch_channel', data.username);
-
-      // Close modal after a delay
-      setTimeout(async () => {
-        modal.remove();
-
-        // First, clear any existing Twitch connections to prevent duplicates
-        console.log('Clearing existing Twitch connections...');
+    const disconnectBtn = document.getElementById('twitch-disconnect');
+    if (disconnectBtn) {
+      disconnectBtn.onclick = () => {
         if (window.electronAPI && window.electronAPI.clearTwitchCreds) {
-          await new Promise((resolve) => {
-            let resolved = false;
-            // Listen for clear completion
-            if (window.electronAPI.onTwitchCleared) {
-              window.electronAPI.onTwitchCleared(() => {
-                if (!resolved) {
-                  resolved = true;
-                  resolve();
-                }
-              });
-            }
-            // Clear credentials (don't purge topics)
-            window.electronAPI.clearTwitchCreds({ purgeTopics: false });
-            // Fallback timeout in case event doesn't fire
-            setTimeout(() => {
-              if (!resolved) {
-                resolved = true;
-                resolve();
-              }
-            }, 1500);
-          });
+          window.electronAPI.clearTwitchCreds({ purgeTopics: false });
         }
-
-        // Send credentials to main process to start Twitch chat connection
-        console.log('Sending Twitch connect IPC after OAuth');
-        if (window.electronAPI && window.electronAPI.sendTwitchConnect) {
-          console.log('Sending via electronAPI');
-          window.electronAPI.sendTwitchConnect({
-            username: data.username,
-            oauth: data.accessToken,
-            clientId: document.getElementById('twitch-clientid').value.trim()
-          });
-        }
-        console.log('adding connecting to twitch chat...');
-        connectToTwitch();
-      }, 2000);
-    });
-
-    window.electronAPI.onOAuthError((error) => {
-      console.error('OAuth error:', error);
-      alert('OAuth Error: ' + error);
-      document.getElementById('twitch-oauth-login').textContent = '🔵 Login with Twitch';
-      document.getElementById('twitch-oauth-login').disabled = false;
-      // Reset buttons on error
-      document.getElementById('twitch-logout-reset').textContent = '🔄 Reset OAuth';
-      document.getElementById('twitch-logout-reset').disabled = false;
-    });
-
-    window.electronAPI.onOAuthLogoutSuccess(() => {
-      console.log('Logout successful');
-      document.getElementById('oauth-status').style.display = 'none';
-      document.getElementById('connected-username').textContent = '';
-      document.getElementById('twitch-oauth-login').textContent = '🔵 Login with Twitch';
-      document.getElementById('twitch-oauth-login').disabled = false;
-      // Reset the reset button
-      document.getElementById('twitch-logout-reset').textContent = '🔄 Reset OAuth';
-      document.getElementById('twitch-logout-reset').disabled = false;
-    });
-  }
-
-  async function loadOAuthConfig() {
-    if (window.electronAPI && window.electronAPI.getOAuthConfig) {
-      try {
-        const config = await window.electronAPI.getOAuthConfig();
-
-        // Only populate advanced fields if using custom credentials
-        if (config.useCustomCredentials) {
-          document.getElementById('twitch-clientid').value = config.clientId || '';
-          document.getElementById('twitch-clientsecret').value = config.clientSecret || '';
-        }
-
-        // Login button is always enabled since we have default credentials
-        document.getElementById('twitch-oauth-login').disabled = false;
-
-        // Show connected status if we have tokens
-        if (config.accessToken) {
-          document.getElementById('oauth-status').style.display = 'block';
-          // We could fetch username here if needed
-        }
-      } catch (error) {
-        console.error('Failed to load OAuth config:', error);
-        // Fallback if config loading fails - still enable login
-        document.getElementById('twitch-oauth-login').disabled = false;
-      }
-    } else {
-      // Fallback if electron API not available - still enable login
-      document.getElementById('twitch-oauth-login').disabled = false;
+        try {
+          localStorage.removeItem('twitch_oauth');
+          localStorage.removeItem('twitch_clientid');
+          localStorage.removeItem('twitch_channel');
+          window.twitchConfig = { oauth: '', clientId: '', channel: '' };
+        } catch (e) {}
+        window.twitchConnectionState = 'disconnected';
+        modal.remove();
+      };
     }
-  }
 
-  document.getElementById('twitch-cancel').onclick = () => modal.remove();
+    document.getElementById('twitch-cancel').onclick = () => modal.remove();
+  }
+}
+
+function bindTwitchOAuthIpcUi() {
+  if (!window.electronAPI) return;
+  if (window.electronAPI.onTwitchOAuthProgress) {
+    window.electronAPI.onTwitchOAuthProgress((data) => {
+      const progressBox = document.getElementById('twitch-oauth-progress');
+      const progressMsg = document.getElementById('twitch-oauth-progress-msg');
+      const userCodeWrap = document.getElementById('twitch-oauth-user-code-wrap');
+      const userCodeEl = document.getElementById('twitch-oauth-user-code');
+      const openBrowserBtn = document.getElementById('twitch-oauth-open-browser');
+      if (progressBox) progressBox.style.display = 'block';
+      if (progressMsg && data && data.message) progressMsg.textContent = data.message;
+      if (data && data.userCode && userCodeEl && userCodeWrap) {
+        userCodeEl.textContent = data.userCode;
+        userCodeWrap.style.display = 'block';
+      }
+      if (openBrowserBtn && data && data.verificationUri) {
+        openBrowserBtn.dataset.verificationUri = data.verificationUri;
+      }
+    });
+  }
+  if (window.electronAPI.onTwitchOAuthSuccess) {
+    window.electronAPI.onTwitchOAuthSuccess((data) => {
+      if (data && data.username) {
+        window.twitchConfig.channel = data.username;
+        try { localStorage.setItem('twitch_channel', data.username); } catch (e) {}
+      }
+      const modal = document.getElementById('twitch-modal');
+      if (modal) modal.remove();
+    });
+  }
+  if (window.electronAPI.onTwitchConnected) {
+    window.electronAPI.onTwitchConnected(() => applyTwitchConnectedUi());
+  }
+  if (window.electronAPI.onTwitchCleared) {
+    window.electronAPI.onTwitchCleared(() => applyTwitchDisconnectedUi());
   }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  bindTwitchOAuthIpcUi();
   const twitchBtn = document.getElementById('twitch-connect');
   if (twitchBtn) {
     twitchBtn.innerHTML = '';
@@ -355,29 +328,19 @@ window.addEventListener('DOMContentLoaded', () => {
   // Listen for Twitch connection status from main process
   if (window.electronAPI && window.electronAPI.onTwitchConnected) {
     window.electronAPI.onTwitchConnected(() => {
-      const btn = document.getElementById('twitch-connect');
-      if (btn) {
-        // Keep the gif inside the button; only change visual connected state
-        btn.style.backgroundColor = '#6441a5'; // Twitch purple
-        btn.setAttribute('aria-label', 'Connected to Twitch');
-      }
+      applyTwitchConnectedUi();
       try { localStorage.setItem('vd_hide_twitch_banner', '1'); } catch (e) {}
     });
   } else if (window.ipcRenderer) {
     window.ipcRenderer.on('twitch-connected', () => {
-      const btn = document.getElementById('twitch-connect');
-      if (btn) {
-        // Keep the gif inside the button; only change visual connected state
-        btn.style.backgroundColor = '#6441a5'; // Twitch purple
-        btn.setAttribute('aria-label', 'Connected to Twitch');
-      }
+      applyTwitchConnectedUi();
       try { localStorage.setItem('vd_hide_twitch_banner', '1'); } catch (e) {}
     });
   }
 
-  // Auto-connect if credentials are already stored
+  // Legacy auto-connect (manual tokens in localStorage). OAuth sessions restore in the main process.
   if (areTwitchCredsValid(window.twitchConfig)) {
-    console.log('Auto-connecting to Twitch using stored credentials');
+    console.log('Auto-connecting to Twitch using stored manual credentials');
     if (window.electronAPI && window.electronAPI.sendTwitchConnect) {
       window.electronAPI.sendTwitchConnect({
         username: window.twitchConfig.channel,
@@ -391,7 +354,23 @@ window.addEventListener('DOMContentLoaded', () => {
         clientId: window.twitchConfig.clientId
       });
     }
-    connectToTwitch();
+  } else if (window.electronAPI && window.electronAPI.twitchOAuthGetStatus) {
+    window.electronAPI.twitchOAuthGetStatus().then(async (status) => {
+      if (status && status.login) {
+        window.twitchConfig.channel = status.login;
+        try { localStorage.setItem('twitch_channel', status.login); } catch (e) {}
+      }
+      if (status && status.hasSession && !status.chatConnected) {
+        await refreshTwitchSessionFromDisk();
+      } else if (status && status.chatConnected) {
+        applyTwitchConnectedUi();
+      } else {
+        applyTwitchDisconnectedUi();
+      }
+      if (status && status.scopeWarning) {
+        console.warn('[Twitch]', status.scopeWarning);
+      }
+    }).catch(() => {});
   }
 
     // Top banner removed — small centered banner handles the prompt now
@@ -612,61 +591,6 @@ window.checkRedemptionAgainstButtonKeywords = async function checkRedemptionAgai
   }
 }
 
-// Helper to check if a redemption matches any progression and increment it
-window.checkRedemptionAgainstProgressions = async function checkRedemptionAgainstProgressions(evt) {
-  try {
-    if (!evt || evt.type !== 'redeem') return false;
-    
-    // Get reward title from redemption event
-    const title = evt.event?.reward?.title || evt.event?.reward?.name || evt.event?.reward_title || evt.event?.reward || '';
-    const username = evt.event?.user_name || evt.event?.user || evt.event?.user_login || evt.user_name || evt.user || 'unknown';
-    
-    if (!title) return false;
-    
-    console.log(`🔍 checkRedemptionAgainstProgressions: Checking redemption "${title}" by ${username}`);
-    
-    // Get all progressions
-    const result = await window.electronAPI.getProgressions();
-    if (!result.success || !result.progressions || result.progressions.length === 0) {
-      console.log('🔍 No progressions configured');
-      return false;
-    }
-    
-    const progressions = result.progressions;
-    console.log(`🔍 Found ${progressions.length} progressions`);
-    
-    // Look for progression with matching redeem keyword
-    const lowerTitle = title.toLowerCase().trim();
-    const matchingProgression = progressions.find(prog => 
-      prog.redeemKeyword && prog.redeemKeyword.toLowerCase().trim() === lowerTitle
-    );
-    
-    if (!matchingProgression) {
-      console.log(`🔍 No progression matched redemption "${title}"`);
-      return false;
-    }
-    
-    console.log(`✅ Found matching progression: "${matchingProgression.name}"`);
-    
-    // Send increment request to main process
-    if (window.electronAPI && window.electronAPI.incrementProgression) {
-      console.log('📤 Sending progression increment to main process');
-      window.electronAPI.incrementProgression({
-        progressionId: matchingProgression.id,
-        username: username,
-        redeemTitle: title
-      });
-    } else {
-      console.error('❌ electronAPI.incrementProgression not available!');
-    }
-    
-    return true;
-  } catch (e) {
-    console.error('Error checking redemption against progressions:', e);
-    return false;
-  }
-};
-
 function parseEmotes(message, emotes) {
   // TODO: implement real emote parsing. For now, escape HTML and return.
   return escapeHtml(message || '');
@@ -836,7 +760,7 @@ if (window.electronAPI && window.electronAPI.onTwitchChatEvent) {
 }
 
 if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
-  window.electronAPI.onTwitchEventSub(async (e) => {
+  window.electronAPI.onTwitchEventSub((e) => {
   // Normalize eventsub redemption topics to 'redeem' for cleaner rendering
   let t = e.type || 'eventsub';
   if (typeof t === 'string' && t.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
@@ -845,26 +769,9 @@ if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
   if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
   if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.ban')) t = 'ban';
   pushTwitchEvent({ type: t, event: e.event });
-  
-  // Check for hydration redemption
-  if (t === 'redeem' && e.event) {
-    const rewardTitle = (e.event.reward && (e.event.reward.title || e.event.reward.name)) || e.event.reward_title || e.event.reward || '';
-    if (window.electronAPI && window.electronAPI.getHydrationConfig && window.electronAPI.updateHydrationProgress) {
-      try {
-        const hydrationConfig = await window.electronAPI.getHydrationConfig();
-        const keyword = (hydrationConfig.redemptionKeyword || 'hydrate').toLowerCase();
-        if (rewardTitle && String(rewardTitle).toLowerCase().includes(keyword)) {
-          console.log(`💧 Hydration redemption detected: "${rewardTitle}" - incrementing tracker`);
-          await window.electronAPI.updateHydrationProgress();
-        }
-      } catch (error) {
-        console.error('Error checking hydration redemption:', error);
-      }
-    }
-  }
   });
 } else if (window.ipcRenderer) {
-  window.ipcRenderer.on('twitch-eventsub', async (event, e) => {
+  window.ipcRenderer.on('twitch-eventsub', (event, e) => {
     console.debug('renderer received twitch-eventsub:', e);
   let t = e.type || 'eventsub';
   if (typeof t === 'string' && t.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
@@ -872,23 +779,6 @@ if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
   if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.channel_points_custom_reward_redemption')) t = 'redeem';
   if (!t && e.event && e.event.type && typeof e.event.type === 'string' && e.event.type.includes('channel.ban')) t = 'ban';
   pushTwitchEvent({ type: t, event: e.event });
-  
-  // Check for hydration redemption
-  if (t === 'redeem' && e.event) {
-    const rewardTitle = (e.event.reward && (e.event.reward.title || e.event.reward.name)) || e.event.reward_title || e.event.reward || '';
-    if (window.electronAPI && window.electronAPI.getHydrationConfig && window.electronAPI.updateHydrationProgress) {
-      try {
-        const hydrationConfig = await window.electronAPI.getHydrationConfig();
-        const keyword = (hydrationConfig.redemptionKeyword || 'hydrate').toLowerCase();
-        if (rewardTitle && String(rewardTitle).toLowerCase().includes(keyword)) {
-          console.log(`💧 Hydration redemption detected: "${rewardTitle}" - incrementing tracker`);
-          await window.electronAPI.updateHydrationProgress();
-        }
-      } catch (error) {
-        console.error('Error checking hydration redemption:', error);
-      }
-    }
-  }
   });
 }
 
@@ -1072,15 +962,14 @@ const _origPush = pushTwitchEvent;
 pushTwitchEvent = async function(evt) {
   _origPush(evt);
   try {
+    // Skip processing chat commands entirely - let main.js handle them
+    if (evt && evt.type === 'chat' && evt.message && evt.message.startsWith('!')) {
+      console.log(`⏭️ tc.js skipping chat command processing for: ${evt.message} (handled by main.js)`);
+      return; // Don't process chat commands in tc.js
+    }
+    
     // ONLY for redemptions, check if any button has a matching chat command keyword
     if (evt && evt.type === 'redeem') {
-      // First check if this redemption matches a progression
-      const progressionMatched = await checkRedemptionAgainstProgressions(evt);
-      if (progressionMatched) {
-        console.log('✅ Progression matched and incremented');
-        // Don't return - still allow buttons to trigger too if they match
-      }
-      
       const matchingButtonLabel = await checkRedemptionAgainstButtonKeywords(evt);
       if (matchingButtonLabel && window.electronAPI && window.electronAPI.sendTrigger) {
         console.log(`🚀 Triggering button "${matchingButtonLabel}" from channel point redemption`);
@@ -1089,7 +978,7 @@ pushTwitchEvent = async function(evt) {
       }
     }
     
-    // First try standard matching (includes chat commands)
+    // First try standard matching
     let m = matchMappingForEvent(evt);
     // If bits event, try best-match algorithm
     if (!m && evt && ((evt.type && evt.type.includes('bits')) || (evt.event && (evt.event.bits || evt.event.amount)))) {
@@ -1659,6 +1548,7 @@ function showTwitchConnectedMenu() {
       try {
         if (window.electronAPI && window.electronAPI.getChannelRewards) {
           rewards = await window.electronAPI.getChannelRewards();
+          if (rewards && !Array.isArray(rewards)) rewards = rewards.rewards || [];
         }
       } catch (e) { console.warn('Could not load channel rewards:', e); }
 
@@ -2146,6 +2036,7 @@ function showTwitchConnectedMenu() {
       try {
         if (window.electronAPI && window.electronAPI.getChannelRewards) {
           rewards = await window.electronAPI.getChannelRewards();
+          if (rewards && !Array.isArray(rewards)) rewards = rewards.rewards || [];
         }
       } catch (e) { console.warn('Could not load channel rewards:', e); }
 
@@ -2534,24 +2425,30 @@ function showTwitchSubscriptionsModal() {
 }
 
 function areTwitchCredsValid(config) {
-  return config.oauth && config.clientId && config.channel;
+  return !!(config && config.oauth && config.clientId && config.channel);
 }
 
 // Placeholder for Twitch chat and eventsub connection
 function connectToTwitch() {
-  if (!areTwitchCredsValid(window.twitchConfig)) {
-    alert('Please enter all Twitch credentials before connecting.');
+  const hasChannel = !!(window.twitchConfig && window.twitchConfig.channel);
+  if (!areTwitchCredsValid(window.twitchConfig) && !hasChannel) {
+    alert('Please connect to Twitch first.');
     return;
   }
-  // All Twitch chat logic will be handled in main.js via require('tmi.js') and IPC
-  window.twitchConnectionState = 'connected';
+  // Chat/EventSub connect in main; UI flips to connected on twitch-connected IPC only.
+  if (window.electronAPI && window.electronAPI.sendTwitchConnect) {
+    window.electronAPI.sendTwitchConnect({
+      username: window.twitchConfig.channel,
+      oauth: window.twitchConfig.oauth,
+      clientId: window.twitchConfig.clientId,
+    });
+  }
+  if (!window.electronAPI || !window.electronAPI.onTwitchConnected) {
+    applyTwitchConnectedUi();
+  }
   const twitchBtn = document.getElementById('twitch-connect');
   if (twitchBtn) {
-    twitchBtn.classList.remove('disconnected');
-    twitchBtn.classList.add('connected');
-    twitchBtn.setAttribute('title', 'Connected to Twitch');
-    // Set visual connected color (Twitch purple) but keep inner GIF intact
-    twitchBtn.style.backgroundColor = '#6441a5';
+    twitchBtn.setAttribute('title', 'Connecting to Twitch…');
   }
   let status = document.getElementById('twitch-status');
   if (!status) {
