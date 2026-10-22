@@ -247,8 +247,7 @@ function showFirstRunDialog() {
       '1. LLM Provider (OpenAI, etc.) - for AI conversation\n' +
       '2. TTS Provider (ElevenLabs, etc.) - for voice synthesis\n\n' +
       'Click "Open Settings" to add your API keys now.\n\n' +
-      'You can also access this later via:\n' +
-      'Tools → Raven AI → Open Raven settings (raven.env)',
+      'You can also add keys later in Edit → Preferences (Raven AI — API keys).',
     buttons: ['Open Settings', 'Skip for Now'],
     defaultId: 0,
     cancelId: 1,
@@ -405,9 +404,10 @@ function maybeAutoStart() {
   setTimeout(() => startRaven(), 400);
 }
 
-function menuTemplateItems() {
+function menuTemplateItems(options = {}) {
+  const includeEnvEditor = options.includeEnvEditor !== false && !app.isPackaged;
   const prefs = loadPrefs();
-  return [
+  const items = [
     {
       label: 'Start Raven AI',
       click: () => startRaven(),
@@ -430,11 +430,14 @@ function menuTemplateItems() {
         savePrefs(next);
       },
     },
-    {
+  ];
+  if (includeEnvEditor) {
+    items.push({
       label: 'Open Raven settings (raven.env)...',
       click: () => openEnvFile(),
-    },
-  ];
+    });
+  }
+  return items;
 }
 
 module.exports = {

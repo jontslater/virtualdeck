@@ -142,6 +142,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Daily Check-In System
   loadDailyCheckins: async () => ipcRenderer.invoke('loadDailyCheckins'),
   saveDailyCheckins: async (data) => ipcRenderer.invoke('saveDailyCheckins', data),
+  backupDailyCheckins: async () => ipcRenderer.invoke('backup-daily-checkins'),
+  restoreDailyCheckins: async () => ipcRenderer.invoke('restore-daily-checkins'),
+  onDailyCheckinsRestored: (callback) =>
+    ipcRenderer.on('daily-checkins-restored', (_event, data) => callback(data)),
   sendTwitchChatMessage: async (message) => ipcRenderer.invoke('sendTwitchChatMessage', message),
   // Bug Report
   reportBug: async () => ipcRenderer.invoke('report-bug'),

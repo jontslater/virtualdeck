@@ -3158,6 +3158,79 @@ ipcMain.handle('get-tc-config', async () => {
 // Daily Check-In IPC Handlers
 // ===============================
 
+const {
+  loadCheckinsFromPath,
+  writeCheckinsJsonFile,
+  readCheckinsJsonFile,
+  backupCurrentCheckinsFile,
+  formatExportBasename,
+} = require('./lib/checkins-backup');
+const { filterMenuTemplateForPackaged, filterRavenMenuItems } = require('./lib/packaged-ui-policy');
+
+async function runBackupDailyCheckinsDialog() {
+  try {
+    const data = loadCheckinsFromPath(dailyCheckinsPath);
+    const defaultPath = path.join(app.getPath('documents'), formatExportBasename());
+    const result = await dialog.showSaveDialog(win, {
+      title: 'Back up check-ins',
+      defaultPath,
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+    writeCheckinsJsonFile(result.filePath, data);
+    return { success: true, path: result.filePath };
+  } catch (err) {
+    console.error('Backup daily check-ins failed:', err);
+    return { success: false, error: err && err.message ? err.message : String(err) };
+  }
+}
+
+async function runRestoreDailyCheckinsDialog() {
+  try {
+    const open = await dialog.showOpenDialog(win, {
+      title: 'Restore check-ins',
+      filters: [{ name: 'JSON', extensions: ['json'] }, { name: 'All Files', extensions: ['*'] }],
+      properties: ['openFile'],
+    });
+    if (open.canceled || !open.filePaths.length) {
+      return { canceled: true };
+    }
+    const validated = readCheckinsJsonFile(open.filePaths[0]);
+    if (!validated.ok) {
+      return { success: false, error: validated.error };
+    }
+    const viewerCount = Object.keys(validated.data.viewers).length;
+    const confirm = dialog.showMessageBoxSync(win, {
+      type: 'warning',
+      buttons: ['Replace check-ins', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      title: 'Restore check-ins',
+      message: 'Replace your current check-in data?',
+      detail:
+        `The selected file contains ${viewerCount} viewer record(s). ` +
+        'Your current checkins.json will be copied to checkins.json.bak, then replaced.',
+    });
+    if (confirm !== 0) {
+      return { canceled: true };
+    }
+    backupCurrentCheckinsFile(dailyCheckinsPath);
+    writeCheckinsJsonFile(dailyCheckinsPath, validated.data);
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('daily-checkins-restored', validated.data);
+    }
+    return { success: true, data: validated.data };
+  } catch (err) {
+    console.error('Restore daily check-ins failed:', err);
+    return { success: false, error: err && err.message ? err.message : String(err) };
+  }
+}
+
+ipcMain.handle('backup-daily-checkins', async () => runBackupDailyCheckinsDialog());
+ipcMain.handle('restore-daily-checkins', async () => runRestoreDailyCheckinsDialog());
+
 // IPC: load daily check-ins data
 ipcMain.handle('loadDailyCheckins', async () => {
   try {
@@ -6050,6 +6123,9 @@ app.whenReady().then(() => {
       { label: 'Check for Updates...', click: () => { checkForUpdates(); } },
       { type: 'separator' },
       { label: 'Developer Tools', accelerator: 'F12', click: () => { if (win && !win.isDestroyed()) win.webContents.toggleDevTools(); } },
+      { label: 'Back up check-ins...', click: () => { runBackupDailyCheckinsDialog(); } },
+      { label: 'Restore check-ins...', click: () => { runRestoreDailyCheckinsDialog(); } },
+      { type: 'separator' },
       { label: 'Twitch Setup', submenu: [
           { label: 'View Twitch Events / Test Events', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-twitch-activity'); } },
           { label: 'EventSub Subscriptions (Select)', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-eventsub-subscriptions'); } },
@@ -6057,7 +6133,7 @@ app.whenReady().then(() => {
         { type: 'separator' },
         { label: 'Clear Twitch Credentials', click: () => { if (win && !win.isDestroyed()) win.webContents.send('clear-twitch-creds'); } }
       ] },
-      { label: 'Raven AI', submenu: ravenHost.menuTemplateItems() },
+      { label: 'Raven AI', submenu: filterRavenMenuItems(ravenHost.menuTemplateItems(), app.isPackaged) },
       { type: 'separator' },
       { label: 'Themes', submenu: [] }, // Will be populated dynamically with themes and skins
       { role: 'reload' }
@@ -6181,7 +6257,7 @@ app.whenReady().then(() => {
       // Preserve the Help menu with "Check for Updates" from original template
       const originalHelpMenu = menuTemplate.find(item => item.label === 'Help');
       
-      const appMenu = Menu.buildFromTemplate(menuTemplate);
+      const appMenu = Menu.buildFromTemplate(filterMenuTemplateForPackaged(menuTemplate, app.isPackaged));
       Menu.setApplicationMenu(appMenu);
       console.log('Menu rebuilt successfully with themes and skins');
     } catch (error) {
