@@ -8989,7 +8989,13 @@ function setupOverlayWidget() {
                   modeText.textContent = modeLabels[aiStatus.currentMode] || aiStatus.currentMode;
                 }
               }
+              let notes = [];
+              try {
+                notes = typeof window.vdRavenStatusNotes === 'function' ? window.vdRavenStatusNotes(aiStatus) : [];
+              } catch (_) { notes = []; }
+              for (const note of notes) details.push(note.text);
               statusDetails.textContent = details.length > 0 ? details.join(' • ') : '';
+              statusDetails.style.color = notes.some((x) => x.level === 'error') ? 'var(--danger-color, #e5484d)' : '';
             }
           } catch (e) {
             statusDetails.textContent = '';

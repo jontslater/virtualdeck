@@ -1281,8 +1281,8 @@
           <h3>Raven AI — API keys</h3>
           <p id="raven-api-intro" class="raven-api-intro">
             Raven is BYOK (bring your own keys). Her brain is <strong>OpenAI only</strong> — enter your OpenAI key below for chat.
-            Voice uses <strong>ElevenLabs</strong>; without an ElevenLabs key she is silent. Keys are saved to your profile
-            (<code>userData/raven.env</code>) when you click Save.
+            Voice uses <strong>ElevenLabs</strong>; without an ElevenLabs key she is silent. Keys are checked and saved
+            to your VirtualDeck profile when you click Save, then Raven restarts with them.
           </p>
           <p id="raven-api-status-line" class="raven-api-status-line">Checking Raven configuration…</p>
           <div class="preference-item">
@@ -1296,7 +1296,8 @@
           <div class="preference-item license-actions">
             <button type="button" id="raven-api-save-btn" class="preference-button primary">Save Raven API keys</button>
             <button type="button" id="raven-api-test-llm-btn" class="preference-button">Test OpenAI key</button>
-            <button type="button" id="raven-open-env-btn" class="preference-button">Open raven.env file…</button>
+            <button type="button" id="raven-api-test-tts-btn" class="preference-button">Test ElevenLabs key</button>
+            <button type="button" id="raven-open-env-btn" class="preference-button" style="display:none">Open settings file (developer)…</button>
           </div>
           <p id="raven-api-save-message" class="raven-api-save-message" role="status"></p>
         </div>
@@ -1393,7 +1394,7 @@
         <input id="ai-wake-name-primary" class="preference-input" type="text" maxlength="32" placeholder="Raven" style="width: 100%; margin-bottom: 8px;" />
         <label style="font-size: 10px; color: var(--text-tertiary); display: block; margin-bottom: 3px;">Extra aliases (comma-separated, optional)</label>
         <input id="ai-wake-name-aliases" class="preference-input" type="text" placeholder="Ree, Dash" style="width: 100%; margin-bottom: 8px;" />
-        <button id="ai-wake-name-save" class="ai-management-btn" style="width: 100%; justify-content: center;" title="Save wake name to raven.env">
+        <button id="ai-wake-name-save" class="ai-management-btn" style="width: 100%; justify-content: center;" title="Save wake name to Raven settings">
           <span class="btn-icon">💾</span>
           <span class="btn-label">Save wake name</span>
         </button>
@@ -1417,7 +1418,7 @@
             <span class="btn-label">Refresh</span>
           </button>
         </div>
-        <div id="ai-voice-status" style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Select TTS voice from your ElevenLabs account. Requires TTS_API_KEY in raven.env.</div>
+        <div id="ai-voice-status" style="margin-top: 6px; font-size: 10px; color: var(--text-tertiary);">Select TTS voice from your ElevenLabs account. Requires an ElevenLabs key in Edit → Preferences → Raven AI.</div>
       </div>
 
       <!-- Personality Builder -->
@@ -2724,6 +2725,7 @@
   <script src="alert-text-render.js"></script>
   <script src="license-ui.js"></script>
   <script src="raven-setup-ui.js"></script>
+  <script src="raven-status-notes.js"></script>
   <script src="deck-drop-utils.js"></script>
   <script src="script.js"></script>
   <script src="macro-hotkeys.js"></script>
