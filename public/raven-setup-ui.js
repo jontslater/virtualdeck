@@ -44,7 +44,7 @@
       const llmState = setup.hasLlmKey ? 'LLM key saved' : 'LLM key missing';
       const ttsState = setup.hasTtsKey ? 'TTS key saved' : 'TTS key missing';
       if (setup.configured) {
-        statusLine.textContent = `Configured (${llm} + ${tts}). ${llmState}; ${ttsState}. Keys are stored in userData/raven.env.`;
+        statusLine.textContent = `Configured (${llm} + ${tts}). ${llmState}; ${ttsState}. Use Edit → Preferences to change them.`;
       } else {
         statusLine.textContent = `Not configured — ${llmState}, ${ttsState}. Add keys below (${llm} + ${tts}).`;
       }
@@ -108,20 +108,24 @@
           if (msg) msg.textContent = 'Enter at least one key to save (leave blank to keep existing).';
           return;
         }
+        if (msg) msg.textContent = 'Checking keys…';
         const result = await window.electronAPI.ravenSaveApiKeys(payload);
         if (result && result.success) {
           const restarted = result.restart && result.restart.restarted;
           if (msg) {
-            msg.textContent = restarted
+            const base = restarted
               ? 'API keys saved and Raven restarted with the new keys.'
-              : 'API keys saved to raven.env. Turn AI on or use Tools → Raven AI → Start Raven AI.';
+              : 'API keys saved. Turn AI on or use Tools → Raven AI → Start Raven AI.';
+            const warn = Array.isArray(result.warnings) && result.warnings.length ? ` Note: ${result.warnings.join(' ')}` : '';
+            msg.textContent = base + warn + ' Try saying "Raven, can you hear me?"';
           }
           if (llmInput) llmInput.value = '';
           if (ttsInput) ttsInput.value = '';
           await refreshRavenSetupPanel();
           await applyAiDashboardVisibility();
         } else if (msg) {
-          msg.textContent = (result && result.error) || 'Could not save API keys.';
+          const which = result && result.field === 'tts' ? 'ElevenLabs key not saved: ' : result && result.field === 'llm' ? 'OpenAI key not saved: ' : '';
+          msg.textContent = which + ((result && result.error) || 'Could not save API keys.');
         }
       });
     }
@@ -140,7 +144,25 @@
       });
     }
 
+    const testTtsBtn = document.getElementById('raven-api-test-tts-btn');
+    if (testTtsBtn) {
+      testTtsBtn.addEventListener('click', async () => {
+        if (!window.electronAPI || !window.electronAPI.ravenTestTtsKey) return;
+        if (msg) msg.textContent = 'Testing ElevenLabs key…';
+        const ttsInput = document.getElementById('raven-tts-api-key');
+        const apiKey = ttsInput && ttsInput.value.trim() ? ttsInput.value.trim() : undefined;
+        const result = await window.electronAPI.ravenTestTtsKey(apiKey ? { apiKey } : {});
+        if (msg) {
+          msg.textContent = result && result.ok
+            ? `ElevenLabs key is valid.${result.warning ? ' ' + result.warning : ''}`
+            : `ElevenLabs key test failed: ${(result && result.error) || 'unknown error'}`;
+        }
+      });
+    }
+
     if (openBtn) {
+      // Developer-only escape hatch; packaged users manage keys via the fields above.
+      if (window.electronAPI && window.electronAPI.isDevBuild) openBtn.style.display = '';
       openBtn.addEventListener('click', () => {
         if (window.electronAPI && window.electronAPI.ravenOpenEnvFile) {
           window.electronAPI.ravenOpenEnvFile();

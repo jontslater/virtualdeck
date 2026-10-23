@@ -6078,6 +6078,12 @@ app.whenReady().then(() => {
   registerHotkeys();
   startOverlayServer();
   startJarvisServer();
+  ravenHost.setOpenPreferences(() => {
+    if (win && !win.isDestroyed()) {
+      win.show();
+      win.webContents.send('open-preferences');
+    }
+  });
   ravenHost.setLicenseGate(() => {
     if (!licenseManager) return { allowed: true };
     return licenseManager.canUseAiAssistant();
@@ -6426,9 +6432,26 @@ app.whenReady().then(() => {
       if (!updates.llmApiKey && !updates.ttsApiKey) {
         return { success: false, error: 'Enter at least one API key to save' };
       }
+      // Validate before saving so a typo never silently breaks Raven.
+      // Network failures don't block saving (offline setup), but real rejections do.
+      const { testOpenAiApiKey, testElevenLabsApiKey } = require('./lib/raven-llm-test');
+      const warnings = [];
+      if (!(payload && payload.skipValidation)) {
+        if (updates.llmApiKey) {
+          const r = await testOpenAiApiKey(updates.llmApiKey);
+          if (!r.ok && r.kind !== 'network' && r.kind !== 'no_credit') return { success: false, field: 'llm', error: r.error };
+          if (!r.ok) warnings.push(r.error);
+        }
+        if (updates.ttsApiKey) {
+          const r = await testElevenLabsApiKey(updates.ttsApiKey);
+          if (!r.ok && r.kind !== 'network') return { success: false, field: 'tts', error: r.error };
+          if (!r.ok) warnings.push(r.error);
+          if (r.warning) warnings.push(r.warning);
+        }
+      }
       const status = ravenHost.updateApiKeys(updates);
       const restart = ravenHost.restartRavenIfRunning();
-      return { success: true, status, restart };
+      return { success: true, status, restart, warnings };
     } catch (err) {
       return { success: false, error: err && err.message ? err.message : String(err) };
     }
@@ -6499,6 +6522,23 @@ app.whenReady().then(() => {
         }
       }
       return await testOpenAiApiKey(key);
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('raven-test-tts-key', async (_event, payload) => {
+    try {
+      if (!licenseManager || !licenseManager.canUseAiAssistant().allowed) {
+        return { ok: false, error: 'VirtualDeck Pro license required' };
+      }
+      const { testElevenLabsApiKey } = require('./lib/raven-llm-test');
+      let key = payload && payload.apiKey ? String(payload.apiKey).trim() : '';
+      if (!key) {
+        key = ravenHost.readEnvValue('TTS_API_KEY');
+        if (!key) return { ok: false, error: 'Enter an API key or save one first' };
+      }
+      return await testElevenLabsApiKey(key);
     } catch (err) {
       return { ok: false, error: err && err.message ? err.message : String(err) };
     }

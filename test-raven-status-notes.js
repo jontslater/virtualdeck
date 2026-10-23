@@ -1,0 +1,15 @@
+'use strict';
+const assert = require('assert');
+const { ravenStatusNotes } = require('./public/raven-status-notes');
+const now = 10_000_000;
+assert.deepStrictEqual(ravenStatusNotes(null, now), []);
+assert.deepStrictEqual(ravenStatusNotes({}, now), []);
+let n = ravenStatusNotes({ lastError: { kind: 'llm_invalid_key', message: 'OpenAI rejected the key', at: now - 1000 } }, now);
+assert.strictEqual(n.length, 1); assert.strictEqual(n[0].level, 'error'); assert.ok(n[0].text.includes('OpenAI'));
+n = ravenStatusNotes({ lastError: { message: 'old', at: now - 11 * 60000 } }, now);
+assert.strictEqual(n.length, 0);
+n = ravenStatusNotes({ lastIgnoredHeard: { text: 'can you hear this', reason: 'no_wake_word', at: now - 5000 } }, now);
+assert.strictEqual(n.length, 1); assert.ok(n[0].text.includes('wake word'));
+n = ravenStatusNotes({ lastIgnoredHeard: { text: 'x', reason: 'no_wake_word', at: now - 120000 } }, now);
+assert.strictEqual(n.length, 0);
+console.log('test-raven-status-notes: ok');

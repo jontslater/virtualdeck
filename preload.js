@@ -223,4 +223,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ravenIsRunning: async () => ipcRenderer.invoke('raven-is-running'),
   ravenConnectionStatus: async () => ipcRenderer.invoke('raven-connection-status'),
   ravenTestLlmKey: async (payload) => ipcRenderer.invoke('raven-test-llm-key', payload || {}),
+  ravenTestTtsKey: async (payload) => ipcRenderer.invoke('raven-test-tts-key', payload || {}),
 });
