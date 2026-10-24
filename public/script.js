@@ -2279,6 +2279,13 @@ async function loadButtons() {
           '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#5b8def"/><text x="24" y="30" font-size="13" text-anchor="middle" fill="white">Meld</text></svg>',
         );
       appIconAlt = 'Meld Scene';
+    } else if (button.type === 'twitch-clip') {
+      appIconSrc =
+        'data:image/svg+xml;charset=utf-8,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#9146FF"/><text x="24" y="30" font-size="11" text-anchor="middle" fill="white">Clip</text></svg>',
+        );
+      appIconAlt = 'Twitch Clip';
     } else if (button.type === 'app') {
       let iconData = await window.electronAPI.getAppIcon(button.src);
       if (generation !== loadButtonsGeneration) return;
@@ -2289,7 +2296,7 @@ async function loadButtons() {
     card.innerHTML = `
       <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
       <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
-      <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type}</div>
+      <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type === 'twitch-clip' ? 'Clip' : button.type}</div>
       <div class="sound-name">${button.name || button.label || button.sceneName || 'Unnamed'}</div>
       <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
     `;
@@ -4251,6 +4258,14 @@ async function handleTrigger(button) {
     } else {
       console.warn('Meld scene button missing sceneId or meldClient not loaded');
     }
+  } else if (button.type === 'twitch-clip') {
+    if (window.electronAPI && window.electronAPI.createTwitchClip) {
+      window.electronAPI
+        .createTwitchClip({ requestedBy: button.label || button.name || 'Deck', source: 'button' })
+        .catch((err) => console.error('Twitch clip failed:', err));
+    } else {
+      console.warn('createTwitchClip API not available');
+    }
   } else if (button.type === "multi-media") {
     // Handle multi-media button trigger
     await handleMultiMediaTrigger(button);
@@ -4730,6 +4745,20 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   console.log('- AI allowed:', aiAllowed);
   console.log('- AI description:', aiDescription);
 
+  if (type === 'twitch-clip') {
+    window.electronAPI.addMedia({
+      label,
+      type: 'twitch-clip',
+      hotkey: completeHotkey,
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex, 10) : undefined,
+      chatCommand: chatCommand,
+    });
+    window.electronAPI.refreshHotkeys();
+    document.getElementById('settings-modal').classList.add('hidden');
+    if (window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+    return;
+  }
+
   if (type === 'meld-scene') {
     if (window.__meldSceneSubmitInProgress) return;
     window.__meldSceneSubmitInProgress = true;
@@ -5068,6 +5097,13 @@ window.editButton = async (index) => {
     if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
     fileInput.required = false; // Not required when editing
     appFileInput.required = false;
+  } else if (btn.type === 'twitch-clip') {
+    if (typeInputEl) typeInputEl.value = 'twitch-clip';
+    audioFileSection.style.display = 'none';
+    appFileSection.style.display = 'none';
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
+    fileInput.required = false;
+    appFileInput.required = false;
   } else if (btn.type === 'meld-scene') {
     if (typeInputEl) typeInputEl.value = 'meld-scene';
     audioFileSection.style.display = 'none';
@@ -5196,7 +5232,7 @@ window.editButton = async (index) => {
   }
   // Update modal title
   const buttonName = btn.name || btn.label || 'Unknown';
-  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : btn.type === 'multi-media' ? 'Multi-Media' : btn.type === 'meld-scene' ? 'Meld Scene' : 'App'}: ${buttonName}`;
+  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : btn.type === 'multi-media' ? 'Multi-Media' : btn.type === 'meld-scene' ? 'Meld Scene' : btn.type === 'twitch-clip' ? 'Twitch Clip' : 'App'}: ${buttonName}`;
   // Handle multi-media buttons differently
   if (btn.type === 'multi-media') {
     // Close the regular settings modal
@@ -17338,6 +17374,7 @@ function setupButtonTypeSelection() {
   const audioOption = document.querySelector('[data-type="audio"]');
   const multiMediaOption = document.querySelector('[data-type="multi-media"]');
   const meldSceneOption = document.querySelector('[data-type="meld-scene"]');
+  const twitchClipOption = document.querySelector('[data-type="twitch-clip"]');
   const macroOption = document.querySelector('[data-type="macro"]');
   const cancelBtn = document.querySelector('.cancel-selection');
 
@@ -17363,6 +17400,13 @@ function setupButtonTypeSelection() {
     meldSceneOption.addEventListener('click', () => {
       selectionModal.classList.add('hidden');
       openMeldSceneForm();
+    });
+  }
+
+  if (twitchClipOption) {
+    twitchClipOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      openTwitchClipForm();
     });
   }
 
@@ -17428,6 +17472,37 @@ function hideMeldSceneSection() {
     meldSection.classList.add('hidden');
     meldSection.style.display = 'none';
   }
+}
+
+function openTwitchClipForm() {
+  const settingsForm = document.getElementById('settings-form');
+  settingsForm.reset();
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'twitch-clip';
+  delete settingsForm.dataset.editingIndex;
+  delete settingsForm.dataset.editingId;
+  delete settingsForm.dataset.resolvedPath;
+  delete settingsForm.dataset.resolvedArgs;
+  delete settingsForm.dataset.existingFile;
+  if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
+  const hkIn = document.getElementById('hotkey-input');
+  if (hkIn) hkIn.value = '';
+  const hkStatus = document.getElementById('hotkey-status');
+  if (hkStatus) hkStatus.textContent = '';
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  hideMeldSceneSection();
+  if (audioFileSection) audioFileSection.style.display = 'none';
+  if (appFileSection) appFileSection.style.display = 'none';
+  const fileInput = document.getElementById('file-input');
+  const appFileInput = document.getElementById('app-file-input');
+  if (fileInput) fileInput.required = false;
+  if (appFileInput) appFileInput.required = false;
+  document.getElementById('settings-modal-title').textContent = 'Add Twitch Clip Button';
+  const saveBtn = document.getElementById('save-sound');
+  if (saveBtn) saveBtn.disabled = false;
+  document.getElementById('settings-modal').classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
 }
 
 function openMeldSceneForm() {
@@ -17601,6 +17676,10 @@ function loadPreferences() {
     if (document.getElementById('discord-username')) {
       document.getElementById('discord-username').value = discord.username || 'VirtualDeck';
     }
+    const postClipsEl = document.getElementById('discord-post-clips');
+    if (postClipsEl) {
+      postClipsEl.checked = discord.postClipsToDiscord !== false;
+    }
   }
   
   // Load auth token path
@@ -17623,7 +17702,8 @@ function savePreferences() {
       webhookUrl: document.getElementById('discord-webhook-url')?.value.trim() || '',
       botToken: document.getElementById('discord-bot-token')?.value.trim() || '',
       defaultChannelId: document.getElementById('discord-channel-id')?.value.trim() || '',
-      username: document.getElementById('discord-username')?.value.trim() || 'VirtualDeck'
+      username: document.getElementById('discord-username')?.value.trim() || 'VirtualDeck',
+      postClipsToDiscord: document.getElementById('discord-post-clips')?.checked !== false,
     }
   };
   
@@ -18175,6 +18255,9 @@ if (window.electronAPI && window.electronAPI.onSceneProviderRequest) {
       } else if (req.op === 'show') {
         const r = await window.meldClient.showScene(req.sceneId);
         reply(r && r.ok ? { ok: true } : { ok: false, error: 'Meld did not switch scene (' + ((r && r.reason) || 'unknown') + ')' });
+      } else if (req.op === 'recordClip') {
+        const r = await window.meldClient.recordClip();
+        reply(r && r.ok ? { ok: true } : { ok: false, error: (r && r.reason) || 'Meld recordClip failed' });
       } else {
         reply({ ok: false, error: 'Unknown scene request' });
       }

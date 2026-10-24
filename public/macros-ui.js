@@ -16,6 +16,8 @@ const ALLOWLISTED_TOOLS = [
   { name: 'discord_send_message', label: 'Send Discord Message', args: ['message'] },
   { name: 'discord_announce_live', label: 'Discord: Announce Go Live', args: [] },
   { name: 'discord_post_clip', label: 'Discord: Post Clip', args: ['clipUrl', 'title'] },
+  { name: 'twitch_create_clip', label: 'Create Twitch Clip', args: ['requestedBy'] },
+  { name: 'meld_record_clip', label: 'Meld: Record Clip', args: [] },
   { name: 'trigger_button', label: 'Trigger Button', args: ['label'] },
   { name: 'launch_app', label: 'Launch Application', args: ['nameOrPath'] },
   { name: 'get_scenes', label: 'Get Scenes (data only)', args: [] },

@@ -46,6 +46,11 @@ const { copyTreeSync, copyFileSyncSafe } = require('./lib/copy-tree-sync');
 const RaidFavoritesStore = require('./lib/raid-favorites-store');
 const { RaidHelixClient } = require('./lib/raid-helix');
 const { buildTwitchAuthorizeUrl, getTwitchOAuthClientId } = require('./lib/twitch-oauth');
+const {
+  pollTwitchClipUntilReady,
+  shouldPostClipsToDiscord,
+  isTwitchClipCommandAuthorized,
+} = require('./lib/twitch-clips');
 const { createTwitchOAuthHost } = require('./lib/twitch-oauth-host');
 const { encodeField, decodeField } = require('./lib/portable-secret');
 const { speakViaDevApi } = require('./lib/raven-dev-speak');
@@ -1386,6 +1391,11 @@ async function startJarvisServer() {
       loadProfile,
       triggerButtonFn: triggerButtonWithDebounce,
       macroManager,
+      createTwitchClip: createTwitchClipAndAnnounce,
+      meldRecordClip: async () => {
+        const r = await meldSceneBridge('recordClip');
+        return r && r.ok ? { ok: true } : { ok: false, reason: (r && (r.error || r.reason)) || 'meld-record-failed' };
+      },
       ...buildJarvisRaidContext(),
     });
 
@@ -1959,6 +1969,29 @@ ipcMain.on('add-media', (event, data) => {
       } else {
         config.buttons.push(newButton);
         console.log('➕ Added Meld scene button:', newButton.label);
+      }
+      saveProfile(currentActiveProfile, config);
+      if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
+      return;
+    }
+
+    if (data.type === 'twitch-clip') {
+      const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
+      const newButton = {
+        id: (existing && existing.id) || nextUniqueButtonId(config.buttons),
+        label: data.label,
+        name: data.label,
+        type: 'twitch-clip',
+        src: '',
+        hotkey: data.hotkey || undefined,
+        chatCommand: data.chatCommand || undefined,
+      };
+      if (typeof data.editingIndex === 'number') {
+        config.buttons[data.editingIndex] = newButton;
+        console.log('✏️ Edited Twitch clip button at index', data.editingIndex, ':', newButton.label);
+      } else {
+        config.buttons.push(newButton);
+        console.log('➕ Added Twitch clip button:', newButton.label);
       }
       saveProfile(currentActiveProfile, config);
       if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
@@ -3029,6 +3062,7 @@ ipcMain.handle('update-config', async (event, configUpdate) => {
     
     // Save to active profile
     saveProfile(currentActiveProfile, updatedProfile);
+    updateJarvisContext();
     console.log('Profile updated successfully:', configUpdate);
     return true;
   } catch (e) {
@@ -4742,8 +4776,11 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
         return;
       }
 
-      // !clip — Twitch Helix clip + chat link (same path as Raven "clip that")
+      // !clip — Twitch Helix clip + chat link (mods / broadcaster only)
       if (commandText === 'clip') {
+        if (!isTwitchClipCommandAuthorized(username, tags, twitchUserName)) {
+          return;
+        }
         void createTwitchClipAndAnnounce({ requestedBy: displayName || username });
         return;
       }
@@ -5124,7 +5161,24 @@ async function sayInTwitchChat(text) {
   }
 }
 
-async function createTwitchClipAndAnnounce({ requestedBy } = {}) {
+async function maybePostTwitchClipToDiscord(clipUrl, title) {
+  try {
+    const profile = loadProfile(currentActiveProfile);
+    const discord = profile && profile.discord;
+    if (!shouldPostClipsToDiscord(discord)) return;
+    const sent = await jarvisRegistry.invoke('discord_post_clip', {
+      clipUrl,
+      title: title || 'Stream Clip',
+    });
+    if (!sent || !sent.success) {
+      console.warn('🎬 Discord clip post failed:', sent && sent.error);
+    }
+  } catch (err) {
+    console.warn('🎬 Discord clip post error:', err);
+  }
+}
+
+async function createTwitchClipAndAnnounce({ requestedBy, source } = {}) {
   const now = Date.now();
   if (now - lastTwitchClipAt < TWITCH_CLIP_COOLDOWN_MS) {
     await sayInTwitchChat('Clip cooldown — try again in a few seconds.');
@@ -5134,7 +5188,8 @@ async function createTwitchClipAndAnnounce({ requestedBy } = {}) {
   try {
     if (!twitchUserId) await getUserId();
     const token = helixAccessToken();
-    if (!twitchClientId || !token || !twitchUserId) {
+    const clientId = helixClientId();
+    if (!clientId || !token || !twitchUserId) {
       await sayInTwitchChat("Can't clip — Twitch isn't connected.");
       return { ok: false, reason: 'not-connected' };
     }
@@ -5144,7 +5199,7 @@ async function createTwitchClipAndAnnounce({ requestedBy } = {}) {
       {
         method: 'POST',
         headers: {
-          'Client-ID': twitchClientId,
+          'Client-ID': clientId,
           Authorization: `Bearer ${token}`,
         },
       },
@@ -5170,11 +5225,26 @@ async function createTwitchClipAndAnnounce({ requestedBy } = {}) {
     }
 
     lastTwitchClipAt = now;
-    const url = `https://clips.twitch.tv/${clipId}`;
+    console.log('🎬 Twitch clip requested', clipId, source || '');
+
+    const polled = await pollTwitchClipUntilReady({
+      clipId,
+      fetchImpl: fetch,
+      clientId,
+      token,
+    });
+
+    if (!polled.ok || !polled.url) {
+      await sayInTwitchChat('Clip may have failed — check your Twitch dashboard or try again.');
+      return { ok: false, reason: polled.reason || 'not-ready', id: clipId };
+    }
+
+    const url = polled.url;
     const who = requestedBy ? String(requestedBy).replace(/^@/, '') : '';
     const line = who ? `${who} clipped that: ${url}` : `Clip: ${url}`;
     await sayInTwitchChat(line);
-    console.log('🎬 Twitch clip created', url);
+    await maybePostTwitchClipToDiscord(url, who ? `${who}'s clip` : 'Stream Clip');
+    console.log('🎬 Twitch clip ready', url);
     return { ok: true, url, id: clipId };
   } catch (err) {
     console.error('🎬 Twitch clip error:', err);
@@ -6998,7 +7068,19 @@ function updateJarvisContext() {
       loadProfile,
       triggerButtonFn: triggerButtonWithDebounce,
       macroManager,
+      createTwitchClip: createTwitchClipAndAnnounce,
+      meldRecordClip: async () => {
+        const r = await meldSceneBridge('recordClip');
+        return r && r.ok ? { ok: true } : { ok: false, reason: (r && (r.error || r.reason)) || 'meld-record-failed' };
+      },
       ...buildJarvisRaidContext(),
     });
   }
 }
+
+ipcMain.handle('create-twitch-clip', async (event, opts = {}) => {
+  return await createTwitchClipAndAnnounce({
+    requestedBy: opts.requestedBy || 'Deck',
+    source: opts.source || 'button',
+  });
+});

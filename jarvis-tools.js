@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { normalizeTwitchLogin, isValidTwitchLogin } = require('./lib/twitch-login');
 const { matchMacroByUtterance, summarizeMacroRun } = require('./lib/macro-voice');
+const { applyMacroTemplateVars, mergeClipResultIntoMacroVars } = require('./lib/twitch-clips');
 
 class JarvisToolRegistry {
   constructor() {
@@ -403,11 +404,13 @@ registry.register(
 registry.runMacroSteps = async function runMacroSteps(macro) {
   const steps = Array.isArray(macro.steps) ? macro.steps : [];
   const results = [];
+  let macroVars = {};
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     console.log(`[JARVIS] Executing macro step ${i + 1}/${steps.length}: ${step.tool}`);
     try {
-      const result = await registry.invoke(step.tool, step.arguments || {});
+      const args = applyMacroTemplateVars(step.arguments || {}, macroVars);
+      const result = await registry.invoke(step.tool, args);
       // registry.invoke wraps the tool's own result; a tool that returns { success: false } failed too.
       const inner = result && result.result;
       const stepOk = !!(result && result.success) && !(inner && typeof inner === 'object' && inner.success === false);
@@ -419,6 +422,9 @@ registry.runMacroSteps = async function runMacroSteps(macro) {
         result: inner,
         error: stepOk ? undefined : ((result && result.error) || (inner && (inner.error || inner.message)) || 'Step failed')
       });
+      if (stepOk) {
+        macroVars = mergeClipResultIntoMacroVars(macroVars, inner);
+      }
       if (!stepOk && macro.stopOnError !== false) {
         console.error(`[JARVIS] Macro step ${i + 1} failed, stopping execution`);
         break;
@@ -904,6 +910,63 @@ registry.register(
     if (!sent || !sent.success) return { success: false, error: (sent && sent.error) || 'Discord post failed' };
     return sent.result;
   }
+);
+
+// Tool: twitch_create_clip
+registry.register(
+  'twitch_create_clip',
+  {
+    description: 'Create a Twitch clip of the live stream (Helix clips:edit). Announces in chat when ready; returns clipUrl and id for later macro steps.',
+    parameters: {
+      type: 'object',
+      properties: {
+        requestedBy: {
+          type: 'string',
+          description: 'Optional name credited in chat (default: macro or JARVIS)',
+        },
+      },
+    },
+  },
+  async (args, context) => {
+    const { createTwitchClip } = context;
+    if (typeof createTwitchClip !== 'function') {
+      return { success: false, error: 'Twitch clip is not available' };
+    }
+    const out = await createTwitchClip({
+      requestedBy: args.requestedBy || 'Macro',
+      source: 'macro',
+    });
+    if (!out || !out.ok) {
+      return { success: false, error: (out && out.reason) || 'Clip failed' };
+    }
+    return {
+      success: true,
+      url: out.url,
+      id: out.id,
+      clipUrl: out.url,
+      clipId: out.id,
+    };
+  },
+);
+
+// Tool: meld_record_clip
+registry.register(
+  'meld_record_clip',
+  {
+    description: 'Record a clip in Meld Studio (meld.recordClip). Does not create a Twitch clip.',
+    parameters: { type: 'object', properties: {} },
+  },
+  async (args, context) => {
+    const { meldRecordClip } = context;
+    if (typeof meldRecordClip !== 'function') {
+      return { success: false, error: 'Meld clip recording is not available' };
+    }
+    const out = await meldRecordClip();
+    if (!out || !out.ok) {
+      return { success: false, error: (out && out.reason) || 'Meld recordClip failed' };
+    }
+    return { success: true };
+  },
 );
 
 // Tool: discord_post_clip

@@ -340,6 +340,14 @@
             <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">Requires Meld Studio running</div>
           </div>
         </button>
+        <button class="selection-option" data-type="twitch-clip">
+          <div class="option-icon">🎬</div>
+          <div class="option-content">
+            <div class="option-title">Twitch Clip</div>
+            <div class="option-description">Create a Twitch clip (hotkey, chat command, or redeem)</div>
+            <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">Requires live stream and clips:edit scope</div>
+          </div>
+        </button>
         <button class="selection-option" data-type="macro">
           <div class="option-icon">🎬</div>
           <div class="option-content">
@@ -1234,6 +1242,13 @@
             <label for="discord-username">Username Override</label>
             <input type="text" id="discord-username" class="preference-input" placeholder="VirtualDeck" />
             <small>Display name for webhook messages (webhook mode only)</small>
+          </div>
+          <div class="preference-item">
+            <label>
+              <input type="checkbox" id="discord-post-clips" checked />
+              Post clips to Discord
+            </label>
+            <small>When a webhook URL is set, new Twitch clips are posted automatically (macros and !clip included).</small>
           </div>
         </div>
 
