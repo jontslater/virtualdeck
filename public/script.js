@@ -3930,31 +3930,37 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
     return;
   }
   
-  // For channel point redemptions (non-daily-checkin), let the TwitchConnected system handle button matching
+  // For channel point redemptions (non-daily-checkin), match deck buttons and channel-points alerts
   if (eventData.type === 'channel.channel_points_custom_reward_redemption.add') {
-    // For non-daily-checkin redemptions, let the TwitchConnected system handle button matching
-    // The TwitchConnected system will check for buttons with matching keywords
-    console.log('🎁 Non-daily-checkin redemption, letting TwitchConnected system handle button matching');
-    
-    // Send the event to TwitchConnected system for button matching
-    // We need to send it as a 'redeem' type event for the TwitchConnected system to process it
-    if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
-      // The TwitchConnected system expects events with type 'redeem'
-      const redeemEvent = {
-        type: 'redeem',
-        event: eventData.event
-      };
-      console.log('📤 Sending redemption event to TwitchConnected system:', redeemEvent);
-      
-      // Trigger the TwitchConnected system directly
-      if (window.checkRedemptionAgainstButtonKeywords) {
-        window.checkRedemptionAgainstButtonKeywords(redeemEvent).then(matchingButtonLabel => {
-          if (matchingButtonLabel && window.electronAPI && window.electronAPI.sendTrigger) {
-            console.log(`🚀 Triggering button "${matchingButtonLabel}" from channel point redemption`);
-            window.electronAPI.sendTrigger(matchingButtonLabel);
-          }
-        });
-      }
+    console.log('🎁 Non-daily-checkin channel points redemption');
+
+    const cpUserData =
+      window.vdAlertPlaceholders && window.vdAlertPlaceholders.buildChannelPointsUserData
+        ? window.vdAlertPlaceholders.buildChannelPointsUserData(eventData.event)
+        : {
+            username: eventData.event.user_login || eventData.event.user_name || 'Unknown',
+            display_name: eventData.event.display_name || eventData.event.user_name || 'Unknown',
+            message: eventData.event.user_input || '',
+            reward: eventData.event.reward?.title || eventData.event.reward?.name || '',
+            ...eventData.event,
+          };
+
+    alertSystem.updateAlerts();
+    alertSystem.triggerAlertForEvent('channel-points', cpUserData, eventData.event);
+
+    const redeemEvent = {
+      type: 'redeem',
+      event: eventData.event,
+    };
+    console.log('📤 Sending redemption event to TwitchConnected system:', redeemEvent);
+
+    if (window.checkRedemptionAgainstButtonKeywords) {
+      window.checkRedemptionAgainstButtonKeywords(redeemEvent).then((matchingButtonLabel) => {
+        if (matchingButtonLabel && window.electronAPI && window.electronAPI.sendTrigger) {
+          console.log(`🚀 Triggering button "${matchingButtonLabel}" from channel point redemption`);
+          window.electronAPI.sendTrigger(matchingButtonLabel);
+        }
+      });
     }
   }
   
@@ -3996,19 +4002,20 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
   }
   
   if (alertType) {
-    // Extract user data from the event
-    const userData = {
-      username: eventData.event.user_name || eventData.event.user || eventData.event.from_name || eventData.event.user_login || 'Unknown',
-      display_name: eventData.event.display_name || eventData.event.user_name || eventData.event.user || 'Unknown',
-      tier: eventData.event.tier || eventData.event.sub_plan || '',
-      viewers: eventData.event.viewers || eventData.event.view_count || eventData.event.viewer_count || '',
-      bits: eventData.event.bits || eventData.event.bits_used || eventData.event.bits_amount || eventData.event.amount || '',
-      months: eventData.event.cumulative_months || eventData.event.months || '',
-      message: eventData.event.message || eventData.event.user_input || '',
-      reward: eventData.event.reward?.title || eventData.event.reward?.name || eventData.event.reward_title || eventData.event.reward || '',
-      ...eventData.event // Include all event data
-    };
-    
+    const userData =
+      window.vdAlertPlaceholders && window.vdAlertPlaceholders.buildUserDataFromTwitchEvent
+        ? window.vdAlertPlaceholders.buildUserDataFromTwitchEvent(eventData)
+        : {
+            username:
+              eventData.event.user_name ||
+              eventData.event.user ||
+              eventData.event.from_name ||
+              eventData.event.user_login ||
+              'Unknown',
+            display_name: eventData.event.display_name || eventData.event.user_name || eventData.event.user || 'Unknown',
+            ...eventData.event,
+          };
+
     console.log('👤 Extracted user data:', userData);
     console.log('🎯 Alert type determined:', alertType, 'from event type:', eventData.type);
     
@@ -11126,6 +11133,11 @@ function setupAlertWidget() {
           refreshDailyCheckinEventSubWarning();
         }
       }
+
+      const channelPointsSettings = document.getElementById('channel-points-settings');
+      if (channelPointsSettings) {
+        channelPointsSettings.style.display = selectedType === 'channel-points' ? 'block' : 'none';
+      }
       
       // Update alert list to show only matching alerts
       updateAlertList();
@@ -11159,6 +11171,7 @@ function setupAlertWidget() {
           'bits': '{username} cheered {bits} bits!',
           'ban': '{username} has been banned by {moderator}!',
           'daily-checkin': '{username} checked in! Total: {total_checkins}',
+          'channel-points': '{display_name} redeemed {reward}! {message}',
           'first-chat-walkon': 'Welcome {username} to the stream!'
         };
         alertTextInput.placeholder = placeholderTexts[selectedType] || 'Welcome {username}!';
@@ -11627,6 +11640,7 @@ function setupAlertWidget() {
       'raid': 'Raid',
       'gift-sub': 'Gifted Subscription',
       'bits': 'Bits Donation',
+      'channel-points': 'Channel Point Redemption',
       'daily-checkin': 'Daily Checkin',
       'first-chat-walkon': 'Walk On (First Chat)'
     };
@@ -11950,6 +11964,9 @@ function setupAlertWidget() {
           sendToChat: document.getElementById('daily-checkin-send-to-chat')?.checked ?? true,
           testMode: document.getElementById('daily-checkin-test-mode')?.checked ?? false
         } : null,
+        channelPointsConfig: type === 'channel-points' ? readChannelPointsRewardFromUI() : null,
+        ravenTtsEnabled: document.getElementById('alert-raven-tts-enabled')?.checked ?? false,
+        ttsText: document.getElementById('alert-tts-text')?.value?.trim() || '',
         walkonUsers: type === 'first-chat-walkon' ? selectedWalkonUsers.map(u => ({
           user_id: u.user_id,
           username: u.username,
@@ -12199,6 +12216,15 @@ function setupAlertWidget() {
       const manualInput = document.getElementById('alert-walkon-manual-username');
       if (manualInput) manualInput.value = '';
     }
+
+    const ravenTtsCheckbox = document.getElementById('alert-raven-tts-enabled');
+    if (ravenTtsCheckbox) ravenTtsCheckbox.checked = false;
+    const ttsTextInput = document.getElementById('alert-tts-text');
+    if (ttsTextInput) ttsTextInput.value = '';
+    const cpRewardId = document.getElementById('channel-points-reward-id');
+    if (cpRewardId) cpRewardId.value = '';
+    const cpRewardName = document.getElementById('channel-points-reward-name');
+    if (cpRewardName) cpRewardName.value = '';
     
     updatePreview().catch(console.error);
   }
@@ -12423,6 +12449,19 @@ function setupAlertWidget() {
       console.log('Loaded video settings - volume:', alertToEdit.videoFile.volume, 'loop:', alertToEdit.videoFile.loop);
     }
     
+    const ravenTtsCheckbox = document.getElementById('alert-raven-tts-enabled');
+    if (ravenTtsCheckbox) ravenTtsCheckbox.checked = alertToEdit.ravenTtsEnabled === true;
+    const ttsTextInput = document.getElementById('alert-tts-text');
+    if (ttsTextInput) ttsTextInput.value = alertToEdit.ttsText || '';
+
+    if (alertToEdit.type === 'channel-points' && alertToEdit.channelPointsConfig) {
+      applyChannelPointsRewardSelectFromConfig(alertToEdit.channelPointsConfig);
+      const cpNameInput = document.getElementById('channel-points-reward-name');
+      if (cpNameInput) cpNameInput.value = alertToEdit.channelPointsConfig.rewardName || '';
+      const cpIdInput = document.getElementById('channel-points-reward-id');
+      if (cpIdInput) cpIdInput.value = alertToEdit.channelPointsConfig.rewardId || '';
+    }
+
     // Populate daily check-in config if this is a daily-checkin alert
     if (alertToEdit.type === 'daily-checkin' && alertToEdit.dailyCheckinConfig) {
       const config = alertToEdit.dailyCheckinConfig;
@@ -12619,28 +12658,11 @@ window.toggleAllAlertsForType = function(alertType, enabled) {
 
 // Global replace placeholders function
 function replacePlaceholders(text, userData) {
+  if (window.vdAlertPlaceholders && typeof window.vdAlertPlaceholders.replacePlaceholders === 'function') {
+    return window.vdAlertPlaceholders.replacePlaceholders(text, userData);
+  }
   if (!userData) return text;
-  
-  let processedText = text;
-  
-  // Replace common placeholders
-  processedText = processedText.replace(/\{username\}/g, userData.username || userData.user_name || userData.user || 'Unknown');
-  processedText = processedText.replace(/\{display_name\}/g, userData.display_name || userData.user_name || userData.user || 'Unknown');
-  processedText = processedText.replace(/\{displayName\}/g, userData.displayName || userData.display_name || userData.user_name || userData.user || 'Unknown');
-  processedText = processedText.replace(/\{tier\}/g, String(userData.tier || userData.sub_plan || ''));
-  processedText = processedText.replace(/\{viewers\}/g, String(userData.viewers || userData.view_count || userData.viewer_count || ''));
-  processedText = processedText.replace(/\{bits\}/g, String(userData.bits || userData.bits_used || userData.bits_amount || userData.amount || ''));
-  processedText = processedText.replace(/\{months\}/g, String(userData.cumulative_months || userData.months || ''));
-  processedText = processedText.replace(/\{message\}/g, String(userData.message || userData.user_input || ''));
-  processedText = processedText.replace(/\{reward\}/g, String(userData.reward || userData.reward_title || ''));
-  processedText = processedText.replace(/\{moderator\}/g, String(userData.moderator || ''));
-  processedText = processedText.replace(/\{reason\}/g, String(userData.reason || ''));
-  
-  // Daily Check-In specific placeholders
-  processedText = processedText.replace(/\{total_checkins\}/g, String(userData.total_checkins || '0'));
-  processedText = processedText.replace(/\{streak\}/g, String(userData.streak || '0'));
-  
-  return processedText;
+  return text;
 }
 
 
@@ -13024,6 +13046,18 @@ let alertQueue = {
       console.log(`📊 Alert overlay setting: ${alertData.overlay || 'NOT SET (defaulting to default)'}`);
       window.electronAPI.sendOverlayMessage(payload);
       console.log(`✅ Alert sent via WebSocket to overlay: "${payload.targetOverlay}"`);
+
+      const vdPh = window.vdAlertPlaceholders;
+      const shouldSpeakTts = vdPh && vdPh.isRavenTtsEnabled && vdPh.isRavenTtsEnabled(alertData);
+      if (shouldSpeakTts && window.vdRavenManualSpeak && typeof window.vdRavenManualSpeak.speakManualText === 'function') {
+        const speakText =
+          vdPh.resolveAlertSpeakText ? vdPh.resolveAlertSpeakText(alertData, userData) : processedText;
+        if (speakText && speakText.trim()) {
+          window.vdRavenManualSpeak
+            .speakManualText(speakText, { respectAiToggle: true })
+            .catch((err) => console.warn('Alert Raven TTS failed:', err));
+        }
+      }
       
       // Play sound if present - store reference for hard stop
       if (alertData.soundFile) {
@@ -13181,7 +13215,7 @@ let alertSystem = {
   alerts: JSON.parse(localStorage.getItem('twitchAlerts') || '[]'),
   
   // Trigger alert for specific event type
-  triggerAlertForEvent(eventType, userData) {
+  triggerAlertForEvent(eventType, userData, matchContext) {
     console.log(`🔍 Looking for alerts of type: ${eventType}`);
     console.log(`📋 Available alert types:`, this.alerts.map(a => a.type));
     const alertsOfType = this.alerts.filter(a => a.type === eventType);
@@ -13192,10 +13226,26 @@ let alertSystem = {
     }
     
     // Get enabled alerts
-    const enabledAlerts = alertsOfType.filter(a => a.enabled !== false);
+    let enabledAlerts = alertsOfType.filter(a => a.enabled !== false);
     if (enabledAlerts.length === 0) {
       console.log(`⚠️ No enabled alerts found for event type: ${eventType}`);
       return;
+    }
+
+    if (eventType === 'channel-points') {
+      const redemptionEvent = matchContext || userData;
+      const matchFn =
+        window.vdChannelPointsAlert && window.vdChannelPointsAlert.alertMatchesChannelPointsRedemption;
+      enabledAlerts = enabledAlerts.filter((alert) => {
+        if (matchFn) {
+          return matchFn(alert, redemptionEvent);
+        }
+        return false;
+      });
+      if (enabledAlerts.length === 0) {
+        console.log('⚠️ No channel-points alerts matched this redemption reward');
+        return;
+      }
     }
     
     // For first-chat-walkon, check if user is in selected walkon users list
@@ -13705,6 +13755,51 @@ async function sendTwitchChatMessage(message) {
   }
 }
 
+function readChannelPointsRewardFromUI() {
+  const rewardNameInput = document.getElementById('channel-points-reward-name');
+  const rewardIdInput = document.getElementById('channel-points-reward-id');
+  const select = document.getElementById('channel-points-reward-select');
+  let rewardId = rewardIdInput?.value?.trim() || '';
+  let rewardName = rewardNameInput?.value?.trim() || '';
+  if (select && window.vdChannelRewards) {
+    const picked = window.vdChannelRewards.selectedRewardFromSelect(select);
+    if (picked.rewardId) {
+      rewardId = picked.rewardId;
+      if (rewardIdInput) rewardIdInput.value = rewardId;
+      if (picked.rewardName) rewardName = picked.rewardName;
+      if (rewardNameInput && picked.rewardName) rewardNameInput.value = picked.rewardName;
+    }
+  }
+  return { rewardId, rewardName };
+}
+
+function applyChannelPointsRewardSelectFromConfig(config) {
+  const select = document.getElementById('channel-points-reward-select');
+  if (!select || !config) return;
+  if (config.rewardId) {
+    const opt = Array.from(select.options).find(
+      (o) => o.dataset && o.dataset.rewardId === String(config.rewardId),
+    );
+    if (opt) select.value = opt.value;
+  } else if (config.rewardName && window.vdChannelRewards) {
+    const opt = Array.from(select.options).find((o) => {
+      const t = (o.dataset && o.dataset.rewardTitle) || '';
+      return t.trim().toLowerCase() === String(config.rewardName).trim().toLowerCase();
+    });
+    if (opt) select.value = opt.value;
+  }
+}
+
+async function loadChannelPointsAlertRewardsFromTwitch() {
+  const select = document.getElementById('channel-points-reward-select');
+  const nameInput = document.getElementById('channel-points-reward-name');
+  if (!select) return;
+  await loadChannelRedemptions(select, nameInput, {
+    valueField: 'id',
+    placeholder: '-- Select reward --',
+  });
+}
+
 function readDailyCheckinRewardFromUI() {
   const rewardNameInput = document.getElementById('daily-checkin-reward-name');
   const rewardIdInput = document.getElementById('daily-checkin-reward-id');
@@ -13939,6 +14034,15 @@ async function initDailyCheckinSystem() {
   if (loadRewardsBtn) {
     loadRewardsBtn.addEventListener('click', () => {
       loadDailyCheckinRewardsFromTwitch().catch((err) => console.error('Load daily check-in rewards failed:', err));
+    });
+  }
+
+  const cpLoadRewardsBtn = document.getElementById('channel-points-load-rewards');
+  if (cpLoadRewardsBtn) {
+    cpLoadRewardsBtn.addEventListener('click', () => {
+      loadChannelPointsAlertRewardsFromTwitch().catch((err) =>
+        console.error('Load channel-points rewards failed:', err),
+      );
     });
   }
   const rewardSelect = document.getElementById('daily-checkin-reward-select');

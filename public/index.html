@@ -573,6 +573,16 @@
               <td>Subscription tier gifted</td>
               <td>1000, 2000, 3000</td>
             </tr>
+            <tr>
+              <td><code>{recipient}</code></td>
+              <td>Gift recipient (single gift) or &quot;the community&quot; for mass gifts</td>
+              <td>LuckyViewer</td>
+            </tr>
+            <tr>
+              <td><code>{count}</code></td>
+              <td>Number of subs gifted (mass/community gifts)</td>
+              <td>5</td>
+            </tr>
           </tbody>
         </table>
 
@@ -2169,6 +2179,7 @@
             <option value="raid">Raid</option>
             <option value="bits">Bits Donation</option>
             <option value="ban">User Ban</option>
+            <option value="channel-points">Channel Point Redemption</option>
             <option value="daily-checkin">Daily Checkin</option>
             <option value="first-chat-walkon">Walk On (First Chat)</option>
           </select>
@@ -2240,7 +2251,19 @@
                 <label for="alert-text">Alert Text (Optional):</label>
                 <input type="text" id="alert-text" placeholder="Welcome {username}!" />
                 <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
-                  Use placeholders: {username}, {display_name}, {tier}, {viewers}, {bits}, {months}, {moderator}, {reason}. Leave empty for media-only alerts.
+                  Use placeholders: {username}, {display_name}, {tier}, {viewers}, {bits}, {months}, {recipient}, {count}, {reward}, {message}, {moderator}, {reason}. Leave empty for media-only alerts.
+                </small>
+              </div>
+
+              <div class="setting-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" id="alert-raven-tts-enabled" />
+                  <span>Speak with Raven TTS</span>
+                </label>
+                <label for="alert-tts-text" style="margin-top: 8px; display: block;">Raven TTS text (optional):</label>
+                <input type="text" id="alert-tts-text" placeholder="Defaults to alert text when empty" />
+                <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                  Placeholders are replaced before speech (same as on-screen alert text).
                 </small>
               </div>
 
@@ -2499,6 +2522,26 @@
           </div>
           </section>
 
+          <!-- Channel Points Alert Settings -->
+          <div id="channel-points-settings" class="alert-form-section alert-form-section--channel-points" style="display: none; margin-top: 0; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
+            <h4 style="margin: 0 0 10px 0; font-size: 14px; color: var(--text-primary);">Channel Point Reward</h4>
+            <div class="setting-group" style="margin-bottom: 12px;">
+              <label for="channel-points-reward-select">Twitch reward for this alert:</label>
+              <div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
+                <select id="channel-points-reward-select" style="flex: 1; padding: 6px;">
+                  <option value="">-- Load rewards from Twitch --</option>
+                </select>
+                <button type="button" id="channel-points-load-rewards" class="action-btn secondary" style="white-space: nowrap;">Load</button>
+              </div>
+              <input type="hidden" id="channel-points-reward-id" value="" />
+              <label for="channel-points-reward-name" style="margin-top: 8px; display: block;">Reward name (fallback if ID not set):</label>
+              <input type="text" id="channel-points-reward-name" placeholder="e.g. Hydrate" style="width: 100%; margin-top: 4px;" />
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">
+                Matched by reward ID when set (no title fallback). Title matching is only used when no ID is saved.
+              </small>
+            </div>
+          </div>
+
           <!-- Daily Check-In Settings -->
           <div id="daily-checkin-settings" class="alert-form-section alert-form-section--checkin" style="display: none; margin-top: 0; padding: 12px; background: var(--bg-secondary); border-radius: 6px;">
             <h4 style="margin: 0 0 10px 0; font-size: 14px; color: var(--text-primary);">Daily Check-In Configuration</h4>
@@ -2726,6 +2769,8 @@
   <script src="vd-console.js"></script>
   <script src="vd-packaged-ui.js"></script>
   <script src="daily-checkin-reward.js"></script>
+  <script src="alert-placeholders.js"></script>
+  <script src="channel-points-alert-reward.js"></script>
   <script src="channel-rewards-ui.js"></script>
   <script src="vd-poll.js"></script>
   <script src="vd-service-gates.js"></script>
