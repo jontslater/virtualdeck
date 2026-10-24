@@ -51,6 +51,10 @@ const {
   shouldPostClipsToDiscord,
   TWITCH_CLIP_COOLDOWN_MS,
 } = require('./lib/twitch-clips');
+const {
+  buildDeckButtonCatalog,
+  normalizeMacroTriggerButtonSteps,
+} = require('./lib/macro-button-picker');
 const { createTwitchOAuthHost } = require('./lib/twitch-oauth-host');
 const { encodeField, decodeField } = require('./lib/portable-secret');
 const { speakViaDevApi } = require('./lib/raven-dev-speak');
@@ -91,14 +95,38 @@ function isRecentButtonTrigger(label) {
   return false;
 }
 
-function triggerButtonWithDebounce(label, source = 'unknown') {
-  console.log(`🔍 triggerButtonWithDebounce called for "${label}" from ${source}`);
+function resolveDeckButtonInProfile(profile, { buttonId, label } = {}) {
+  const buttons = profile && Array.isArray(profile.buttons) ? profile.buttons : [];
+  if (buttonId) {
+    const byId = buttons.find((b) => b && b.id === buttonId);
+    if (byId) return byId;
+  }
+  if (label) {
+    const key = String(label).trim().toLowerCase();
+    return buttons.find((b) => {
+      if (!b) return false;
+      const name = String(b.name || b.label || b.sceneName || '').trim().toLowerCase();
+      return name === key;
+    });
+  }
+  return null;
+}
+
+function triggerDeckButton(ref, source = 'unknown') {
+  const opts = typeof ref === 'string' ? { label: ref } : (ref || {});
+  const { buttonId, label } = opts;
+  const profile = loadProfile(currentActiveProfile);
+  const btn = resolveDeckButtonInProfile(profile, { buttonId, label });
+  const debounceKey = buttonId || label || (btn && btn.id) || '';
+  const display = btn ? (btn.name || btn.label || btn.id) : label || buttonId;
+
+  console.log(`🔍 triggerDeckButton called for "${display}" from ${source}`);
+
   if (licenseManager) {
     try {
-      const profile = loadProfile(currentActiveProfile);
-      const gate = licenseManager.canTriggerButton(profile, label);
+      const gate = licenseManager.canTriggerButton(profile, btn || label || buttonId);
       if (!gate.allowed) {
-        console.log(`🔒 Blocked trigger for "${label}" from ${source}:`, gate.reason);
+        console.log(`🔒 Blocked trigger for "${display}" from ${source}:`, gate.reason);
         if (win && !win.isDestroyed()) {
           win.webContents.send('license-upsell', {
             reason: gate.reason,
@@ -111,18 +139,33 @@ function triggerButtonWithDebounce(label, source = 'unknown') {
       console.warn('[License] trigger check failed:', e && e.message);
     }
   }
-  if (isRecentButtonTrigger(label)) {
-    console.log(`🚫 Skipping duplicate trigger for "${label}" from ${source} (within ${BUTTON_TRIGGER_DEBOUNCE_MS}ms)`);
+  if (debounceKey && isRecentButtonTrigger(debounceKey)) {
+    console.log(`🚫 Skipping duplicate trigger for "${display}" from ${source} (within ${BUTTON_TRIGGER_DEBOUNCE_MS}ms)`);
     return false;
   }
-  
+
   if (win && win.webContents) {
-    console.log(`🚀 Sending trigger-media event for "${label}" from ${source}`);
-    win.webContents.send('trigger-media', label);
+    const identifier = btn && btn.id ? btn.id : (label || buttonId);
+    console.log(`🚀 Sending trigger-media event for "${identifier}" from ${source}`);
+    win.webContents.send('trigger-media', identifier);
     return true;
   }
-  console.log(`❌ No window available to trigger button "${label}" from ${source}`);
+  console.log(`❌ No window available to trigger button "${display}" from ${source}`);
   return false;
+}
+
+function triggerButtonWithDebounce(label, source = 'unknown') {
+  return triggerDeckButton(label, source);
+}
+
+function loadDeckButtonCatalogForMacros() {
+  const meta = loadProfilesMeta();
+  const profiles = (meta.profiles || []).map((p) => ({
+    profileId: p.id,
+    profileName: p.name || p.id,
+    buttons: loadProfile(p.id).buttons || [],
+  }));
+  return buildDeckButtonCatalog(profiles);
 }
 
 // Use Electron's userData directory for config and user files (never the app install dir).
@@ -1390,6 +1433,7 @@ async function startJarvisServer() {
       currentActiveProfile,
       loadProfile,
       triggerButtonFn: triggerButtonWithDebounce,
+      triggerDeckButtonFn: triggerDeckButton,
       macroManager,
       createTwitchClip: createTwitchClipAndAnnounce,
       meldRecordClip: async () => {
@@ -2289,6 +2333,15 @@ ipcMain.handle('get-profiles', async () => {
   }
 });
 
+ipcMain.handle('list-macro-deck-buttons', async () => {
+  try {
+    return loadDeckButtonCatalogForMacros();
+  } catch (error) {
+    console.error('Error listing deck buttons for macros:', error);
+    return { error: error.message || String(error), buttons: [] };
+  }
+});
+
 // Get a specific profile
 ipcMain.handle('get-profile', async (event, profileId) => {
   try {
@@ -2574,6 +2627,15 @@ ipcMain.handle('save-macro', async (event, { id, macro }) => {
     }
 
     // Validate macro
+    const catalog = loadDeckButtonCatalogForMacros();
+    const normalized = normalizeMacroTriggerButtonSteps(
+      macro.steps,
+      catalog,
+      currentActiveProfile,
+    );
+    macro.steps = normalized.steps;
+    const stepWarnings = normalized.warnings || [];
+
     const validation = macroManager.validate(macro);
     if (!validation.valid) {
       return { success: false, errors: validation.errors };
@@ -2589,10 +2651,15 @@ ipcMain.handle('save-macro', async (event, { id, macro }) => {
     const saved = macroManager.set(id, macro);
     const sync = syncMacroHotkeys();
     const failedReg = sync.failed.find((f) => f.id === id);
+    const warningParts = [];
+    if (stepWarnings.length) warningParts.push(stepWarnings.join(' '));
+    if (failedReg) {
+      warningParts.push(`Hotkey ${failedReg.hotkey} could not be registered: ${failedReg.reason}`);
+    }
     return {
       success: true,
       macro: { id, ...saved },
-      warning: failedReg ? `Saved, but hotkey ${failedReg.hotkey} could not be registered: ${failedReg.reason}` : undefined,
+      warning: warningParts.length ? warningParts.join(' ') : undefined,
     };
   } catch (error) {
     console.error('Error saving macro:', error);
@@ -7027,6 +7094,7 @@ function updateJarvisContext() {
       currentActiveProfile,
       loadProfile,
       triggerButtonFn: triggerButtonWithDebounce,
+      triggerDeckButtonFn: triggerDeckButton,
       macroManager,
       createTwitchClip: createTwitchClipAndAnnounce,
       meldRecordClip: async () => {

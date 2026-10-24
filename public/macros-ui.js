@@ -18,7 +18,7 @@ const ALLOWLISTED_TOOLS = [
   { name: 'discord_post_clip', label: 'Discord: Post Clip', args: ['clipUrl', 'title'] },
   { name: 'twitch_create_clip', label: 'Create Twitch Clip', args: ['requestedBy'] },
   { name: 'meld_record_clip', label: 'Meld: Record Clip', args: [] },
-  { name: 'trigger_button', label: 'Trigger Button', args: ['label'] },
+  { name: 'trigger_button', label: 'Trigger Button', args: ['buttonId', 'label'] },
   { name: 'launch_app', label: 'Launch Application', args: ['nameOrPath'] },
   { name: 'get_scenes', label: 'Get Scenes (data only)', args: [] },
   { name: 'get_stream_status', label: 'Get Stream Status (data only)', args: [] },
@@ -34,6 +34,9 @@ function initializeMacrosUI() {
   const macrosBtnForScenes = document.getElementById('preferences-macros-manage');
   if (macrosBtnForScenes && window.VDMacroScenePicker) {
     macrosBtnForScenes.addEventListener('click', () => window.VDMacroScenePicker.clearSceneCache());
+  }
+  if (macrosBtnForScenes && window.VDMacroButtonPicker) {
+    macrosBtnForScenes.addEventListener('click', () => window.VDMacroButtonPicker.clearCatalogCache());
   }
   console.log('🎬 Initializing Macros UI');
 
@@ -569,6 +572,8 @@ function createStepCard(step, index) {
   const selectedTool = availableTools.find(t => t.name === step.tool);
   if (step.tool === 'change_scene' && window.VDMacroScenePicker) {
     card.appendChild(window.VDMacroScenePicker.createScenePicker(step));
+  } else if (step.tool === 'trigger_button' && window.VDMacroButtonPicker) {
+    card.appendChild(window.VDMacroButtonPicker.createButtonPicker(step));
   } else if (selectedTool && selectedTool.args.length > 0) {
     const argsContainer = document.createElement('div');
     argsContainer.className = 'step-args';

@@ -629,35 +629,57 @@ registry.register(
 registry.register(
   'trigger_button',
   {
-    description: 'Trigger a VirtualDeck button by label',
+    description: 'Trigger a VirtualDeck deck button by stable id (preferred) or label fallback',
     parameters: {
       type: 'object',
       properties: {
+        buttonId: {
+          type: 'string',
+          description: 'Stable deck button id (saved by the macro editor)',
+        },
         label: {
           type: 'string',
-          description: 'Button label to trigger'
-        }
+          description: 'Button label (display name / legacy fallback)',
+        },
       },
-      required: ['label']
-    }
+    },
   },
   async (args, context) => {
-    const { label } = args;
-    const { triggerButtonFn } = context;
-    
-    if (!triggerButtonFn) {
+    const { buttonId, label } = args || {};
+    const { triggerButtonFn, triggerDeckButtonFn, loadProfile, currentActiveProfile } = context;
+
+    const triggerFn = triggerDeckButtonFn || triggerButtonFn;
+    if (!triggerFn) {
       return {
         success: false,
-        error: 'Button trigger function not available'
+        error: 'Button trigger function not available',
       };
     }
 
-    const triggered = triggerButtonFn(label, 'jarvis-api');
-    
+    if (!buttonId && !label) {
+      return { success: false, error: 'buttonId or label is required' };
+    }
+
+    let resolvedLabel = label;
+    if (buttonId && typeof loadProfile === 'function' && currentActiveProfile) {
+      const profile = loadProfile(currentActiveProfile);
+      const btn = (profile.buttons || []).find((b) => b && b.id === buttonId);
+      if (!btn) {
+        return {
+          success: false,
+          error: `Deck button ${buttonId}${label ? ` ("${label}")` : ''} was deleted or is not on the active profile`,
+        };
+      }
+      resolvedLabel = btn.name || btn.label || label;
+    }
+
+    const triggered = triggerFn({ buttonId, label: resolvedLabel || label }, 'jarvis-api');
+
     return {
       success: triggered,
-      button: label,
-      note: triggered ? 'Button triggered' : 'Button trigger failed or debounced'
+      buttonId: buttonId || undefined,
+      button: resolvedLabel || label,
+      note: triggered ? 'Button triggered' : 'Button trigger failed or debounced',
     };
   }
 );

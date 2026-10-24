@@ -5643,10 +5643,10 @@ window.electronAPI.onTriggerMedia(async (mediaId) => {
   console.log(`🔍 onTriggerMedia called for: "${mediaId}"`);
   const config = await window.electronAPI.getConfig();
   if (!config || !Array.isArray(config.buttons)) return;
-  const button = config.buttons.find(btn => {
+  const button = config.buttons.find((btn) => btn && btn.id === mediaId) || config.buttons.find(btn => {
     // Check both name and label for compatibility - use exact match for precision
     const name = btn.name || btn.label || '';
-    return name.toLowerCase() === mediaId.toLowerCase();
+    return name.toLowerCase() === String(mediaId).toLowerCase();
   });
   if (button) {
     console.log(`🎯 Triggering mapped button: "${button.name || button.label}" Type: ${button.type} Volume: ${button.volume}`);
