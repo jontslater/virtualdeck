@@ -47,9 +47,9 @@ const RaidFavoritesStore = require('./lib/raid-favorites-store');
 const { RaidHelixClient } = require('./lib/raid-helix');
 const { buildTwitchAuthorizeUrl, getTwitchOAuthClientId } = require('./lib/twitch-oauth');
 const {
-  pollTwitchClipUntilReady,
+  executeTwitchClipHelixFlow,
   shouldPostClipsToDiscord,
-  isTwitchClipCommandAuthorized,
+  TWITCH_CLIP_COOLDOWN_MS,
 } = require('./lib/twitch-clips');
 const { createTwitchOAuthHost } = require('./lib/twitch-oauth-host');
 const { encodeField, decodeField } = require('./lib/portable-secret');
@@ -4776,11 +4776,8 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
         return;
       }
 
-      // !clip — Twitch Helix clip + chat link (mods / broadcaster only)
+      // !clip — Twitch Helix clip + chat link (any viewer; cooldown applies)
       if (commandText === 'clip') {
-        if (!isTwitchClipCommandAuthorized(username, tags, twitchUserName)) {
-          return;
-        }
         void createTwitchClipAndAnnounce({ requestedBy: displayName || username });
         return;
       }
@@ -4990,7 +4987,6 @@ let twitchClientId = null;
 let twitchUserName = null;
 const TWITCH_WEB_CLIENT_ID = 'gp762nuuoqcoxypju8c569th9wz7q5';
 let lastTwitchClipAt = 0;
-const TWITCH_CLIP_COOLDOWN_MS = 20000;
 
 function helixAccessToken() {
   let token = twitchToken;
@@ -5179,73 +5175,37 @@ async function maybePostTwitchClipToDiscord(clipUrl, title) {
 }
 
 async function createTwitchClipAndAnnounce({ requestedBy, source } = {}) {
-  const now = Date.now();
-  if (now - lastTwitchClipAt < TWITCH_CLIP_COOLDOWN_MS) {
-    await sayInTwitchChat('Clip cooldown — try again in a few seconds.');
-    return { ok: false, reason: 'cooldown' };
-  }
-
   try {
     if (!twitchUserId) await getUserId();
     const token = helixAccessToken();
     const clientId = helixClientId();
-    if (!clientId || !token || !twitchUserId) {
-      await sayInTwitchChat("Can't clip — Twitch isn't connected.");
-      return { ok: false, reason: 'not-connected' };
-    }
+    const profile = loadProfile(currentActiveProfile);
+    const discordConfig = profile && profile.discord;
 
-    const resp = await fetch(
-      `https://api.twitch.tv/helix/clips?broadcaster_id=${encodeURIComponent(twitchUserId)}&has_delay=false`,
-      {
-        method: 'POST',
-        headers: {
-          'Client-ID': clientId,
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
-    const body = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      const msg = String(body?.message || resp.statusText || '');
-      console.error('🎬 Twitch clip failed:', resp.status, msg, body);
-      if (resp.status === 401 || /scope/i.test(msg)) {
-        await sayInTwitchChat('Clip failed — reconnect Twitch with the clips:edit scope.');
-      } else if (resp.status === 404 || /not live/i.test(msg)) {
-        await sayInTwitchChat("Can't clip — the stream doesn't look live.");
-      } else {
-        await sayInTwitchChat("Couldn't create a Twitch clip.");
-      }
-      return { ok: false, reason: msg || String(resp.status) };
-    }
-
-    const clipId = body?.data?.[0]?.id;
-    if (!clipId) {
-      await sayInTwitchChat("Twitch didn't return a clip id.");
-      return { ok: false, reason: 'no-id' };
-    }
-
-    lastTwitchClipAt = now;
-    console.log('🎬 Twitch clip requested', clipId, source || '');
-
-    const polled = await pollTwitchClipUntilReady({
-      clipId,
-      fetchImpl: fetch,
+    const out = await executeTwitchClipHelixFlow({
+      broadcasterId: twitchUserId,
       clientId,
       token,
+      fetchImpl: fetch,
+      requestedBy,
+      source,
+      lastClipAt: lastTwitchClipAt,
+      sayInChat: sayInTwitchChat,
+      discordConfig,
+      postClipToDiscord: async (clipUrl, title) => {
+        await maybePostTwitchClipToDiscord(clipUrl, title);
+      },
     });
 
-    if (!polled.ok || !polled.url) {
-      await sayInTwitchChat('Clip may have failed — check your Twitch dashboard or try again.');
-      return { ok: false, reason: polled.reason || 'not-ready', id: clipId };
+    if (out.ok && out.clipAt) {
+      lastTwitchClipAt = out.clipAt;
+      console.log('🎬 Twitch clip ready', out.url, source || '');
+    } else if (out.reason && out.reason !== 'cooldown') {
+      console.error('🎬 Twitch clip failed:', out.reason);
     }
 
-    const url = polled.url;
-    const who = requestedBy ? String(requestedBy).replace(/^@/, '') : '';
-    const line = who ? `${who} clipped that: ${url}` : `Clip: ${url}`;
-    await sayInTwitchChat(line);
-    await maybePostTwitchClipToDiscord(url, who ? `${who}'s clip` : 'Stream Clip');
-    console.log('🎬 Twitch clip ready', url);
-    return { ok: true, url, id: clipId };
+    const { clipAt, ...rest } = out;
+    return rest;
   } catch (err) {
     console.error('🎬 Twitch clip error:', err);
     await sayInTwitchChat("Couldn't create a Twitch clip.");
