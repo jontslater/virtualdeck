@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveConfig: async (config) => ipcRenderer.invoke('save-config', config),
   updateConfig: async (configUpdate) => ipcRenderer.invoke('update-config', configUpdate),
   createTwitchClip: async (opts) => ipcRenderer.invoke('create-twitch-clip', opts || {}),
+  postSocials: async (opts) => ipcRenderer.invoke('post-socials', opts || {}),
+  startTwitchCommercial: async (opts) => ipcRenderer.invoke('start-twitch-commercial', opts || {}),
+  checkTwitchCommercialScope: async () => ipcRenderer.invoke('check-twitch-commercial-scope'),
   listMacroDeckButtons: async () => ipcRenderer.invoke('list-macro-deck-buttons'),
   // Media file storage for multi-media buttons
   saveMediaFile: async (mediaData) => ipcRenderer.invoke('save-media-file', mediaData),

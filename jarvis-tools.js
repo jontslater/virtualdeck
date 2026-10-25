@@ -11,6 +11,8 @@ const path = require('path');
 const { normalizeTwitchLogin, isValidTwitchLogin } = require('./lib/twitch-login');
 const { matchMacroByUtterance, summarizeMacroRun } = require('./lib/macro-voice');
 const { applyMacroTemplateVars, mergeClipResultIntoMacroVars } = require('./lib/twitch-clips');
+const { replacePlaceholders, appendSocialsToUserData } = require('./lib/alert-placeholders');
+const { formatSocialsLine, normalizeSocials, splitChatMessages } = require('./lib/socials');
 
 class JarvisToolRegistry {
   constructor() {
@@ -592,12 +594,12 @@ registry.register(
   },
   async (args, context) => {
     const { text, channel } = args;
-    const { twitchClient, twitchChannel } = context;
-    
+    const { twitchClient, twitchChannel, config, loadProfile, currentActiveProfile } = context;
+
     if (!twitchClient || twitchClient.readyState() !== 'OPEN') {
       return {
         success: false,
-        error: 'Twitch client not connected'
+        error: 'Twitch client not connected',
       };
     }
 
@@ -605,24 +607,106 @@ registry.register(
     if (!targetChannel) {
       return {
         success: false,
-        error: 'No channel specified and no default configured'
+        error: 'No channel specified and no default configured',
       };
     }
 
+    const profile =
+      config ||
+      (typeof loadProfile === 'function' && currentActiveProfile
+        ? loadProfile(currentActiveProfile)
+        : null);
+    const placeholderData = appendSocialsToUserData({}, profile && profile.socials);
+    const messageText = replacePlaceholders(text, placeholderData);
+
     try {
-      await twitchClient.say(targetChannel, text);
+      await twitchClient.say(targetChannel, messageText);
       return {
         success: true,
         channel: targetChannel,
-        message: text
+        message: messageText,
       };
     } catch (error) {
       return {
         success: false,
-        error: error.message
+        error: error.message,
       };
     }
-  }
+  },
+);
+
+// Tool: post_socials
+registry.register(
+  'post_socials',
+  {
+    description: 'Post configured social links to Twitch chat (splits into multiple messages if over 500 characters)',
+    parameters: { type: 'object', properties: {} },
+  },
+  async (_args, context) => {
+    const { postSocialsToChat, config, loadProfile, currentActiveProfile } = context;
+    if (typeof postSocialsToChat === 'function') {
+      return await postSocialsToChat({ source: 'macro' });
+    }
+    const profile =
+      config ||
+      (typeof loadProfile === 'function' && currentActiveProfile
+        ? loadProfile(currentActiveProfile)
+        : null);
+    const line = formatSocialsLine(normalizeSocials(profile && profile.socials));
+    if (!line) {
+      return { success: false, error: 'No social links configured in Preferences' };
+    }
+    const { twitchClient, twitchChannel } = context;
+    if (!twitchClient || twitchClient.readyState() !== 'OPEN') {
+      return { success: false, error: 'Twitch client not connected' };
+    }
+    const parts = splitChatMessages(line);
+    for (const part of parts) {
+      await twitchClient.say(twitchChannel, part);
+    }
+    return { success: true, messages: parts };
+  },
+);
+
+// Tool: twitch_start_commercial
+registry.register(
+  'twitch_start_commercial',
+  {
+    description: 'Start a Twitch mid-roll commercial (requires channel:edit:commercial and live stream)',
+    parameters: {
+      type: 'object',
+      properties: {
+        length: {
+          type: 'number',
+          description: 'Commercial length in seconds (30–180)',
+        },
+        chatMessage: {
+          type: 'string',
+          description: 'Optional message to post in chat before the ad',
+        },
+      },
+    },
+  },
+  async (args, context) => {
+    const { startTwitchCommercial } = context;
+    if (typeof startTwitchCommercial !== 'function') {
+      return { success: false, error: 'Twitch commercial is not available' };
+    }
+    const out = await startTwitchCommercial({
+      length: args.length,
+      chatMessage: args.chatMessage,
+      source: 'macro',
+    });
+    if (!out || !out.ok) {
+      return {
+        success: false,
+        error: (out && out.error) || 'Commercial failed',
+        needsReconnect: !!(out && out.needsReconnect),
+        retry_after: out && out.retry_after,
+      };
+    }
+    return { success: true, length: out.length, retry_after: out.retry_after };
+  },
 );
 
 // Tool: trigger_button

@@ -51,6 +51,8 @@ const {
   shouldPostClipsToDiscord,
   TWITCH_CLIP_COOLDOWN_MS,
 } = require('./lib/twitch-clips');
+const { formatSocialsLine, normalizeSocials, splitChatMessages, TWITCH_CHAT_MAX_LEN } = require('./lib/socials');
+const { TwitchCommercialClient } = require('./lib/twitch-commercial');
 const {
   buildDeckButtonCatalog,
   normalizeMacroTriggerButtonSteps,
@@ -1436,6 +1438,8 @@ async function startJarvisServer() {
       triggerDeckButtonFn: triggerDeckButton,
       macroManager,
       createTwitchClip: createTwitchClipAndAnnounce,
+      postSocialsToChat,
+      startTwitchCommercial,
       meldRecordClip: async () => {
         const r = await meldSceneBridge('recordClip');
         return r && r.ok ? { ok: true } : { ok: false, reason: (r && (r.error || r.reason)) || 'meld-record-failed' };
@@ -2036,6 +2040,53 @@ ipcMain.on('add-media', (event, data) => {
       } else {
         config.buttons.push(newButton);
         console.log('➕ Added Twitch clip button:', newButton.label);
+      }
+      saveProfile(currentActiveProfile, config);
+      if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
+      return;
+    }
+
+    if (data.type === 'post-socials') {
+      const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
+      const newButton = {
+        id: (existing && existing.id) || nextUniqueButtonId(config.buttons),
+        label: data.label,
+        name: data.label,
+        type: 'post-socials',
+        src: '',
+        hotkey: data.hotkey || undefined,
+        chatCommand: data.chatCommand || undefined,
+      };
+      if (typeof data.editingIndex === 'number') {
+        config.buttons[data.editingIndex] = newButton;
+      } else {
+        config.buttons.push(newButton);
+      }
+      saveProfile(currentActiveProfile, config);
+      if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
+      return;
+    }
+
+    if (data.type === 'run-ad') {
+      const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
+      let commercialLength = Number(data.commercialLength);
+      if (!Number.isFinite(commercialLength)) commercialLength = 60;
+      commercialLength = Math.min(180, Math.max(30, Math.round(commercialLength)));
+      const newButton = {
+        id: (existing && existing.id) || nextUniqueButtonId(config.buttons),
+        label: data.label,
+        name: data.label,
+        type: 'run-ad',
+        src: '',
+        commercialLength,
+        chatMessage: data.chatMessage ? String(data.chatMessage).trim() : '',
+        hotkey: data.hotkey || undefined,
+        chatCommand: data.chatCommand || undefined,
+      };
+      if (typeof data.editingIndex === 'number') {
+        config.buttons[data.editingIndex] = newButton;
+      } else {
+        config.buttons.push(newButton);
       }
       saveProfile(currentActiveProfile, config);
       if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
@@ -2901,6 +2952,21 @@ ipcMain.handle('check-twitch-raid-scope', async () => {
       hasRaidScope: !!scope.hasRaidScope,
       scopes: scope.scopes || [],
       authorizeUrl: scope.hasRaidScope ? null : buildTwitchAuthorizeUrl({ forceVerify: true }),
+    };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('check-twitch-commercial-scope', async () => {
+  try {
+    const helix = createCommercialHelixClient();
+    const scope = await helix.validateToken();
+    return {
+      success: scope.ok,
+      hasCommercialScope: !!scope.hasCommercialScope,
+      scopes: scope.scopes || [],
+      authorizeUrl: scope.hasCommercialScope ? null : buildTwitchAuthorizeUrl({ forceVerify: true }),
     };
   } catch (err) {
     return { success: false, error: err.message || String(err) };
@@ -4849,6 +4915,17 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
         return;
       }
 
+      if (commandText === 'socials') {
+        const now = Date.now();
+        if (now - lastSocialsCommandAt < TWITCH_SOCIALS_COOLDOWN_MS) {
+          void sayInTwitchChat(`@${username} — !socials is on cooldown. Try again in a few seconds.`);
+          return;
+        }
+        lastSocialsCommandAt = now;
+        void postSocialsToChat({ requestedBy: displayName || username, source: 'chat' });
+        return;
+      }
+
       // !killcommand — Streamlabs end-stream (allowlist from .env VD_KILLCOMMAND_USERS)
       if (commandText === 'killcommand') {
         if (isKillcommandAuthorized(username)) {
@@ -5054,6 +5131,8 @@ let twitchClientId = null;
 let twitchUserName = null;
 const TWITCH_WEB_CLIENT_ID = 'gp762nuuoqcoxypju8c569th9wz7q5';
 let lastTwitchClipAt = 0;
+let lastSocialsCommandAt = 0;
+const TWITCH_SOCIALS_COOLDOWN_MS = 20000;
 
 function helixAccessToken() {
   let token = twitchToken;
@@ -5221,6 +5300,67 @@ async function sayInTwitchChat(text) {
   } catch (err) {
     console.error('💬 Failed to send Twitch chat:', err);
     return false;
+  }
+}
+
+let commercialHelixClient = null;
+function createCommercialHelixClient() {
+  if (commercialHelixClient) return commercialHelixClient;
+  commercialHelixClient = new TwitchCommercialClient({
+    fetchFn: fetch,
+    getClientId: helixClientId,
+    getAccessToken: helixAccessToken,
+    getBroadcasterId: async () => {
+      if (!twitchUserId) await getUserId();
+      return twitchUserId;
+    },
+  });
+  return commercialHelixClient;
+}
+
+async function postSocialsToChat({ source } = {}) {
+  try {
+    const profile = loadProfile(currentActiveProfile);
+    const line = formatSocialsLine(normalizeSocials(profile && profile.socials));
+    if (!line) {
+      return { ok: false, error: 'No social links configured in Preferences' };
+    }
+    const parts = splitChatMessages(line, TWITCH_CHAT_MAX_LEN);
+    for (const part of parts) {
+      const sent = await sayInTwitchChat(part);
+      if (!sent) {
+        return { ok: false, error: 'Twitch chat not connected' };
+      }
+    }
+    console.log(`🔗 Posted socials (${parts.length} message(s))`, source || '');
+    return { ok: true, messages: parts };
+  } catch (err) {
+    console.error('🔗 postSocialsToChat error:', err);
+    return { ok: false, error: err.message || String(err) };
+  }
+}
+
+async function startTwitchCommercial({ length, chatMessage, source } = {}) {
+  try {
+    const msg = chatMessage != null ? String(chatMessage).trim() : '';
+    if (msg) {
+      await sayInTwitchChat(msg);
+    }
+    const helix = createCommercialHelixClient();
+    const result = await helix.startCommercial({ length });
+    if (!result.ok) {
+      if (result.error) {
+        await sayInTwitchChat(result.error);
+      }
+      console.warn('📺 Commercial failed:', result.error || result.reason, source || '');
+      return result;
+    }
+    console.log('📺 Commercial started', result.length, 's', source || '');
+    return result;
+  } catch (err) {
+    const message = err.message || String(err);
+    await sayInTwitchChat(message);
+    return { ok: false, error: message };
   }
 }
 
@@ -6811,6 +6951,12 @@ app.whenReady().then(() => {
     try {
       console.log('Saving preferences:', preferences);
       saveStoredPreferences(preferences);
+      if (preferences && Array.isArray(preferences.socials)) {
+        const profile = loadProfile(currentActiveProfile);
+        profile.socials = normalizeSocials(preferences.socials);
+        saveProfile(currentActiveProfile, profile);
+        updateJarvisContext();
+      }
     } catch (e) { console.warn('save-preferences failed', e); }
   });
 
@@ -7097,6 +7243,8 @@ function updateJarvisContext() {
       triggerDeckButtonFn: triggerDeckButton,
       macroManager,
       createTwitchClip: createTwitchClipAndAnnounce,
+      postSocialsToChat,
+      startTwitchCommercial,
       meldRecordClip: async () => {
         const r = await meldSceneBridge('recordClip');
         return r && r.ok ? { ok: true } : { ok: false, reason: (r && (r.error || r.reason)) || 'meld-record-failed' };
@@ -7111,4 +7259,27 @@ ipcMain.handle('create-twitch-clip', async (event, opts = {}) => {
     requestedBy: opts.requestedBy || 'Deck',
     source: opts.source || 'button',
   });
+});
+
+ipcMain.handle('post-socials', async (_event, opts = {}) => {
+  const out = await postSocialsToChat({ source: opts.source || 'button' });
+  return out;
+});
+
+ipcMain.handle('start-twitch-commercial', async (_event, opts = {}) => {
+  const out = await startTwitchCommercial({
+    length: opts.length,
+    chatMessage: opts.chatMessage,
+    source: opts.source || 'button',
+  });
+  if (!out.ok) {
+    return {
+      success: false,
+      error: out.error,
+      needsReconnect: !!out.needsReconnect,
+      retry_after: out.retry_after,
+      reason: out.reason,
+    };
+  }
+  return { success: true, length: out.length, retry_after: out.retry_after };
 });

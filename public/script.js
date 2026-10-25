@@ -2217,6 +2217,7 @@ async function loadButtons() {
 
   // Load buttons from config
   const data = await window.electronAPI.getConfig();
+  window.__vdLastConfig = data;
   if (generation !== loadButtonsGeneration) return;
   console.log('🔍 Loaded config data:', data);
   console.log('🔍 Number of buttons:', data.buttons?.length || 0);
@@ -2286,6 +2287,20 @@ async function loadButtons() {
           '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#9146FF"/><text x="24" y="30" font-size="11" text-anchor="middle" fill="white">Clip</text></svg>',
         );
       appIconAlt = 'Twitch Clip';
+    } else if (button.type === 'post-socials') {
+      appIconSrc =
+        'data:image/svg+xml;charset=utf-8,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#1da1f2"/><text x="24" y="30" font-size="10" text-anchor="middle" fill="white">Social</text></svg>',
+        );
+      appIconAlt = 'Post Socials';
+    } else if (button.type === 'run-ad') {
+      appIconSrc =
+        'data:image/svg+xml;charset=utf-8,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#e91916"/><text x="24" y="30" font-size="11" text-anchor="middle" fill="white">Ad</text></svg>',
+        );
+      appIconAlt = 'Run Ad';
     } else if (button.type === 'app') {
       let iconData = await window.electronAPI.getAppIcon(button.src);
       if (generation !== loadButtonsGeneration) return;
@@ -2296,7 +2311,7 @@ async function loadButtons() {
     card.innerHTML = `
       <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
       <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
-      <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type === 'twitch-clip' ? 'Clip' : button.type}</div>
+      <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type === 'twitch-clip' ? 'Clip' : button.type === 'post-socials' ? 'Socials' : button.type === 'run-ad' ? 'Ad' : button.type}</div>
       <div class="sound-name">${button.name || button.label || button.sceneName || 'Unnamed'}</div>
       <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
     `;
@@ -3284,9 +3299,20 @@ const chatCommands = [
     command: '!checkin',
     description: 'View the top 5 check-in leaderboard',
     details: 'Shows the top 5 users with the most check-ins. If streaks are enabled, displays streak information. Each user has a 10-minute cooldown between uses.',
-    example: 'Type !checkin in chat to see the leaderboard.'
-  }
-  // Add more commands here in the future
+    example: 'Type !checkin in chat to see the leaderboard.',
+  },
+  {
+    command: '!clip',
+    description: 'Create a Twitch clip of the live stream',
+    details: 'Posts the clip link in chat when ready. Cooldown applies between uses.',
+    example: 'Type !clip while the stream is live.',
+  },
+  {
+    command: '!socials',
+    description: 'Show the streamer’s social links in chat',
+    details: 'Links come from Preferences → Social Links. 20-second cooldown per channel.',
+    example: 'Type !socials to see Twitter, YouTube, and other configured links.',
+  },
 ];
 
 function renderCommandsGuide() {
@@ -4016,11 +4042,13 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
             ...eventData.event,
           };
 
-    console.log('👤 Extracted user data:', userData);
+    const userDataWithSocials = enrichUserDataWithSocials(userData);
+
+    console.log('👤 Extracted user data:', userDataWithSocials);
     console.log('🎯 Alert type determined:', alertType, 'from event type:', eventData.type);
     
     // Trigger the alert
-    alertSystem.triggerAlertForEvent(alertType, userData);
+    alertSystem.triggerAlertForEvent(alertType, userDataWithSocials);
   } else {
     console.log('⚠️ No alert type mapping for event:', eventData.type);
   }
@@ -4272,6 +4300,24 @@ async function handleTrigger(button) {
         .catch((err) => console.error('Twitch clip failed:', err));
     } else {
       console.warn('createTwitchClip API not available');
+    }
+  } else if (button.type === 'post-socials') {
+    if (window.electronAPI && window.electronAPI.postSocials) {
+      window.electronAPI.postSocials({ source: 'button' }).catch((err) => console.error('Post socials failed:', err));
+    } else {
+      console.warn('postSocials API not available');
+    }
+  } else if (button.type === 'run-ad') {
+    if (window.electronAPI && window.electronAPI.startTwitchCommercial) {
+      window.electronAPI
+        .startTwitchCommercial({
+          length: button.commercialLength || 60,
+          chatMessage: button.chatMessage || '',
+          source: 'button',
+        })
+        .catch((err) => console.error('Twitch commercial failed:', err));
+    } else {
+      console.warn('startTwitchCommercial API not available');
     }
   } else if (button.type === "multi-media") {
     // Handle multi-media button trigger
@@ -4766,6 +4812,38 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     return;
   }
 
+  if (type === 'post-socials') {
+    window.electronAPI.addMedia({
+      label,
+      type: 'post-socials',
+      hotkey: completeHotkey,
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex, 10) : undefined,
+      chatCommand: chatCommand,
+    });
+    window.electronAPI.refreshHotkeys();
+    document.getElementById('settings-modal').classList.add('hidden');
+    if (window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+    return;
+  }
+
+  if (type === 'run-ad') {
+    const lenEl = document.getElementById('commercial-length-select');
+    const msgEl = document.getElementById('commercial-chat-message');
+    window.electronAPI.addMedia({
+      label,
+      type: 'run-ad',
+      commercialLength: lenEl ? lenEl.value : 60,
+      chatMessage: msgEl ? msgEl.value.trim() : '',
+      hotkey: completeHotkey,
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex, 10) : undefined,
+      chatCommand: chatCommand,
+    });
+    window.electronAPI.refreshHotkeys();
+    document.getElementById('settings-modal').classList.add('hidden');
+    if (window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+    return;
+  }
+
   if (type === 'meld-scene') {
     if (window.__meldSceneSubmitInProgress) return;
     window.__meldSceneSubmitInProgress = true;
@@ -5108,7 +5186,24 @@ window.editButton = async (index) => {
     if (typeInputEl) typeInputEl.value = 'twitch-clip';
     audioFileSection.style.display = 'none';
     appFileSection.style.display = 'none';
+    hideRunAdSection();
     if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
+    fileInput.required = false;
+    appFileInput.required = false;
+  } else if (btn.type === 'post-socials') {
+    if (typeInputEl) typeInputEl.value = 'post-socials';
+    audioFileSection.style.display = 'none';
+    appFileSection.style.display = 'none';
+    hideRunAdSection();
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
+    fileInput.required = false;
+    appFileInput.required = false;
+  } else if (btn.type === 'run-ad') {
+    if (typeInputEl) typeInputEl.value = 'run-ad';
+    audioFileSection.style.display = 'none';
+    appFileSection.style.display = 'none';
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
+    showRunAdSection(btn);
     fileInput.required = false;
     appFileInput.required = false;
   } else if (btn.type === 'meld-scene') {
@@ -5239,7 +5334,15 @@ window.editButton = async (index) => {
   }
   // Update modal title
   const buttonName = btn.name || btn.label || 'Unknown';
-  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : btn.type === 'multi-media' ? 'Multi-Media' : btn.type === 'meld-scene' ? 'Meld Scene' : btn.type === 'twitch-clip' ? 'Twitch Clip' : 'App'}: ${buttonName}`;
+  const typeLabel =
+    btn.type === 'audio' ? 'Sound'
+      : btn.type === 'multi-media' ? 'Multi-Media'
+        : btn.type === 'meld-scene' ? 'Meld Scene'
+          : btn.type === 'twitch-clip' ? 'Twitch Clip'
+            : btn.type === 'post-socials' ? 'Post Socials'
+              : btn.type === 'run-ad' ? 'Run Ad'
+                : 'App';
+  document.querySelector('#settings-modal h2').textContent = `Edit ${typeLabel}: ${buttonName}`;
   // Handle multi-media buttons differently
   if (btn.type === 'multi-media') {
     // Close the regular settings modal
@@ -12657,11 +12760,20 @@ window.toggleAllAlertsForType = function(alertType, enabled) {
 };
 
 // Global replace placeholders function
-function replacePlaceholders(text, userData) {
-  if (window.vdAlertPlaceholders && typeof window.vdAlertPlaceholders.replacePlaceholders === 'function') {
-    return window.vdAlertPlaceholders.replacePlaceholders(text, userData);
+function enrichUserDataWithSocials(userData) {
+  const socialsConfig = (window.__vdLastConfig && window.__vdLastConfig.socials) || [];
+  if (window.vdAlertPlaceholders && typeof window.vdAlertPlaceholders.appendSocialsToUserData === 'function') {
+    return window.vdAlertPlaceholders.appendSocialsToUserData(userData, socialsConfig);
   }
-  if (!userData) return text;
+  return userData || {};
+}
+
+function replacePlaceholders(text, userData) {
+  const enriched = enrichUserDataWithSocials(userData);
+  if (window.vdAlertPlaceholders && typeof window.vdAlertPlaceholders.replacePlaceholders === 'function') {
+    return window.vdAlertPlaceholders.replacePlaceholders(text, enriched);
+  }
+  if (!enriched) return text;
   return text;
 }
 
@@ -17479,6 +17591,8 @@ function setupButtonTypeSelection() {
   const multiMediaOption = document.querySelector('[data-type="multi-media"]');
   const meldSceneOption = document.querySelector('[data-type="meld-scene"]');
   const twitchClipOption = document.querySelector('[data-type="twitch-clip"]');
+  const postSocialsOption = document.querySelector('[data-type="post-socials"]');
+  const runAdOption = document.querySelector('[data-type="run-ad"]');
   const macroOption = document.querySelector('[data-type="macro"]');
   const cancelBtn = document.querySelector('.cancel-selection');
 
@@ -17511,6 +17625,20 @@ function setupButtonTypeSelection() {
     twitchClipOption.addEventListener('click', () => {
       selectionModal.classList.add('hidden');
       openTwitchClipForm();
+    });
+  }
+
+  if (postSocialsOption) {
+    postSocialsOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      openPostSocialsForm();
+    });
+  }
+
+  if (runAdOption) {
+    runAdOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      openRunAdForm();
     });
   }
 
@@ -17578,6 +17706,65 @@ function hideMeldSceneSection() {
   }
 }
 
+function hideRunAdSection() {
+  const section = document.getElementById('run-ad-section');
+  if (section) {
+    section.classList.add('hidden');
+    section.style.display = 'none';
+  }
+}
+
+function showRunAdSection(existingButton) {
+  const section = document.getElementById('run-ad-section');
+  if (section) {
+    section.classList.remove('hidden');
+    section.style.display = '';
+  }
+  const lenEl = document.getElementById('commercial-length-select');
+  const msgEl = document.getElementById('commercial-chat-message');
+  if (lenEl && existingButton && existingButton.commercialLength) {
+    lenEl.value = String(existingButton.commercialLength);
+  }
+  if (msgEl) {
+    msgEl.value = (existingButton && existingButton.chatMessage) || '';
+  }
+}
+
+function openPostSocialsForm() {
+  const settingsForm = document.getElementById('settings-form');
+  settingsForm.reset();
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'post-socials';
+  delete settingsForm.dataset.editingIndex;
+  delete settingsForm.dataset.editingId;
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  hideMeldSceneSection();
+  hideRunAdSection();
+  if (audioFileSection) audioFileSection.style.display = 'none';
+  if (appFileSection) appFileSection.style.display = 'none';
+  document.getElementById('settings-modal-title').textContent = 'Add Post Socials Button';
+  document.getElementById('settings-modal').classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
+}
+
+function openRunAdForm() {
+  const settingsForm = document.getElementById('settings-form');
+  settingsForm.reset();
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'run-ad';
+  delete settingsForm.dataset.editingIndex;
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  hideMeldSceneSection();
+  showRunAdSection(null);
+  if (audioFileSection) audioFileSection.style.display = 'none';
+  if (appFileSection) appFileSection.style.display = 'none';
+  document.getElementById('settings-modal-title').textContent = 'Add Run Ad Button';
+  document.getElementById('settings-modal').classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
+}
+
 function openTwitchClipForm() {
   const settingsForm = document.getElementById('settings-form');
   settingsForm.reset();
@@ -17596,6 +17783,7 @@ function openTwitchClipForm() {
   const audioFileSection = document.getElementById('audio-file-section');
   const appFileSection = document.getElementById('app-file-section');
   hideMeldSceneSection();
+  hideRunAdSection();
   if (audioFileSection) audioFileSection.style.display = 'none';
   if (appFileSection) appFileSection.style.display = 'none';
   const fileInput = document.getElementById('file-input');
@@ -17758,6 +17946,73 @@ function closePreferencesModal() {
   }
 }
 
+let socialsEditorRows = [];
+
+function renderSocialsEditor() {
+  const list = document.getElementById('socials-editor-list');
+  if (!list) return;
+  list.innerHTML = '';
+  socialsEditorRows.forEach((row, index) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'socials-editor-row';
+    wrap.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;';
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'preference-input';
+    nameInput.placeholder = 'Name (e.g. Twitter)';
+    nameInput.value = row.name || '';
+    nameInput.style.flex = '1 1 120px';
+    nameInput.addEventListener('input', () => { row.name = nameInput.value; });
+
+    const urlInput = document.createElement('input');
+    urlInput.type = 'url';
+    urlInput.className = 'preference-input';
+    urlInput.placeholder = 'https://…';
+    urlInput.value = row.url || '';
+    urlInput.style.flex = '2 1 200px';
+    urlInput.addEventListener('input', () => { row.url = urlInput.value; });
+
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.className = 'preference-button';
+    upBtn.textContent = '↑';
+    upBtn.disabled = index === 0;
+    upBtn.addEventListener('click', () => {
+      if (index === 0) return;
+      const tmp = socialsEditorRows[index - 1];
+      socialsEditorRows[index - 1] = socialsEditorRows[index];
+      socialsEditorRows[index] = tmp;
+      renderSocialsEditor();
+    });
+
+    const downBtn = document.createElement('button');
+    downBtn.type = 'button';
+    downBtn.className = 'preference-button';
+    downBtn.textContent = '↓';
+    downBtn.disabled = index === socialsEditorRows.length - 1;
+    downBtn.addEventListener('click', () => {
+      if (index >= socialsEditorRows.length - 1) return;
+      const tmp = socialsEditorRows[index + 1];
+      socialsEditorRows[index + 1] = socialsEditorRows[index];
+      socialsEditorRows[index] = tmp;
+      renderSocialsEditor();
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'preference-button';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', () => {
+      socialsEditorRows.splice(index, 1);
+      renderSocialsEditor();
+    });
+
+    wrap.append(nameInput, urlInput, upBtn, downBtn, removeBtn);
+    list.appendChild(wrap);
+  });
+}
+
 function loadPreferences() {
   // Load preferences from localStorage
   const preferences = JSON.parse(localStorage.getItem('vdPreferences') || '{}');
@@ -17765,6 +18020,24 @@ function loadPreferences() {
   // Update checkboxes
   document.getElementById('auto-update-checkbox').checked = preferences.autoUpdate !== false; // default to true
   
+  const loadSocialsFromConfig = async () => {
+    let socials = preferences.socials;
+    if (window.electronAPI && window.electronAPI.getConfig) {
+      try {
+        const cfg = await window.electronAPI.getConfig();
+        window.__vdLastConfig = cfg;
+        if (cfg && Array.isArray(cfg.socials)) socials = cfg.socials;
+      } catch (e) {
+        console.warn('Failed to load socials from config', e);
+      }
+    }
+    socialsEditorRows = Array.isArray(socials)
+      ? socials.map((s) => ({ name: s.name || '', url: s.url || '' }))
+      : [];
+    renderSocialsEditor();
+  };
+  void loadSocialsFromConfig();
+
   // Load Discord settings
   if (preferences.discord) {
     const discord = preferences.discord;
@@ -17800,8 +18073,13 @@ function loadPreferences() {
 }
 
 function savePreferences() {
+  const socials = socialsEditorRows
+    .map((r) => ({ name: String(r.name || '').trim(), url: String(r.url || '').trim() }))
+    .filter((r) => r.name && r.url);
+
   const preferences = {
     autoUpdate: document.getElementById('auto-update-checkbox').checked,
+    socials,
     discord: {
       webhookUrl: document.getElementById('discord-webhook-url')?.value.trim() || '',
       botToken: document.getElementById('discord-bot-token')?.value.trim() || '',
@@ -17821,7 +18099,8 @@ function savePreferences() {
   
   // Also update config with Discord settings for JARVIS tools
   if (window.electronAPI && window.electronAPI.updateConfig) {
-    window.electronAPI.updateConfig({ discord: preferences.discord });
+    window.electronAPI.updateConfig({ discord: preferences.discord, socials: preferences.socials });
+    if (window.__vdLastConfig) window.__vdLastConfig.socials = preferences.socials;
   }
   
   // Show success message
@@ -17878,6 +18157,14 @@ function initializePreferencesModal() {
   const saveBtn = document.getElementById('save-preferences');
   if (saveBtn) {
     saveBtn.addEventListener('click', savePreferences);
+  }
+
+  const socialsAddBtn = document.getElementById('socials-add-row');
+  if (socialsAddBtn) {
+    socialsAddBtn.addEventListener('click', () => {
+      socialsEditorRows.push({ name: '', url: '' });
+      renderSocialsEditor();
+    });
   }
   
   // Cancel button

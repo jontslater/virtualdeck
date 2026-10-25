@@ -3,6 +3,7 @@
 
   const api = lib || {
     replacePlaceholders: (text, userData) => text,
+    appendSocialsToUserData: (userData) => userData || {},
     buildUserDataFromTwitchEvent: () => ({}),
     buildChannelPointsUserData: () => ({}),
     resolveAlertSpeakText: () => '',

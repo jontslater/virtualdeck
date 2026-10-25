@@ -14,6 +14,12 @@ const { alertMatchesChannelPointsRedemption } = require('./lib/channel-points-al
 
 assert.ok(PLACEHOLDER_NAMES.includes('recipient'));
 assert.ok(PLACEHOLDER_NAMES.includes('count'));
+assert.ok(PLACEHOLDER_NAMES.includes('socials'));
+
+assert.strictEqual(
+  replacePlaceholders('Links: {socials}', { socials: 'Twitter: https://x.com/u' }),
+  'Links: Twitter: https://x.com/u',
+);
 
 assert.strictEqual(
   replacePlaceholders('{username} gifted {count} to {recipient}', {
