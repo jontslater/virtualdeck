@@ -60,6 +60,11 @@ const {
 const { createTwitchOAuthHost } = require('./lib/twitch-oauth-host');
 const { encodeField, decodeField } = require('./lib/portable-secret');
 const { speakViaDevApi } = require('./lib/raven-dev-speak');
+const {
+  buildRavenPlayAudioMessage,
+  RAVEN_AI_AUDIO_OVERLAY,
+  hasAiAudioOverlayClients,
+} = require('./lib/ai-audio-overlay');
 const { isValidTwitchLogin, normalizeTwitchLogin } = require('./lib/twitch-login');
 const { sanitizeTwitchProfileImageUrl: sanitizeTwitchProfileImageUrlLib } = require('./lib/twitch-profile-image');
 
@@ -1842,40 +1847,19 @@ function handleAIAudioCommands() {
               console.log('🎵 [AI Audio] Sent to dashboard (same pipeline as audio buttons)');
             }
 
-            const buttonTriggerMessage = {
-              type: 'buttonTrigger',
-              options: {
-                name: 'AI TTS',
-                clearPrevious: true,
-              },
-              centerMedia: [
-                {
-                  type: 'audio',
-                  src: audioUrl,
-                  url: audioUrl,
-                  volume: command.volume || 1.0,
-                  loop: false,
-                }
-              ],
-              slots: {},
-            };
-
-            const playAudioMessage = {
-              type: 'play-audio',
-              src: audioUrl,
-              url: audioUrl,
+            const playAudioMessage = buildRavenPlayAudioMessage(
               audioUrl,
-              volume: command.volume || 1.0,
-            };
+              command.volume || 1.0,
+            );
 
             console.log(`🎵 [AI Audio] Overlay clients: ${overlayClients.size}`);
-            const aiAudioClients = overlayRegistry.get('aiAudio');
-            if (aiAudioClients && aiAudioClients.size > 0) {
-              broadcastToOverlay(playAudioMessage, 'aiAudio');
+            broadcastToOverlay(playAudioMessage, RAVEN_AI_AUDIO_OVERLAY);
+            if (hasAiAudioOverlayClients(overlayRegistry)) {
               console.log('🎵 [AI Audio] Sent to aiAudio OBS browser source');
             } else {
-              broadcastToOverlay(buttonTriggerMessage);
-              console.log('🎵 [AI Audio] aiAudio overlay not connected — broadcast to all overlays');
+              console.log(
+                '🎵 [AI Audio] aiAudio overlay not connected — dashboard playback only (no broadcast to other overlays)',
+              );
             }
             console.log('═══════════════════════════════════════════════════════\n');
           } else {
