@@ -64,6 +64,33 @@ const pick = (u, ms = MACROS) => { const r = matchMacroByUtterance(ms, u, WAKE);
     assert.strictEqual(pick('switched scene to', ms), 's2');
     assert.strictEqual(pick('switch to scene', ms), null);
   });
+  await test('hey raven run ads / run ad (Run Ad macro) with optional wake and plural ad', async () => {
+    const ms = [
+      { id: 'run-ad', name: 'Run Ad', enabled: true, triggers: { phrase: 'hey raven, run ads' } },
+    ];
+    assert.strictEqual(pick('hey raven, run ads', ms), 'run-ad');
+    assert.strictEqual(pick('hey raven run ad', ms), 'run-ad');
+    assert.strictEqual(pick('raven run ads please', ms), 'run-ad');
+  });
+
+  await test('lemon squeezy phrase with hey raven prefix', async () => {
+    const ms = [
+      { id: 'lemon-squeezy', name: 'Lemon Squeezy', enabled: true, triggers: { phrase: 'hey raven, lemon squeezy' } },
+    ];
+    assert.strictEqual(pick('hey raven, lemon squeezy', ms), 'lemon-squeezy');
+    assert.strictEqual(pick('hey raven lemon squeezy', ms), 'lemon-squeezy');
+  });
+
+  await test('multi-word HOST_WAKE_NAMES strip (Hey Raven as one wake name)', async () => {
+    const ms = [
+      { id: 'run-ad', name: 'Run Ad', enabled: true, triggers: { phrase: 'run ads' } },
+    ];
+    const wake = { wakeNames: ['Hey Raven'] };
+    const r = matchMacroByUtterance(ms, 'hey raven run ads', wake);
+    assert.strictEqual(r.matched, true);
+    assert.strictEqual(r.macro.id, 'run-ad');
+  });
+
   await test('longest phrase wins; true ties are reported as ambiguous instead of guessing', async () => {
     const ms = [
       { id: 'a', name: 'A', enabled: true, triggers: { phrase: 'go live' } },

@@ -1696,6 +1696,32 @@ function handleAIConfigAPI(req, res) {
           res.end(JSON.stringify({ error: err.message }));
         }
       });
+    } else if (path === '/api/ai/macros' && req.method === 'GET') {
+      const { formatMacrosForRaven } = require('./lib/raven-macro-api');
+      const macros = macroManager ? formatMacrosForRaven(macroManager.list()) : [];
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ macros, count: macros.length }));
+    } else if (path === '/api/ai/trigger-macro' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk.toString(); });
+      req.on('end', async () => {
+        try {
+          const data = JSON.parse(body || '{}');
+          const utterance = String(data.utterance || data.text || data.phrase || data.transcript || '').trim();
+          if (!utterance) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'utterance required' }));
+            return;
+          }
+          const result = await jarvisRegistry.invoke('run_voice_macro', { utterance });
+          const payload = result.result || result;
+          res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(payload));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
     } else {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
