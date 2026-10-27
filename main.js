@@ -1698,6 +1698,7 @@ function handleAIConfigAPI(req, res) {
       });
     } else if (path === '/api/ai/macros' && req.method === 'GET') {
       const { formatMacrosForRaven } = require('./lib/raven-macro-api');
+      if (macroManager) macroManager.reload();
       const macros = macroManager ? formatMacrosForRaven(macroManager.list()) : [];
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ macros, count: macros.length }));
@@ -1713,6 +1714,7 @@ function handleAIConfigAPI(req, res) {
             res.end(JSON.stringify({ error: 'utterance required' }));
             return;
           }
+          if (macroManager) macroManager.reload();
           const result = await jarvisRegistry.invoke('run_voice_macro', { utterance });
           const payload = result.result || result;
           res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
@@ -2748,6 +2750,7 @@ ipcMain.handle('delete-macro', async (event, id) => {
 // Re-validates against the macro allowlist / start_raid confirm rule before running.
 async function executeMacroById(id, source) {
   if (!macroManager) return { success: false, error: 'Macro manager not available', steps: [] };
+  macroManager.reload();
   const macro = macroManager.get(id);
   if (!macro) return { success: false, error: `Macro '${id}' not found`, steps: [] };
   const validation = macroManager.validate(macro);

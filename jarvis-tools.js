@@ -449,7 +449,14 @@ registry.runMacroSteps = async function runMacroSteps(macro) {
   };
 };
 
+function refreshMacroManager(macroManager) {
+  if (!macroManager) return;
+  if (typeof macroManager.reload === 'function') macroManager.reload();
+  else if (typeof macroManager.load === 'function') macroManager.load();
+}
+
 function resolveMacro(macroManager, ref) {
+  refreshMacroManager(macroManager);
   if (!ref) return null;
   const direct = macroManager.get(ref);
   if (direct) return { id: ref, ...direct };
@@ -517,6 +524,7 @@ registry.register(
   async (args, context) => {
     const { macroManager } = context;
     if (!macroManager) return { success: false, error: 'Macro manager not available' };
+    refreshMacroManager(macroManager);
     const macros = macroManager.list().map(m => ({
       id: m.id,
       name: m.name,
@@ -546,6 +554,7 @@ registry.register(
   async (args, context) => {
     const { macroManager } = context;
     if (!macroManager) return { success: false, matched: false, error: 'Macro manager not available' };
+    refreshMacroManager(macroManager);
     let wakeNames = [];
     try {
       if (macroManager.macrosPath) {
@@ -1201,4 +1210,4 @@ registry.register(
   },
 );
 
-module.exports = { registry };
+module.exports = { registry, refreshMacroManager };

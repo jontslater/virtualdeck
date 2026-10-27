@@ -198,6 +198,42 @@ const pick = (u, ms = MACROS) => { const r = matchMacroByUtterance(ms, u, WAKE);
     assert.deepStrictEqual(gl, { id: 'going-live', name: 'Going Live', description: 'Start stream', phrase: 'raven we are going live', enabled: true, steps: ['change_scene', 'discord_announce_live'] });
   });
 
+  await test('run_voice_macro matches macro created after MacroManager init (editor save mid-session)', async () => {
+    macroManager.set('lemon-squeezy', {
+      name: 'Lemon Squeezy',
+      enabled: true,
+      triggers: { phrase: 'hey raven, lemon squeezy' },
+      steps: [{ tool: 'change_scene', arguments: { sceneName: 'Lemon' }, description: 'Lemon scene' }],
+    });
+    calls.length = 0;
+    executorCalls.length = 0;
+    const r = (await registry.invoke('run_voice_macro', { utterance: 'hey raven, lemon squeezy' })).result;
+    assert.strictEqual(r.matched, true);
+    assert.strictEqual(r.id, 'lemon-squeezy');
+    assert.deepStrictEqual(executorCalls, [['lemon-squeezy', 'voice']]);
+    assert.deepStrictEqual(calls, [['change_scene', { sceneName: 'Lemon' }]]);
+  });
+
+  await test('run_voice_macro and list_macros reload macros.json written after init', async () => {
+    const filePath = path.join(dir, 'macros.json');
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    data['disk-only'] = {
+      name: 'Disk Only',
+      enabled: true,
+      triggers: { phrase: 'disk only macro please' },
+      steps: [{ tool: 'change_scene', arguments: { sceneName: 'DiskScene' } }],
+    };
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    const listed = (await registry.invoke('list_macros', {})).result;
+    assert.ok(listed.macros.some((m) => m.id === 'disk-only'), 'list_macros should see disk-only macro');
+    calls.length = 0;
+    executorCalls.length = 0;
+    const r = (await registry.invoke('run_voice_macro', { utterance: 'disk only macro please' })).result;
+    assert.strictEqual(r.matched, true);
+    assert.strictEqual(r.id, 'disk-only');
+    assert.deepStrictEqual(calls, [['change_scene', { sceneName: 'DiskScene' }]]);
+  });
+
   await test('without the main executor (unit context) run_macro still runs steps', async () => {
     registry.setContext({ executeMacroById: undefined });
     calls.length = 0;
