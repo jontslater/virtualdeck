@@ -317,9 +317,22 @@ function showProfileDeleteDialog(profiles) {
   });
 }
 
-// Custom confirm dialog for Electron
-function showCustomConfirm(message) {
+// Custom confirm dialog for Electron (Escape, Cancel, and click-outside dismiss without confirming)
+function showCustomConfirm(message, options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const confirmLabel = opts.confirmLabel || 'Yes';
+  const cancelLabel = opts.cancelLabel || 'Cancel';
+  const showClose = opts.showClose !== false;
+
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+      cleanup();
+    };
+
     // Create modal overlay
     const overlay = document.createElement('div');
     overlay.setAttribute('data-vd-dialog', '1'); // Esc handled by this dialog, not the global modal closer
@@ -346,7 +359,29 @@ function showCustomConfirm(message) {
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
       min-width: 400px;
       max-width: 500px;
+      position: relative;
     `;
+    dialog.addEventListener('click', (e) => e.stopPropagation());
+
+    const headerRow = document.createElement('div');
+    headerRow.style.cssText = 'display:flex;justify-content:flex-end;margin:-8px -8px 8px 0;';
+    if (showClose) {
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.setAttribute('aria-label', 'Close');
+      closeBtn.textContent = '✕';
+      closeBtn.style.cssText = `
+        background: transparent;
+        border: none;
+        color: var(--text-secondary, #aaa);
+        font-size: 18px;
+        cursor: pointer;
+        padding: 4px 8px;
+        line-height: 1;
+      `;
+      closeBtn.addEventListener('click', () => finish(false));
+      headerRow.appendChild(closeBtn);
+    }
     
     // Create message
     const messageEl = document.createElement('div');
@@ -366,9 +401,9 @@ function showCustomConfirm(message) {
       justify-content: flex-end;
     `;
     
-    // Create Yes button
+    // Create confirm button
     const yesButton = document.createElement('button');
-    yesButton.textContent = 'Yes';
+    yesButton.textContent = confirmLabel;
     yesButton.style.cssText = `
       padding: 10px 20px;
       background: #dc3545;
@@ -386,9 +421,8 @@ function showCustomConfirm(message) {
       yesButton.style.background = '#dc3545';
     });
     
-    // Create No button
     const noButton = document.createElement('button');
-    noButton.textContent = 'No';
+    noButton.textContent = cancelLabel;
     noButton.style.cssText = `
       padding: 10px 20px;
       background: var(--bg-secondary, #2a2a2a);
@@ -409,6 +443,7 @@ function showCustomConfirm(message) {
     // Assemble dialog
     buttonsContainer.appendChild(noButton);
     buttonsContainer.appendChild(yesButton);
+    if (showClose) dialog.appendChild(headerRow);
     dialog.appendChild(messageEl);
     dialog.appendChild(buttonsContainer);
     overlay.appendChild(dialog);
@@ -419,37 +454,41 @@ function showCustomConfirm(message) {
       if (overlay.parentNode) {
         overlay.parentNode.removeChild(overlay);
       }
-      // Every close path (buttons, Esc, Enter) drops the keydown listener and restores focus.
       document.removeEventListener('keydown', handleKeydown);
       if (previousFocus && previousFocus !== document.body && document.contains(previousFocus) && typeof previousFocus.focus === 'function') {
         try { previousFocus.focus(); } catch (_) {}
       }
     };
     
-    yesButton.addEventListener('click', () => {
-      resolve(true);
-      cleanup();
-    });
+    yesButton.addEventListener('click', () => finish(true));
+    noButton.addEventListener('click', () => finish(false));
+    overlay.addEventListener('click', () => finish(false));
     
-    noButton.addEventListener('click', () => {
-      resolve(false);
-      cleanup();
-    });
-    
-    // Close on Escape
     const handleKeydown = (e) => {
       if (e.key === 'Escape') {
-        resolve(false);
-        cleanup();
-        document.removeEventListener('keydown', handleKeydown);
+        e.preventDefault();
+        e.stopPropagation();
+        finish(false);
       }
     };
     document.addEventListener('keydown', handleKeydown);
     
-    // Show dialog
     document.body.appendChild(overlay);
-    yesButton.focus();
+    noButton.focus();
   });
+}
+
+async function requestAppQuit() {
+  const confirmed = await showCustomConfirm('Quit VirtualDeck?', {
+    confirmLabel: 'Quit',
+    cancelLabel: 'Cancel',
+  });
+  if (!confirmed) return;
+  if (window.electronAPI && typeof window.electronAPI.closeWindow === 'function') {
+    window.electronAPI.closeWindow();
+  } else {
+    try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('window-close'); } catch (e) {}
+  }
 }
 
 function showCustomAlert(message, type = 'info') {
@@ -6688,12 +6727,7 @@ function setupAppToolbar() {
     btnClose.addEventListener('click', (e) => {
       console.log('🔧 CLOSE BUTTON CLICKED!');
     e.stopPropagation();
-      if (window.electronAPI && typeof window.electronAPI.closeWindow === 'function') {
-        console.log('🔧 Calling closeWindow()');
-        window.electronAPI.closeWindow();
-      } else {
-        console.log('🔧 closeWindow not available');
-      }
+      requestAppQuit();
     });
   }
 
@@ -14475,12 +14509,8 @@ function setupLeftAppMenu() {
   if (quitBtn) {
     quitBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (window.electronAPI && typeof window.electronAPI.closeWindow === 'function') {
-        window.electronAPI.closeWindow();
-      } else {
-        // fallback: send ipc if available
-        try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('window-close'); } catch (e) {}
-      }
+      closeMenu();
+      requestAppQuit();
     });
   }
 

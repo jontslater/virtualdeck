@@ -57,6 +57,7 @@ const {
   buildDeckButtonCatalog,
   normalizeMacroTriggerButtonSteps,
 } = require('./lib/macro-button-picker');
+const { createTwitchMessageDeduper } = require('./lib/twitch-chat-dedupe');
 const { createTwitchOAuthHost } = require('./lib/twitch-oauth-host');
 const { encodeField, decodeField } = require('./lib/portable-secret');
 const { speakViaDevApi } = require('./lib/raven-dev-speak');
@@ -4474,6 +4475,27 @@ async function handleKillcommandFromChat(username) {
 }
 
 let twitchClient = null;
+let twitchChatConnectGeneration = 0;
+const twitchChatMessageDeduper = createTwitchMessageDeduper();
+
+async function stopTwitchChatConnection() {
+  const client = twitchClient;
+  twitchClient = null;
+  if (!client) return;
+  try {
+    client.removeAllListeners();
+  } catch (e) {
+    console.warn('Twitch chat removeAllListeners failed:', e && e.message);
+  }
+  try {
+    if (typeof client.disconnect === 'function') {
+      await client.disconnect();
+    }
+  } catch (e) {
+    console.warn('Twitch chat disconnect failed:', e && e.message);
+  }
+}
+
 // In-memory cache of recent chat user state (badges, mod flag) to enable simple VIP/mod checks
 const recentChatUserState = new Map();
 // Track users who have chatted this session (for walk-on alerts)
@@ -4660,6 +4682,20 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
     console.error('Missing Twitch credentials');
     return;
   }
+  twitchChatConnectGeneration += 1;
+  const connectGeneration = twitchChatConnectGeneration;
+  void (async () => {
+    await stopTwitchChatConnection();
+    if (connectGeneration !== twitchChatConnectGeneration) {
+      console.log('Twitch chat connect superseded by a newer request; skipping');
+      return;
+    }
+    twitchChatMessageDeduper.reset();
+    beginTwitchChatClient({ username, oauth, clientId, connectGeneration });
+  })();
+}
+
+function beginTwitchChatClient({ username, oauth, clientId, connectGeneration }) {
   const opts = {
     identity: {
       username: username,
@@ -4727,7 +4763,12 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
   });
   twitchClient.on('message', (channel, tags, message, self) => {
     if (self) return;
-    
+    if (connectGeneration !== twitchChatConnectGeneration) return;
+    if (twitchChatMessageDeduper.isDuplicate(tags)) {
+      console.log('[Twitch Chat] Skipping duplicate message id:', tags && tags.id);
+      return;
+    }
+
     const username = tags.username;
     const userId = tags['user-id'];
     const displayName = tags['display-name'] || username;
@@ -7100,11 +7141,8 @@ ipcMain.on('twitch-clear-creds', async (event) => {
     } catch (e) { console.warn('Error cleaning created subscriptions state', e); }
     // Disconnect chat client
     try {
-      if (twitchClient && typeof twitchClient.disconnect === 'function') {
-        await twitchClient.disconnect();
-        twitchClient = null;
-        console.log('Disconnected twitch chat client');
-      }
+      await stopTwitchChatConnection();
+      console.log('Disconnected twitch chat client');
     } catch (e) { console.warn('Error disconnecting twitch client', e); }
     // Clear in-memory state
     eventSubSessionId = null;

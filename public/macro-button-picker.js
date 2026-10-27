@@ -71,15 +71,31 @@
     }
   }
 
-  function applySelection(step, select) {
+  function applySelection(step, select, catalog) {
     if (!step.arguments) step.arguments = {};
-    const opt = select.selectedOptions && select.selectedOptions[0];
-    if (!opt || !opt.value) {
+    const value = select.value;
+    if (!value) {
       delete step.arguments.buttonId;
+      delete step.arguments.label;
       return;
     }
-    step.arguments.buttonId = opt.value;
-    step.arguments.label = opt.dataset.label || opt.textContent || '';
+    const hit = (catalog || []).find((c) => c.buttonId === value);
+    step.arguments.buttonId = value;
+    step.arguments.label = hit ? hit.label : select.selectedOptions?.[0]?.dataset?.label || '';
+  }
+
+  function formatSelectedSummary(step, catalog) {
+    const id = step.arguments && step.arguments.buttonId;
+    if (!id) return 'No button selected';
+    const hit = (catalog || []).find((c) => c.buttonId === id);
+    if (hit) return `Selected: ${hit.displayLabel || hit.label} (id ${id})`;
+    const label = step.arguments.label || 'Unknown';
+    return `Selected: ${label} (id ${id})`;
+  }
+
+  function updateSelectionUi(step, select, catalog, summaryEl) {
+    applySelection(step, select, catalog);
+    if (summaryEl) summaryEl.textContent = formatSelectedSummary(step, catalog);
   }
 
   /**
@@ -97,6 +113,9 @@
     const select = el('select', 'button-picker-select');
     select.size = 6;
 
+    const selectedSummary = el('div', 'button-picker-selected scene-picker-status ok');
+    selectedSummary.style.marginTop = '6px';
+
     const status = el('div', 'scene-picker-status');
     const warn = el('div', 'scene-picker-status');
     warn.style.color = 'var(--warning, #ff9800)';
@@ -104,6 +123,7 @@
     wrap.appendChild(el('label', null, 'Deck button:'));
     wrap.appendChild(search);
     wrap.appendChild(select);
+    wrap.appendChild(selectedSummary);
 
     const refreshBtn = el('button', 'step-btn scene-refresh-btn', '↻');
     refreshBtn.type = 'button';
@@ -115,6 +135,23 @@
     function showWarning(msg) {
       warn.textContent = msg || '';
       warn.classList.toggle('ok', false);
+    }
+
+    function syncWarnings(catalog) {
+      const selectedId = step.arguments.buttonId || '';
+      const hit = selectedId ? catalog.find((c) => c.buttonId === selectedId) : null;
+      if (selectedId && !hit) {
+        showWarning(
+          `This button was deleted or moved. Pick another button (saved id: ${selectedId}${step.arguments.label ? `, was "${step.arguments.label}"` : ''}).`,
+        );
+      } else if (!selectedId && step.arguments.label) {
+        showWarning(
+          'This step uses an older name-only reference. Choose a button to save a stable id.',
+        );
+      } else {
+        showWarning('');
+      }
+      selectedSummary.textContent = formatSelectedSummary(step, catalog);
     }
 
     async function refresh() {
@@ -132,29 +169,21 @@
 
       const selectedId = step.arguments.buttonId || '';
       populateSelect(select, catalog, selectedId, search.value);
+      syncWarnings(catalog);
+    }
 
-      const hit = selectedId ? catalog.find((c) => c.buttonId === selectedId) : null;
-      if (selectedId && !hit) {
-        showWarning(
-          `This button was deleted or moved. Pick another button (saved id: ${selectedId}${step.arguments.label ? `, was "${step.arguments.label}"` : ''}).`,
-        );
-      } else if (!selectedId && step.arguments.label) {
-        showWarning(
-          'This step uses an older name-only reference. Choose a button to save a stable id.',
-        );
-      } else {
-        showWarning('');
-      }
+    function onPick(catalog) {
+      updateSelectionUi(step, select, catalog, selectedSummary);
+      syncWarnings(catalog);
     }
 
     search.addEventListener('input', () => {
       populateSelect(select, catalogCache || [], step.arguments.buttonId, search.value);
     });
 
-    select.addEventListener('change', () => {
-      applySelection(step, select);
-      refresh();
-    });
+    select.addEventListener('change', () => onPick(catalogCache || []));
+    select.addEventListener('click', () => onPick(catalogCache || []));
+    select.addEventListener('keyup', () => onPick(catalogCache || []));
 
     refreshBtn.addEventListener('click', () => refresh());
 
@@ -171,5 +200,7 @@
     loadCatalog,
     createButtonPicker,
     clearCatalogCache,
+    applySelection,
+    formatSelectedSummary,
   };
 });

@@ -10,6 +10,7 @@ const {
   normalizeMacroTriggerButtonSteps,
   resolveTriggerButtonByLabel,
   filterCatalogBySearch,
+  applyTriggerButtonPick,
 } = require('./lib/macro-button-picker');
 const { registry } = require('./jarvis-tools');
 const MacroManager = require('./lib/macro-manager');
@@ -93,6 +94,18 @@ const catalog = buildDeckButtonCatalog([
   await test('filterCatalogBySearch matches label and profile name', () => {
     const hits = filterCatalogBySearch(catalog, 'alt');
     assert.ok(hits.some((h) => h.profileName === 'Alt Deck'));
+  });
+
+  await test('applyTriggerButtonPick stores buttonId and canonical label', () => {
+    const args = applyTriggerButtonPick({}, 'b_2', catalog);
+    assert.strictEqual(args.buttonId, 'b_2');
+    assert.strictEqual(args.label, 'BRB');
+  });
+
+  await test('applyTriggerButtonPick clears args when selection empty', () => {
+    const args = applyTriggerButtonPick({ buttonId: 'b_1', label: 'Sound A' }, '', catalog);
+    assert.strictEqual(args.buttonId, undefined);
+    assert.strictEqual(args.label, undefined);
   });
 
   await test('trigger_button JARVIS tool triggers by buttonId via triggerDeckButtonFn', async () => {
