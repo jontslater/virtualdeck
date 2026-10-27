@@ -6769,6 +6769,45 @@ app.whenReady().then(() => {
     });
   }
 
+  function fetchLocalJson(url, timeoutMs = 1500) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (payload) => {
+        if (settled) return;
+        settled = true;
+        resolve(payload);
+      };
+      try {
+        const req = http.get(url, (res) => {
+          const chunks = [];
+          res.on('data', (c) => chunks.push(c));
+          res.on('end', () => {
+            const status = typeof res.statusCode === 'number' ? res.statusCode : null;
+            const raw = Buffer.concat(chunks).toString('utf8');
+            let body = null;
+            try {
+              body = raw ? JSON.parse(raw) : null;
+            } catch {
+              body = null;
+            }
+            finish({
+              ok: status !== null && status >= 200 && status < 300,
+              status,
+              body,
+            });
+          });
+        });
+        req.setTimeout(timeoutMs, () => {
+          req.destroy();
+          finish({ ok: false, status: null, body: null });
+        });
+        req.on('error', () => finish({ ok: false, status: null, body: null }));
+      } catch (err) {
+        finish({ ok: false, status: null, body: null });
+      }
+    });
+  }
+
   async function probeLocalHttp(url) {
     const status = await probeLocalHttpStatus(url);
     return status !== null && status >= 200 && status < 300;
@@ -6778,7 +6817,9 @@ app.whenReady().then(() => {
 
   ipcMain.handle('raven-connection-status', async () => {
     const running = ravenHost.isRunning();
-    const controllerOk = await probeLocalHttp('http://127.0.0.1:3004/api/ai/status');
+    const controllerStatusUrl = 'http://127.0.0.1:3004/api/ai/status';
+    const controllerProbe = await fetchLocalJson(controllerStatusUrl);
+    const controllerOk = controllerProbe.ok;
     const bridgeStatus = await probeLocalHttpStatus('http://127.0.0.1:3000/api/ai/enabled');
     const bridgeOk = bridgeStatus !== null && bridgeStatus < 500;
     const connected = controllerOk || bridgeOk;
@@ -6786,6 +6827,8 @@ app.whenReady().then(() => {
     if (controllerOk) source = 'controller';
     else if (bridgeOk) source = bridgeStatus === 404 || bridgeStatus === 405 ? 'bridge-legacy' : 'bridge';
     else if (running) source = 'process';
+    const aiStatus = controllerProbe.body && typeof controllerProbe.body === 'object' ? controllerProbe.body : null;
+    const userData = app.getPath('userData');
     return {
       running,
       connected: connected || running,
@@ -6793,6 +6836,12 @@ app.whenReady().then(() => {
       source: connected ? source : (running ? 'process' : 'offline'),
       controllerOk,
       bridgeStatus,
+      aiStatus,
+      logPaths: {
+        raven: path.join(userData, 'raven.log'),
+        aiAudioWatcher: path.join(userData, 'ai-audio-watcher.log'),
+      },
+      statusUrl: controllerStatusUrl,
     };
   });
 

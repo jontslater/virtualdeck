@@ -8543,6 +8543,64 @@ function setupOverlayWidget() {
       return AI_STATUS_API_BASE_URL || ravenCtl.getControllerBaseUrl();
     }
 
+    const connectionDetailsEl = document.getElementById('ai-connection-details');
+
+    function formatRavenStatusNotes(aiStatus) {
+      if (!aiStatus || typeof aiStatus !== 'object') return { lines: [], hasError: false };
+      const lines = [];
+      let hasError = false;
+      try {
+        const notes = typeof window.vdRavenStatusNotes === 'function' ? window.vdRavenStatusNotes(aiStatus) : [];
+        for (const note of notes) {
+          if (note && note.text) lines.push(note.text);
+          if (note && note.level === 'error') hasError = true;
+        }
+      } catch (_) { /* ignore */ }
+      const mode = aiStatus.currentMode || aiStatus.mode;
+      if (mode === 'MUTED' || mode === 'OFF') {
+        lines.push('Raven mode is MUTED — speech and wake replies are disabled');
+        hasError = true;
+      }
+      if (aiStatus.state && aiStatus.state !== 'idle') {
+        lines.unshift(`State: ${aiStatus.state}`);
+      }
+      return { lines, hasError };
+    }
+
+    function renderAiConnectionDetails(result, aiStatus) {
+      if (!connectionDetailsEl) return;
+      const parts = [];
+      if (result && result.running && !result.controllerOk) {
+        parts.push('Raven process is running but controller API is not responding (port 3004). Check raven.log for crashes or port conflicts.');
+      }
+      const { lines, hasError } = formatRavenStatusNotes(aiStatus);
+      for (const line of lines) parts.push(line);
+      if (!parts.length && result && result.statusUrl) {
+        connectionDetailsEl.textContent = '';
+        connectionDetailsEl.style.color = '';
+        connectionDetailsEl.title = result.statusUrl;
+        return;
+      }
+      connectionDetailsEl.textContent = parts.join(' • ');
+      connectionDetailsEl.style.color = hasError ? 'var(--danger-color, #e5484d)' : 'var(--text-tertiary)';
+      const logHint = result && result.logPaths && result.logPaths.raven ? ` Logs: ${result.logPaths.raven}` : '';
+      connectionDetailsEl.title = [
+        result && result.statusUrl ? `Status: ${result.statusUrl}` : '',
+        logHint,
+      ].filter(Boolean).join(' — ');
+    }
+
+    async function fetchControllerAiStatusForDashboard() {
+      try {
+        const base = getDashboardControllerBase();
+        const response = await fetch(`${base}/api/ai/status`);
+        if (!response.ok) return null;
+        return await response.json();
+      } catch (e) {
+        return null;
+      }
+    }
+
     // Controller /api/ai/status is source of truth; bridge /enabled only when it exists
     async function loadInitialAIState() {
       try {
@@ -8618,6 +8676,10 @@ function setupOverlayWidget() {
         if (window.vdServiceGates && window.vdServiceGates.refreshRavenGate) {
           window.vdServiceGates.refreshRavenGate().catch(() => {});
         }
+        let aiStatus = result && result.aiStatus ? result.aiStatus : null;
+        if (!aiStatus && result && (result.controllerOk || result.connected)) {
+          aiStatus = await fetchControllerAiStatusForDashboard();
+        }
         if (result && result.connected) {
           updateConnectionStatus('connected');
           if (connectionStatusLabel && result.source) {
@@ -8630,9 +8692,11 @@ function setupOverlayWidget() {
             connectionStatusLabel.title = 'Start Raven: Tools → Raven AI → Start Raven AI';
           }
         }
+        renderAiConnectionDetails(result || {}, aiStatus);
       } catch (err) {
         console.debug('Raven dashboard connection check failed:', err);
         updateConnectionStatus('disconnected');
+        renderAiConnectionDetails({}, null);
       } finally {
         connectionCheckInFlight = false;
       }
@@ -9190,11 +9254,25 @@ function setupOverlayWidget() {
         if (activeFeatures.length > 0) {
           statusText.textContent = `Active: ${activeFeatures.join(', ')}`;
           statusText.style.color = 'var(--accent-primary)';
-          if (statusDetails) statusDetails.textContent = '';
         } else {
           statusText.textContent = aiStateDisplay;
           statusText.style.color = statusColor;
-          if (statusDetails) statusDetails.textContent = '';
+        }
+        if (statusDetails) {
+          try {
+            const aiStatusResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/status`);
+            if (aiStatusResponse.ok) {
+              const aiStatus = await aiStatusResponse.json();
+              const notes = typeof window.vdRavenStatusNotes === 'function' ? window.vdRavenStatusNotes(aiStatus) : [];
+              const detailParts = notes.map((n) => n.text).filter(Boolean);
+              statusDetails.textContent = detailParts.join(' • ');
+              statusDetails.style.color = notes.some((n) => n.level === 'error') ? 'var(--danger-color, #e5484d)' : '';
+            } else {
+              statusDetails.textContent = '';
+            }
+          } catch (e) {
+            statusDetails.textContent = '';
+          }
         }
       }
     } catch (err) {
