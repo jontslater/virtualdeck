@@ -6817,8 +6817,22 @@ app.whenReady().then(() => {
 
   ipcMain.handle('raven-connection-status', async () => {
     const running = ravenHost.isRunning();
-    const controllerStatusUrl = 'http://127.0.0.1:3004/api/ai/status';
-    const controllerProbe = await fetchLocalJson(controllerStatusUrl);
+    // AITuber controller (Raven brain): default 3004; sidecar may use +10 offset (3014) if 3004 is busy.
+    const controllerStatusCandidates = [
+      'http://127.0.0.1:3004/api/ai/status',
+      'http://127.0.0.1:3014/api/ai/status',
+    ];
+    let controllerProbe = { ok: false, status: null, body: null };
+    let controllerStatusUrl = controllerStatusCandidates[0];
+    for (const url of controllerStatusCandidates) {
+      const probe = await fetchLocalJson(url);
+      if (probe.ok) {
+        controllerProbe = probe;
+        controllerStatusUrl = url;
+        break;
+      }
+      if (probe.status !== null) controllerProbe = probe;
+    }
     const controllerOk = controllerProbe.ok;
     const bridgeStatus = await probeLocalHttpStatus('http://127.0.0.1:3000/api/ai/enabled');
     const bridgeOk = bridgeStatus !== null && bridgeStatus < 500;
@@ -6842,6 +6856,7 @@ app.whenReady().then(() => {
         aiAudioWatcher: path.join(userData, 'ai-audio-watcher.log'),
       },
       statusUrl: controllerStatusUrl,
+      statusUrls: controllerStatusCandidates,
     };
   });
 

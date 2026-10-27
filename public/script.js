@@ -8571,7 +8571,9 @@ function setupOverlayWidget() {
       if (!connectionDetailsEl) return;
       const parts = [];
       if (result && result.running && !result.controllerOk) {
-        parts.push('Raven process is running but controller API is not responding (port 3004). Check raven.log for crashes or port conflicts.');
+        parts.push(
+          'Raven process is running but controller /api/ai/status is not answering. Try http://127.0.0.1:3004/api/ai/status (or :3014 if ports shifted). Check raven.log for crashes or EADDRINUSE on 3001/3003/3004/3020.',
+        );
       }
       const { lines, hasError } = formatRavenStatusNotes(aiStatus);
       for (const line of lines) parts.push(line);
