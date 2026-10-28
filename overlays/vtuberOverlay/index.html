@@ -552,7 +552,18 @@
         }
 
         // Handle button trigger
+        function isRavenTtsOnlyButtonTrigger(payload) {
+            if (!payload || payload.type !== 'buttonTrigger') return false;
+            if (payload.options && payload.options.name === 'AI TTS') return true;
+            const media = [].concat(payload.centerMedia || [], payload.fullscreenMedia || []);
+            return media.some(function (m) { return m && m.type === 'audio' && m.ravenTts === true; });
+        }
+
         function handleButtonTrigger(payload) {
+            if (isRavenTtsOnlyButtonTrigger(payload)) {
+                console.log('🔇 Ignoring Raven TTS on non-aiAudio overlay:', OVERLAY_CONFIG.name);
+                return;
+            }
             console.log('🎮 Button triggered:', payload.options?.name || 'Unknown');
             console.log('🎮 Full payload received:', JSON.stringify(payload, null, 2));
             

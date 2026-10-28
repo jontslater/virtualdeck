@@ -10,6 +10,9 @@ const fs = require('fs');
 const path = require('path');
 const { normalizeTwitchLogin, isValidTwitchLogin } = require('./lib/twitch-login');
 const { matchMacroByUtterance, summarizeMacroRun } = require('./lib/macro-voice');
+const { applyMacroTemplateVars, mergeClipResultIntoMacroVars } = require('./lib/twitch-clips');
+const { replacePlaceholders, appendSocialsToUserData } = require('./lib/alert-placeholders');
+const { formatSocialsLine, normalizeSocials, splitChatMessages } = require('./lib/socials');
 
 class JarvisToolRegistry {
   constructor() {
@@ -403,11 +406,13 @@ registry.register(
 registry.runMacroSteps = async function runMacroSteps(macro) {
   const steps = Array.isArray(macro.steps) ? macro.steps : [];
   const results = [];
+  let macroVars = {};
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     console.log(`[JARVIS] Executing macro step ${i + 1}/${steps.length}: ${step.tool}`);
     try {
-      const result = await registry.invoke(step.tool, step.arguments || {});
+      const args = applyMacroTemplateVars(step.arguments || {}, macroVars);
+      const result = await registry.invoke(step.tool, args);
       // registry.invoke wraps the tool's own result; a tool that returns { success: false } failed too.
       const inner = result && result.result;
       const stepOk = !!(result && result.success) && !(inner && typeof inner === 'object' && inner.success === false);
@@ -419,6 +424,9 @@ registry.runMacroSteps = async function runMacroSteps(macro) {
         result: inner,
         error: stepOk ? undefined : ((result && result.error) || (inner && (inner.error || inner.message)) || 'Step failed')
       });
+      if (stepOk) {
+        macroVars = mergeClipResultIntoMacroVars(macroVars, inner);
+      }
       if (!stepOk && macro.stopOnError !== false) {
         console.error(`[JARVIS] Macro step ${i + 1} failed, stopping execution`);
         break;
@@ -441,7 +449,14 @@ registry.runMacroSteps = async function runMacroSteps(macro) {
   };
 };
 
+function refreshMacroManager(macroManager) {
+  if (!macroManager) return;
+  if (typeof macroManager.reload === 'function') macroManager.reload();
+  else if (typeof macroManager.load === 'function') macroManager.load();
+}
+
 function resolveMacro(macroManager, ref) {
+  refreshMacroManager(macroManager);
   if (!ref) return null;
   const direct = macroManager.get(ref);
   if (direct) return { id: ref, ...direct };
@@ -509,6 +524,7 @@ registry.register(
   async (args, context) => {
     const { macroManager } = context;
     if (!macroManager) return { success: false, error: 'Macro manager not available' };
+    refreshMacroManager(macroManager);
     const macros = macroManager.list().map(m => ({
       id: m.id,
       name: m.name,
@@ -538,6 +554,7 @@ registry.register(
   async (args, context) => {
     const { macroManager } = context;
     if (!macroManager) return { success: false, matched: false, error: 'Macro manager not available' };
+    refreshMacroManager(macroManager);
     let wakeNames = [];
     try {
       if (macroManager.macrosPath) {
@@ -586,12 +603,12 @@ registry.register(
   },
   async (args, context) => {
     const { text, channel } = args;
-    const { twitchClient, twitchChannel } = context;
-    
+    const { twitchClient, twitchChannel, config, loadProfile, currentActiveProfile } = context;
+
     if (!twitchClient || twitchClient.readyState() !== 'OPEN') {
       return {
         success: false,
-        error: 'Twitch client not connected'
+        error: 'Twitch client not connected',
       };
     }
 
@@ -599,59 +616,163 @@ registry.register(
     if (!targetChannel) {
       return {
         success: false,
-        error: 'No channel specified and no default configured'
+        error: 'No channel specified and no default configured',
       };
     }
 
+    const profile =
+      config ||
+      (typeof loadProfile === 'function' && currentActiveProfile
+        ? loadProfile(currentActiveProfile)
+        : null);
+    const placeholderData = appendSocialsToUserData({}, profile && profile.socials);
+    const messageText = replacePlaceholders(text, placeholderData);
+
     try {
-      await twitchClient.say(targetChannel, text);
+      await twitchClient.say(targetChannel, messageText);
       return {
         success: true,
         channel: targetChannel,
-        message: text
+        message: messageText,
       };
     } catch (error) {
       return {
         success: false,
-        error: error.message
+        error: error.message,
       };
     }
-  }
+  },
+);
+
+// Tool: post_socials
+registry.register(
+  'post_socials',
+  {
+    description: 'Post configured social links to Twitch chat (splits into multiple messages if over 500 characters)',
+    parameters: { type: 'object', properties: {} },
+  },
+  async (_args, context) => {
+    const { postSocialsToChat, config, loadProfile, currentActiveProfile } = context;
+    if (typeof postSocialsToChat === 'function') {
+      return await postSocialsToChat({ source: 'macro' });
+    }
+    const profile =
+      config ||
+      (typeof loadProfile === 'function' && currentActiveProfile
+        ? loadProfile(currentActiveProfile)
+        : null);
+    const line = formatSocialsLine(normalizeSocials(profile && profile.socials));
+    if (!line) {
+      return { success: false, error: 'No social links configured in Preferences' };
+    }
+    const { twitchClient, twitchChannel } = context;
+    if (!twitchClient || twitchClient.readyState() !== 'OPEN') {
+      return { success: false, error: 'Twitch client not connected' };
+    }
+    const parts = splitChatMessages(line);
+    for (const part of parts) {
+      await twitchClient.say(twitchChannel, part);
+    }
+    return { success: true, messages: parts };
+  },
+);
+
+// Tool: twitch_start_commercial
+registry.register(
+  'twitch_start_commercial',
+  {
+    description: 'Start a Twitch mid-roll commercial (requires channel:edit:commercial and live stream)',
+    parameters: {
+      type: 'object',
+      properties: {
+        length: {
+          type: 'number',
+          description: 'Commercial length in seconds (30–180)',
+        },
+        chatMessage: {
+          type: 'string',
+          description: 'Optional message to post in chat before the ad',
+        },
+      },
+    },
+  },
+  async (args, context) => {
+    const { startTwitchCommercial } = context;
+    if (typeof startTwitchCommercial !== 'function') {
+      return { success: false, error: 'Twitch commercial is not available' };
+    }
+    const out = await startTwitchCommercial({
+      length: args.length,
+      chatMessage: args.chatMessage,
+      source: 'macro',
+    });
+    if (!out || !out.ok) {
+      return {
+        success: false,
+        error: (out && out.error) || 'Commercial failed',
+        needsReconnect: !!(out && out.needsReconnect),
+        retry_after: out && out.retry_after,
+      };
+    }
+    return { success: true, length: out.length, retry_after: out.retry_after };
+  },
 );
 
 // Tool: trigger_button
 registry.register(
   'trigger_button',
   {
-    description: 'Trigger a VirtualDeck button by label',
+    description: 'Trigger a VirtualDeck deck button by stable id (preferred) or label fallback',
     parameters: {
       type: 'object',
       properties: {
+        buttonId: {
+          type: 'string',
+          description: 'Stable deck button id (saved by the macro editor)',
+        },
         label: {
           type: 'string',
-          description: 'Button label to trigger'
-        }
+          description: 'Button label (display name / legacy fallback)',
+        },
       },
-      required: ['label']
-    }
+    },
   },
   async (args, context) => {
-    const { label } = args;
-    const { triggerButtonFn } = context;
-    
-    if (!triggerButtonFn) {
+    const { buttonId, label } = args || {};
+    const { triggerButtonFn, triggerDeckButtonFn, loadProfile, currentActiveProfile } = context;
+
+    const triggerFn = triggerDeckButtonFn || triggerButtonFn;
+    if (!triggerFn) {
       return {
         success: false,
-        error: 'Button trigger function not available'
+        error: 'Button trigger function not available',
       };
     }
 
-    const triggered = triggerButtonFn(label, 'jarvis-api');
-    
+    if (!buttonId && !label) {
+      return { success: false, error: 'buttonId or label is required' };
+    }
+
+    let resolvedLabel = label;
+    if (buttonId && typeof loadProfile === 'function' && currentActiveProfile) {
+      const profile = loadProfile(currentActiveProfile);
+      const btn = (profile.buttons || []).find((b) => b && b.id === buttonId);
+      if (!btn) {
+        return {
+          success: false,
+          error: `Deck button ${buttonId}${label ? ` ("${label}")` : ''} was deleted or is not on the active profile`,
+        };
+      }
+      resolvedLabel = btn.name || btn.label || label;
+    }
+
+    const triggered = triggerFn({ buttonId, label: resolvedLabel || label }, 'jarvis-api');
+
     return {
       success: triggered,
-      button: label,
-      note: triggered ? 'Button triggered' : 'Button trigger failed or debounced'
+      buttonId: buttonId || undefined,
+      button: resolvedLabel || label,
+      note: triggered ? 'Button triggered' : 'Button trigger failed or debounced',
     };
   }
 );
@@ -906,6 +1027,63 @@ registry.register(
   }
 );
 
+// Tool: twitch_create_clip
+registry.register(
+  'twitch_create_clip',
+  {
+    description: 'Create a Twitch clip of the live stream (Helix clips:edit). Announces in chat when ready; returns clipUrl and id for later macro steps.',
+    parameters: {
+      type: 'object',
+      properties: {
+        requestedBy: {
+          type: 'string',
+          description: 'Optional name credited in chat (default: macro or JARVIS)',
+        },
+      },
+    },
+  },
+  async (args, context) => {
+    const { createTwitchClip } = context;
+    if (typeof createTwitchClip !== 'function') {
+      return { success: false, error: 'Twitch clip is not available' };
+    }
+    const out = await createTwitchClip({
+      requestedBy: args.requestedBy || 'Macro',
+      source: 'macro',
+    });
+    if (!out || !out.ok) {
+      return { success: false, error: (out && out.reason) || 'Clip failed' };
+    }
+    return {
+      success: true,
+      url: out.url,
+      id: out.id,
+      clipUrl: out.url,
+      clipId: out.id,
+    };
+  },
+);
+
+// Tool: meld_record_clip
+registry.register(
+  'meld_record_clip',
+  {
+    description: 'Record a clip in Meld Studio (meld.recordClip). Does not create a Twitch clip.',
+    parameters: { type: 'object', properties: {} },
+  },
+  async (args, context) => {
+    const { meldRecordClip } = context;
+    if (typeof meldRecordClip !== 'function') {
+      return { success: false, error: 'Meld clip recording is not available' };
+    }
+    const out = await meldRecordClip();
+    if (!out || !out.ok) {
+      return { success: false, error: (out && out.reason) || 'Meld recordClip failed' };
+    }
+    return { success: true };
+  },
+);
+
 // Tool: discord_post_clip
 registry.register(
   'discord_post_clip',
@@ -1032,4 +1210,4 @@ registry.register(
   },
 );
 
-module.exports = { registry };
+module.exports = { registry, refreshMacroManager };

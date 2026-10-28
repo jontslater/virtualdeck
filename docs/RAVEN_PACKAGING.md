@@ -68,4 +68,4 @@ Never use `build:win:personal` for public releases.
 
 1. Install CI-built NSIS package.
 2. **Tools → Raven AI → Start Raven AI** (requires Pro license + BYOK in `raven.env`).
-3. Confirm `%LOCALAPPDATA%/VirtualDeck/raven.log` shows controller startup.
+3. Confirm `%APPDATA%\VirtualDeck\raven.log` shows controller startup.

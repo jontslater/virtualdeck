@@ -13,10 +13,14 @@ const ALLOWLISTED_TOOLS = [
   { name: 'refresh_browser_sources', label: 'Refresh Browser Sources', args: ['layerName'] },
   { name: 'play_sound', label: 'Play Sound', args: ['name'] },
   { name: 'send_twitch_message', label: 'Send Twitch Message', args: ['text'] },
+  { name: 'post_socials', label: 'Post Socials', args: [] },
+  { name: 'twitch_start_commercial', label: 'Run Twitch Ad', args: ['length', 'chatMessage'] },
   { name: 'discord_send_message', label: 'Send Discord Message', args: ['message'] },
   { name: 'discord_announce_live', label: 'Discord: Announce Go Live', args: [] },
   { name: 'discord_post_clip', label: 'Discord: Post Clip', args: ['clipUrl', 'title'] },
-  { name: 'trigger_button', label: 'Trigger Button', args: ['label'] },
+  { name: 'twitch_create_clip', label: 'Create Twitch Clip', args: ['requestedBy'] },
+  { name: 'meld_record_clip', label: 'Meld: Record Clip', args: [] },
+  { name: 'trigger_button', label: 'Trigger Button', args: ['buttonId', 'label'] },
   { name: 'launch_app', label: 'Launch Application', args: ['nameOrPath'] },
   { name: 'get_scenes', label: 'Get Scenes (data only)', args: [] },
   { name: 'get_stream_status', label: 'Get Stream Status (data only)', args: [] },
@@ -32,6 +36,9 @@ function initializeMacrosUI() {
   const macrosBtnForScenes = document.getElementById('preferences-macros-manage');
   if (macrosBtnForScenes && window.VDMacroScenePicker) {
     macrosBtnForScenes.addEventListener('click', () => window.VDMacroScenePicker.clearSceneCache());
+  }
+  if (macrosBtnForScenes && window.VDMacroButtonPicker) {
+    macrosBtnForScenes.addEventListener('click', () => window.VDMacroButtonPicker.clearCatalogCache());
   }
   console.log('🎬 Initializing Macros UI');
 
@@ -567,6 +574,54 @@ function createStepCard(step, index) {
   const selectedTool = availableTools.find(t => t.name === step.tool);
   if (step.tool === 'change_scene' && window.VDMacroScenePicker) {
     card.appendChild(window.VDMacroScenePicker.createScenePicker(step));
+  } else if (step.tool === 'trigger_button' && window.VDMacroButtonPicker) {
+    card.appendChild(window.VDMacroButtonPicker.createButtonPicker(step));
+  } else if (step.tool === 'twitch_start_commercial') {
+    const argsContainer = document.createElement('div');
+    argsContainer.className = 'step-args';
+
+    const lenGroup = document.createElement('div');
+    lenGroup.className = 'step-arg-group';
+    const lenLabel = document.createElement('label');
+    lenLabel.textContent = 'length (seconds):';
+    lenGroup.appendChild(lenLabel);
+    const lenSelect = document.createElement('select');
+    lenSelect.className = 'step-arg-input';
+    [30, 60, 90, 120, 150, 180].forEach((sec) => {
+      const opt = document.createElement('option');
+      opt.value = String(sec);
+      opt.textContent = String(sec);
+      if (String(step.arguments?.length || '60') === String(sec)) opt.selected = true;
+      lenSelect.appendChild(opt);
+    });
+    lenSelect.addEventListener('change', (e) => {
+      if (!step.arguments) step.arguments = {};
+      step.arguments.length = Number(e.target.value);
+    });
+    lenGroup.appendChild(lenSelect);
+    argsContainer.appendChild(lenGroup);
+
+    const msgGroup = document.createElement('div');
+    msgGroup.className = 'step-arg-group';
+    const msgLabel = document.createElement('label');
+    msgLabel.textContent = 'chatMessage (optional):';
+    msgGroup.appendChild(msgLabel);
+    const msgInput = document.createElement('input');
+    msgInput.type = 'text';
+    msgInput.className = 'step-arg-input';
+    msgInput.placeholder = 'Ad break, back soon!';
+    msgInput.value = step.arguments?.chatMessage || '';
+    msgInput.addEventListener('input', (e) => {
+      if (!step.arguments) step.arguments = {};
+      step.arguments.chatMessage = e.target.value;
+    });
+    msgGroup.appendChild(msgInput);
+    argsContainer.appendChild(msgGroup);
+
+    if (!step.arguments) step.arguments = { length: 60 };
+    if (step.arguments.length == null) step.arguments.length = 60;
+
+    card.appendChild(argsContainer);
   } else if (selectedTool && selectedTool.args.length > 0) {
     const argsContainer = document.createElement('div');
     argsContainer.className = 'step-args';

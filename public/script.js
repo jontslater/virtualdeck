@@ -317,9 +317,22 @@ function showProfileDeleteDialog(profiles) {
   });
 }
 
-// Custom confirm dialog for Electron
-function showCustomConfirm(message) {
+// Custom confirm dialog for Electron (Escape, Cancel, and click-outside dismiss without confirming)
+function showCustomConfirm(message, options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const confirmLabel = opts.confirmLabel || 'Yes';
+  const cancelLabel = opts.cancelLabel || 'Cancel';
+  const showClose = opts.showClose !== false;
+
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+      cleanup();
+    };
+
     // Create modal overlay
     const overlay = document.createElement('div');
     overlay.setAttribute('data-vd-dialog', '1'); // Esc handled by this dialog, not the global modal closer
@@ -346,7 +359,29 @@ function showCustomConfirm(message) {
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
       min-width: 400px;
       max-width: 500px;
+      position: relative;
     `;
+    dialog.addEventListener('click', (e) => e.stopPropagation());
+
+    const headerRow = document.createElement('div');
+    headerRow.style.cssText = 'display:flex;justify-content:flex-end;margin:-8px -8px 8px 0;';
+    if (showClose) {
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.setAttribute('aria-label', 'Close');
+      closeBtn.textContent = '✕';
+      closeBtn.style.cssText = `
+        background: transparent;
+        border: none;
+        color: var(--text-secondary, #aaa);
+        font-size: 18px;
+        cursor: pointer;
+        padding: 4px 8px;
+        line-height: 1;
+      `;
+      closeBtn.addEventListener('click', () => finish(false));
+      headerRow.appendChild(closeBtn);
+    }
     
     // Create message
     const messageEl = document.createElement('div');
@@ -366,9 +401,9 @@ function showCustomConfirm(message) {
       justify-content: flex-end;
     `;
     
-    // Create Yes button
+    // Create confirm button
     const yesButton = document.createElement('button');
-    yesButton.textContent = 'Yes';
+    yesButton.textContent = confirmLabel;
     yesButton.style.cssText = `
       padding: 10px 20px;
       background: #dc3545;
@@ -386,9 +421,8 @@ function showCustomConfirm(message) {
       yesButton.style.background = '#dc3545';
     });
     
-    // Create No button
     const noButton = document.createElement('button');
-    noButton.textContent = 'No';
+    noButton.textContent = cancelLabel;
     noButton.style.cssText = `
       padding: 10px 20px;
       background: var(--bg-secondary, #2a2a2a);
@@ -409,6 +443,7 @@ function showCustomConfirm(message) {
     // Assemble dialog
     buttonsContainer.appendChild(noButton);
     buttonsContainer.appendChild(yesButton);
+    if (showClose) dialog.appendChild(headerRow);
     dialog.appendChild(messageEl);
     dialog.appendChild(buttonsContainer);
     overlay.appendChild(dialog);
@@ -419,37 +454,41 @@ function showCustomConfirm(message) {
       if (overlay.parentNode) {
         overlay.parentNode.removeChild(overlay);
       }
-      // Every close path (buttons, Esc, Enter) drops the keydown listener and restores focus.
       document.removeEventListener('keydown', handleKeydown);
       if (previousFocus && previousFocus !== document.body && document.contains(previousFocus) && typeof previousFocus.focus === 'function') {
         try { previousFocus.focus(); } catch (_) {}
       }
     };
     
-    yesButton.addEventListener('click', () => {
-      resolve(true);
-      cleanup();
-    });
+    yesButton.addEventListener('click', () => finish(true));
+    noButton.addEventListener('click', () => finish(false));
+    overlay.addEventListener('click', () => finish(false));
     
-    noButton.addEventListener('click', () => {
-      resolve(false);
-      cleanup();
-    });
-    
-    // Close on Escape
     const handleKeydown = (e) => {
       if (e.key === 'Escape') {
-        resolve(false);
-        cleanup();
-        document.removeEventListener('keydown', handleKeydown);
+        e.preventDefault();
+        e.stopPropagation();
+        finish(false);
       }
     };
     document.addEventListener('keydown', handleKeydown);
     
-    // Show dialog
     document.body.appendChild(overlay);
-    yesButton.focus();
+    noButton.focus();
   });
+}
+
+async function requestAppQuit() {
+  const confirmed = await showCustomConfirm('Quit VirtualDeck?', {
+    confirmLabel: 'Quit',
+    cancelLabel: 'Cancel',
+  });
+  if (!confirmed) return;
+  if (window.electronAPI && typeof window.electronAPI.closeWindow === 'function') {
+    window.electronAPI.closeWindow();
+  } else {
+    try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('window-close'); } catch (e) {}
+  }
 }
 
 function showCustomAlert(message, type = 'info') {
@@ -2217,6 +2256,7 @@ async function loadButtons() {
 
   // Load buttons from config
   const data = await window.electronAPI.getConfig();
+  window.__vdLastConfig = data;
   if (generation !== loadButtonsGeneration) return;
   console.log('🔍 Loaded config data:', data);
   console.log('🔍 Number of buttons:', data.buttons?.length || 0);
@@ -2279,6 +2319,27 @@ async function loadButtons() {
           '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#5b8def"/><text x="24" y="30" font-size="13" text-anchor="middle" fill="white">Meld</text></svg>',
         );
       appIconAlt = 'Meld Scene';
+    } else if (button.type === 'twitch-clip') {
+      appIconSrc =
+        'data:image/svg+xml;charset=utf-8,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#9146FF"/><text x="24" y="30" font-size="11" text-anchor="middle" fill="white">Clip</text></svg>',
+        );
+      appIconAlt = 'Twitch Clip';
+    } else if (button.type === 'post-socials') {
+      appIconSrc =
+        'data:image/svg+xml;charset=utf-8,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#1da1f2"/><text x="24" y="30" font-size="10" text-anchor="middle" fill="white">Social</text></svg>',
+        );
+      appIconAlt = 'Post Socials';
+    } else if (button.type === 'run-ad') {
+      appIconSrc =
+        'data:image/svg+xml;charset=utf-8,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#e91916"/><text x="24" y="30" font-size="11" text-anchor="middle" fill="white">Ad</text></svg>',
+        );
+      appIconAlt = 'Run Ad';
     } else if (button.type === 'app') {
       let iconData = await window.electronAPI.getAppIcon(button.src);
       if (generation !== loadButtonsGeneration) return;
@@ -2289,7 +2350,7 @@ async function loadButtons() {
     card.innerHTML = `
       <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
       <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
-      <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type}</div>
+      <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type === 'twitch-clip' ? 'Clip' : button.type === 'post-socials' ? 'Socials' : button.type === 'run-ad' ? 'Ad' : button.type}</div>
       <div class="sound-name">${button.name || button.label || button.sceneName || 'Unnamed'}</div>
       <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
     `;
@@ -3277,9 +3338,20 @@ const chatCommands = [
     command: '!checkin',
     description: 'View the top 5 check-in leaderboard',
     details: 'Shows the top 5 users with the most check-ins. If streaks are enabled, displays streak information. Each user has a 10-minute cooldown between uses.',
-    example: 'Type !checkin in chat to see the leaderboard.'
-  }
-  // Add more commands here in the future
+    example: 'Type !checkin in chat to see the leaderboard.',
+  },
+  {
+    command: '!clip',
+    description: 'Create a Twitch clip of the live stream',
+    details: 'Posts the clip link in chat when ready. Cooldown applies between uses.',
+    example: 'Type !clip while the stream is live.',
+  },
+  {
+    command: '!socials',
+    description: 'Show the streamer’s social links in chat',
+    details: 'Links come from Preferences → Social Links. 20-second cooldown per channel.',
+    example: 'Type !socials to see Twitter, YouTube, and other configured links.',
+  },
 ];
 
 function renderCommandsGuide() {
@@ -3923,31 +3995,37 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
     return;
   }
   
-  // For channel point redemptions (non-daily-checkin), let the TwitchConnected system handle button matching
+  // For channel point redemptions (non-daily-checkin), match deck buttons and channel-points alerts
   if (eventData.type === 'channel.channel_points_custom_reward_redemption.add') {
-    // For non-daily-checkin redemptions, let the TwitchConnected system handle button matching
-    // The TwitchConnected system will check for buttons with matching keywords
-    console.log('🎁 Non-daily-checkin redemption, letting TwitchConnected system handle button matching');
-    
-    // Send the event to TwitchConnected system for button matching
-    // We need to send it as a 'redeem' type event for the TwitchConnected system to process it
-    if (window.electronAPI && window.electronAPI.onTwitchEventSub) {
-      // The TwitchConnected system expects events with type 'redeem'
-      const redeemEvent = {
-        type: 'redeem',
-        event: eventData.event
-      };
-      console.log('📤 Sending redemption event to TwitchConnected system:', redeemEvent);
-      
-      // Trigger the TwitchConnected system directly
-      if (window.checkRedemptionAgainstButtonKeywords) {
-        window.checkRedemptionAgainstButtonKeywords(redeemEvent).then(matchingButtonLabel => {
-          if (matchingButtonLabel && window.electronAPI && window.electronAPI.sendTrigger) {
-            console.log(`🚀 Triggering button "${matchingButtonLabel}" from channel point redemption`);
-            window.electronAPI.sendTrigger(matchingButtonLabel);
-          }
-        });
-      }
+    console.log('🎁 Non-daily-checkin channel points redemption');
+
+    const cpUserData =
+      window.vdAlertPlaceholders && window.vdAlertPlaceholders.buildChannelPointsUserData
+        ? window.vdAlertPlaceholders.buildChannelPointsUserData(eventData.event)
+        : {
+            username: eventData.event.user_login || eventData.event.user_name || 'Unknown',
+            display_name: eventData.event.display_name || eventData.event.user_name || 'Unknown',
+            message: eventData.event.user_input || '',
+            reward: eventData.event.reward?.title || eventData.event.reward?.name || '',
+            ...eventData.event,
+          };
+
+    alertSystem.updateAlerts();
+    alertSystem.triggerAlertForEvent('channel-points', cpUserData, eventData.event);
+
+    const redeemEvent = {
+      type: 'redeem',
+      event: eventData.event,
+    };
+    console.log('📤 Sending redemption event to TwitchConnected system:', redeemEvent);
+
+    if (window.checkRedemptionAgainstButtonKeywords) {
+      window.checkRedemptionAgainstButtonKeywords(redeemEvent).then((matchingButtonLabel) => {
+        if (matchingButtonLabel && window.electronAPI && window.electronAPI.sendTrigger) {
+          console.log(`🚀 Triggering button "${matchingButtonLabel}" from channel point redemption`);
+          window.electronAPI.sendTrigger(matchingButtonLabel);
+        }
+      });
     }
   }
   
@@ -3989,24 +4067,27 @@ window.electronAPI.onTwitchEventSub(async (eventData) => {
   }
   
   if (alertType) {
-    // Extract user data from the event
-    const userData = {
-      username: eventData.event.user_name || eventData.event.user || eventData.event.from_name || eventData.event.user_login || 'Unknown',
-      display_name: eventData.event.display_name || eventData.event.user_name || eventData.event.user || 'Unknown',
-      tier: eventData.event.tier || eventData.event.sub_plan || '',
-      viewers: eventData.event.viewers || eventData.event.view_count || eventData.event.viewer_count || '',
-      bits: eventData.event.bits || eventData.event.bits_used || eventData.event.bits_amount || eventData.event.amount || '',
-      months: eventData.event.cumulative_months || eventData.event.months || '',
-      message: eventData.event.message || eventData.event.user_input || '',
-      reward: eventData.event.reward?.title || eventData.event.reward?.name || eventData.event.reward_title || eventData.event.reward || '',
-      ...eventData.event // Include all event data
-    };
-    
-    console.log('👤 Extracted user data:', userData);
+    const userData =
+      window.vdAlertPlaceholders && window.vdAlertPlaceholders.buildUserDataFromTwitchEvent
+        ? window.vdAlertPlaceholders.buildUserDataFromTwitchEvent(eventData)
+        : {
+            username:
+              eventData.event.user_name ||
+              eventData.event.user ||
+              eventData.event.from_name ||
+              eventData.event.user_login ||
+              'Unknown',
+            display_name: eventData.event.display_name || eventData.event.user_name || eventData.event.user || 'Unknown',
+            ...eventData.event,
+          };
+
+    const userDataWithSocials = enrichUserDataWithSocials(userData);
+
+    console.log('👤 Extracted user data:', userDataWithSocials);
     console.log('🎯 Alert type determined:', alertType, 'from event type:', eventData.type);
     
     // Trigger the alert
-    alertSystem.triggerAlertForEvent(alertType, userData);
+    alertSystem.triggerAlertForEvent(alertType, userDataWithSocials);
   } else {
     console.log('⚠️ No alert type mapping for event:', eventData.type);
   }
@@ -4250,6 +4331,32 @@ async function handleTrigger(button) {
       window.meldClient.showScene(button.sceneId).catch((err) => console.error('Meld showScene failed:', err));
     } else {
       console.warn('Meld scene button missing sceneId or meldClient not loaded');
+    }
+  } else if (button.type === 'twitch-clip') {
+    if (window.electronAPI && window.electronAPI.createTwitchClip) {
+      window.electronAPI
+        .createTwitchClip({ requestedBy: button.label || button.name || 'Deck', source: 'button' })
+        .catch((err) => console.error('Twitch clip failed:', err));
+    } else {
+      console.warn('createTwitchClip API not available');
+    }
+  } else if (button.type === 'post-socials') {
+    if (window.electronAPI && window.electronAPI.postSocials) {
+      window.electronAPI.postSocials({ source: 'button' }).catch((err) => console.error('Post socials failed:', err));
+    } else {
+      console.warn('postSocials API not available');
+    }
+  } else if (button.type === 'run-ad') {
+    if (window.electronAPI && window.electronAPI.startTwitchCommercial) {
+      window.electronAPI
+        .startTwitchCommercial({
+          length: button.commercialLength || 60,
+          chatMessage: button.chatMessage || '',
+          source: 'button',
+        })
+        .catch((err) => console.error('Twitch commercial failed:', err));
+    } else {
+      console.warn('startTwitchCommercial API not available');
     }
   } else if (button.type === "multi-media") {
     // Handle multi-media button trigger
@@ -4730,6 +4837,52 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   console.log('- AI allowed:', aiAllowed);
   console.log('- AI description:', aiDescription);
 
+  if (type === 'twitch-clip') {
+    window.electronAPI.addMedia({
+      label,
+      type: 'twitch-clip',
+      hotkey: completeHotkey,
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex, 10) : undefined,
+      chatCommand: chatCommand,
+    });
+    window.electronAPI.refreshHotkeys();
+    document.getElementById('settings-modal').classList.add('hidden');
+    if (window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+    return;
+  }
+
+  if (type === 'post-socials') {
+    window.electronAPI.addMedia({
+      label,
+      type: 'post-socials',
+      hotkey: completeHotkey,
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex, 10) : undefined,
+      chatCommand: chatCommand,
+    });
+    window.electronAPI.refreshHotkeys();
+    document.getElementById('settings-modal').classList.add('hidden');
+    if (window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+    return;
+  }
+
+  if (type === 'run-ad') {
+    const lenEl = document.getElementById('commercial-length-select');
+    const msgEl = document.getElementById('commercial-chat-message');
+    window.electronAPI.addMedia({
+      label,
+      type: 'run-ad',
+      commercialLength: lenEl ? lenEl.value : 60,
+      chatMessage: msgEl ? msgEl.value.trim() : '',
+      hotkey: completeHotkey,
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex, 10) : undefined,
+      chatCommand: chatCommand,
+    });
+    window.electronAPI.refreshHotkeys();
+    document.getElementById('settings-modal').classList.add('hidden');
+    if (window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+    return;
+  }
+
   if (type === 'meld-scene') {
     if (window.__meldSceneSubmitInProgress) return;
     window.__meldSceneSubmitInProgress = true;
@@ -5068,6 +5221,30 @@ window.editButton = async (index) => {
     if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
     fileInput.required = false; // Not required when editing
     appFileInput.required = false;
+  } else if (btn.type === 'twitch-clip') {
+    if (typeInputEl) typeInputEl.value = 'twitch-clip';
+    audioFileSection.style.display = 'none';
+    appFileSection.style.display = 'none';
+    hideRunAdSection();
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
+    fileInput.required = false;
+    appFileInput.required = false;
+  } else if (btn.type === 'post-socials') {
+    if (typeInputEl) typeInputEl.value = 'post-socials';
+    audioFileSection.style.display = 'none';
+    appFileSection.style.display = 'none';
+    hideRunAdSection();
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
+    fileInput.required = false;
+    appFileInput.required = false;
+  } else if (btn.type === 'run-ad') {
+    if (typeInputEl) typeInputEl.value = 'run-ad';
+    audioFileSection.style.display = 'none';
+    appFileSection.style.display = 'none';
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
+    showRunAdSection(btn);
+    fileInput.required = false;
+    appFileInput.required = false;
   } else if (btn.type === 'meld-scene') {
     if (typeInputEl) typeInputEl.value = 'meld-scene';
     audioFileSection.style.display = 'none';
@@ -5196,7 +5373,15 @@ window.editButton = async (index) => {
   }
   // Update modal title
   const buttonName = btn.name || btn.label || 'Unknown';
-  document.querySelector('#settings-modal h2').textContent = `Edit ${btn.type === 'audio' ? 'Sound' : btn.type === 'multi-media' ? 'Multi-Media' : btn.type === 'meld-scene' ? 'Meld Scene' : 'App'}: ${buttonName}`;
+  const typeLabel =
+    btn.type === 'audio' ? 'Sound'
+      : btn.type === 'multi-media' ? 'Multi-Media'
+        : btn.type === 'meld-scene' ? 'Meld Scene'
+          : btn.type === 'twitch-clip' ? 'Twitch Clip'
+            : btn.type === 'post-socials' ? 'Post Socials'
+              : btn.type === 'run-ad' ? 'Run Ad'
+                : 'App';
+  document.querySelector('#settings-modal h2').textContent = `Edit ${typeLabel}: ${buttonName}`;
   // Handle multi-media buttons differently
   if (btn.type === 'multi-media') {
     // Close the regular settings modal
@@ -5607,10 +5792,10 @@ window.electronAPI.onTriggerMedia(async (mediaId) => {
   console.log(`🔍 onTriggerMedia called for: "${mediaId}"`);
   const config = await window.electronAPI.getConfig();
   if (!config || !Array.isArray(config.buttons)) return;
-  const button = config.buttons.find(btn => {
+  const button = config.buttons.find((btn) => btn && btn.id === mediaId) || config.buttons.find(btn => {
     // Check both name and label for compatibility - use exact match for precision
     const name = btn.name || btn.label || '';
-    return name.toLowerCase() === mediaId.toLowerCase();
+    return name.toLowerCase() === String(mediaId).toLowerCase();
   });
   if (button) {
     console.log(`🎯 Triggering mapped button: "${button.name || button.label}" Type: ${button.type} Volume: ${button.volume}`);
@@ -6542,12 +6727,7 @@ function setupAppToolbar() {
     btnClose.addEventListener('click', (e) => {
       console.log('🔧 CLOSE BUTTON CLICKED!');
     e.stopPropagation();
-      if (window.electronAPI && typeof window.electronAPI.closeWindow === 'function') {
-        console.log('🔧 Calling closeWindow()');
-        window.electronAPI.closeWindow();
-      } else {
-        console.log('🔧 closeWindow not available');
-      }
+      requestAppQuit();
     });
   }
 
@@ -8363,6 +8543,66 @@ function setupOverlayWidget() {
       return AI_STATUS_API_BASE_URL || ravenCtl.getControllerBaseUrl();
     }
 
+    const connectionDetailsEl = document.getElementById('ai-connection-details');
+
+    function formatRavenStatusNotes(aiStatus) {
+      if (!aiStatus || typeof aiStatus !== 'object') return { lines: [], hasError: false };
+      const lines = [];
+      let hasError = false;
+      try {
+        const notes = typeof window.vdRavenStatusNotes === 'function' ? window.vdRavenStatusNotes(aiStatus) : [];
+        for (const note of notes) {
+          if (note && note.text) lines.push(note.text);
+          if (note && note.level === 'error') hasError = true;
+        }
+      } catch (_) { /* ignore */ }
+      const mode = aiStatus.currentMode || aiStatus.mode;
+      if (mode === 'MUTED' || mode === 'OFF') {
+        lines.push('Raven mode is MUTED — speech and wake replies are disabled');
+        hasError = true;
+      }
+      if (aiStatus.state && aiStatus.state !== 'idle') {
+        lines.unshift(`State: ${aiStatus.state}`);
+      }
+      return { lines, hasError };
+    }
+
+    function renderAiConnectionDetails(result, aiStatus) {
+      if (!connectionDetailsEl) return;
+      const parts = [];
+      if (result && result.running && !result.controllerOk) {
+        parts.push(
+          'Raven process is running but controller /api/ai/status is not answering. Try http://127.0.0.1:3004/api/ai/status (or :3014 if ports shifted). Check raven.log for crashes or EADDRINUSE on 3001/3003/3004/3020.',
+        );
+      }
+      const { lines, hasError } = formatRavenStatusNotes(aiStatus);
+      for (const line of lines) parts.push(line);
+      if (!parts.length && result && result.statusUrl) {
+        connectionDetailsEl.textContent = '';
+        connectionDetailsEl.style.color = '';
+        connectionDetailsEl.title = result.statusUrl;
+        return;
+      }
+      connectionDetailsEl.textContent = parts.join(' • ');
+      connectionDetailsEl.style.color = hasError ? 'var(--danger-color, #e5484d)' : 'var(--text-tertiary)';
+      const logHint = result && result.logPaths && result.logPaths.raven ? ` Logs: ${result.logPaths.raven}` : '';
+      connectionDetailsEl.title = [
+        result && result.statusUrl ? `Status: ${result.statusUrl}` : '',
+        logHint,
+      ].filter(Boolean).join(' — ');
+    }
+
+    async function fetchControllerAiStatusForDashboard() {
+      try {
+        const base = getDashboardControllerBase();
+        const response = await fetch(`${base}/api/ai/status`);
+        if (!response.ok) return null;
+        return await response.json();
+      } catch (e) {
+        return null;
+      }
+    }
+
     // Controller /api/ai/status is source of truth; bridge /enabled only when it exists
     async function loadInitialAIState() {
       try {
@@ -8438,6 +8678,10 @@ function setupOverlayWidget() {
         if (window.vdServiceGates && window.vdServiceGates.refreshRavenGate) {
           window.vdServiceGates.refreshRavenGate().catch(() => {});
         }
+        let aiStatus = result && result.aiStatus ? result.aiStatus : null;
+        if (!aiStatus && result && (result.controllerOk || result.connected)) {
+          aiStatus = await fetchControllerAiStatusForDashboard();
+        }
         if (result && result.connected) {
           updateConnectionStatus('connected');
           if (connectionStatusLabel && result.source) {
@@ -8450,9 +8694,11 @@ function setupOverlayWidget() {
             connectionStatusLabel.title = 'Start Raven: Tools → Raven AI → Start Raven AI';
           }
         }
+        renderAiConnectionDetails(result || {}, aiStatus);
       } catch (err) {
         console.debug('Raven dashboard connection check failed:', err);
         updateConnectionStatus('disconnected');
+        renderAiConnectionDetails({}, null);
       } finally {
         connectionCheckInFlight = false;
       }
@@ -9010,11 +9256,25 @@ function setupOverlayWidget() {
         if (activeFeatures.length > 0) {
           statusText.textContent = `Active: ${activeFeatures.join(', ')}`;
           statusText.style.color = 'var(--accent-primary)';
-          if (statusDetails) statusDetails.textContent = '';
         } else {
           statusText.textContent = aiStateDisplay;
           statusText.style.color = statusColor;
-          if (statusDetails) statusDetails.textContent = '';
+        }
+        if (statusDetails) {
+          try {
+            const aiStatusResponse = await fetch(`${AI_STATUS_API_BASE_URL}/api/ai/status`);
+            if (aiStatusResponse.ok) {
+              const aiStatus = await aiStatusResponse.json();
+              const notes = typeof window.vdRavenStatusNotes === 'function' ? window.vdRavenStatusNotes(aiStatus) : [];
+              const detailParts = notes.map((n) => n.text).filter(Boolean);
+              statusDetails.textContent = detailParts.join(' • ');
+              statusDetails.style.color = notes.some((n) => n.level === 'error') ? 'var(--danger-color, #e5484d)' : '';
+            } else {
+              statusDetails.textContent = '';
+            }
+          } catch (e) {
+            statusDetails.textContent = '';
+          }
         }
       }
     } catch (err) {
@@ -11090,6 +11350,11 @@ function setupAlertWidget() {
           refreshDailyCheckinEventSubWarning();
         }
       }
+
+      const channelPointsSettings = document.getElementById('channel-points-settings');
+      if (channelPointsSettings) {
+        channelPointsSettings.style.display = selectedType === 'channel-points' ? 'block' : 'none';
+      }
       
       // Update alert list to show only matching alerts
       updateAlertList();
@@ -11123,6 +11388,7 @@ function setupAlertWidget() {
           'bits': '{username} cheered {bits} bits!',
           'ban': '{username} has been banned by {moderator}!',
           'daily-checkin': '{username} checked in! Total: {total_checkins}',
+          'channel-points': '{display_name} redeemed {reward}! {message}',
           'first-chat-walkon': 'Welcome {username} to the stream!'
         };
         alertTextInput.placeholder = placeholderTexts[selectedType] || 'Welcome {username}!';
@@ -11591,6 +11857,7 @@ function setupAlertWidget() {
       'raid': 'Raid',
       'gift-sub': 'Gifted Subscription',
       'bits': 'Bits Donation',
+      'channel-points': 'Channel Point Redemption',
       'daily-checkin': 'Daily Checkin',
       'first-chat-walkon': 'Walk On (First Chat)'
     };
@@ -11914,6 +12181,9 @@ function setupAlertWidget() {
           sendToChat: document.getElementById('daily-checkin-send-to-chat')?.checked ?? true,
           testMode: document.getElementById('daily-checkin-test-mode')?.checked ?? false
         } : null,
+        channelPointsConfig: type === 'channel-points' ? readChannelPointsRewardFromUI() : null,
+        ravenTtsEnabled: document.getElementById('alert-raven-tts-enabled')?.checked ?? false,
+        ttsText: document.getElementById('alert-tts-text')?.value?.trim() || '',
         walkonUsers: type === 'first-chat-walkon' ? selectedWalkonUsers.map(u => ({
           user_id: u.user_id,
           username: u.username,
@@ -12163,6 +12433,15 @@ function setupAlertWidget() {
       const manualInput = document.getElementById('alert-walkon-manual-username');
       if (manualInput) manualInput.value = '';
     }
+
+    const ravenTtsCheckbox = document.getElementById('alert-raven-tts-enabled');
+    if (ravenTtsCheckbox) ravenTtsCheckbox.checked = false;
+    const ttsTextInput = document.getElementById('alert-tts-text');
+    if (ttsTextInput) ttsTextInput.value = '';
+    const cpRewardId = document.getElementById('channel-points-reward-id');
+    if (cpRewardId) cpRewardId.value = '';
+    const cpRewardName = document.getElementById('channel-points-reward-name');
+    if (cpRewardName) cpRewardName.value = '';
     
     updatePreview().catch(console.error);
   }
@@ -12387,6 +12666,19 @@ function setupAlertWidget() {
       console.log('Loaded video settings - volume:', alertToEdit.videoFile.volume, 'loop:', alertToEdit.videoFile.loop);
     }
     
+    const ravenTtsCheckbox = document.getElementById('alert-raven-tts-enabled');
+    if (ravenTtsCheckbox) ravenTtsCheckbox.checked = alertToEdit.ravenTtsEnabled === true;
+    const ttsTextInput = document.getElementById('alert-tts-text');
+    if (ttsTextInput) ttsTextInput.value = alertToEdit.ttsText || '';
+
+    if (alertToEdit.type === 'channel-points' && alertToEdit.channelPointsConfig) {
+      applyChannelPointsRewardSelectFromConfig(alertToEdit.channelPointsConfig);
+      const cpNameInput = document.getElementById('channel-points-reward-name');
+      if (cpNameInput) cpNameInput.value = alertToEdit.channelPointsConfig.rewardName || '';
+      const cpIdInput = document.getElementById('channel-points-reward-id');
+      if (cpIdInput) cpIdInput.value = alertToEdit.channelPointsConfig.rewardId || '';
+    }
+
     // Populate daily check-in config if this is a daily-checkin alert
     if (alertToEdit.type === 'daily-checkin' && alertToEdit.dailyCheckinConfig) {
       const config = alertToEdit.dailyCheckinConfig;
@@ -12582,29 +12874,21 @@ window.toggleAllAlertsForType = function(alertType, enabled) {
 };
 
 // Global replace placeholders function
+function enrichUserDataWithSocials(userData) {
+  const socialsConfig = (window.__vdLastConfig && window.__vdLastConfig.socials) || [];
+  if (window.vdAlertPlaceholders && typeof window.vdAlertPlaceholders.appendSocialsToUserData === 'function') {
+    return window.vdAlertPlaceholders.appendSocialsToUserData(userData, socialsConfig);
+  }
+  return userData || {};
+}
+
 function replacePlaceholders(text, userData) {
-  if (!userData) return text;
-  
-  let processedText = text;
-  
-  // Replace common placeholders
-  processedText = processedText.replace(/\{username\}/g, userData.username || userData.user_name || userData.user || 'Unknown');
-  processedText = processedText.replace(/\{display_name\}/g, userData.display_name || userData.user_name || userData.user || 'Unknown');
-  processedText = processedText.replace(/\{displayName\}/g, userData.displayName || userData.display_name || userData.user_name || userData.user || 'Unknown');
-  processedText = processedText.replace(/\{tier\}/g, String(userData.tier || userData.sub_plan || ''));
-  processedText = processedText.replace(/\{viewers\}/g, String(userData.viewers || userData.view_count || userData.viewer_count || ''));
-  processedText = processedText.replace(/\{bits\}/g, String(userData.bits || userData.bits_used || userData.bits_amount || userData.amount || ''));
-  processedText = processedText.replace(/\{months\}/g, String(userData.cumulative_months || userData.months || ''));
-  processedText = processedText.replace(/\{message\}/g, String(userData.message || userData.user_input || ''));
-  processedText = processedText.replace(/\{reward\}/g, String(userData.reward || userData.reward_title || ''));
-  processedText = processedText.replace(/\{moderator\}/g, String(userData.moderator || ''));
-  processedText = processedText.replace(/\{reason\}/g, String(userData.reason || ''));
-  
-  // Daily Check-In specific placeholders
-  processedText = processedText.replace(/\{total_checkins\}/g, String(userData.total_checkins || '0'));
-  processedText = processedText.replace(/\{streak\}/g, String(userData.streak || '0'));
-  
-  return processedText;
+  const enriched = enrichUserDataWithSocials(userData);
+  if (window.vdAlertPlaceholders && typeof window.vdAlertPlaceholders.replacePlaceholders === 'function') {
+    return window.vdAlertPlaceholders.replacePlaceholders(text, enriched);
+  }
+  if (!enriched) return text;
+  return text;
 }
 
 
@@ -12988,6 +13272,18 @@ let alertQueue = {
       console.log(`📊 Alert overlay setting: ${alertData.overlay || 'NOT SET (defaulting to default)'}`);
       window.electronAPI.sendOverlayMessage(payload);
       console.log(`✅ Alert sent via WebSocket to overlay: "${payload.targetOverlay}"`);
+
+      const vdPh = window.vdAlertPlaceholders;
+      const shouldSpeakTts = vdPh && vdPh.isRavenTtsEnabled && vdPh.isRavenTtsEnabled(alertData);
+      if (shouldSpeakTts && window.vdRavenManualSpeak && typeof window.vdRavenManualSpeak.speakManualText === 'function') {
+        const speakText =
+          vdPh.resolveAlertSpeakText ? vdPh.resolveAlertSpeakText(alertData, userData) : processedText;
+        if (speakText && speakText.trim()) {
+          window.vdRavenManualSpeak
+            .speakManualText(speakText, { respectAiToggle: true })
+            .catch((err) => console.warn('Alert Raven TTS failed:', err));
+        }
+      }
       
       // Play sound if present - store reference for hard stop
       if (alertData.soundFile) {
@@ -13145,7 +13441,7 @@ let alertSystem = {
   alerts: JSON.parse(localStorage.getItem('twitchAlerts') || '[]'),
   
   // Trigger alert for specific event type
-  triggerAlertForEvent(eventType, userData) {
+  triggerAlertForEvent(eventType, userData, matchContext) {
     console.log(`🔍 Looking for alerts of type: ${eventType}`);
     console.log(`📋 Available alert types:`, this.alerts.map(a => a.type));
     const alertsOfType = this.alerts.filter(a => a.type === eventType);
@@ -13156,10 +13452,26 @@ let alertSystem = {
     }
     
     // Get enabled alerts
-    const enabledAlerts = alertsOfType.filter(a => a.enabled !== false);
+    let enabledAlerts = alertsOfType.filter(a => a.enabled !== false);
     if (enabledAlerts.length === 0) {
       console.log(`⚠️ No enabled alerts found for event type: ${eventType}`);
       return;
+    }
+
+    if (eventType === 'channel-points') {
+      const redemptionEvent = matchContext || userData;
+      const matchFn =
+        window.vdChannelPointsAlert && window.vdChannelPointsAlert.alertMatchesChannelPointsRedemption;
+      enabledAlerts = enabledAlerts.filter((alert) => {
+        if (matchFn) {
+          return matchFn(alert, redemptionEvent);
+        }
+        return false;
+      });
+      if (enabledAlerts.length === 0) {
+        console.log('⚠️ No channel-points alerts matched this redemption reward');
+        return;
+      }
     }
     
     // For first-chat-walkon, check if user is in selected walkon users list
@@ -13669,6 +13981,51 @@ async function sendTwitchChatMessage(message) {
   }
 }
 
+function readChannelPointsRewardFromUI() {
+  const rewardNameInput = document.getElementById('channel-points-reward-name');
+  const rewardIdInput = document.getElementById('channel-points-reward-id');
+  const select = document.getElementById('channel-points-reward-select');
+  let rewardId = rewardIdInput?.value?.trim() || '';
+  let rewardName = rewardNameInput?.value?.trim() || '';
+  if (select && window.vdChannelRewards) {
+    const picked = window.vdChannelRewards.selectedRewardFromSelect(select);
+    if (picked.rewardId) {
+      rewardId = picked.rewardId;
+      if (rewardIdInput) rewardIdInput.value = rewardId;
+      if (picked.rewardName) rewardName = picked.rewardName;
+      if (rewardNameInput && picked.rewardName) rewardNameInput.value = picked.rewardName;
+    }
+  }
+  return { rewardId, rewardName };
+}
+
+function applyChannelPointsRewardSelectFromConfig(config) {
+  const select = document.getElementById('channel-points-reward-select');
+  if (!select || !config) return;
+  if (config.rewardId) {
+    const opt = Array.from(select.options).find(
+      (o) => o.dataset && o.dataset.rewardId === String(config.rewardId),
+    );
+    if (opt) select.value = opt.value;
+  } else if (config.rewardName && window.vdChannelRewards) {
+    const opt = Array.from(select.options).find((o) => {
+      const t = (o.dataset && o.dataset.rewardTitle) || '';
+      return t.trim().toLowerCase() === String(config.rewardName).trim().toLowerCase();
+    });
+    if (opt) select.value = opt.value;
+  }
+}
+
+async function loadChannelPointsAlertRewardsFromTwitch() {
+  const select = document.getElementById('channel-points-reward-select');
+  const nameInput = document.getElementById('channel-points-reward-name');
+  if (!select) return;
+  await loadChannelRedemptions(select, nameInput, {
+    valueField: 'id',
+    placeholder: '-- Select reward --',
+  });
+}
+
 function readDailyCheckinRewardFromUI() {
   const rewardNameInput = document.getElementById('daily-checkin-reward-name');
   const rewardIdInput = document.getElementById('daily-checkin-reward-id');
@@ -13903,6 +14260,15 @@ async function initDailyCheckinSystem() {
   if (loadRewardsBtn) {
     loadRewardsBtn.addEventListener('click', () => {
       loadDailyCheckinRewardsFromTwitch().catch((err) => console.error('Load daily check-in rewards failed:', err));
+    });
+  }
+
+  const cpLoadRewardsBtn = document.getElementById('channel-points-load-rewards');
+  if (cpLoadRewardsBtn) {
+    cpLoadRewardsBtn.addEventListener('click', () => {
+      loadChannelPointsAlertRewardsFromTwitch().catch((err) =>
+        console.error('Load channel-points rewards failed:', err),
+      );
     });
   }
   const rewardSelect = document.getElementById('daily-checkin-reward-select');
@@ -14223,12 +14589,8 @@ function setupLeftAppMenu() {
   if (quitBtn) {
     quitBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (window.electronAPI && typeof window.electronAPI.closeWindow === 'function') {
-        window.electronAPI.closeWindow();
-      } else {
-        // fallback: send ipc if available
-        try { window.ipcRenderer && window.ipcRenderer.send && window.ipcRenderer.send('window-close'); } catch (e) {}
-      }
+      closeMenu();
+      requestAppQuit();
     });
   }
 
@@ -17338,6 +17700,9 @@ function setupButtonTypeSelection() {
   const audioOption = document.querySelector('[data-type="audio"]');
   const multiMediaOption = document.querySelector('[data-type="multi-media"]');
   const meldSceneOption = document.querySelector('[data-type="meld-scene"]');
+  const twitchClipOption = document.querySelector('[data-type="twitch-clip"]');
+  const postSocialsOption = document.querySelector('[data-type="post-socials"]');
+  const runAdOption = document.querySelector('[data-type="run-ad"]');
   const macroOption = document.querySelector('[data-type="macro"]');
   const cancelBtn = document.querySelector('.cancel-selection');
 
@@ -17363,6 +17728,27 @@ function setupButtonTypeSelection() {
     meldSceneOption.addEventListener('click', () => {
       selectionModal.classList.add('hidden');
       openMeldSceneForm();
+    });
+  }
+
+  if (twitchClipOption) {
+    twitchClipOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      openTwitchClipForm();
+    });
+  }
+
+  if (postSocialsOption) {
+    postSocialsOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      openPostSocialsForm();
+    });
+  }
+
+  if (runAdOption) {
+    runAdOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      openRunAdForm();
     });
   }
 
@@ -17428,6 +17814,97 @@ function hideMeldSceneSection() {
     meldSection.classList.add('hidden');
     meldSection.style.display = 'none';
   }
+}
+
+function hideRunAdSection() {
+  const section = document.getElementById('run-ad-section');
+  if (section) {
+    section.classList.add('hidden');
+    section.style.display = 'none';
+  }
+}
+
+function showRunAdSection(existingButton) {
+  const section = document.getElementById('run-ad-section');
+  if (section) {
+    section.classList.remove('hidden');
+    section.style.display = '';
+  }
+  const lenEl = document.getElementById('commercial-length-select');
+  const msgEl = document.getElementById('commercial-chat-message');
+  if (lenEl && existingButton && existingButton.commercialLength) {
+    lenEl.value = String(existingButton.commercialLength);
+  }
+  if (msgEl) {
+    msgEl.value = (existingButton && existingButton.chatMessage) || '';
+  }
+}
+
+function openPostSocialsForm() {
+  const settingsForm = document.getElementById('settings-form');
+  settingsForm.reset();
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'post-socials';
+  delete settingsForm.dataset.editingIndex;
+  delete settingsForm.dataset.editingId;
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  hideMeldSceneSection();
+  hideRunAdSection();
+  if (audioFileSection) audioFileSection.style.display = 'none';
+  if (appFileSection) appFileSection.style.display = 'none';
+  document.getElementById('settings-modal-title').textContent = 'Add Post Socials Button';
+  document.getElementById('settings-modal').classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
+}
+
+function openRunAdForm() {
+  const settingsForm = document.getElementById('settings-form');
+  settingsForm.reset();
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'run-ad';
+  delete settingsForm.dataset.editingIndex;
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  hideMeldSceneSection();
+  showRunAdSection(null);
+  if (audioFileSection) audioFileSection.style.display = 'none';
+  if (appFileSection) appFileSection.style.display = 'none';
+  document.getElementById('settings-modal-title').textContent = 'Add Run Ad Button';
+  document.getElementById('settings-modal').classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
+}
+
+function openTwitchClipForm() {
+  const settingsForm = document.getElementById('settings-form');
+  settingsForm.reset();
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'twitch-clip';
+  delete settingsForm.dataset.editingIndex;
+  delete settingsForm.dataset.editingId;
+  delete settingsForm.dataset.resolvedPath;
+  delete settingsForm.dataset.resolvedArgs;
+  delete settingsForm.dataset.existingFile;
+  if (typeof stopHotkeyRecording === 'function') stopHotkeyRecording();
+  const hkIn = document.getElementById('hotkey-input');
+  if (hkIn) hkIn.value = '';
+  const hkStatus = document.getElementById('hotkey-status');
+  if (hkStatus) hkStatus.textContent = '';
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  hideMeldSceneSection();
+  hideRunAdSection();
+  if (audioFileSection) audioFileSection.style.display = 'none';
+  if (appFileSection) appFileSection.style.display = 'none';
+  const fileInput = document.getElementById('file-input');
+  const appFileInput = document.getElementById('app-file-input');
+  if (fileInput) fileInput.required = false;
+  if (appFileInput) appFileInput.required = false;
+  document.getElementById('settings-modal-title').textContent = 'Add Twitch Clip Button';
+  const saveBtn = document.getElementById('save-sound');
+  if (saveBtn) saveBtn.disabled = false;
+  document.getElementById('settings-modal').classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
 }
 
 function openMeldSceneForm() {
@@ -17579,6 +18056,73 @@ function closePreferencesModal() {
   }
 }
 
+let socialsEditorRows = [];
+
+function renderSocialsEditor() {
+  const list = document.getElementById('socials-editor-list');
+  if (!list) return;
+  list.innerHTML = '';
+  socialsEditorRows.forEach((row, index) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'socials-editor-row';
+    wrap.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;';
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'preference-input';
+    nameInput.placeholder = 'Name (e.g. Twitter)';
+    nameInput.value = row.name || '';
+    nameInput.style.flex = '1 1 120px';
+    nameInput.addEventListener('input', () => { row.name = nameInput.value; });
+
+    const urlInput = document.createElement('input');
+    urlInput.type = 'url';
+    urlInput.className = 'preference-input';
+    urlInput.placeholder = 'https://…';
+    urlInput.value = row.url || '';
+    urlInput.style.flex = '2 1 200px';
+    urlInput.addEventListener('input', () => { row.url = urlInput.value; });
+
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.className = 'preference-button';
+    upBtn.textContent = '↑';
+    upBtn.disabled = index === 0;
+    upBtn.addEventListener('click', () => {
+      if (index === 0) return;
+      const tmp = socialsEditorRows[index - 1];
+      socialsEditorRows[index - 1] = socialsEditorRows[index];
+      socialsEditorRows[index] = tmp;
+      renderSocialsEditor();
+    });
+
+    const downBtn = document.createElement('button');
+    downBtn.type = 'button';
+    downBtn.className = 'preference-button';
+    downBtn.textContent = '↓';
+    downBtn.disabled = index === socialsEditorRows.length - 1;
+    downBtn.addEventListener('click', () => {
+      if (index >= socialsEditorRows.length - 1) return;
+      const tmp = socialsEditorRows[index + 1];
+      socialsEditorRows[index + 1] = socialsEditorRows[index];
+      socialsEditorRows[index] = tmp;
+      renderSocialsEditor();
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'preference-button';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', () => {
+      socialsEditorRows.splice(index, 1);
+      renderSocialsEditor();
+    });
+
+    wrap.append(nameInput, urlInput, upBtn, downBtn, removeBtn);
+    list.appendChild(wrap);
+  });
+}
+
 function loadPreferences() {
   // Load preferences from localStorage
   const preferences = JSON.parse(localStorage.getItem('vdPreferences') || '{}');
@@ -17586,6 +18130,24 @@ function loadPreferences() {
   // Update checkboxes
   document.getElementById('auto-update-checkbox').checked = preferences.autoUpdate !== false; // default to true
   
+  const loadSocialsFromConfig = async () => {
+    let socials = preferences.socials;
+    if (window.electronAPI && window.electronAPI.getConfig) {
+      try {
+        const cfg = await window.electronAPI.getConfig();
+        window.__vdLastConfig = cfg;
+        if (cfg && Array.isArray(cfg.socials)) socials = cfg.socials;
+      } catch (e) {
+        console.warn('Failed to load socials from config', e);
+      }
+    }
+    socialsEditorRows = Array.isArray(socials)
+      ? socials.map((s) => ({ name: s.name || '', url: s.url || '' }))
+      : [];
+    renderSocialsEditor();
+  };
+  void loadSocialsFromConfig();
+
   // Load Discord settings
   if (preferences.discord) {
     const discord = preferences.discord;
@@ -17600,6 +18162,10 @@ function loadPreferences() {
     }
     if (document.getElementById('discord-username')) {
       document.getElementById('discord-username').value = discord.username || 'VirtualDeck';
+    }
+    const postClipsEl = document.getElementById('discord-post-clips');
+    if (postClipsEl) {
+      postClipsEl.checked = discord.postClipsToDiscord !== false;
     }
   }
   
@@ -17617,13 +18183,19 @@ function loadPreferences() {
 }
 
 function savePreferences() {
+  const socials = socialsEditorRows
+    .map((r) => ({ name: String(r.name || '').trim(), url: String(r.url || '').trim() }))
+    .filter((r) => r.name && r.url);
+
   const preferences = {
     autoUpdate: document.getElementById('auto-update-checkbox').checked,
+    socials,
     discord: {
       webhookUrl: document.getElementById('discord-webhook-url')?.value.trim() || '',
       botToken: document.getElementById('discord-bot-token')?.value.trim() || '',
       defaultChannelId: document.getElementById('discord-channel-id')?.value.trim() || '',
-      username: document.getElementById('discord-username')?.value.trim() || 'VirtualDeck'
+      username: document.getElementById('discord-username')?.value.trim() || 'VirtualDeck',
+      postClipsToDiscord: document.getElementById('discord-post-clips')?.checked !== false,
     }
   };
   
@@ -17637,7 +18209,8 @@ function savePreferences() {
   
   // Also update config with Discord settings for JARVIS tools
   if (window.electronAPI && window.electronAPI.updateConfig) {
-    window.electronAPI.updateConfig({ discord: preferences.discord });
+    window.electronAPI.updateConfig({ discord: preferences.discord, socials: preferences.socials });
+    if (window.__vdLastConfig) window.__vdLastConfig.socials = preferences.socials;
   }
   
   // Show success message
@@ -17694,6 +18267,14 @@ function initializePreferencesModal() {
   const saveBtn = document.getElementById('save-preferences');
   if (saveBtn) {
     saveBtn.addEventListener('click', savePreferences);
+  }
+
+  const socialsAddBtn = document.getElementById('socials-add-row');
+  if (socialsAddBtn) {
+    socialsAddBtn.addEventListener('click', () => {
+      socialsEditorRows.push({ name: '', url: '' });
+      renderSocialsEditor();
+    });
   }
   
   // Cancel button
@@ -18175,6 +18756,9 @@ if (window.electronAPI && window.electronAPI.onSceneProviderRequest) {
       } else if (req.op === 'show') {
         const r = await window.meldClient.showScene(req.sceneId);
         reply(r && r.ok ? { ok: true } : { ok: false, error: 'Meld did not switch scene (' + ((r && r.reason) || 'unknown') + ')' });
+      } else if (req.op === 'recordClip') {
+        const r = await window.meldClient.recordClip();
+        reply(r && r.ok ? { ok: true } : { ok: false, error: (r && r.reason) || 'Meld recordClip failed' });
       } else {
         reply({ ok: false, error: 'Unknown scene request' });
       }

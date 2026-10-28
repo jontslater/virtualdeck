@@ -64,6 +64,33 @@ const pick = (u, ms = MACROS) => { const r = matchMacroByUtterance(ms, u, WAKE);
     assert.strictEqual(pick('switched scene to', ms), 's2');
     assert.strictEqual(pick('switch to scene', ms), null);
   });
+  await test('hey raven run ads / run ad (Run Ad macro) with optional wake and plural ad', async () => {
+    const ms = [
+      { id: 'run-ad', name: 'Run Ad', enabled: true, triggers: { phrase: 'hey raven, run ads' } },
+    ];
+    assert.strictEqual(pick('hey raven, run ads', ms), 'run-ad');
+    assert.strictEqual(pick('hey raven run ad', ms), 'run-ad');
+    assert.strictEqual(pick('raven run ads please', ms), 'run-ad');
+  });
+
+  await test('lemon squeezy phrase with hey raven prefix', async () => {
+    const ms = [
+      { id: 'lemon-squeezy', name: 'Lemon Squeezy', enabled: true, triggers: { phrase: 'hey raven, lemon squeezy' } },
+    ];
+    assert.strictEqual(pick('hey raven, lemon squeezy', ms), 'lemon-squeezy');
+    assert.strictEqual(pick('hey raven lemon squeezy', ms), 'lemon-squeezy');
+  });
+
+  await test('multi-word HOST_WAKE_NAMES strip (Hey Raven as one wake name)', async () => {
+    const ms = [
+      { id: 'run-ad', name: 'Run Ad', enabled: true, triggers: { phrase: 'run ads' } },
+    ];
+    const wake = { wakeNames: ['Hey Raven'] };
+    const r = matchMacroByUtterance(ms, 'hey raven run ads', wake);
+    assert.strictEqual(r.matched, true);
+    assert.strictEqual(r.macro.id, 'run-ad');
+  });
+
   await test('longest phrase wins; true ties are reported as ambiguous instead of guessing', async () => {
     const ms = [
       { id: 'a', name: 'A', enabled: true, triggers: { phrase: 'go live' } },
@@ -169,6 +196,42 @@ const pick = (u, ms = MACROS) => { const r = matchMacroByUtterance(ms, u, WAKE);
     assert.strictEqual(r.success, true);
     const gl = r.macros.find((m) => m.id === 'going-live');
     assert.deepStrictEqual(gl, { id: 'going-live', name: 'Going Live', description: 'Start stream', phrase: 'raven we are going live', enabled: true, steps: ['change_scene', 'discord_announce_live'] });
+  });
+
+  await test('run_voice_macro matches macro created after MacroManager init (editor save mid-session)', async () => {
+    macroManager.set('lemon-squeezy', {
+      name: 'Lemon Squeezy',
+      enabled: true,
+      triggers: { phrase: 'hey raven, lemon squeezy' },
+      steps: [{ tool: 'change_scene', arguments: { sceneName: 'Lemon' }, description: 'Lemon scene' }],
+    });
+    calls.length = 0;
+    executorCalls.length = 0;
+    const r = (await registry.invoke('run_voice_macro', { utterance: 'hey raven, lemon squeezy' })).result;
+    assert.strictEqual(r.matched, true);
+    assert.strictEqual(r.id, 'lemon-squeezy');
+    assert.deepStrictEqual(executorCalls, [['lemon-squeezy', 'voice']]);
+    assert.deepStrictEqual(calls, [['change_scene', { sceneName: 'Lemon' }]]);
+  });
+
+  await test('run_voice_macro and list_macros reload macros.json written after init', async () => {
+    const filePath = path.join(dir, 'macros.json');
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    data['disk-only'] = {
+      name: 'Disk Only',
+      enabled: true,
+      triggers: { phrase: 'disk only macro please' },
+      steps: [{ tool: 'change_scene', arguments: { sceneName: 'DiskScene' } }],
+    };
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    const listed = (await registry.invoke('list_macros', {})).result;
+    assert.ok(listed.macros.some((m) => m.id === 'disk-only'), 'list_macros should see disk-only macro');
+    calls.length = 0;
+    executorCalls.length = 0;
+    const r = (await registry.invoke('run_voice_macro', { utterance: 'disk only macro please' })).result;
+    assert.strictEqual(r.matched, true);
+    assert.strictEqual(r.id, 'disk-only');
+    assert.deepStrictEqual(calls, [['change_scene', { sceneName: 'DiskScene' }]]);
   });
 
   await test('without the main executor (unit context) run_macro still runs steps', async () => {
