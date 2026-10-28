@@ -70,6 +70,9 @@
           <button id="menu-tools-raven-restart" class="menu-dropdown-item" role="menuitem">Restart Raven AI</button>
           <button id="menu-tools-raven-settings" class="menu-dropdown-item" role="menuitem">Open Raven settings…</button>
           <div class="menu-divider"></div>
+          <button id="menu-tools-checkins-backup" class="menu-dropdown-item" role="menuitem">Back up check-ins…</button>
+          <button id="menu-tools-checkins-restore" class="menu-dropdown-item" role="menuitem">Restore check-ins…</button>
+          <div class="menu-divider"></div>
           <button id="menu-tools-devtools" class="menu-dropdown-item" role="menuitem">Developer Tools</button>
           <button id="menu-tools-reload" class="menu-dropdown-item" role="menuitem">Reload Application</button>
           <div class="menu-divider"></div>
@@ -1234,6 +1237,17 @@
           </div>
         </div>
 
+        <!-- Daily check-in data -->
+        <div class="preferences-section" id="checkins-data-preferences-section">
+          <h3>Daily check-in data</h3>
+          <div class="preference-item license-actions">
+            <button type="button" id="preferences-checkins-backup" class="preference-button">Back up check-ins…</button>
+            <button type="button" id="preferences-checkins-restore" class="preference-button">Restore check-ins…</button>
+          </div>
+          <small>Export or import <code>checkins.json</code> (viewer check-in history and settings). Restore keeps a <code>checkins.json.bak</code> copy first.</small>
+          <p id="preferences-checkins-message" class="raven-api-save-message" role="status"></p>
+        </div>
+
         <!-- Macros Section -->
         <div class="preferences-section">
           <h3>Macros</h3>
@@ -1266,9 +1280,9 @@
         <div class="preferences-section" id="raven-api-preferences-section">
           <h3>Raven AI — API keys</h3>
           <p id="raven-api-intro" class="raven-api-intro">
-            Raven is BYOK (bring your own keys). Defaults: <strong>OpenAI</strong> for chat (<code>LLM_API_KEY</code>) and
-            <strong>ElevenLabs</strong> for voice (<code>TTS_API_KEY</code>). Other providers supported by Raven can be set via
-            <code>LLM_PROVIDER</code> / <code>TTS_PROVIDER</code> in <code>raven.env</code>.
+            Raven is BYOK (bring your own keys). Her brain is <strong>OpenAI only</strong> — enter your OpenAI key below for chat.
+            Voice uses <strong>ElevenLabs</strong>; without an ElevenLabs key she is silent. Keys are saved to your profile
+            (<code>userData/raven.env</code>) when you click Save.
           </p>
           <p id="raven-api-status-line" class="raven-api-status-line">Checking Raven configuration…</p>
           <div class="preference-item">
@@ -1750,8 +1764,8 @@
         </div>
       </div>
       
-      <!-- AI Control Panel -->
-      <div class="overlay-section" style="background: var(--bg-primary); border: 2px solid var(--accent-primary); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+      <!-- AI Control Panel (dev / optional services — hidden in packaged builds) -->
+      <div id="overlay-ai-control-panel" class="overlay-section" style="background: var(--bg-primary); border: 2px solid var(--accent-primary); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
         <h3 style="margin: 0 0 16px 0; color: var(--accent-primary); font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
           <span style="font-size: 24px;">🤖</span>
           AI Control Panel
@@ -1953,7 +1967,7 @@
       </div>
       
       <!-- VTuber/PNGtuber Controls (separate section, not in tabs) -->
-      <div class="overlay-section">
+      <div id="overlay-vtuber-controls" class="overlay-section">
         <h4>VTuber/PNGtuber Controls</h4>
         <div class="overlay-info">
           <p><strong>Note:</strong> Upload PNG images for each avatar state. Images are stored in your VirtualDeck user data folder.</p>
@@ -2548,6 +2562,8 @@
             </div>
             
             <div class="setting-group" style="margin-bottom: 12px;">
+              <button id="daily-checkin-backup" class="action-btn secondary" style="width: 100%; margin-bottom: 8px;">💾 Back up check-ins…</button>
+              <button id="daily-checkin-restore" class="action-btn secondary" style="width: 100%; margin-bottom: 8px;">📂 Restore check-ins…</button>
               <button id="view-checkin-stats" class="action-btn secondary" style="width: 100%; margin-bottom: 8px;">📊 View Check-In Statistics</button>
               <button id="test-checkin" class="action-btn secondary" style="width: 100%; margin-bottom: 8px;">🧪 Test Check-In (Simulate)</button>
               <button id="clear-today-checkins" class="action-btn" style="width: 100%; margin-bottom: 8px; background: var(--warning, #ff9800); color: white;">🔄 Clear Today's Check-Ins</button>
@@ -2692,6 +2708,7 @@
 
   <script src="dialog-shim.js"></script>
   <script src="vd-console.js"></script>
+  <script src="vd-packaged-ui.js"></script>
   <script src="daily-checkin-reward.js"></script>
   <script src="channel-rewards-ui.js"></script>
   <script src="vd-poll.js"></script>

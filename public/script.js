@@ -13810,6 +13810,78 @@ function loadDailyCheckinConfigToUI() {
   if (testModeCheckbox) testModeCheckbox.checked = config.testMode ?? false;
 }
 
+async function applyRestoredDailyCheckinData(data) {
+  if (data && typeof data === 'object') {
+    dailyCheckinData = data;
+    if (!dailyCheckinData.liveDays) {
+      dailyCheckinData.liveDays = [];
+    }
+  } else {
+    await loadDailyCheckinData();
+  }
+  loadDailyCheckinConfigToUI();
+  refreshDailyCheckinEventSubWarning();
+  if (typeof renderCheckinStats === 'function') {
+    renderCheckinStats();
+  }
+}
+
+async function runDailyCheckinBackup(sourceMessageEl) {
+  if (!window.electronAPI || !window.electronAPI.backupDailyCheckins) return;
+  const result = await window.electronAPI.backupDailyCheckins();
+  if (sourceMessageEl) {
+    if (result && result.canceled) {
+      sourceMessageEl.textContent = '';
+    } else if (result && result.success) {
+      sourceMessageEl.textContent = `Check-ins saved to ${result.path}`;
+    } else {
+      sourceMessageEl.textContent = (result && result.error) || 'Backup failed.';
+    }
+  } else if (result && result.success && window.notificationManager) {
+    window.notificationManager.show('Check-in data backed up.', 'success');
+  }
+}
+
+async function runDailyCheckinRestore(sourceMessageEl) {
+  if (!window.electronAPI || !window.electronAPI.restoreDailyCheckins) return;
+  const result = await window.electronAPI.restoreDailyCheckins();
+  if (result && result.success) {
+    await applyRestoredDailyCheckinData(result.data);
+    const msg = 'Check-ins restored. Previous data saved as checkins.json.bak.';
+    if (sourceMessageEl) sourceMessageEl.textContent = msg;
+    else if (window.notificationManager) window.notificationManager.show(msg, 'success');
+  } else if (result && result.canceled) {
+    if (sourceMessageEl) sourceMessageEl.textContent = '';
+  } else if (sourceMessageEl) {
+    sourceMessageEl.textContent = (result && result.error) || 'Restore failed.';
+  }
+}
+
+function wireDailyCheckinBackupRestoreButtons() {
+  const pairs = [
+    ['daily-checkin-backup', 'daily-checkin-restore', null],
+    ['preferences-checkins-backup', 'preferences-checkins-restore', 'preferences-checkins-message'],
+  ];
+  for (const [backupId, restoreId, messageId] of pairs) {
+    const msgEl = messageId ? document.getElementById(messageId) : null;
+    const backupBtn = document.getElementById(backupId);
+    const restoreBtn = document.getElementById(restoreId);
+    if (backupBtn) {
+      backupBtn.addEventListener('click', () => runDailyCheckinBackup(msgEl));
+    }
+    if (restoreBtn) {
+      restoreBtn.addEventListener('click', () => runDailyCheckinRestore(msgEl));
+    }
+  }
+  if (window.electronAPI && window.electronAPI.onDailyCheckinsRestored) {
+    window.electronAPI.onDailyCheckinsRestored((data) => {
+      applyRestoredDailyCheckinData(data).catch((err) =>
+        console.error('Failed to reload check-ins after restore:', err),
+      );
+    });
+  }
+}
+
 // Initialize daily check-in system
 async function initDailyCheckinSystem() {
   console.log('🚀 Initializing Daily Check-In System...');
@@ -13854,6 +13926,8 @@ async function initDailyCheckinSystem() {
   });
   
   // Add button listeners
+  wireDailyCheckinBackupRestoreButtons();
+
   const viewStatsBtn = document.getElementById('view-checkin-stats');
   if (viewStatsBtn) {
     viewStatsBtn.addEventListener('click', showDailyCheckinStats);
@@ -14496,6 +14570,23 @@ function setupLeftAppMenu() {
       e.stopPropagation();
       closeToolsMenu();
       window.electronAPI.ravenOpenEnvFile();
+    });
+  }
+
+  const toolsCheckinsBackup = document.getElementById('menu-tools-checkins-backup');
+  const toolsCheckinsRestore = document.getElementById('menu-tools-checkins-restore');
+  if (toolsCheckinsBackup && window.electronAPI && window.electronAPI.backupDailyCheckins) {
+    toolsCheckinsBackup.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeToolsMenu();
+      await runDailyCheckinBackup(null);
+    });
+  }
+  if (toolsCheckinsRestore && window.electronAPI && window.electronAPI.restoreDailyCheckins) {
+    toolsCheckinsRestore.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeToolsMenu();
+      await runDailyCheckinRestore(null);
     });
   }
   
