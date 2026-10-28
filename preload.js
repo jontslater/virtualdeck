@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateConfig: async (configUpdate) => ipcRenderer.invoke('update-config', configUpdate),
   createTwitchClip: async (opts) => ipcRenderer.invoke('create-twitch-clip', opts || {}),
   postSocials: async (opts) => ipcRenderer.invoke('post-socials', opts || {}),
+  speakTtsDeck: async (opts) => ipcRenderer.invoke('speak-tts-deck', opts || {}),
   startTwitchCommercial: async (opts) => ipcRenderer.invoke('start-twitch-commercial', opts || {}),
   checkTwitchCommercialScope: async () => ipcRenderer.invoke('check-twitch-commercial-scope'),
   listMacroDeckButtons: async () => ipcRenderer.invoke('list-macro-deck-buttons'),

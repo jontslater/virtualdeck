@@ -2340,6 +2340,13 @@ async function loadButtons() {
           '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#e91916"/><text x="24" y="30" font-size="11" text-anchor="middle" fill="white">Ad</text></svg>',
         );
       appIconAlt = 'Run Ad';
+    } else if (button.type === 'speak-tts') {
+      appIconSrc =
+        'data:image/svg+xml;charset=utf-8,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#7c4dff"/><text x="24" y="30" font-size="10" text-anchor="middle" fill="white">TTS</text></svg>',
+        );
+      appIconAlt = 'Speak TTS';
     } else if (button.type === 'app') {
       let iconData = await window.electronAPI.getAppIcon(button.src);
       if (generation !== loadButtonsGeneration) return;
@@ -2350,7 +2357,7 @@ async function loadButtons() {
     card.innerHTML = `
       <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
       <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
-      <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type === 'twitch-clip' ? 'Clip' : button.type === 'post-socials' ? 'Socials' : button.type === 'run-ad' ? 'Ad' : button.type}</div>
+      <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type === 'twitch-clip' ? 'Clip' : button.type === 'post-socials' ? 'Socials' : button.type === 'run-ad' ? 'Ad' : button.type === 'speak-tts' ? 'TTS' : button.type}</div>
       <div class="sound-name">${button.name || button.label || button.sceneName || 'Unnamed'}</div>
       <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
     `;
@@ -4346,19 +4353,35 @@ async function handleTrigger(button) {
     } else {
       console.warn('postSocials API not available');
     }
-  } else if (button.type === 'run-ad') {
-    if (window.electronAPI && window.electronAPI.startTwitchCommercial) {
-      window.electronAPI
-        .startTwitchCommercial({
-          length: button.commercialLength || 60,
-          chatMessage: button.chatMessage || '',
-          source: 'button',
-        })
-        .catch((err) => console.error('Twitch commercial failed:', err));
-    } else {
-      console.warn('startTwitchCommercial API not available');
-    }
-  } else if (button.type === "multi-media") {
+    } else if (button.type === 'run-ad') {
+      if (window.electronAPI && window.electronAPI.startTwitchCommercial) {
+        window.electronAPI
+          .startTwitchCommercial({
+            length: button.commercialLength || 60,
+            chatMessage: button.chatMessage || '',
+            source: 'button',
+          })
+          .catch((err) => console.error('Twitch commercial failed:', err));
+      } else {
+        console.warn('startTwitchCommercial API not available');
+      }
+    } else if (button.type === 'speak-tts') {
+      if (window.electronAPI && window.electronAPI.speakTtsDeck) {
+        window.electronAPI
+          .speakTtsDeck({
+            text: button.speakText || '',
+            source: 'button',
+          })
+          .then((result) => {
+            if (result && result.success === false && result.error) {
+              console.warn('Speak TTS button failed:', result.error);
+            }
+          })
+          .catch((err) => console.error('Speak TTS failed:', err));
+      } else {
+        console.warn('speakTtsDeck API not available');
+      }
+    } else if (button.type === "multi-media") {
     // Handle multi-media button trigger
     await handleMultiMediaTrigger(button);
   }
@@ -4883,6 +4906,22 @@ document.getElementById('settings-form').onsubmit = async (e) => {
     return;
   }
 
+  if (type === 'speak-tts') {
+    const speakEl = document.getElementById('speak-tts-text');
+    window.electronAPI.addMedia({
+      label,
+      type: 'speak-tts',
+      speakText: speakEl ? speakEl.value.trim() : '',
+      hotkey: completeHotkey,
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex, 10) : undefined,
+      chatCommand: chatCommand,
+    });
+    window.electronAPI.refreshHotkeys();
+    document.getElementById('settings-modal').classList.add('hidden');
+    if (window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+    return;
+  }
+
   if (type === 'meld-scene') {
     if (window.__meldSceneSubmitInProgress) return;
     window.__meldSceneSubmitInProgress = true;
@@ -5226,6 +5265,7 @@ window.editButton = async (index) => {
     audioFileSection.style.display = 'none';
     appFileSection.style.display = 'none';
     hideRunAdSection();
+    hideSpeakTtsSection();
     if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
     fileInput.required = false;
     appFileInput.required = false;
@@ -5234,6 +5274,7 @@ window.editButton = async (index) => {
     audioFileSection.style.display = 'none';
     appFileSection.style.display = 'none';
     hideRunAdSection();
+    hideSpeakTtsSection();
     if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
     fileInput.required = false;
     appFileInput.required = false;
@@ -5242,7 +5283,17 @@ window.editButton = async (index) => {
     audioFileSection.style.display = 'none';
     appFileSection.style.display = 'none';
     if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
+    hideSpeakTtsSection();
     showRunAdSection(btn);
+    fileInput.required = false;
+    appFileInput.required = false;
+  } else if (btn.type === 'speak-tts') {
+    if (typeInputEl) typeInputEl.value = 'speak-tts';
+    audioFileSection.style.display = 'none';
+    appFileSection.style.display = 'none';
+    hideRunAdSection();
+    if (meldSceneSectionEdit) { meldSceneSectionEdit.classList.add('hidden'); meldSceneSectionEdit.style.display = 'none'; }
+    showSpeakTtsSection(btn);
     fileInput.required = false;
     appFileInput.required = false;
   } else if (btn.type === 'meld-scene') {
@@ -5380,7 +5431,8 @@ window.editButton = async (index) => {
           : btn.type === 'twitch-clip' ? 'Twitch Clip'
             : btn.type === 'post-socials' ? 'Post Socials'
               : btn.type === 'run-ad' ? 'Run Ad'
-                : 'App';
+                : btn.type === 'speak-tts' ? 'Speak (TTS)'
+                  : 'App';
   document.querySelector('#settings-modal h2').textContent = `Edit ${typeLabel}: ${buttonName}`;
   // Handle multi-media buttons differently
   if (btn.type === 'multi-media') {
@@ -17703,6 +17755,7 @@ function setupButtonTypeSelection() {
   const twitchClipOption = document.querySelector('[data-type="twitch-clip"]');
   const postSocialsOption = document.querySelector('[data-type="post-socials"]');
   const runAdOption = document.querySelector('[data-type="run-ad"]');
+  const speakTtsOption = document.querySelector('[data-type="speak-tts"]');
   const macroOption = document.querySelector('[data-type="macro"]');
   const cancelBtn = document.querySelector('.cancel-selection');
 
@@ -17749,6 +17802,13 @@ function setupButtonTypeSelection() {
     runAdOption.addEventListener('click', () => {
       selectionModal.classList.add('hidden');
       openRunAdForm();
+    });
+  }
+
+  if (speakTtsOption) {
+    speakTtsOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      openSpeakTtsForm();
     });
   }
 
@@ -17824,6 +17884,14 @@ function hideRunAdSection() {
   }
 }
 
+function hideSpeakTtsSection() {
+  const section = document.getElementById('speak-tts-section');
+  if (section) {
+    section.classList.add('hidden');
+    section.style.display = 'none';
+  }
+}
+
 function showRunAdSection(existingButton) {
   const section = document.getElementById('run-ad-section');
   if (section) {
@@ -17840,6 +17908,18 @@ function showRunAdSection(existingButton) {
   }
 }
 
+function showSpeakTtsSection(existingButton) {
+  const section = document.getElementById('speak-tts-section');
+  if (section) {
+    section.classList.remove('hidden');
+    section.style.display = '';
+  }
+  const textEl = document.getElementById('speak-tts-text');
+  if (textEl) {
+    textEl.value = (existingButton && existingButton.speakText) || '';
+  }
+}
+
 function openPostSocialsForm() {
   const settingsForm = document.getElementById('settings-form');
   settingsForm.reset();
@@ -17851,6 +17931,7 @@ function openPostSocialsForm() {
   const appFileSection = document.getElementById('app-file-section');
   hideMeldSceneSection();
   hideRunAdSection();
+  hideSpeakTtsSection();
   if (audioFileSection) audioFileSection.style.display = 'none';
   if (appFileSection) appFileSection.style.display = 'none';
   document.getElementById('settings-modal-title').textContent = 'Add Post Socials Button';
@@ -17868,9 +17949,29 @@ function openRunAdForm() {
   const appFileSection = document.getElementById('app-file-section');
   hideMeldSceneSection();
   showRunAdSection(null);
+  hideSpeakTtsSection();
   if (audioFileSection) audioFileSection.style.display = 'none';
   if (appFileSection) appFileSection.style.display = 'none';
   document.getElementById('settings-modal-title').textContent = 'Add Run Ad Button';
+  document.getElementById('settings-modal').classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
+}
+
+function openSpeakTtsForm() {
+  const settingsForm = document.getElementById('settings-form');
+  settingsForm.reset();
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'speak-tts';
+  delete settingsForm.dataset.editingIndex;
+  delete settingsForm.dataset.editingId;
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  hideMeldSceneSection();
+  hideRunAdSection();
+  showSpeakTtsSection(null);
+  if (audioFileSection) audioFileSection.style.display = 'none';
+  if (appFileSection) appFileSection.style.display = 'none';
+  document.getElementById('settings-modal-title').textContent = 'Add Speak (TTS) Button';
   document.getElementById('settings-modal').classList.remove('hidden');
   if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
 }
@@ -17894,6 +17995,7 @@ function openTwitchClipForm() {
   const appFileSection = document.getElementById('app-file-section');
   hideMeldSceneSection();
   hideRunAdSection();
+  hideSpeakTtsSection();
   if (audioFileSection) audioFileSection.style.display = 'none';
   if (appFileSection) appFileSection.style.display = 'none';
   const fileInput = document.getElementById('file-input');

@@ -61,6 +61,7 @@ const { createTwitchMessageDeduper } = require('./lib/twitch-chat-dedupe');
 const { createTwitchOAuthHost } = require('./lib/twitch-oauth-host');
 const { encodeField, decodeField } = require('./lib/portable-secret');
 const { speakViaDevApi } = require('./lib/raven-dev-speak');
+const { executeSpeakTts } = require('./lib/raven-speak-tts');
 const {
   buildRavenPlayAudioMessage,
   RAVEN_AI_AUDIO_OVERLAY,
@@ -1446,6 +1447,10 @@ async function startJarvisServer() {
       createTwitchClip: createTwitchClipAndAnnounce,
       postSocialsToChat,
       startTwitchCommercial,
+      executeSpeakTtsFn: createExecuteSpeakTtsFn({
+        config: currentProfile,
+        twitchUserName,
+      }),
       meldRecordClip: async () => {
         const r = await meldSceneBridge('recordClip');
         return r && r.ok ? { ok: true } : { ok: false, reason: (r && (r.error || r.reason)) || 'meld-record-failed' };
@@ -1817,6 +1822,51 @@ function broadcastToOverlay(message, targetOverlay = null) {
   console.log(`📊 Registry status:`, Array.from(overlayRegistry.entries()).map(([name, clients]) => `${name}:${clients.size}`));
 }
 
+function routeRavenTtsPlayback(playback) {
+  if (!playback || !playback.audioUrl) return;
+  const playAudioMessage = buildRavenPlayAudioMessage(playback.audioUrl, playback.volume || 1.0);
+  broadcastToOverlay(playAudioMessage, RAVEN_AI_AUDIO_OVERLAY);
+  if (hasAiAudioOverlayClients(overlayRegistry)) {
+    console.log('🎵 [Speak TTS] Sent to aiAudio OBS browser source');
+  } else {
+    console.log('🎵 [Speak TTS] aiAudio overlay not connected — dashboard playback only');
+  }
+}
+
+function buildRavenSpeakDeps() {
+  let storedDevBase = null;
+  try {
+    const tc = loadTcConfig();
+    storedDevBase = tc.devApiBaseUrl || null;
+  } catch (e) {
+    storedDevBase = null;
+  }
+  return {
+    fetchFn: fetch,
+    userDataPath,
+    overlayPort: overlayServerPort || 8080,
+    aiCommandsPath,
+    getMainWindow: () => win,
+    handleAIAudioCommands,
+    storedDevBaseUrl: storedDevBase,
+    routeRavenTtsPlayback,
+  };
+}
+
+function createExecuteSpeakTtsFn(context) {
+  return async (options) =>
+    executeSpeakTts(
+      {
+        licenseGate: () => (licenseManager ? licenseManager.canUseAiAssistant() : { allowed: true }),
+        isRavenRunning: () => ravenHost.isRunning(),
+        speakDeps: buildRavenSpeakDeps(),
+        log: console,
+        context: context || {},
+      },
+      options || {},
+    );
+}
+
 // AI Integration: Handle audio commands from AI controller
 function handleAIAudioCommands() {
   if (!fs.existsSync(aiCommandsPath)) {
@@ -2066,6 +2116,29 @@ ipcMain.on('add-media', (event, data) => {
         label: data.label,
         name: data.label,
         type: 'post-socials',
+        src: '',
+        hotkey: data.hotkey || undefined,
+        chatCommand: data.chatCommand || undefined,
+      };
+      if (typeof data.editingIndex === 'number') {
+        config.buttons[data.editingIndex] = newButton;
+      } else {
+        config.buttons.push(newButton);
+      }
+      saveProfile(currentActiveProfile, config);
+      if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
+      return;
+    }
+
+    if (data.type === 'speak-tts') {
+      const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
+      const speakText = String(data.speakText || '').trim();
+      const newButton = {
+        id: (existing && existing.id) || nextUniqueButtonId(config.buttons),
+        label: data.label,
+        name: data.label,
+        type: 'speak-tts',
+        speakText,
         src: '',
         hotkey: data.hotkey || undefined,
         chatCommand: data.chatCommand || undefined,
@@ -7013,25 +7086,7 @@ app.whenReady().then(() => {
         }
       }
       const text = payload && payload.text;
-      let storedDevBase = null;
-      try {
-        const tc = loadTcConfig();
-        storedDevBase = tc.devApiBaseUrl || null;
-      } catch (e) {
-        storedDevBase = null;
-      }
-      return await speakViaDevApi(
-        {
-          fetchFn: fetch,
-          userDataPath,
-          overlayPort: overlayServerPort || 8080,
-          aiCommandsPath,
-          getMainWindow: () => win,
-          handleAIAudioCommands,
-          storedDevBaseUrl: storedDevBase,
-        },
-        text,
-      );
+      return await speakViaDevApi(buildRavenSpeakDeps(), text);
     } catch (err) {
       return { ok: false, error: err && err.message ? err.message : String(err) };
     }
@@ -7360,6 +7415,10 @@ function updateJarvisContext() {
       createTwitchClip: createTwitchClipAndAnnounce,
       postSocialsToChat,
       startTwitchCommercial,
+      executeSpeakTtsFn: createExecuteSpeakTtsFn({
+        config: currentProfile,
+        twitchUserName,
+      }),
       meldRecordClip: async () => {
         const r = await meldSceneBridge('recordClip');
         return r && r.ok ? { ok: true } : { ok: false, reason: (r && (r.error || r.reason)) || 'meld-record-failed' };
@@ -7379,6 +7438,17 @@ ipcMain.handle('create-twitch-clip', async (event, opts = {}) => {
 ipcMain.handle('post-socials', async (_event, opts = {}) => {
   const out = await postSocialsToChat({ source: opts.source || 'button' });
   return out;
+});
+
+ipcMain.handle('speak-tts-deck', async (_event, opts = {}) => {
+  const profile = loadProfile(currentActiveProfile);
+  const fn = createExecuteSpeakTtsFn({ config: profile, twitchUserName });
+  return fn({
+    text: opts.text,
+    optional: false,
+    userData: opts.userData,
+    source: opts.source || 'button',
+  });
 });
 
 ipcMain.handle('start-twitch-commercial', async (_event, opts = {}) => {

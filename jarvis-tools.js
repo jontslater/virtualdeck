@@ -12,6 +12,7 @@ const { normalizeTwitchLogin, isValidTwitchLogin } = require('./lib/twitch-login
 const { matchMacroByUtterance, summarizeMacroRun } = require('./lib/macro-voice');
 const { applyMacroTemplateVars, mergeClipResultIntoMacroVars } = require('./lib/twitch-clips');
 const { replacePlaceholders, appendSocialsToUserData } = require('./lib/alert-placeholders');
+const { executeSpeakTts } = require('./lib/raven-speak-tts');
 const { formatSocialsLine, normalizeSocials, splitChatMessages } = require('./lib/socials');
 
 class JarvisToolRegistry {
@@ -399,6 +400,40 @@ registry.register(
       note: 'Sound triggered via VirtualDeck media system'
     };
   }
+);
+
+registry.register(
+  'speak_tts',
+  {
+    description:
+      'Speak text with Raven TTS (aiAudio overlay + dashboard). Supports alert placeholders like {user} and macro {{clipUrl}} vars.',
+    parameters: {
+      type: 'object',
+      properties: {
+        text: {
+          type: 'string',
+          description: 'Text for Raven to speak (supports {user}, {username}, {message}, etc.)',
+        },
+        optional: {
+          type: 'boolean',
+          description:
+            'If true, skip this step with a logged warning when Raven TTS is unavailable instead of failing the macro',
+        },
+      },
+      required: ['text'],
+    },
+  },
+  async (args, context) => {
+    const { executeSpeakTtsFn } = context;
+    if (typeof executeSpeakTtsFn !== 'function') {
+      return { success: false, error: 'Speak TTS is not available in this host' };
+    }
+    return executeSpeakTtsFn({
+      text: args.text,
+      optional: args.optional === true || args.optional === 'true',
+      source: 'macro',
+    });
+  },
 );
 
 // Shared macro step runner. Used by run_macro (and by main.js executeMacroById, the single executor

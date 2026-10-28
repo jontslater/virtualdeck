@@ -12,6 +12,7 @@ const ALLOWLISTED_TOOLS = [
   { name: 'change_scene', label: 'Change Scene', args: ['sceneName'] },
   { name: 'refresh_browser_sources', label: 'Refresh Browser Sources', args: ['layerName'] },
   { name: 'play_sound', label: 'Play Sound', args: ['name'] },
+  { name: 'speak_tts', label: 'Speak (TTS)', args: ['text', 'optional'] },
   { name: 'send_twitch_message', label: 'Send Twitch Message', args: ['text'] },
   { name: 'post_socials', label: 'Post Socials', args: [] },
   { name: 'twitch_start_commercial', label: 'Run Twitch Ad', args: ['length', 'chatMessage'] },
