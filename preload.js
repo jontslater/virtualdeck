@@ -27,6 +27,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConfig: async () => ipcRenderer.invoke('get-config'),
   saveConfig: async (config) => ipcRenderer.invoke('save-config', config),
   updateConfig: async (configUpdate) => ipcRenderer.invoke('update-config', configUpdate),
+  createTwitchClip: async (opts) => ipcRenderer.invoke('create-twitch-clip', opts || {}),
+  postSocials: async (opts) => ipcRenderer.invoke('post-socials', opts || {}),
+  speakTtsDeck: async (opts) => ipcRenderer.invoke('speak-tts-deck', opts || {}),
+  startTwitchCommercial: async (opts) => ipcRenderer.invoke('start-twitch-commercial', opts || {}),
+  checkTwitchCommercialScope: async () => ipcRenderer.invoke('check-twitch-commercial-scope'),
+  listMacroDeckButtons: async () => ipcRenderer.invoke('list-macro-deck-buttons'),
   // Media file storage for multi-media buttons
   saveMediaFile: async (mediaData) => ipcRenderer.invoke('save-media-file', mediaData),
   saveMediaFileByPath: async (mediaData) => ipcRenderer.invoke('save-media-file-by-path', mediaData),
@@ -142,6 +148,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Daily Check-In System
   loadDailyCheckins: async () => ipcRenderer.invoke('loadDailyCheckins'),
   saveDailyCheckins: async (data) => ipcRenderer.invoke('saveDailyCheckins', data),
+  backupDailyCheckins: async () => ipcRenderer.invoke('backup-daily-checkins'),
+  restoreDailyCheckins: async () => ipcRenderer.invoke('restore-daily-checkins'),
+  onDailyCheckinsRestored: (callback) =>
+    ipcRenderer.on('daily-checkins-restored', (_event, data) => callback(data)),
   sendTwitchChatMessage: async (message) => ipcRenderer.invoke('sendTwitchChatMessage', message),
   // Bug Report
   reportBug: async () => ipcRenderer.invoke('report-bug'),
@@ -219,4 +229,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ravenIsRunning: async () => ipcRenderer.invoke('raven-is-running'),
   ravenConnectionStatus: async () => ipcRenderer.invoke('raven-connection-status'),
   ravenTestLlmKey: async (payload) => ipcRenderer.invoke('raven-test-llm-key', payload || {}),
+  ravenTestTtsKey: async (payload) => ipcRenderer.invoke('raven-test-tts-key', payload || {}),
 });

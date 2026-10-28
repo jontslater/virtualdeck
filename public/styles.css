@@ -5645,6 +5645,8 @@ body.resizing-chat * {
 .scene-picker-row .scene-source-select { max-width: 150px; }
 .scene-picker-status { font-size: 11px; opacity: 0.85; margin: 4px 0; }
 .scene-picker-status.ok { color: #4caf50; }
+.button-picker .button-picker-search { width: 100%; margin-bottom: 6px; }
+.button-picker .button-picker-select { width: 100%; min-height: 120px; }
 .scene-picker-status.error { color: #ff9f43; }
 .scene-name-select option.missing { color: #ff6b6b; }
 .scene-obs-config { margin-top: 4px; font-size: 12px; }

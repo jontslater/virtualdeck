@@ -15,10 +15,26 @@ const path = require('path');
 const { app, shell, dialog } = require('electron');
 const { stripBom } = require('./lib/read-utf8');
 const { migrateRavenEnvFile } = require('./lib/raven-env-migrate');
+const supervisor = require('./lib/raven-supervisor');
 
 let ravenProc = null;
 /** @type {() => { allowed: boolean, message?: string }} */
 let licenseGate = () => ({ allowed: true });
+let openPreferencesHook = null;
+let supervisorState = { restarts: [], startedAt: 0 };
+let restartTimer = null;
+
+/** main.js passes a function that opens Edit → Preferences (Raven AI section). */
+function setOpenPreferences(fn) {
+  openPreferencesHook = typeof fn === 'function' ? fn : null;
+}
+
+function openRavenPreferences() {
+  if (openPreferencesHook) {
+    try { openPreferencesHook(); return true; } catch (err) { console.warn('[Raven] open preferences failed', err && err.message); }
+  }
+  return false;
+}
 
 function setLicenseGate(fn) {
   licenseGate = typeof fn === 'function' ? fn : () => ({ allowed: true });
@@ -247,27 +263,16 @@ function showFirstRunDialog() {
       '1. LLM Provider (OpenAI, etc.) - for AI conversation\n' +
       '2. TTS Provider (ElevenLabs, etc.) - for voice synthesis\n\n' +
       'Click "Open Settings" to add your API keys now.\n\n' +
-      'You can also access this later via:\n' +
-      'Tools → Raven AI → Open Raven settings (raven.env)',
+      'You can also add keys later in Edit → Preferences (Raven AI — API keys).',
     buttons: ['Open Settings', 'Skip for Now'],
     defaultId: 0,
     cancelId: 1,
   });
   
   if (result === 0) {
-    openEnvFile();
-    
-    dialog.showMessageBoxSync({
-      type: 'info',
-      title: 'Raven AI - Next Steps',
-      message: 'Fill in your API keys and restart Raven',
-      detail:
-        'After adding your API keys:\n\n' +
-        '1. Save the file and close your editor\n' +
-        '2. Use Tools → Raven AI → Restart Raven AI\n\n' +
-        'Raven will reload your saved keys on restart.',
-      buttons: ['OK'],
-    });
+    // Packaged users never edit raven.env by hand: send them to Preferences, which
+    // saves the keys, tests them and restarts Raven. Dev builds fall back to the file.
+    if (!openRavenPreferences()) openEnvFile();
   }
   
   return result === 0;
@@ -301,8 +306,10 @@ function startRaven() {
   if (!fs.existsSync(script)) {
     console.warn('[Raven] sidecar not found at', sidecar, 'or', fallbackSidecar);
     dialog.showErrorBox(
-      'Raven AI not bundled',
-      'This VirtualDeck build does not include Raven. Run scripts/stage-raven-runtime.ps1 then npm run build:win.',
+      'Raven AI not found',
+      app.isPackaged
+        ? 'Raven AI files are missing from this VirtualDeck install. Please reinstall VirtualDeck from the latest installer.'
+        : 'This VirtualDeck build does not include Raven. Run scripts/stage-raven-runtime.ps1 then npm run build:win.',
     );
     return;
   }
@@ -349,15 +356,20 @@ function startRaven() {
   } catch (err) {
     console.warn('[Raven] could not open raven.log', err && err.message);
   }
-  ravenProc = spawn(nodeExe, [script], {
+  if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+  const proc = spawn(nodeExe, [script], {
     cwd: root,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
+  ravenProc = proc;
+  supervisorState.startedAt = Date.now();
+  let sawPortConflict = false;
   const onLog = (buf, isErr) => {
     const msg = String(buf).trim();
     if (!msg) return;
+    if (supervisor.logShowsPortConflict(msg)) sawPortConflict = true;
     if (isErr) console.warn('[Raven]', msg);
     else console.log('[Raven]', msg);
     try {
@@ -366,16 +378,55 @@ function startRaven() {
       // ignore
     }
   };
-  ravenProc.stdout.on('data', (buf) => onLog(buf, false));
-  ravenProc.stderr.on('data', (buf) => onLog(buf, true));
-  ravenProc.on('exit', (code) => {
+  proc.stdout.on('data', (buf) => onLog(buf, false));
+  proc.stderr.on('data', (buf) => onLog(buf, true));
+  proc.on('exit', (code) => {
     console.log('[Raven] exited', code);
-    ravenProc = null;
+    if (ravenProc === proc) ravenProc = null;
+    try { if (logStream) logStream.end(); } catch { /* ignore */ }
+    handleRavenExit(code, { stopRequested: !!proc.__stopRequested, sawPortConflict, logFile });
   });
 }
 
+async function handleRavenExit(code, { stopRequested, sawPortConflict, logFile }) {
+  if (stopRequested) return;
+  if (sawPortConflict) {
+    const busy = await supervisor.findBusyPorts().catch(() => []);
+    dialog.showMessageBox({
+      type: 'warning',
+      title: 'Raven AI could not start',
+      message: 'Another program is using a port Raven needs',
+      detail:
+        `Busy port(s): ${busy.length ? busy.join(', ') : 'see log below'}.\n` +
+        'Close the other program (or a second copy of Raven / VirtualDeck), then use Tools → Raven AI → Restart Raven AI.\n\n' +
+        `Last log lines:\n${supervisor.tailLog(logFile, 8)}`,
+      buttons: ['OK'],
+    }).catch(() => {});
+    return;
+  }
+  const decision = supervisor.decideOnExit({ ...supervisorState, stopRequested }, code);
+  supervisorState.restarts = decision.restarts;
+  if (decision.action === 'restart') {
+    console.log(`[Raven] crashed (code ${code}) — restart ${decision.attempt}/${supervisor.MAX_RESTARTS} in ${decision.delayMs}ms`);
+    restartTimer = setTimeout(() => { restartTimer = null; if (!isRunning()) startRaven(); }, decision.delayMs);
+  } else if (decision.action === 'give_up') {
+    dialog.showMessageBox({
+      type: 'error',
+      title: 'Raven AI stopped',
+      message: `Raven crashed ${supervisor.MAX_RESTARTS} times and was not restarted`,
+      detail:
+        'Use Tools → Raven AI → Restart Raven AI to try again. If it keeps happening, check your API keys in Edit → Preferences → Raven AI.\n\n' +
+        `Last log lines:\n${supervisor.tailLog(logFile, 12)}`,
+      buttons: ['OK'],
+    }).catch(() => {});
+  }
+}
+
 function stopRaven() {
+  if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
   if (!ravenProc) return;
+  ravenProc.__stopRequested = true;
+  supervisorState.restarts = [];
   const pid = ravenProc.pid;
   try {
     if (process.platform === 'win32' && pid) {
@@ -405,9 +456,10 @@ function maybeAutoStart() {
   setTimeout(() => startRaven(), 400);
 }
 
-function menuTemplateItems() {
+function menuTemplateItems(options = {}) {
+  const includeEnvEditor = options.includeEnvEditor !== false && !app.isPackaged;
   const prefs = loadPrefs();
-  return [
+  const items = [
     {
       label: 'Start Raven AI',
       click: () => startRaven(),
@@ -430,11 +482,14 @@ function menuTemplateItems() {
         savePrefs(next);
       },
     },
-    {
-      label: 'Open Raven settings (raven.env)...',
-      click: () => openEnvFile(),
-    },
   ];
+  if (includeEnvEditor) {
+    items.push({
+      label: 'Open Raven settings file (developer)...',
+      click: () => openEnvFile(),
+    });
+  }
+  return items;
 }
 
 module.exports = {
@@ -452,4 +507,5 @@ module.exports = {
   restartRavenIfRunning,
   readEnvValue,
   openEnvFile,
+  setOpenPreferences,
 };

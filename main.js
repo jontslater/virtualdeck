@@ -46,9 +46,27 @@ const { copyTreeSync, copyFileSyncSafe } = require('./lib/copy-tree-sync');
 const RaidFavoritesStore = require('./lib/raid-favorites-store');
 const { RaidHelixClient } = require('./lib/raid-helix');
 const { buildTwitchAuthorizeUrl, getTwitchOAuthClientId } = require('./lib/twitch-oauth');
+const {
+  executeTwitchClipHelixFlow,
+  shouldPostClipsToDiscord,
+  TWITCH_CLIP_COOLDOWN_MS,
+} = require('./lib/twitch-clips');
+const { formatSocialsLine, normalizeSocials, splitChatMessages, TWITCH_CHAT_MAX_LEN } = require('./lib/socials');
+const { TwitchCommercialClient } = require('./lib/twitch-commercial');
+const {
+  buildDeckButtonCatalog,
+  normalizeMacroTriggerButtonSteps,
+} = require('./lib/macro-button-picker');
+const { createTwitchMessageDeduper } = require('./lib/twitch-chat-dedupe');
 const { createTwitchOAuthHost } = require('./lib/twitch-oauth-host');
 const { encodeField, decodeField } = require('./lib/portable-secret');
 const { speakViaDevApi } = require('./lib/raven-dev-speak');
+const { executeSpeakTts } = require('./lib/raven-speak-tts');
+const {
+  buildRavenPlayAudioMessage,
+  RAVEN_AI_AUDIO_OVERLAY,
+  hasAiAudioOverlayClients,
+} = require('./lib/ai-audio-overlay');
 const { isValidTwitchLogin, normalizeTwitchLogin } = require('./lib/twitch-login');
 const { sanitizeTwitchProfileImageUrl: sanitizeTwitchProfileImageUrlLib } = require('./lib/twitch-profile-image');
 
@@ -86,14 +104,38 @@ function isRecentButtonTrigger(label) {
   return false;
 }
 
-function triggerButtonWithDebounce(label, source = 'unknown') {
-  console.log(`🔍 triggerButtonWithDebounce called for "${label}" from ${source}`);
+function resolveDeckButtonInProfile(profile, { buttonId, label } = {}) {
+  const buttons = profile && Array.isArray(profile.buttons) ? profile.buttons : [];
+  if (buttonId) {
+    const byId = buttons.find((b) => b && b.id === buttonId);
+    if (byId) return byId;
+  }
+  if (label) {
+    const key = String(label).trim().toLowerCase();
+    return buttons.find((b) => {
+      if (!b) return false;
+      const name = String(b.name || b.label || b.sceneName || '').trim().toLowerCase();
+      return name === key;
+    });
+  }
+  return null;
+}
+
+function triggerDeckButton(ref, source = 'unknown') {
+  const opts = typeof ref === 'string' ? { label: ref } : (ref || {});
+  const { buttonId, label } = opts;
+  const profile = loadProfile(currentActiveProfile);
+  const btn = resolveDeckButtonInProfile(profile, { buttonId, label });
+  const debounceKey = buttonId || label || (btn && btn.id) || '';
+  const display = btn ? (btn.name || btn.label || btn.id) : label || buttonId;
+
+  console.log(`🔍 triggerDeckButton called for "${display}" from ${source}`);
+
   if (licenseManager) {
     try {
-      const profile = loadProfile(currentActiveProfile);
-      const gate = licenseManager.canTriggerButton(profile, label);
+      const gate = licenseManager.canTriggerButton(profile, btn || label || buttonId);
       if (!gate.allowed) {
-        console.log(`🔒 Blocked trigger for "${label}" from ${source}:`, gate.reason);
+        console.log(`🔒 Blocked trigger for "${display}" from ${source}:`, gate.reason);
         if (win && !win.isDestroyed()) {
           win.webContents.send('license-upsell', {
             reason: gate.reason,
@@ -106,18 +148,33 @@ function triggerButtonWithDebounce(label, source = 'unknown') {
       console.warn('[License] trigger check failed:', e && e.message);
     }
   }
-  if (isRecentButtonTrigger(label)) {
-    console.log(`🚫 Skipping duplicate trigger for "${label}" from ${source} (within ${BUTTON_TRIGGER_DEBOUNCE_MS}ms)`);
+  if (debounceKey && isRecentButtonTrigger(debounceKey)) {
+    console.log(`🚫 Skipping duplicate trigger for "${display}" from ${source} (within ${BUTTON_TRIGGER_DEBOUNCE_MS}ms)`);
     return false;
   }
-  
+
   if (win && win.webContents) {
-    console.log(`🚀 Sending trigger-media event for "${label}" from ${source}`);
-    win.webContents.send('trigger-media', label);
+    const identifier = btn && btn.id ? btn.id : (label || buttonId);
+    console.log(`🚀 Sending trigger-media event for "${identifier}" from ${source}`);
+    win.webContents.send('trigger-media', identifier);
     return true;
   }
-  console.log(`❌ No window available to trigger button "${label}" from ${source}`);
+  console.log(`❌ No window available to trigger button "${display}" from ${source}`);
   return false;
+}
+
+function triggerButtonWithDebounce(label, source = 'unknown') {
+  return triggerDeckButton(label, source);
+}
+
+function loadDeckButtonCatalogForMacros() {
+  const meta = loadProfilesMeta();
+  const profiles = (meta.profiles || []).map((p) => ({
+    profileId: p.id,
+    profileName: p.name || p.id,
+    buttons: loadProfile(p.id).buttons || [],
+  }));
+  return buildDeckButtonCatalog(profiles);
 }
 
 // Use Electron's userData directory for config and user files (never the app install dir).
@@ -1385,7 +1442,19 @@ async function startJarvisServer() {
       currentActiveProfile,
       loadProfile,
       triggerButtonFn: triggerButtonWithDebounce,
+      triggerDeckButtonFn: triggerDeckButton,
       macroManager,
+      createTwitchClip: createTwitchClipAndAnnounce,
+      postSocialsToChat,
+      startTwitchCommercial,
+      executeSpeakTtsFn: createExecuteSpeakTtsFn({
+        config: currentProfile,
+        twitchUserName,
+      }),
+      meldRecordClip: async () => {
+        const r = await meldSceneBridge('recordClip');
+        return r && r.ok ? { ok: true } : { ok: false, reason: (r && (r.error || r.reason)) || 'meld-record-failed' };
+      },
       ...buildJarvisRaidContext(),
     });
 
@@ -1632,6 +1701,34 @@ function handleAIConfigAPI(req, res) {
           res.end(JSON.stringify({ error: err.message }));
         }
       });
+    } else if (path === '/api/ai/macros' && req.method === 'GET') {
+      const { formatMacrosForRaven } = require('./lib/raven-macro-api');
+      if (macroManager) macroManager.reload();
+      const macros = macroManager ? formatMacrosForRaven(macroManager.list()) : [];
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ macros, count: macros.length }));
+    } else if (path === '/api/ai/trigger-macro' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk.toString(); });
+      req.on('end', async () => {
+        try {
+          const data = JSON.parse(body || '{}');
+          const utterance = String(data.utterance || data.text || data.phrase || data.transcript || '').trim();
+          if (!utterance) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'utterance required' }));
+            return;
+          }
+          if (macroManager) macroManager.reload();
+          const result = await jarvisRegistry.invoke('run_voice_macro', { utterance });
+          const payload = result.result || result;
+          res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(payload));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
     } else {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
@@ -1725,6 +1822,51 @@ function broadcastToOverlay(message, targetOverlay = null) {
   console.log(`📊 Registry status:`, Array.from(overlayRegistry.entries()).map(([name, clients]) => `${name}:${clients.size}`));
 }
 
+function routeRavenTtsPlayback(playback) {
+  if (!playback || !playback.audioUrl) return;
+  const playAudioMessage = buildRavenPlayAudioMessage(playback.audioUrl, playback.volume || 1.0);
+  broadcastToOverlay(playAudioMessage, RAVEN_AI_AUDIO_OVERLAY);
+  if (hasAiAudioOverlayClients(overlayRegistry)) {
+    console.log('🎵 [Speak TTS] Sent to aiAudio OBS browser source');
+  } else {
+    console.log('🎵 [Speak TTS] aiAudio overlay not connected — dashboard playback only');
+  }
+}
+
+function buildRavenSpeakDeps() {
+  let storedDevBase = null;
+  try {
+    const tc = loadTcConfig();
+    storedDevBase = tc.devApiBaseUrl || null;
+  } catch (e) {
+    storedDevBase = null;
+  }
+  return {
+    fetchFn: fetch,
+    userDataPath,
+    overlayPort: overlayServerPort || 8080,
+    aiCommandsPath,
+    getMainWindow: () => win,
+    handleAIAudioCommands,
+    storedDevBaseUrl: storedDevBase,
+    routeRavenTtsPlayback,
+  };
+}
+
+function createExecuteSpeakTtsFn(context) {
+  return async (options) =>
+    executeSpeakTts(
+      {
+        licenseGate: () => (licenseManager ? licenseManager.canUseAiAssistant() : { allowed: true }),
+        isRavenRunning: () => ravenHost.isRunning(),
+        speakDeps: buildRavenSpeakDeps(),
+        log: console,
+        context: context || {},
+      },
+      options || {},
+    );
+}
+
 // AI Integration: Handle audio commands from AI controller
 function handleAIAudioCommands() {
   if (!fs.existsSync(aiCommandsPath)) {
@@ -1784,40 +1926,19 @@ function handleAIAudioCommands() {
               console.log('🎵 [AI Audio] Sent to dashboard (same pipeline as audio buttons)');
             }
 
-            const buttonTriggerMessage = {
-              type: 'buttonTrigger',
-              options: {
-                name: 'AI TTS',
-                clearPrevious: true,
-              },
-              centerMedia: [
-                {
-                  type: 'audio',
-                  src: audioUrl,
-                  url: audioUrl,
-                  volume: command.volume || 1.0,
-                  loop: false,
-                }
-              ],
-              slots: {},
-            };
-
-            const playAudioMessage = {
-              type: 'play-audio',
-              src: audioUrl,
-              url: audioUrl,
+            const playAudioMessage = buildRavenPlayAudioMessage(
               audioUrl,
-              volume: command.volume || 1.0,
-            };
+              command.volume || 1.0,
+            );
 
             console.log(`🎵 [AI Audio] Overlay clients: ${overlayClients.size}`);
-            const aiAudioClients = overlayRegistry.get('aiAudio');
-            if (aiAudioClients && aiAudioClients.size > 0) {
-              broadcastToOverlay(playAudioMessage, 'aiAudio');
+            broadcastToOverlay(playAudioMessage, RAVEN_AI_AUDIO_OVERLAY);
+            if (hasAiAudioOverlayClients(overlayRegistry)) {
               console.log('🎵 [AI Audio] Sent to aiAudio OBS browser source');
             } else {
-              broadcastToOverlay(buttonTriggerMessage);
-              console.log('🎵 [AI Audio] aiAudio overlay not connected — broadcast to all overlays');
+              console.log(
+                '🎵 [AI Audio] aiAudio overlay not connected — dashboard playback only (no broadcast to other overlays)',
+              );
             }
             console.log('═══════════════════════════════════════════════════════\n');
           } else {
@@ -1959,6 +2080,99 @@ ipcMain.on('add-media', (event, data) => {
       } else {
         config.buttons.push(newButton);
         console.log('➕ Added Meld scene button:', newButton.label);
+      }
+      saveProfile(currentActiveProfile, config);
+      if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
+      return;
+    }
+
+    if (data.type === 'twitch-clip') {
+      const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
+      const newButton = {
+        id: (existing && existing.id) || nextUniqueButtonId(config.buttons),
+        label: data.label,
+        name: data.label,
+        type: 'twitch-clip',
+        src: '',
+        hotkey: data.hotkey || undefined,
+        chatCommand: data.chatCommand || undefined,
+      };
+      if (typeof data.editingIndex === 'number') {
+        config.buttons[data.editingIndex] = newButton;
+        console.log('✏️ Edited Twitch clip button at index', data.editingIndex, ':', newButton.label);
+      } else {
+        config.buttons.push(newButton);
+        console.log('➕ Added Twitch clip button:', newButton.label);
+      }
+      saveProfile(currentActiveProfile, config);
+      if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
+      return;
+    }
+
+    if (data.type === 'post-socials') {
+      const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
+      const newButton = {
+        id: (existing && existing.id) || nextUniqueButtonId(config.buttons),
+        label: data.label,
+        name: data.label,
+        type: 'post-socials',
+        src: '',
+        hotkey: data.hotkey || undefined,
+        chatCommand: data.chatCommand || undefined,
+      };
+      if (typeof data.editingIndex === 'number') {
+        config.buttons[data.editingIndex] = newButton;
+      } else {
+        config.buttons.push(newButton);
+      }
+      saveProfile(currentActiveProfile, config);
+      if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
+      return;
+    }
+
+    if (data.type === 'speak-tts') {
+      const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
+      const speakText = String(data.speakText || '').trim();
+      const newButton = {
+        id: (existing && existing.id) || nextUniqueButtonId(config.buttons),
+        label: data.label,
+        name: data.label,
+        type: 'speak-tts',
+        speakText,
+        src: '',
+        hotkey: data.hotkey || undefined,
+        chatCommand: data.chatCommand || undefined,
+      };
+      if (typeof data.editingIndex === 'number') {
+        config.buttons[data.editingIndex] = newButton;
+      } else {
+        config.buttons.push(newButton);
+      }
+      saveProfile(currentActiveProfile, config);
+      if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
+      return;
+    }
+
+    if (data.type === 'run-ad') {
+      const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
+      let commercialLength = Number(data.commercialLength);
+      if (!Number.isFinite(commercialLength)) commercialLength = 60;
+      commercialLength = Math.min(180, Math.max(30, Math.round(commercialLength)));
+      const newButton = {
+        id: (existing && existing.id) || nextUniqueButtonId(config.buttons),
+        label: data.label,
+        name: data.label,
+        type: 'run-ad',
+        src: '',
+        commercialLength,
+        chatMessage: data.chatMessage ? String(data.chatMessage).trim() : '',
+        hotkey: data.hotkey || undefined,
+        chatCommand: data.chatCommand || undefined,
+      };
+      if (typeof data.editingIndex === 'number') {
+        config.buttons[data.editingIndex] = newButton;
+      } else {
+        config.buttons.push(newButton);
       }
       saveProfile(currentActiveProfile, config);
       if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
@@ -2256,6 +2470,15 @@ ipcMain.handle('get-profiles', async () => {
   }
 });
 
+ipcMain.handle('list-macro-deck-buttons', async () => {
+  try {
+    return loadDeckButtonCatalogForMacros();
+  } catch (error) {
+    console.error('Error listing deck buttons for macros:', error);
+    return { error: error.message || String(error), buttons: [] };
+  }
+});
+
 // Get a specific profile
 ipcMain.handle('get-profile', async (event, profileId) => {
   try {
@@ -2541,6 +2764,15 @@ ipcMain.handle('save-macro', async (event, { id, macro }) => {
     }
 
     // Validate macro
+    const catalog = loadDeckButtonCatalogForMacros();
+    const normalized = normalizeMacroTriggerButtonSteps(
+      macro.steps,
+      catalog,
+      currentActiveProfile,
+    );
+    macro.steps = normalized.steps;
+    const stepWarnings = normalized.warnings || [];
+
     const validation = macroManager.validate(macro);
     if (!validation.valid) {
       return { success: false, errors: validation.errors };
@@ -2556,10 +2788,15 @@ ipcMain.handle('save-macro', async (event, { id, macro }) => {
     const saved = macroManager.set(id, macro);
     const sync = syncMacroHotkeys();
     const failedReg = sync.failed.find((f) => f.id === id);
+    const warningParts = [];
+    if (stepWarnings.length) warningParts.push(stepWarnings.join(' '));
+    if (failedReg) {
+      warningParts.push(`Hotkey ${failedReg.hotkey} could not be registered: ${failedReg.reason}`);
+    }
     return {
       success: true,
       macro: { id, ...saved },
-      warning: failedReg ? `Saved, but hotkey ${failedReg.hotkey} could not be registered: ${failedReg.reason}` : undefined,
+      warning: warningParts.length ? warningParts.join(' ') : undefined,
     };
   } catch (error) {
     console.error('Error saving macro:', error);
@@ -2586,6 +2823,7 @@ ipcMain.handle('delete-macro', async (event, id) => {
 // Re-validates against the macro allowlist / start_raid confirm rule before running.
 async function executeMacroById(id, source) {
   if (!macroManager) return { success: false, error: 'Macro manager not available', steps: [] };
+  macroManager.reload();
   const macro = macroManager.get(id);
   if (!macro) return { success: false, error: `Macro '${id}' not found`, steps: [] };
   const validation = macroManager.validate(macro);
@@ -2801,6 +3039,21 @@ ipcMain.handle('check-twitch-raid-scope', async () => {
       hasRaidScope: !!scope.hasRaidScope,
       scopes: scope.scopes || [],
       authorizeUrl: scope.hasRaidScope ? null : buildTwitchAuthorizeUrl({ forceVerify: true }),
+    };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('check-twitch-commercial-scope', async () => {
+  try {
+    const helix = createCommercialHelixClient();
+    const scope = await helix.validateToken();
+    return {
+      success: scope.ok,
+      hasCommercialScope: !!scope.hasCommercialScope,
+      scopes: scope.scopes || [],
+      authorizeUrl: scope.hasCommercialScope ? null : buildTwitchAuthorizeUrl({ forceVerify: true }),
     };
   } catch (err) {
     return { success: false, error: err.message || String(err) };
@@ -3029,6 +3282,7 @@ ipcMain.handle('update-config', async (event, configUpdate) => {
     
     // Save to active profile
     saveProfile(currentActiveProfile, updatedProfile);
+    updateJarvisContext();
     console.log('Profile updated successfully:', configUpdate);
     return true;
   } catch (e) {
@@ -3157,6 +3411,79 @@ ipcMain.handle('get-tc-config', async () => {
 // ===============================
 // Daily Check-In IPC Handlers
 // ===============================
+
+const {
+  loadCheckinsFromPath,
+  writeCheckinsJsonFile,
+  readCheckinsJsonFile,
+  backupCurrentCheckinsFile,
+  formatExportBasename,
+} = require('./lib/checkins-backup');
+const { filterMenuTemplateForPackaged, filterRavenMenuItems } = require('./lib/packaged-ui-policy');
+
+async function runBackupDailyCheckinsDialog() {
+  try {
+    const data = loadCheckinsFromPath(dailyCheckinsPath);
+    const defaultPath = path.join(app.getPath('documents'), formatExportBasename());
+    const result = await dialog.showSaveDialog(win, {
+      title: 'Back up check-ins',
+      defaultPath,
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+    writeCheckinsJsonFile(result.filePath, data);
+    return { success: true, path: result.filePath };
+  } catch (err) {
+    console.error('Backup daily check-ins failed:', err);
+    return { success: false, error: err && err.message ? err.message : String(err) };
+  }
+}
+
+async function runRestoreDailyCheckinsDialog() {
+  try {
+    const open = await dialog.showOpenDialog(win, {
+      title: 'Restore check-ins',
+      filters: [{ name: 'JSON', extensions: ['json'] }, { name: 'All Files', extensions: ['*'] }],
+      properties: ['openFile'],
+    });
+    if (open.canceled || !open.filePaths.length) {
+      return { canceled: true };
+    }
+    const validated = readCheckinsJsonFile(open.filePaths[0]);
+    if (!validated.ok) {
+      return { success: false, error: validated.error };
+    }
+    const viewerCount = Object.keys(validated.data.viewers).length;
+    const confirm = dialog.showMessageBoxSync(win, {
+      type: 'warning',
+      buttons: ['Replace check-ins', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      title: 'Restore check-ins',
+      message: 'Replace your current check-in data?',
+      detail:
+        `The selected file contains ${viewerCount} viewer record(s). ` +
+        'Your current checkins.json will be copied to checkins.json.bak, then replaced.',
+    });
+    if (confirm !== 0) {
+      return { canceled: true };
+    }
+    backupCurrentCheckinsFile(dailyCheckinsPath);
+    writeCheckinsJsonFile(dailyCheckinsPath, validated.data);
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('daily-checkins-restored', validated.data);
+    }
+    return { success: true, data: validated.data };
+  } catch (err) {
+    console.error('Restore daily check-ins failed:', err);
+    return { success: false, error: err && err.message ? err.message : String(err) };
+  }
+}
+
+ipcMain.handle('backup-daily-checkins', async () => runBackupDailyCheckinsDialog());
+ipcMain.handle('restore-daily-checkins', async () => runRestoreDailyCheckinsDialog());
 
 // IPC: load daily check-ins data
 ipcMain.handle('loadDailyCheckins', async () => {
@@ -4250,6 +4577,27 @@ async function handleKillcommandFromChat(username) {
 }
 
 let twitchClient = null;
+let twitchChatConnectGeneration = 0;
+const twitchChatMessageDeduper = createTwitchMessageDeduper();
+
+async function stopTwitchChatConnection() {
+  const client = twitchClient;
+  twitchClient = null;
+  if (!client) return;
+  try {
+    client.removeAllListeners();
+  } catch (e) {
+    console.warn('Twitch chat removeAllListeners failed:', e && e.message);
+  }
+  try {
+    if (typeof client.disconnect === 'function') {
+      await client.disconnect();
+    }
+  } catch (e) {
+    console.warn('Twitch chat disconnect failed:', e && e.message);
+  }
+}
+
 // In-memory cache of recent chat user state (badges, mod flag) to enable simple VIP/mod checks
 const recentChatUserState = new Map();
 // Track users who have chatted this session (for walk-on alerts)
@@ -4436,6 +4784,20 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
     console.error('Missing Twitch credentials');
     return;
   }
+  twitchChatConnectGeneration += 1;
+  const connectGeneration = twitchChatConnectGeneration;
+  void (async () => {
+    await stopTwitchChatConnection();
+    if (connectGeneration !== twitchChatConnectGeneration) {
+      console.log('Twitch chat connect superseded by a newer request; skipping');
+      return;
+    }
+    twitchChatMessageDeduper.reset();
+    beginTwitchChatClient({ username, oauth, clientId, connectGeneration });
+  })();
+}
+
+function beginTwitchChatClient({ username, oauth, clientId, connectGeneration }) {
   const opts = {
     identity: {
       username: username,
@@ -4503,7 +4865,12 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
   });
   twitchClient.on('message', (channel, tags, message, self) => {
     if (self) return;
-    
+    if (connectGeneration !== twitchChatConnectGeneration) return;
+    if (twitchChatMessageDeduper.isDuplicate(tags)) {
+      console.log('[Twitch Chat] Skipping duplicate message id:', tags && tags.id);
+      return;
+    }
+
     const username = tags.username;
     const userId = tags['user-id'];
     const displayName = tags['display-name'] || username;
@@ -4669,9 +5036,20 @@ function startTwitchChatConnection({ username, oauth, clientId }) {
         return;
       }
 
-      // !clip — Twitch Helix clip + chat link (same path as Raven "clip that")
+      // !clip — Twitch Helix clip + chat link (any viewer; cooldown applies)
       if (commandText === 'clip') {
         void createTwitchClipAndAnnounce({ requestedBy: displayName || username });
+        return;
+      }
+
+      if (commandText === 'socials') {
+        const now = Date.now();
+        if (now - lastSocialsCommandAt < TWITCH_SOCIALS_COOLDOWN_MS) {
+          void sayInTwitchChat(`@${username} — !socials is on cooldown. Try again in a few seconds.`);
+          return;
+        }
+        lastSocialsCommandAt = now;
+        void postSocialsToChat({ requestedBy: displayName || username, source: 'chat' });
         return;
       }
 
@@ -4880,7 +5258,8 @@ let twitchClientId = null;
 let twitchUserName = null;
 const TWITCH_WEB_CLIENT_ID = 'gp762nuuoqcoxypju8c569th9wz7q5';
 let lastTwitchClipAt = 0;
-const TWITCH_CLIP_COOLDOWN_MS = 20000;
+let lastSocialsCommandAt = 0;
+const TWITCH_SOCIALS_COOLDOWN_MS = 20000;
 
 function helixAccessToken() {
   let token = twitchToken;
@@ -5051,58 +5430,116 @@ async function sayInTwitchChat(text) {
   }
 }
 
-async function createTwitchClipAndAnnounce({ requestedBy } = {}) {
-  const now = Date.now();
-  if (now - lastTwitchClipAt < TWITCH_CLIP_COOLDOWN_MS) {
-    await sayInTwitchChat('Clip cooldown — try again in a few seconds.');
-    return { ok: false, reason: 'cooldown' };
-  }
+let commercialHelixClient = null;
+function createCommercialHelixClient() {
+  if (commercialHelixClient) return commercialHelixClient;
+  commercialHelixClient = new TwitchCommercialClient({
+    fetchFn: fetch,
+    getClientId: helixClientId,
+    getAccessToken: helixAccessToken,
+    getBroadcasterId: async () => {
+      if (!twitchUserId) await getUserId();
+      return twitchUserId;
+    },
+  });
+  return commercialHelixClient;
+}
 
+async function postSocialsToChat({ source } = {}) {
+  try {
+    const profile = loadProfile(currentActiveProfile);
+    const line = formatSocialsLine(normalizeSocials(profile && profile.socials));
+    if (!line) {
+      return { ok: false, error: 'No social links configured in Preferences' };
+    }
+    const parts = splitChatMessages(line, TWITCH_CHAT_MAX_LEN);
+    for (const part of parts) {
+      const sent = await sayInTwitchChat(part);
+      if (!sent) {
+        return { ok: false, error: 'Twitch chat not connected' };
+      }
+    }
+    console.log(`🔗 Posted socials (${parts.length} message(s))`, source || '');
+    return { ok: true, messages: parts };
+  } catch (err) {
+    console.error('🔗 postSocialsToChat error:', err);
+    return { ok: false, error: err.message || String(err) };
+  }
+}
+
+async function startTwitchCommercial({ length, chatMessage, source } = {}) {
+  try {
+    const msg = chatMessage != null ? String(chatMessage).trim() : '';
+    if (msg) {
+      await sayInTwitchChat(msg);
+    }
+    const helix = createCommercialHelixClient();
+    const result = await helix.startCommercial({ length });
+    if (!result.ok) {
+      if (result.error) {
+        await sayInTwitchChat(result.error);
+      }
+      console.warn('📺 Commercial failed:', result.error || result.reason, source || '');
+      return result;
+    }
+    console.log('📺 Commercial started', result.length, 's', source || '');
+    return result;
+  } catch (err) {
+    const message = err.message || String(err);
+    await sayInTwitchChat(message);
+    return { ok: false, error: message };
+  }
+}
+
+async function maybePostTwitchClipToDiscord(clipUrl, title) {
+  try {
+    const profile = loadProfile(currentActiveProfile);
+    const discord = profile && profile.discord;
+    if (!shouldPostClipsToDiscord(discord)) return;
+    const sent = await jarvisRegistry.invoke('discord_post_clip', {
+      clipUrl,
+      title: title || 'Stream Clip',
+    });
+    if (!sent || !sent.success) {
+      console.warn('🎬 Discord clip post failed:', sent && sent.error);
+    }
+  } catch (err) {
+    console.warn('🎬 Discord clip post error:', err);
+  }
+}
+
+async function createTwitchClipAndAnnounce({ requestedBy, source } = {}) {
   try {
     if (!twitchUserId) await getUserId();
     const token = helixAccessToken();
-    if (!twitchClientId || !token || !twitchUserId) {
-      await sayInTwitchChat("Can't clip — Twitch isn't connected.");
-      return { ok: false, reason: 'not-connected' };
-    }
+    const clientId = helixClientId();
+    const profile = loadProfile(currentActiveProfile);
+    const discordConfig = profile && profile.discord;
 
-    const resp = await fetch(
-      `https://api.twitch.tv/helix/clips?broadcaster_id=${encodeURIComponent(twitchUserId)}&has_delay=false`,
-      {
-        method: 'POST',
-        headers: {
-          'Client-ID': twitchClientId,
-          Authorization: `Bearer ${token}`,
-        },
+    const out = await executeTwitchClipHelixFlow({
+      broadcasterId: twitchUserId,
+      clientId,
+      token,
+      fetchImpl: fetch,
+      requestedBy,
+      source,
+      lastClipAt: lastTwitchClipAt,
+      sayInChat: sayInTwitchChat,
+      discordConfig,
+      postClipToDiscord: async (clipUrl, title) => {
+        await maybePostTwitchClipToDiscord(clipUrl, title);
       },
-    );
-    const body = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      const msg = String(body?.message || resp.statusText || '');
-      console.error('🎬 Twitch clip failed:', resp.status, msg, body);
-      if (resp.status === 401 || /scope/i.test(msg)) {
-        await sayInTwitchChat('Clip failed — reconnect Twitch with the clips:edit scope.');
-      } else if (resp.status === 404 || /not live/i.test(msg)) {
-        await sayInTwitchChat("Can't clip — the stream doesn't look live.");
-      } else {
-        await sayInTwitchChat("Couldn't create a Twitch clip.");
-      }
-      return { ok: false, reason: msg || String(resp.status) };
+    });
+
+    if (out.ok && out.clipAt) {
+      lastTwitchClipAt = out.clipAt;
+      console.log('🎬 Twitch clip ready', out.url, source || '');
+    } else if (out.reason && out.reason !== 'cooldown') {
+      console.error('🎬 Twitch clip failed:', out.reason);
     }
 
-    const clipId = body?.data?.[0]?.id;
-    if (!clipId) {
-      await sayInTwitchChat("Twitch didn't return a clip id.");
-      return { ok: false, reason: 'no-id' };
-    }
-
-    lastTwitchClipAt = now;
-    const url = `https://clips.twitch.tv/${clipId}`;
-    const who = requestedBy ? String(requestedBy).replace(/^@/, '') : '';
-    const line = who ? `${who} clipped that: ${url}` : `Clip: ${url}`;
-    await sayInTwitchChat(line);
-    console.log('🎬 Twitch clip created', url);
-    return { ok: true, url, id: clipId };
+    const { clipAt, ...rest } = out;
+    return rest;
   } catch (err) {
     console.error('🎬 Twitch clip error:', err);
     await sayInTwitchChat("Couldn't create a Twitch clip.");
@@ -6005,6 +6442,12 @@ app.whenReady().then(() => {
   registerHotkeys();
   startOverlayServer();
   startJarvisServer();
+  ravenHost.setOpenPreferences(() => {
+    if (win && !win.isDestroyed()) {
+      win.show();
+      win.webContents.send('open-preferences');
+    }
+  });
   ravenHost.setLicenseGate(() => {
     if (!licenseManager) return { allowed: true };
     return licenseManager.canUseAiAssistant();
@@ -6050,6 +6493,9 @@ app.whenReady().then(() => {
       { label: 'Check for Updates...', click: () => { checkForUpdates(); } },
       { type: 'separator' },
       { label: 'Developer Tools', accelerator: 'F12', click: () => { if (win && !win.isDestroyed()) win.webContents.toggleDevTools(); } },
+      { label: 'Back up check-ins...', click: () => { runBackupDailyCheckinsDialog(); } },
+      { label: 'Restore check-ins...', click: () => { runRestoreDailyCheckinsDialog(); } },
+      { type: 'separator' },
       { label: 'Twitch Setup', submenu: [
           { label: 'View Twitch Events / Test Events', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-twitch-activity'); } },
           { label: 'EventSub Subscriptions (Select)', click: () => { if (win && !win.isDestroyed()) win.webContents.send('open-eventsub-subscriptions'); } },
@@ -6057,7 +6503,7 @@ app.whenReady().then(() => {
         { type: 'separator' },
         { label: 'Clear Twitch Credentials', click: () => { if (win && !win.isDestroyed()) win.webContents.send('clear-twitch-creds'); } }
       ] },
-      { label: 'Raven AI', submenu: ravenHost.menuTemplateItems() },
+      { label: 'Raven AI', submenu: filterRavenMenuItems(ravenHost.menuTemplateItems(), app.isPackaged) },
       { type: 'separator' },
       { label: 'Themes', submenu: [] }, // Will be populated dynamically with themes and skins
       { role: 'reload' }
@@ -6181,7 +6627,7 @@ app.whenReady().then(() => {
       // Preserve the Help menu with "Check for Updates" from original template
       const originalHelpMenu = menuTemplate.find(item => item.label === 'Help');
       
-      const appMenu = Menu.buildFromTemplate(menuTemplate);
+      const appMenu = Menu.buildFromTemplate(filterMenuTemplateForPackaged(menuTemplate, app.isPackaged));
       Menu.setApplicationMenu(appMenu);
       console.log('Menu rebuilt successfully with themes and skins');
     } catch (error) {
@@ -6350,9 +6796,26 @@ app.whenReady().then(() => {
       if (!updates.llmApiKey && !updates.ttsApiKey) {
         return { success: false, error: 'Enter at least one API key to save' };
       }
+      // Validate before saving so a typo never silently breaks Raven.
+      // Network failures don't block saving (offline setup), but real rejections do.
+      const { testOpenAiApiKey, testElevenLabsApiKey } = require('./lib/raven-llm-test');
+      const warnings = [];
+      if (!(payload && payload.skipValidation)) {
+        if (updates.llmApiKey) {
+          const r = await testOpenAiApiKey(updates.llmApiKey);
+          if (!r.ok && r.kind !== 'network' && r.kind !== 'no_credit') return { success: false, field: 'llm', error: r.error };
+          if (!r.ok) warnings.push(r.error);
+        }
+        if (updates.ttsApiKey) {
+          const r = await testElevenLabsApiKey(updates.ttsApiKey);
+          if (!r.ok && r.kind !== 'network') return { success: false, field: 'tts', error: r.error };
+          if (!r.ok) warnings.push(r.error);
+          if (r.warning) warnings.push(r.warning);
+        }
+      }
       const status = ravenHost.updateApiKeys(updates);
       const restart = ravenHost.restartRavenIfRunning();
-      return { success: true, status, restart };
+      return { success: true, status, restart, warnings };
     } catch (err) {
       return { success: false, error: err && err.message ? err.message : String(err) };
     }
@@ -6382,6 +6845,45 @@ app.whenReady().then(() => {
     });
   }
 
+  function fetchLocalJson(url, timeoutMs = 1500) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (payload) => {
+        if (settled) return;
+        settled = true;
+        resolve(payload);
+      };
+      try {
+        const req = http.get(url, (res) => {
+          const chunks = [];
+          res.on('data', (c) => chunks.push(c));
+          res.on('end', () => {
+            const status = typeof res.statusCode === 'number' ? res.statusCode : null;
+            const raw = Buffer.concat(chunks).toString('utf8');
+            let body = null;
+            try {
+              body = raw ? JSON.parse(raw) : null;
+            } catch {
+              body = null;
+            }
+            finish({
+              ok: status !== null && status >= 200 && status < 300,
+              status,
+              body,
+            });
+          });
+        });
+        req.setTimeout(timeoutMs, () => {
+          req.destroy();
+          finish({ ok: false, status: null, body: null });
+        });
+        req.on('error', () => finish({ ok: false, status: null, body: null }));
+      } catch (err) {
+        finish({ ok: false, status: null, body: null });
+      }
+    });
+  }
+
   async function probeLocalHttp(url) {
     const status = await probeLocalHttpStatus(url);
     return status !== null && status >= 200 && status < 300;
@@ -6391,7 +6893,23 @@ app.whenReady().then(() => {
 
   ipcMain.handle('raven-connection-status', async () => {
     const running = ravenHost.isRunning();
-    const controllerOk = await probeLocalHttp('http://127.0.0.1:3004/api/ai/status');
+    // AITuber controller (Raven brain): default 3004; sidecar may use +10 offset (3014) if 3004 is busy.
+    const controllerStatusCandidates = [
+      'http://127.0.0.1:3004/api/ai/status',
+      'http://127.0.0.1:3014/api/ai/status',
+    ];
+    let controllerProbe = { ok: false, status: null, body: null };
+    let controllerStatusUrl = controllerStatusCandidates[0];
+    for (const url of controllerStatusCandidates) {
+      const probe = await fetchLocalJson(url);
+      if (probe.ok) {
+        controllerProbe = probe;
+        controllerStatusUrl = url;
+        break;
+      }
+      if (probe.status !== null) controllerProbe = probe;
+    }
+    const controllerOk = controllerProbe.ok;
     const bridgeStatus = await probeLocalHttpStatus('http://127.0.0.1:3000/api/ai/enabled');
     const bridgeOk = bridgeStatus !== null && bridgeStatus < 500;
     const connected = controllerOk || bridgeOk;
@@ -6399,6 +6917,8 @@ app.whenReady().then(() => {
     if (controllerOk) source = 'controller';
     else if (bridgeOk) source = bridgeStatus === 404 || bridgeStatus === 405 ? 'bridge-legacy' : 'bridge';
     else if (running) source = 'process';
+    const aiStatus = controllerProbe.body && typeof controllerProbe.body === 'object' ? controllerProbe.body : null;
+    const userData = app.getPath('userData');
     return {
       running,
       connected: connected || running,
@@ -6406,6 +6926,13 @@ app.whenReady().then(() => {
       source: connected ? source : (running ? 'process' : 'offline'),
       controllerOk,
       bridgeStatus,
+      aiStatus,
+      logPaths: {
+        raven: path.join(userData, 'raven.log'),
+        aiAudioWatcher: path.join(userData, 'ai-audio-watcher.log'),
+      },
+      statusUrl: controllerStatusUrl,
+      statusUrls: controllerStatusCandidates,
     };
   });
 
@@ -6423,6 +6950,23 @@ app.whenReady().then(() => {
         }
       }
       return await testOpenAiApiKey(key);
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('raven-test-tts-key', async (_event, payload) => {
+    try {
+      if (!licenseManager || !licenseManager.canUseAiAssistant().allowed) {
+        return { ok: false, error: 'VirtualDeck Pro license required' };
+      }
+      const { testElevenLabsApiKey } = require('./lib/raven-llm-test');
+      let key = payload && payload.apiKey ? String(payload.apiKey).trim() : '';
+      if (!key) {
+        key = ravenHost.readEnvValue('TTS_API_KEY');
+        if (!key) return { ok: false, error: 'Enter an API key or save one first' };
+      }
+      return await testElevenLabsApiKey(key);
     } catch (err) {
       return { ok: false, error: err && err.message ? err.message : String(err) };
     }
@@ -6542,25 +7086,7 @@ app.whenReady().then(() => {
         }
       }
       const text = payload && payload.text;
-      let storedDevBase = null;
-      try {
-        const tc = loadTcConfig();
-        storedDevBase = tc.devApiBaseUrl || null;
-      } catch (e) {
-        storedDevBase = null;
-      }
-      return await speakViaDevApi(
-        {
-          fetchFn: fetch,
-          userDataPath,
-          overlayPort: overlayServerPort || 8080,
-          aiCommandsPath,
-          getMainWindow: () => win,
-          handleAIAudioCommands,
-          storedDevBaseUrl: storedDevBase,
-        },
-        text,
-      );
+      return await speakViaDevApi(buildRavenSpeakDeps(), text);
     } catch (err) {
       return { ok: false, error: err && err.message ? err.message : String(err) };
     }
@@ -6598,6 +7124,12 @@ app.whenReady().then(() => {
     try {
       console.log('Saving preferences:', preferences);
       saveStoredPreferences(preferences);
+      if (preferences && Array.isArray(preferences.socials)) {
+        const profile = loadProfile(currentActiveProfile);
+        profile.socials = normalizeSocials(preferences.socials);
+        saveProfile(currentActiveProfile, profile);
+        updateJarvisContext();
+      }
     } catch (e) { console.warn('save-preferences failed', e); }
   });
 
@@ -6757,11 +7289,8 @@ ipcMain.on('twitch-clear-creds', async (event) => {
     } catch (e) { console.warn('Error cleaning created subscriptions state', e); }
     // Disconnect chat client
     try {
-      if (twitchClient && typeof twitchClient.disconnect === 'function') {
-        await twitchClient.disconnect();
-        twitchClient = null;
-        console.log('Disconnected twitch chat client');
-      }
+      await stopTwitchChatConnection();
+      console.log('Disconnected twitch chat client');
     } catch (e) { console.warn('Error disconnecting twitch client', e); }
     // Clear in-memory state
     eventSubSessionId = null;
@@ -6881,8 +7410,61 @@ function updateJarvisContext() {
       currentActiveProfile,
       loadProfile,
       triggerButtonFn: triggerButtonWithDebounce,
+      triggerDeckButtonFn: triggerDeckButton,
       macroManager,
+      createTwitchClip: createTwitchClipAndAnnounce,
+      postSocialsToChat,
+      startTwitchCommercial,
+      executeSpeakTtsFn: createExecuteSpeakTtsFn({
+        config: currentProfile,
+        twitchUserName,
+      }),
+      meldRecordClip: async () => {
+        const r = await meldSceneBridge('recordClip');
+        return r && r.ok ? { ok: true } : { ok: false, reason: (r && (r.error || r.reason)) || 'meld-record-failed' };
+      },
       ...buildJarvisRaidContext(),
     });
   }
 }
+
+ipcMain.handle('create-twitch-clip', async (event, opts = {}) => {
+  return await createTwitchClipAndAnnounce({
+    requestedBy: opts.requestedBy || 'Deck',
+    source: opts.source || 'button',
+  });
+});
+
+ipcMain.handle('post-socials', async (_event, opts = {}) => {
+  const out = await postSocialsToChat({ source: opts.source || 'button' });
+  return out;
+});
+
+ipcMain.handle('speak-tts-deck', async (_event, opts = {}) => {
+  const profile = loadProfile(currentActiveProfile);
+  const fn = createExecuteSpeakTtsFn({ config: profile, twitchUserName });
+  return fn({
+    text: opts.text,
+    optional: false,
+    userData: opts.userData,
+    source: opts.source || 'button',
+  });
+});
+
+ipcMain.handle('start-twitch-commercial', async (_event, opts = {}) => {
+  const out = await startTwitchCommercial({
+    length: opts.length,
+    chatMessage: opts.chatMessage,
+    source: opts.source || 'button',
+  });
+  if (!out.ok) {
+    return {
+      success: false,
+      error: out.error,
+      needsReconnect: !!out.needsReconnect,
+      retry_after: out.retry_after,
+      reason: out.reason,
+    };
+  }
+  return { success: true, length: out.length, retry_after: out.retry_after };
+});

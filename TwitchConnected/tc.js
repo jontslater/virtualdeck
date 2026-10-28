@@ -338,8 +338,18 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Legacy auto-connect (manual tokens in localStorage). OAuth sessions restore in the main process.
-  if (areTwitchCredsValid(window.twitchConfig)) {
+  // Legacy auto-connect (manual tokens in localStorage). Skip when main will restore OAuth (avoids duplicate chat clients).
+  async function tryLegacyTwitchAutoConnect() {
+    if (!areTwitchCredsValid(window.twitchConfig)) return;
+    if (window.electronAPI && window.electronAPI.twitchOAuthGetStatus) {
+      try {
+        const status = await window.electronAPI.twitchOAuthGetStatus();
+        if (status && status.hasSession) {
+          console.log('Skipping legacy Twitch auto-connect; OAuth session restores in main process');
+          return;
+        }
+      } catch (e) { /* fall through to legacy connect */ }
+    }
     console.log('Auto-connecting to Twitch using stored manual credentials');
     if (window.electronAPI && window.electronAPI.sendTwitchConnect) {
       window.electronAPI.sendTwitchConnect({
@@ -354,7 +364,9 @@ window.addEventListener('DOMContentLoaded', () => {
         clientId: window.twitchConfig.clientId
       });
     }
-  } else if (window.electronAPI && window.electronAPI.twitchOAuthGetStatus) {
+  }
+  void tryLegacyTwitchAutoConnect();
+  if (window.electronAPI && window.electronAPI.twitchOAuthGetStatus) {
     window.electronAPI.twitchOAuthGetStatus().then(async (status) => {
       if (status && status.login) {
         window.twitchConfig.channel = status.login;
