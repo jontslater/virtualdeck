@@ -364,6 +364,14 @@
             <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">Requires channel:edit:commercial scope</div>
           </div>
         </button>
+        <button class="selection-option" data-type="speak-tts">
+          <div class="option-icon">🗣️</div>
+          <div class="option-content">
+            <div class="option-title">Speak (TTS)</div>
+            <div class="option-description">Raven speaks custom text (aiAudio overlay only)</div>
+            <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">Requires Pro AI + Raven running</div>
+          </div>
+        </button>
         <button class="selection-option" data-type="macro">
           <div class="option-icon">🎬</div>
           <div class="option-content">
@@ -485,6 +493,13 @@
           </select>
           <label for="commercial-chat-message" style="margin-top: 10px; display: block;">Optional chat message before ad:</label>
           <input type="text" id="commercial-chat-message" class="preference-input" placeholder="Ad break, back soon!" maxlength="450" />
+        </div>
+        <div id="speak-tts-section" class="hidden">
+          <label for="speak-tts-text">Text to speak:</label>
+          <textarea id="speak-tts-text" class="preference-input" rows="3" placeholder="Thanks for the follow, {user}!" maxlength="500"></textarea>
+          <small style="display: block; margin-top: 6px; color: var(--text-secondary, #888);">
+            Placeholders: {user}, {username}, {message}, {reward}, {socials}, … — routed to the aiAudio overlay only.
+          </small>
         </div>
         <div id="meld-scene-section" class="hidden">
           <label>Meld Studio scene:

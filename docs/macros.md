@@ -66,6 +66,7 @@ Macros can use these allowlisted JARVIS tools:
 | `change_scene` | Switch Meld/OBS scene | `sceneName` |
 | `refresh_browser_sources` | Refresh browser sources in current Meld scene | `layerName` (optional) |
 | `play_sound` | Play a sound | `name` |
+| `speak_tts` | Raven speaks text (aiAudio overlay + dashboard) | `text`, `optional` (skip with warning if unavailable) |
 | `send_twitch_message` | Send Twitch chat message | `text` |
 | `discord_send_message` | Send Discord message | `message` |
 | `discord_announce_live` | Post go-live notification | (optional) `message`, `includeStreamInfo` |
@@ -145,6 +146,25 @@ When using `refresh_browser_sources` immediately after `change_scene` in a macro
 - Reload event list widgets before stream starts
 - Update dynamic overlays with new data
 - Force browser sources to reconnect after network issues
+
+### `speak_tts`
+
+Speaks text with Raven TTS. Audio is routed to the dashboard (`play-ai-tts`) and the dedicated **aiAudio** OBS browser source (`http://localhost:8080/overlay?name=aiAudio`) via `lib/ai-audio-overlay.js`. Other overlays never receive Raven TTS.
+
+**Arguments:**
+- `text` (required): Spoken line. Supports alert placeholders such as `{user}`, `{username}`, `{message}`, `{reward}`, `{socials}`, plus macro `{{clipUrl}}` template vars on the raw step text.
+- `optional` (optional boolean): When `true`, unavailable TTS (Raven not running, empty text, Dev API error) **skips** the step with a logged warning instead of failing the macro. Pro AI license is always required; missing license still fails the step.
+
+**Fallback summary:**
+| Condition | `optional: false` (default) | `optional: true` |
+|-----------|----------------------------|------------------|
+| No Pro AI license | Step fails | Step fails (not skippable) |
+| Raven not running / speak API error | Step fails | Step skipped + console warning |
+| aiAudio overlay offline | Dashboard playback still attempted; OBS overlay waits until connected | Same |
+
+Voice provider (ElevenLabs vs Raven fallback) is chosen by the Raven controller from `raven.env` (`TTS_PROVIDER`, `TTS_API_KEY`).
+
+**Deck button:** Add **Speak (TTS)** from the button type picker (`speak-tts` in `lib/deck-button-actions.js`). Same pipeline as the macro step.
 
 ## Discord Integration
 
