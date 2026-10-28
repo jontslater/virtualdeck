@@ -99,7 +99,10 @@
 
   <!-- App toolbar (custom window controls) -->
   <div id="app-toolbar" class="app-toolbar" role="toolbar" aria-label="Window Controls">
-    <div class="beta-badge">BETA</div>
+    <div class="header-plan-badges" aria-label="Release and plan badges">
+      <div class="beta-badge">BETA</div>
+      <div id="header-pro-badge" class="pro-badge hidden" hidden aria-hidden="true">PRO</div>
+    </div>
     <button id="btn-move" class="window-btn window-btn-move" title="Hold to Move Window" aria-label="Move">
       <span class="material-icons">open_with</span>
     </button>
@@ -1343,7 +1346,7 @@
 
         <!-- License Section -->
         <div class="preferences-section" id="license-preferences-section">
-          <h3>License</h3>
+          <h3 class="license-section-heading">License <span id="license-pro-badge" class="pro-badge pro-badge-inline hidden" hidden aria-hidden="true">PRO</span></h3>
           <p id="license-status-message" class="license-status-message">Loading license status…</p>
           <div class="preference-item">
             <label for="license-key-input">License key</label>

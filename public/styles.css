@@ -2234,11 +2234,23 @@ body.vd-dragging .sound-card.draggable:hover {
   -webkit-app-region: no-drag; /* buttons must be clickable */
 }
 
-/* BETA Badge */
-.beta-badge {
+/* Header plan badges (BETA + Pro) */
+.header-plan-badges {
   position: fixed;
   top: 8px;
   right: 190px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  z-index: 1200;
+  pointer-events: none;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+/* BETA Badge */
+.beta-badge {
   background: linear-gradient(135deg, #ff9800, #ff5722);
   color: #fff;
   font-weight: 800;
@@ -2247,10 +2259,37 @@ body.vd-dragging .sound-card.draggable:hover {
   border-radius: 6px;
   letter-spacing: 0.5px;
   box-shadow: 0 2px 8px rgba(255, 87, 34, 0.4);
-  z-index: 1200;
-  pointer-events: none;
-  user-select: none;
-  -webkit-app-region: no-drag;
+}
+
+.pro-badge {
+  background: linear-gradient(135deg, #7c4dff, #512da8);
+  color: #fff;
+  font-weight: 800;
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(81, 45, 168, 0.45);
+}
+
+.pro-badge.hidden,
+.pro-badge[hidden] {
+  display: none !important;
+}
+
+.pro-badge-inline {
+  vertical-align: middle;
+  margin-left: 8px;
+  font-size: 10px;
+  padding: 4px 10px;
+  box-shadow: 0 1px 6px rgba(81, 45, 168, 0.35);
+}
+
+.license-section-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .window-btn {
