@@ -49,7 +49,25 @@
     }
   }
 
+  function updateProBadges(status) {
+    const show = !!(status && status.showProBadge);
+    const headerBadge = document.getElementById('header-pro-badge');
+    const licenseBadge = document.getElementById('license-pro-badge');
+    [headerBadge, licenseBadge].forEach((el) => {
+      if (!el) return;
+      el.classList.toggle('hidden', !show);
+      if (show) {
+        el.removeAttribute('hidden');
+        el.setAttribute('aria-hidden', 'false');
+      } else {
+        el.setAttribute('hidden', '');
+        el.setAttribute('aria-hidden', 'true');
+      }
+    });
+  }
+
   function paintLicensePreferences(status) {
+    updateProBadges(status);
     const msg = document.getElementById('license-status-message');
     const purchase = document.getElementById('license-purchase-link');
     const keyInput = document.getElementById('license-key-input');
@@ -159,13 +177,18 @@
   async function initLicenseUi() {
     await refreshLicenseStatus();
     await refreshDeckEntitlements();
+    paintLicensePreferences(cachedStatus);
     bindLicensePreferences();
 
     if (window.electronAPI && typeof window.electronAPI.onLicenseStatusChanged === 'function') {
-      window.electronAPI.onLicenseStatusChanged(async () => {
+      window.electronAPI.onLicenseStatusChanged(async (status) => {
         const stats = document.getElementById('twitch-stats-container');
         const keepStats = !!(stats && !stats.classList.contains('hidden'));
-        await refreshLicenseStatus();
+        if (status && typeof status === 'object') {
+          cachedStatus = status;
+        } else {
+          await refreshLicenseStatus();
+        }
         await refreshDeckEntitlements();
         paintLicensePreferences(cachedStatus);
         if (typeof loadButtons === 'function') await loadButtons();
