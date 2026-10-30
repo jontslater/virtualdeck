@@ -6,6 +6,7 @@ const assert = require('assert');
 const {
   PAID_LICENSE_TIERS,
   resolvePaidLicenseTier,
+  shouldShowGoProButton,
   shouldShowProBadge,
   enrichStatusWithProBadge,
 } = require('./lib/license/pro-badge');
@@ -16,6 +17,17 @@ assert.strictEqual(shouldShowProBadge(null), false);
 assert.strictEqual(shouldShowProBadge({ licensed: false }), false);
 assert.strictEqual(shouldShowProBadge({ licensed: false, aiAssistant: false }), false);
 console.log('✅ Free / inactive status hides Pro badge');
+
+assert.strictEqual(
+  shouldShowGoProButton({ licensed: false, purchaseUrl: 'https://example.com/checkout' }),
+  true
+);
+assert.strictEqual(shouldShowGoProButton({ licensed: false }), false);
+assert.strictEqual(
+  shouldShowGoProButton({ licensed: true, showProBadge: true, purchaseUrl: 'https://example.com/checkout' }),
+  false
+);
+console.log('✅ Go Pro header button visibility for free vs Pro users');
 
 assert.strictEqual(
   shouldShowProBadge({ licensed: true, aiAssistant: true, tier: PAID_LICENSE_TIERS.ONE_TIME }),

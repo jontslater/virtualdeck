@@ -7077,6 +7077,25 @@ app.whenReady().then(() => {
     return licenseManager.revalidate();
   });
 
+  ipcMain.handle('license-open-purchase-url', async () => {
+    if (!licenseManager) {
+      return { success: false, error: 'License manager not initialized' };
+    }
+    const purchaseUrl = licenseManager.getStatusForUi().purchaseUrl;
+    if (!purchaseUrl) {
+      return { success: false, error: 'Purchase link is not configured.' };
+    }
+    try {
+      await shell.openExternal(purchaseUrl);
+      return { success: true };
+    } catch (err) {
+      return {
+        success: false,
+        error: err && err.message ? err.message : String(err),
+      };
+    }
+  });
+
   ipcMain.handle('raven-dev-speak', async (_event, payload) => {
     try {
       if (licenseManager) {
