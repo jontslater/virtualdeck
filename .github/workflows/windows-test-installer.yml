@@ -25,8 +25,9 @@ env:
   TWITCH_CLIENT_ID: 6xnmuyhhtmfpqugw2cn9j5njh770ct
   VD_LICENSE_PROVIDER: lemonsqueezy
   LEMONSQUEEZY_STORE_ID: '501850'
-  LEMONSQUEEZY_PRODUCT_ID: '1453199'
-  LEMONSQUEEZY_VARIANT_ID: '2268234'
+  LEMONSQUEEZY_PRODUCT_ID: '1487094'
+  LEMONSQUEEZY_VARIANT_ID: ''
+  VD_LICENSE_PURCHASE_URL: 'https://virtualdeckapp.lemonsqueezy.com/checkout/buy/0e1d263f-6ff4-4864-bf6b-b253adccb043'
 
 jobs:
   test-installer:

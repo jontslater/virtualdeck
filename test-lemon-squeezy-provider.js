@@ -27,14 +27,14 @@ function mockFetch(handler) {
   };
 }
 
-const goodMeta = { store_id: 501850, product_id: 1453199, variant_id: 2268234 };
+const goodMeta = { store_id: 501850, product_id: 1487094, variant_id: 9999999 };
 
 assert.strictEqual(API_BASE, 'https://api.lemonsqueezy.com/v1');
 
 (async () => {
   const provider = createLemonSqueezyProvider({
     storeId: '501850',
-    productId: '1453199',
+    productId: '1487094',
     fetchImpl: mockFetch(({ path, fields }) => {
       assert.strictEqual(path, '/v1/licenses/activate');
       assert.strictEqual(fields.license_key, 'TEST-KEY');
@@ -58,7 +58,7 @@ assert.strictEqual(API_BASE, 'https://api.lemonsqueezy.com/v1');
 
   const wrongStore = createLemonSqueezyProvider({
     storeId: '999',
-    productId: '1453199',
+    productId: '1487094',
     fetchImpl: mockFetch(() => ({
       status: 200,
       json: {
@@ -74,6 +74,24 @@ assert.strictEqual(API_BASE, 'https://api.lemonsqueezy.com/v1');
   assert.match(ws.error, /wrong store/i);
   console.log('✅ rejects license from another store');
 
+  const noVariantCheck = createLemonSqueezyProvider({
+    storeId: '501850',
+    productId: '1487094',
+    variantId: '',
+    fetchImpl: mockFetch(() => ({
+      status: 200,
+      json: {
+        activated: true,
+        instance: { id: 'inst-v' },
+        meta: { store_id: 501850, product_id: 1487094, variant_id: 42424242 },
+        license_key: { status: 'active' },
+      },
+    })),
+  });
+  const nv = await noVariantCheck.activate('TEST-KEY', 'pc');
+  assert.strictEqual(nv.ok, true);
+  console.log('✅ empty variant id skips variant check');
+
   const limitProvider = createLemonSqueezyProvider({
     fetchImpl: mockFetch(() => ({
       status: 200,
@@ -87,7 +105,7 @@ assert.strictEqual(API_BASE, 'https://api.lemonsqueezy.com/v1');
 
   const validateProvider = createLemonSqueezyProvider({
     storeId: '501850',
-    productId: '1453199',
+    productId: '1487094',
     fetchImpl: mockFetch(({ path, fields }) => {
       assert.strictEqual(path, '/v1/licenses/validate');
       assert.strictEqual(fields.instance_id, 'inst-1');
