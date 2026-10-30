@@ -38,15 +38,15 @@ The app uses Lemon Squeezy’s **public** [License API](https://docs.lemonsqueez
 
 1. Create a product in Lemon Squeezy with license keys enabled (activation limit **3** for VirtualDeck Pro).
 2. Set `VD_LICENSE_PROVIDER=lemonsqueezy`.
-3. Set `LEMONSQUEEZY_STORE_ID` and `LEMONSQUEEZY_PRODUCT_ID` to your store and product so keys from other Lemon Squeezy stores are rejected. Example for the VirtualDeck store (test and live keys share the same IDs):
+3. Set `LEMONSQUEEZY_STORE_ID` and `LEMONSQUEEZY_PRODUCT_ID` to your store and product so keys from other Lemon Squeezy stores are rejected. Example for the live VirtualDeck store:
 
    | Setting | VirtualDeck value |
    |---------|-------------------|
    | Store | `501850` (`virtualdeckapp.lemonsqueezy.com`) |
-   | Product (VirtualDeck AI License) | `1453199` |
-   | Variant (optional) | `2268234` |
+   | Product (VirtualDeck AI License) | `1487094` |
+   | Variant (optional) | *(omit or leave empty until a live variant ID is set)* |
 
-4. Set `VD_LICENSE_PURCHASE_URL` to your checkout URL for the in-app “Get VirtualDeck Pro” link.
+4. Set `VD_LICENSE_PURCHASE_URL` to your checkout URL for the in-app “Get VirtualDeck Pro” link (live checkout: `https://virtualdeckapp.lemonsqueezy.com/checkout/buy/0e1d263f-6ff4-4864-bf6b-b253adccb043`).
 
 **Flow**
 
@@ -54,7 +54,7 @@ The app uses Lemon Squeezy’s **public** [License API](https://docs.lemonsqueez
 - **Validate:** on launch and every ~24 hours → `POST /licenses/validate` with `license_key` + `instance_id`.
 - **Deactivate:** user removes the key → `POST /licenses/deactivate` with `license_key` + `instance_id`, then local state is cleared.
 
-**Test mode vs live:** Lemon Squeezy test-mode and live keys use the same API and product IDs; no code changes are needed when the store goes live.
+**Test mode vs live:** Lemon Squeezy test-mode and live-mode keys use the same License API, but **product IDs differ** between test and live products. Release builds and `.env` must use the **live** store/product IDs (and checkout URL) when the store is live—see the table above.
 
 **Offline grace:** Revalidation runs about every 24 hours. If validation fails because the key is invalid or revoked, entitlements end after **7 days** from the last successful check. If validation fails due to **network or server errors**, the app keeps the previous validation state and the same 7-day grace window applies from the last successful check—brief offline use does not immediately lock you out.
 
