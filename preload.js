@@ -218,6 +218,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   licenseActivate: async (licenseKey) => ipcRenderer.invoke('license-activate', licenseKey),
   licenseDeactivate: async () => ipcRenderer.invoke('license-deactivate'),
   licenseRevalidate: async () => ipcRenderer.invoke('license-revalidate'),
+  licenseOpenPurchaseUrl: async () => ipcRenderer.invoke('license-open-purchase-url'),
   onLicenseStatusChanged: (callback) => ipcRenderer.on('license-status-changed', (_event, status) => callback(status)),
   onLicenseUpsell: (callback) => ipcRenderer.on('license-upsell', (_event, payload) => callback(payload)),
   ravenGetSetupStatus: async () => ipcRenderer.invoke('raven-get-setup-status'),

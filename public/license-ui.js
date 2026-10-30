@@ -49,19 +49,43 @@
     }
   }
 
+  function setHeaderControlVisible(el, show) {
+    if (!el) return;
+    el.classList.toggle('hidden', !show);
+    if (show) {
+      el.removeAttribute('hidden');
+      el.setAttribute('aria-hidden', 'false');
+    } else {
+      el.setAttribute('hidden', '');
+      el.setAttribute('aria-hidden', 'true');
+    }
+  }
+
   function updateProBadges(status) {
-    const show = !!(status && status.showProBadge);
+    const showPro = !!(status && status.showProBadge);
+    const showGoPro = !showPro && !!(status && status.purchaseUrl);
     const headerBadge = document.getElementById('header-pro-badge');
+    const goProBtn = document.getElementById('header-go-pro-btn');
     const licenseBadge = document.getElementById('license-pro-badge');
-    [headerBadge, licenseBadge].forEach((el) => {
-      if (!el) return;
-      el.classList.toggle('hidden', !show);
-      if (show) {
-        el.removeAttribute('hidden');
-        el.setAttribute('aria-hidden', 'false');
-      } else {
-        el.setAttribute('hidden', '');
-        el.setAttribute('aria-hidden', 'true');
+    setHeaderControlVisible(headerBadge, showPro);
+    setHeaderControlVisible(goProBtn, showGoPro);
+    [licenseBadge].forEach((el) => {
+      setHeaderControlVisible(el, showPro);
+    });
+  }
+
+  function bindHeaderGoPro() {
+    const goProBtn = document.getElementById('header-go-pro-btn');
+    if (!goProBtn || goProBtn.dataset.bound === '1') return;
+    goProBtn.dataset.bound = '1';
+    goProBtn.addEventListener('click', async () => {
+      if (!window.electronAPI || typeof window.electronAPI.licenseOpenPurchaseUrl !== 'function') {
+        showUpsell('Open Preferences → License to get VirtualDeck Pro.');
+        return;
+      }
+      const result = await window.electronAPI.licenseOpenPurchaseUrl();
+      if (result && !result.success && result.error) {
+        showUpsell(result.error);
       }
     });
   }
@@ -175,6 +199,7 @@
   }
 
   async function initLicenseUi() {
+    bindHeaderGoPro();
     await refreshLicenseStatus();
     await refreshDeckEntitlements();
     paintLicensePreferences(cachedStatus);
