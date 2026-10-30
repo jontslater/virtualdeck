@@ -261,7 +261,7 @@ const bulkSource = [
   'OMDB_API_KEY=omdb-secret',
   'LLM_API_KEY=llm-secret',
   'PERSONA_SPEAKING_STYLE=dry wit',
-  'LLM_MODEL_FAST=gpt-4o-mini',
+  'LLM_MODEL_FAST=gpt-6-luna',
   'TTS_OUTPUT_DEVICE=Speakers',
   'COMPUTERNAME=SHOULD-NOT-BUNDLE',
   'PATH=C:\\Windows\\System32',
@@ -277,7 +277,7 @@ const { merged: mergedExtra, skipped: skippedExtra } = mergeEnvDefaultsWithSourc
 assert.ok(mergedExtra.includes('LLM_API_KEY=llm-secret'), 'template LLM_API_KEY should be overridden');
 assert.ok(mergedExtra.includes('NEWS_API_KEY=news-secret'), 'extra NEWS_API_KEY should be appended');
 assert.ok(mergedExtra.includes('PERSONA_SPEAKING_STYLE=dry wit'), 'persona settings should be appended verbatim');
-assert.ok(mergedExtra.includes('LLM_MODEL_FAST=gpt-4o-mini'), 'model overrides should be bundled');
+assert.ok(mergedExtra.includes('LLM_MODEL_FAST=gpt-6-luna'), 'model overrides should be bundled');
 assert.ok(!mergedExtra.includes('COMPUTERNAME'), 'machine env keys should be excluded');
 assert.ok(!mergedExtra.includes('PATH='), 'PATH should be excluded');
 assert.ok(!mergedExtra.includes('RAVEN_ENV_PATH'), 'RAVEN_ENV_PATH should be excluded');
