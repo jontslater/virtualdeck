@@ -58,6 +58,10 @@ const {
   normalizeMacroTriggerButtonSteps,
 } = require('./lib/macro-button-picker');
 const { createTwitchMessageDeduper } = require('./lib/twitch-chat-dedupe');
+const {
+  findChatCommandTriggers,
+  createChatCommandCooldownStore,
+} = require('./lib/twitch-chat-command');
 const { createTwitchOAuthHost } = require('./lib/twitch-oauth-host');
 const { encodeField, decodeField } = require('./lib/portable-secret');
 const { speakViaDevApi } = require('./lib/raven-dev-speak');
@@ -93,6 +97,7 @@ function sendUpdateEventToRenderer(channel, payload) {
 // Global debouncing mechanism to prevent duplicate button triggers
 const recentButtonTriggers = new Map();
 const BUTTON_TRIGGER_DEBOUNCE_MS = 500; // 500ms debounce window
+const chatCommandUserCooldowns = createChatCommandCooldownStore();
 
 function isRecentButtonTrigger(label) {
   const now = Date.now();
@@ -121,9 +126,10 @@ function resolveDeckButtonInProfile(profile, { buttonId, label } = {}) {
   return null;
 }
 
-function triggerDeckButton(ref, source = 'unknown') {
+function triggerDeckButton(ref, source = 'unknown', triggerOptions = {}) {
   const opts = typeof ref === 'string' ? { label: ref } : (ref || {});
   const { buttonId, label } = opts;
+  const { allowOverlappingRuns = false } = triggerOptions;
   const profile = loadProfile(currentActiveProfile);
   const btn = resolveDeckButtonInProfile(profile, { buttonId, label });
   const debounceKey = buttonId || label || (btn && btn.id) || '';
@@ -148,7 +154,7 @@ function triggerDeckButton(ref, source = 'unknown') {
       console.warn('[License] trigger check failed:', e && e.message);
     }
   }
-  if (debounceKey && isRecentButtonTrigger(debounceKey)) {
+  if (debounceKey && !allowOverlappingRuns && isRecentButtonTrigger(debounceKey)) {
     console.log(`🚫 Skipping duplicate trigger for "${display}" from ${source} (within ${BUTTON_TRIGGER_DEBOUNCE_MS}ms)`);
     return false;
   }
@@ -163,8 +169,37 @@ function triggerDeckButton(ref, source = 'unknown') {
   return false;
 }
 
-function triggerButtonWithDebounce(label, source = 'unknown') {
-  return triggerDeckButton(label, source);
+function triggerButtonWithDebounce(label, source = 'unknown', triggerOptions = {}) {
+  return triggerDeckButton(label, source, triggerOptions);
+}
+
+function runChatCommandTriggersForMessage(message, username, sourceLabel) {
+  const profile = loadProfile(currentActiveProfile);
+  const uname = String(username || '').toLowerCase();
+  const triggers = findChatCommandTriggers(message, profile.buttons);
+
+  triggers.forEach(({ btn, chatCommand }) => {
+    const buttonKey = btn.id || btn.label || btn.name;
+    if (
+      chatCommand.perUserCooldownSeconds > 0 &&
+      chatCommandUserCooldowns.isOnCooldown(buttonKey, uname, chatCommand.perUserCooldownSeconds)
+    ) {
+      console.log(
+        `⏳ Skipping chat command for "${btn.label || btn.name}" — user ${username} on cooldown (${chatCommand.perUserCooldownSeconds}s)`
+      );
+      return;
+    }
+
+    console.log(`🚀 main.js triggering button "${btn.label || btn.name}" (${sourceLabel})`);
+    const fired = triggerDeckButton(
+      { label: btn.label || btn.name, buttonId: btn.id },
+      sourceLabel,
+      { allowOverlappingRuns: chatCommand.allowOverlappingRuns }
+    );
+    if (fired && chatCommand.perUserCooldownSeconds > 0) {
+      chatCommandUserCooldowns.record(buttonKey, uname);
+    }
+  });
 }
 
 function loadDeckButtonCatalogForMacros() {
@@ -5060,30 +5095,9 @@ function beginTwitchChatClient({ username, oauth, clientId, connectGeneration })
         }
         return;
       }
-
-      // Regular button command handling
-      const profile = loadProfile(currentActiveProfile);
-      profile.buttons.forEach((btn) => {
-        // Check if button has chat command enabled and keyword matches
-        if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword && btn.chatCommand.keyword.toLowerCase() === commandText) {
-          const triggerMethod = btn.chatCommand.triggerMethod || 'command';
-          console.log(`🔍 main.js checking button "${btn.label || btn.name}" with chatCommand:`, btn.chatCommand);
-          console.log(`🔍 main.js checking button "${btn.label || btn.name}" with triggerMethod: "${triggerMethod}" for command: "${commandText}"`);
-          
-          // Only trigger if the button is configured to accept chat commands
-          if (triggerMethod === 'command' || triggerMethod === 'both') {
-            console.log(`🚀 main.js triggering button "${btn.label || btn.name}" (triggerMethod: ${triggerMethod} allows chat commands)`);
-            triggerButtonWithDebounce(btn.label || btn.name, `chat command !${commandText}`);
-          } else {
-            console.log(`⏭️ main.js skipping chat command "${commandText}" for button "${btn.label || btn.name}" (triggerMethod: ${triggerMethod} - redeem only)`);
-          }
-        }
-        // Legacy support: Only check old 'command' type buttons if no modern chatCommand exists
-        else if (!btn.chatCommand && btn.type === 'command' && btn.label.toLowerCase() === commandText) {
-          triggerButtonWithDebounce(btn.label, `legacy chat command !${commandText}`);
-        }
-      });
     }
+
+    runChatCommandTriggersForMessage(message, username, 'chat command');
   });
 }
 
@@ -6255,22 +6269,12 @@ ipcMain.on('twitch-fake-event', (event, evt) => {
         source: 'fake-event-ipc' // Debug: identify event source
       });
       // also run command matching logic to trigger media
-      if (evt.message && evt.message.startsWith('!')) {
-        const profile = loadProfile(currentActiveProfile);
-        const commandText = evt.message.split(' ')[0].substring(1).toLowerCase();
-        profile.buttons.forEach((btn) => {
-          // Check if button has chat command enabled and keyword matches
-          if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword && btn.chatCommand.keyword.toLowerCase() === commandText) {
-            const triggerMethod = btn.chatCommand.triggerMethod || 'command';
-            if (triggerMethod === 'command' || triggerMethod === 'both') {
-              triggerButtonWithDebounce(btn.label || btn.name, `fake chat command !${commandText}`);
-            }
-          }
-          // Legacy support: Only check old 'command' type buttons if no modern chatCommand exists
-          else if (!btn.chatCommand && btn.type === 'command' && btn.label.toLowerCase() === commandText) {
-            triggerButtonWithDebounce(btn.label, `fake legacy chat command !${commandText}`);
-          }
-        });
+      if (evt.message) {
+        runChatCommandTriggersForMessage(
+          evt.message,
+          evt.user || 'fake-user',
+          'fake chat command'
+        );
       }
     } else {
       win.webContents.send('twitch-eventsub', { type: evt.type || 'test', event: evt.event || {} });
@@ -6292,22 +6296,12 @@ ipcMain.handle('send-fake-twitch-event', async (event, evt) => {
         source: 'fake-event-handle' // Debug: identify event source
       });
       // also run command matching logic to trigger media
-      if (evt.message && evt.message.startsWith('!')) {
-        const profile = loadProfile(currentActiveProfile);
-        const commandText = evt.message.split(' ')[0].substring(1).toLowerCase();
-        profile.buttons.forEach((btn) => {
-          // Check if button has chat command enabled and keyword matches
-          if (btn.chatCommand && btn.chatCommand.enabled && btn.chatCommand.keyword && btn.chatCommand.keyword.toLowerCase() === commandText) {
-            const triggerMethod = btn.chatCommand.triggerMethod || 'command';
-            if (triggerMethod === 'command' || triggerMethod === 'both') {
-              triggerButtonWithDebounce(btn.label || btn.name, `fake event handle chat command !${commandText}`);
-            }
-          }
-          // Legacy support: Only check old 'command' type buttons if no modern chatCommand exists
-          else if (!btn.chatCommand && btn.type === 'command' && btn.label.toLowerCase() === commandText) {
-            triggerButtonWithDebounce(btn.label, `fake event handle legacy chat command !${commandText}`);
-          }
-        });
+      if (evt.message) {
+        runChatCommandTriggersForMessage(
+          evt.message,
+          evt.user || 'fake-user',
+          'fake event handle chat command'
+        );
       }
     } else {
       win.webContents.send('twitch-eventsub', { type: evt.type || 'test', event: evt.event || {} });
