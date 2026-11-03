@@ -6363,15 +6363,63 @@ class ThemeManager {
   setTheme(themeName) {
     // Check if it's a built-in theme or an available skin
     if (this.builtInThemes.includes(themeName) || this.availableSkins.some(skin => skin.id === themeName)) {
-      this.currentTheme = themeName;
-      this.applyTheme(themeName);
-      this.saveTheme(themeName);
-      
-      // Sync the menu state
-      if (window.electronAPI?.syncTheme) {
-        window.electronAPI.syncTheme(themeName);
-      }
+      void this.applyThemeImmediate(themeName);
     }
+  }
+
+  /**
+   * Apply a theme immediately (await skin CSS injection). Use after import or when
+   * the skin list may have just changed. force=true skips the availableSkins guard
+   * (same pattern as ProfileManager loading a newly imported skin).
+   */
+  async applyThemeImmediate(themeName, { force = false } = {}) {
+    await this.loadAvailableSkins();
+    const isKnown =
+      this.builtInThemes.includes(themeName) ||
+      this.availableSkins.some((skin) => skin.id === themeName);
+    if (!isKnown && !force) {
+      console.warn('ThemeManager: unknown theme, skipping apply:', themeName);
+      return false;
+    }
+
+    this.currentTheme = themeName;
+    await this.applyTheme(themeName);
+    this.saveTheme(themeName);
+
+    if (window.electronAPI?.syncTheme) {
+      window.electronAPI.syncTheme(themeName);
+    }
+
+    this.refreshOpenUiForTheme();
+    return true;
+  }
+
+  /** Re-nudge visible panels (e.g. Twitch chat) after CSS variables / skin styles change. */
+  refreshOpenUiForTheme() {
+    try {
+      const chatContainer = document.getElementById('twitch-chat-container');
+      const chatMessages = document.getElementById('twitch-chat-messages');
+      if (chatContainer && chatContainer.offsetParent !== null) {
+        void chatContainer.offsetHeight;
+      }
+      if (chatMessages) {
+        void chatMessages.offsetHeight;
+      }
+    } catch (e) {
+      /* non-fatal */
+    }
+  }
+
+  async applyImportedSkin(importResult) {
+    if (!importResult || !importResult.id) {
+      return false;
+    }
+    await this.loadAvailableSkins();
+    const applied = await this.applyThemeImmediate(importResult.id, { force: true });
+    if (window.electronAPI?.refreshMenu) {
+      window.electronAPI.refreshMenu();
+    }
+    return applied;
   }
 
   async applyTheme(themeName) {
@@ -6565,16 +6613,7 @@ class ThemeManager {
       if (window.electronAPI?.showImportSkinDialog) {
         const result = await window.electronAPI.showImportSkinDialog();
         if (result) {
-          // Refresh available skins after import
-          await this.loadAvailableSkins();
-          // Apply the newly imported skin
-          this.setTheme(result.id);
-          // Refresh the menu to show the new theme (with a small delay to ensure skins are loaded)
-          setTimeout(() => {
-            if (window.electronAPI?.refreshMenu) {
-              window.electronAPI.refreshMenu();
-            }
-          }, 100);
+          await this.applyImportedSkin(result);
           if (window.notificationManager) {
             window.notificationManager.show(`Theme "${result.name}" imported successfully!`, 'success', 3000);
           }
@@ -6910,6 +6949,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // CRITICAL: Initialize ThemeManager FIRST before ProfileManager needs it
   if (typeof ThemeManager !== 'undefined') {
     window.themeManager = new ThemeManager();
+    themeManager = window.themeManager;
     window.themeSystem = window.themeManager;
     window.notificationManager = new NotificationManager();
     console.log('🎨 ThemeManager and NotificationManager created early');
@@ -15204,10 +15244,15 @@ function setupLeftAppMenu() {
             const result = await window.electronAPI.showImportSkinDialog();
             // If a skin was imported, refresh ThemeManager and the menu so it's immediately usable
             if (result && result.id) {
-              try { if (themeManager && typeof themeManager.loadAvailableSkins === 'function') await themeManager.loadAvailableSkins(); } catch(e){}
-              try { if (themeManager && typeof themeManager.setTheme === 'function') themeManager.setTheme(result.id); } catch(e){}
-              try { window.electronAPI && window.electronAPI.refreshMenu && window.electronAPI.refreshMenu(); } catch(e){}
-              try { await renderToolsThemes(); } catch(e){}
+              try {
+                const tm = window.themeManager || themeManager;
+                if (tm && typeof tm.applyImportedSkin === 'function') {
+                  await tm.applyImportedSkin(result);
+                }
+              } catch (e) {
+                console.warn('Failed to apply imported theme', e);
+              }
+              try { await renderToolsThemes(); } catch (e) {}
             }
           } else {
             try { window.electronAPI && window.electronAPI.send && window.electronAPI.send('import-skin-dialog'); } catch(e){}
@@ -15220,17 +15265,24 @@ function setupLeftAppMenu() {
           if (window.electronAPI && window.electronAPI.showDeleteSkinDialog) {
             const result = await window.electronAPI.showDeleteSkinDialog();
             if (result && result.deleted) {
-              try { if (themeManager && typeof themeManager.loadAvailableSkins === 'function') await themeManager.loadAvailableSkins(); } catch(e){}
-              // If the deleted skin was active, ensure ThemeManager picks a safe default
               try {
-                if (themeManager && typeof themeManager.getCurrentTheme === 'function' && themeManager.getCurrentTheme()) {
-                  const ct = themeManager.getCurrentTheme();
-                  const stillExists = themeManager.availableSkins && themeManager.availableSkins.some(s => s.id === ct);
-                  if (!stillExists && themeManager && typeof themeManager.setTheme === 'function') themeManager.setTheme('dark');
+                const tm = window.themeManager || themeManager;
+                if (tm && typeof tm.loadAvailableSkins === 'function') {
+                  await tm.loadAvailableSkins();
                 }
-              } catch(e){}
-              try { window.electronAPI && window.electronAPI.refreshMenu && window.electronAPI.refreshMenu(); } catch(e){}
-              try { await renderToolsThemes(); } catch(e){}
+                if (tm && typeof tm.getCurrentTheme === 'function' && tm.getCurrentTheme()) {
+                  const ct = tm.getCurrentTheme();
+                  const stillExists =
+                    tm.availableSkins && tm.availableSkins.some((s) => s.id === ct);
+                  if (!stillExists && typeof tm.applyThemeImmediate === 'function') {
+                    await tm.applyThemeImmediate('dark');
+                  }
+                }
+              } catch (e) {
+                console.warn('Failed to refresh themes after delete', e);
+              }
+              try { window.electronAPI && window.electronAPI.refreshMenu && window.electronAPI.refreshMenu(); } catch (e) {}
+              try { await renderToolsThemes(); } catch (e) {}
             }
           } else {
             try { window.electronAPI && window.electronAPI.send && window.electronAPI.send('delete-skin-dialog'); } catch(e){}
@@ -15264,10 +15316,9 @@ function setupLeftAppMenu() {
       // Re-render themes to update active marks
       try { renderToolsThemes(); } catch (e) {}
       // Also update theme manager state if present
-      if (themeManager) {
-        if (themeManager.getCurrentTheme() !== themeName) {
-          themeManager.setTheme(themeName);
-        }
+      const tm = window.themeManager || themeManager;
+      if (tm && tm.getCurrentTheme() !== themeName) {
+        tm.setTheme(themeName);
       }
     });
   }
