@@ -414,7 +414,7 @@
         <div id="chat-command-settings" style="margin-top: 10px; padding-left: 20px; display: none;">
           <label for="chat-command-keyword">Chat Command Keyword:
             <input type="text" id="chat-command-keyword" placeholder="e.g., turnup" style="margin-left: 10px; width: 120px;" />
-            <small style="display: block; margin-top: 5px; color: #888;">Single word or phrase with no spaces (e.g., "turnup" for !turnup command)</small>
+            <small style="display: block; margin-top: 5px; color: #888;">Comma-separated trigger words (e.g., turnup, hype). With ! prefix: classic !turnup command.</small>
           </label>
           
           <label for="redeem-name" style="display: block; margin-top: 15px;">Channel Point Redemption Name:
@@ -441,6 +441,26 @@
             <label style="display: block; margin-bottom: 8px;">
               <input type="radio" name="trigger-method" value="both" id="trigger-both" />
               Both (Chat Command + Channel Point Redemption)
+            </label>
+          </div>
+          <div style="margin-top: 15px; padding-top: 12px; border-top: 1px solid var(--border-color, #333);">
+            <label style="font-weight: 600; margin-bottom: 8px; display: block;">Chat trigger options:</label>
+            <label style="display: block; margin-bottom: 8px;">
+              <input type="checkbox" id="chat-command-require-prefix" checked />
+              Require ! prefix (classic chat command)
+            </label>
+            <label style="display: block; margin-bottom: 8px;">
+              <input type="checkbox" id="chat-command-match-anywhere" />
+              Match anywhere in message (secret word — whole word, case-insensitive)
+            </label>
+            <label style="display: block; margin-bottom: 8px;">
+              <input type="checkbox" id="chat-command-allow-overlap" />
+              Allow overlapping runs (multiple viewers can trigger while playing)
+            </label>
+            <label for="chat-command-user-cooldown" style="display: block; margin-bottom: 8px;">
+              Per-user cooldown (seconds):
+              <input type="number" id="chat-command-user-cooldown" min="0" step="1" value="0" style="margin-left: 8px; width: 80px;" />
+              <small style="display: block; margin-top: 5px; color: #888;">0 = no cooldown. Comma-separate multiple trigger words in the keyword field above.</small>
             </label>
           </div>
         </div><br>
@@ -827,7 +847,7 @@
             <div id="multi-media-chat-command-settings" style="margin-top: 10px; padding-left: 20px;">
               <label for="multi-media-chat-command-keyword">Chat Command Keyword:
                 <input type="text" id="multi-media-chat-command-keyword" placeholder="e.g., turnup" style="margin-left: 10px; width: 120px;" />
-                <small style="display: block; margin-top: 5px; color: #888;">Single word or phrase with no spaces (e.g., "turnup" for !turnup command)</small>
+                <small style="display: block; margin-top: 5px; color: #888;">Comma-separated trigger words (e.g., turnup, hype). With ! prefix: classic !turnup command.</small>
               </label>
               
               <label for="multi-media-redeem-name" style="display: block; margin-top: 15px;">Channel Point Redemption Name:
@@ -854,6 +874,26 @@
                 <label style="display: block; margin-bottom: 8px;">
                   <input type="radio" name="multi-media-trigger-method" value="both" id="multi-media-trigger-both" />
                   Both (Chat Command + Channel Point Redemption)
+                </label>
+              </div>
+              <div style="margin-top: 15px; padding-top: 12px; border-top: 1px solid var(--border-color, #333);">
+                <label style="font-weight: 600; margin-bottom: 8px; display: block;">Chat trigger options:</label>
+                <label style="display: block; margin-bottom: 8px;">
+                  <input type="checkbox" id="multi-media-chat-command-require-prefix" checked />
+                  Require ! prefix (classic chat command)
+                </label>
+                <label style="display: block; margin-bottom: 8px;">
+                  <input type="checkbox" id="multi-media-chat-command-match-anywhere" />
+                  Match anywhere in message (secret word — whole word, case-insensitive)
+                </label>
+                <label style="display: block; margin-bottom: 8px;">
+                  <input type="checkbox" id="multi-media-chat-command-allow-overlap" />
+                  Allow overlapping runs (multiple viewers can trigger while playing)
+                </label>
+                <label for="multi-media-chat-command-user-cooldown" style="display: block; margin-bottom: 8px;">
+                  Per-user cooldown (seconds):
+                  <input type="number" id="multi-media-chat-command-user-cooldown" min="0" step="1" value="0" style="margin-left: 8px; width: 80px;" />
+                  <small style="display: block; margin-top: 5px; color: #888;">0 = no cooldown. Comma-separate multiple trigger words in the keyword field above.</small>
                 </label>
               </div>
             </div>
@@ -2849,6 +2889,7 @@
   <script src="input-focus-guard.js"></script>
   <script src="modal-escape.js"></script>
   <script src="meldClient.js"></script>
+  <script src="chat-command-form.js"></script>
   <script src="AddEditButtonForm.js"></script>
   <script src="alert-text-render.js"></script>
   <script src="license-ui.js"></script>
