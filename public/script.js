@@ -697,6 +697,10 @@ class ProfileManager {
             this.applyButtonOrder(profile.uiSettings.soundButtonOrder);
           }, 500);
         }
+
+        if (window.masterVolume && typeof window.masterVolume.applySettings === 'function') {
+          window.masterVolume.applySettings(profile.uiSettings);
+        }
       } else {
         // No UI settings, apply default theme
         console.log('ℹ️ No uiSettings in profile, applying default theme');
@@ -771,7 +775,9 @@ class ProfileManager {
         theme: window.themeSystem ? window.themeSystem.currentTheme : null,
         componentVisibility: this.getCurrentComponentVisibility(),
         chatWidth: this.getCurrentChatWidth(),
-        soundButtonOrder: this.getCurrentButtonOrder()
+        soundButtonOrder: this.getCurrentButtonOrder(),
+        masterVolume: window.masterVolume ? window.masterVolume.getPercent() : 100,
+        masterVolumeMuted: window.masterVolume ? window.masterVolume.isMuted() : false,
       };
       
       console.log('💾 Saving profile settings...');
@@ -4281,9 +4287,13 @@ async function handleTrigger(button) {
     // when saving; the main process persists it into the button config.
     try {
       const vol = (typeof button.volume === 'number') ? button.volume : (button.volume ? parseFloat(button.volume) : 1.0);
-      // Set volume immediately to prevent loud burst
-      audio.volume = 0; // Start muted
-      audio.volume = Math.max(0, Math.min(1, !isNaN(vol) ? vol : 1.0)); // Then set to desired volume
+      if (window.masterVolume && typeof window.masterVolume.applyToAudioElement === 'function') {
+        window.masterVolume.applyToAudioElement(audio, vol);
+      } else {
+        // Set volume immediately to prevent loud burst
+        audio.volume = 0; // Start muted
+        audio.volume = Math.max(0, Math.min(1, !isNaN(vol) ? vol : 1.0)); // Then set to desired volume
+      }
     } catch (err) {
       // ignore and use default
       audio.volume = 0;
@@ -4532,6 +4542,18 @@ async function handleMultiMediaTrigger(button) {
     return audioItem;
   }));
 
+  const applyMasterVolumeToOverlayItem = (item) => {
+    if (!item || item.type === 'image') return item;
+    if (!window.masterVolume || typeof window.masterVolume.scaleStoredVolume !== 'function') {
+      return item;
+    }
+    const base = item.volume !== undefined ? item.volume : 1;
+    return { ...item, volume: window.masterVolume.scaleStoredVolume(base) };
+  };
+
+  const processedCenterMediaForOverlay = processedCenterMedia.map(applyMasterVolumeToOverlayItem);
+  const processedAudioForOverlay = processedAudio.map(applyMasterVolumeToOverlayItem);
+
   // Debug: Log chroma key data
   console.log('🔍 Processed center media with chroma key data:', processedCenterMedia.map(item => ({
     type: item.type,
@@ -4544,7 +4566,7 @@ async function handleMultiMediaTrigger(button) {
     targetOverlay: button.overlay || getDefaultOverlay(), // Route to specific overlay
     options: optionsData,
     slots: slotsData,
-    centerMedia: [...processedCenterMedia, ...processedAudio] // Include audio in centerMedia
+    centerMedia: [...processedCenterMediaForOverlay, ...processedAudioForOverlay] // Include audio in centerMedia
   };
 
   // Log slots with full style data for debugging
