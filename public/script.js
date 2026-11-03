@@ -4838,12 +4838,22 @@ document.getElementById('settings-form').onsubmit = async (e) => {
   console.log(`🔍 Selected trigger method radio:`, triggerMethodRadio);
   console.log(`🔍 Selected trigger method value:`, triggerMethod);
   
-  const chatCommand = (chatCommandEnabled && (chatCommandKeyword || redeemName)) ? {
-    enabled: true,
-    keyword: chatCommandKeyword.toLowerCase(),
-    redeemName: redeemName,
-    triggerMethod: triggerMethod
-  } : undefined;
+  const chatCommand = window.VDChatCommandForm
+    ? window.VDChatCommandForm.buildChatCommandPayload({
+        enabled: chatCommandEnabled,
+        keyword: chatCommandKeyword,
+        redeemName,
+        triggerMethod,
+        prefix: '',
+      })
+    : (chatCommandEnabled && (chatCommandKeyword || redeemName))
+      ? {
+          enabled: true,
+          keyword: chatCommandKeyword.toLowerCase(),
+          redeemName,
+          triggerMethod,
+        }
+      : undefined;
   
   console.log(`🔍 Saving button with chatCommand:`, chatCommand);
   console.log(`🔍 Form values - enabled: ${chatCommandEnabled}, keyword: "${chatCommandKeyword}", redeemName: "${redeemName}", triggerMethod: "${triggerMethod}"`);
@@ -5394,6 +5404,9 @@ window.editButton = async (index) => {
       if (triggerMethodRadio) {
         triggerMethodRadio.checked = true;
       }
+      if (window.VDChatCommandForm) {
+        window.VDChatCommandForm.applyChatCommandAdvancedOptions('', btn.chatCommand);
+      }
     } else {
       chatCommandEnabled.checked = false;
       chatCommandKeyword.value = '';
@@ -5404,6 +5417,9 @@ window.editButton = async (index) => {
       const defaultRadio = document.querySelector('input[name="trigger-method"][value="command"]');
       if (defaultRadio) {
         defaultRadio.checked = true;
+      }
+      if (window.VDChatCommandForm) {
+        window.VDChatCommandForm.resetChatCommandAdvancedOptions('');
       }
     }
   }
@@ -6051,6 +6067,9 @@ function handleFileDrop(file) {
   if (chatCommandKeyword) chatCommandKeyword.value = '';
   if (redeemName) redeemName.value = '';
   if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+  if (window.VDChatCommandForm) {
+    window.VDChatCommandForm.resetChatCommandAdvancedOptions('');
+  }
   hideMeldSceneSection();
   
   // Clear AI use fields

@@ -981,12 +981,20 @@ class AddEditButtonForm {
 
     // Add chat command data if enabled
     if (chatCommandEnabled && (chatCommandKeyword || redeemName)) {
-      buttonData.chatCommand = {
-        enabled: true,
-        keyword: chatCommandKeyword.toLowerCase(),
-        redeemName: redeemName,
-        triggerMethod: triggerMethod
-      };
+      buttonData.chatCommand = window.VDChatCommandForm
+        ? window.VDChatCommandForm.buildChatCommandPayload({
+            enabled: chatCommandEnabled,
+            keyword: chatCommandKeyword,
+            redeemName,
+            triggerMethod,
+            prefix: 'multi-media',
+          })
+        : {
+            enabled: true,
+            keyword: chatCommandKeyword.toLowerCase(),
+            redeemName: redeemName,
+            triggerMethod: triggerMethod,
+          };
       console.log(`🔍 AddEditButtonForm saving button with chatCommand:`, buttonData.chatCommand);
     }
 
@@ -1057,6 +1065,9 @@ class AddEditButtonForm {
     if (chatCommandKeyword) chatCommandKeyword.value = '';
     if (redeemName) redeemName.value = '';
     if (chatCommandSettings) chatCommandSettings.style.display = 'none';
+    if (window.VDChatCommandForm) {
+      window.VDChatCommandForm.resetChatCommandAdvancedOptions('multi-media');
+    }
 
     // Update UI
     document.getElementById('multi-media-modal-title').textContent = 'Create Multi-Media Button';
@@ -1317,6 +1328,9 @@ class AddEditButtonForm {
         if (triggerMethodRadio) {
           triggerMethodRadio.checked = true;
         }
+        if (window.VDChatCommandForm) {
+          window.VDChatCommandForm.applyChatCommandAdvancedOptions('multi-media', buttonData.chatCommand);
+        }
       } else {
         chatCommandEnabled.checked = false;
         if (chatCommandKeyword) chatCommandKeyword.value = '';
@@ -1327,6 +1341,9 @@ class AddEditButtonForm {
         const defaultRadio = document.querySelector('input[name="multi-media-trigger-method"][value="command"]');
         if (defaultRadio) {
           defaultRadio.checked = true;
+        }
+        if (window.VDChatCommandForm) {
+          window.VDChatCommandForm.resetChatCommandAdvancedOptions('multi-media');
         }
       }
     }
