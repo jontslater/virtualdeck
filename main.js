@@ -690,7 +690,9 @@ function loadProfile(profileId) {
       theme: null,
       componentVisibility: {},
       chatWidth: null,
-      soundButtonOrder: []
+      soundButtonOrder: [],
+      masterVolume: 100,
+      masterVolumeMuted: false,
     }
   };
 }

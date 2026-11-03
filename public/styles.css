@@ -498,6 +498,60 @@ html[data-theme], body[data-theme] {
   border-color: var(--accent-tertiary);
 }
 
+.master-volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex: 1 1 200px;
+  max-width: 360px;
+  min-width: 160px;
+}
+
+.master-volume-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.master-volume-mute-btn {
+  background: var(--bg-quinary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-tertiary);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  -webkit-app-region: no-drag;
+}
+
+.master-volume-mute-btn:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-quaternary);
+}
+
+#master-volume-input.master-volume-slider {
+  flex: 1;
+  min-width: 80px;
+  height: 6px;
+  background: var(--master-volume-track, var(--border-secondary));
+  accent-color: var(--master-volume-thumb, var(--accent-color));
+}
+
+#master-volume-input.master-volume-slider::-webkit-slider-thumb,
+#master-volume-input.master-volume-slider::-moz-range-thumb {
+  background: var(--master-volume-thumb, var(--accent-color));
+  border: 2px solid var(--bg-primary);
+}
+
+#master-volume-input.master-volume-slider::-webkit-slider-runnable-track,
+#master-volume-input.master-volume-slider::-moz-range-track {
+  background: var(--master-volume-track, var(--border-secondary));
+}
+
 .drag-toggle-btn.unlocked:hover {
   background: var(--accent-secondary);
   border-color: var(--accent-secondary);

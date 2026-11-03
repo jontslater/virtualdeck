@@ -223,6 +223,13 @@
       "border-radius": "5px !important",
       "accent-color": "var(--text-quinary) !important"
     },
+    "#master-volume-input[type='range']": {
+      "-webkit-appearance": "none !important",
+      "appearance": "none !important",
+      "background": "var(--master-volume-track, var(--bg-tertiary)) !important",
+      "border-radius": "5px !important",
+      "accent-color": "var(--master-volume-thumb, var(--text-quinary)) !important"
+    },
     "input[type='range']::-webkit-slider-thumb": { 
       "appearance": "none !important",
       "width": "100px !important", 

@@ -247,6 +247,11 @@
         🔒 Lock
       </button>
       <span class="drag-status">Sound buttons are locked</span>
+      <div class="master-volume-control" id="master-volume-control">
+        <button type="button" id="master-volume-mute" class="master-volume-mute-btn" aria-label="Mute all soundboard playback" aria-pressed="false" title="Mute master volume (M). Double-click sets slider to 0%.">🔊</button>
+        <label for="master-volume-input" class="master-volume-label">Master: <span id="master-volume-value">100%</span></label>
+        <input type="range" id="master-volume-input" class="master-volume-slider" name="master-volume" min="0" max="100" value="100" aria-label="Master volume for all soundboard buttons" />
+      </div>
     </div>
 
     <!-- AI Dashboard Controls - Compact Integration -->
@@ -2891,6 +2896,7 @@
   <script src="raven-setup-ui.js"></script>
   <script src="raven-status-notes.js"></script>
   <script src="deck-drop-utils.js"></script>
+  <script src="master-volume.js"></script>
   <script src="script.js"></script>
   <script src="macro-hotkeys.js"></script>
   <script src="macro-scene-picker.js"></script>
