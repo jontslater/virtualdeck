@@ -291,6 +291,16 @@ if (process.env.VD_LICENSE_PROVIDER) {
   console.log('✅ Wrote packaged license env:', licensePackagedPath);
 }
 
+{
+  const feedbackSubmitUrl = String(process.env.VD_FEEDBACK_SUBMIT_URL || '').trim();
+  const feedbackPackaged = {
+    VD_FEEDBACK_SUBMIT_URL: feedbackSubmitUrl || 'https://virtualdeck.app/api/feedback',
+  };
+  const feedbackPackagedPath = path.join(__dirname, 'lib', 'feedback', 'packaged-endpoint.json');
+  fs.writeFileSync(feedbackPackagedPath, JSON.stringify(feedbackPackaged, null, 2));
+  console.log('✅ Wrote feedback ingest URL:', feedbackPackagedPath);
+}
+
 console.log('🎉 Build preparation complete!');
 console.log(`📁 Test media files copied to: ${userDataPath}`);
 console.log('📋 Build info saved to: build-info.json');

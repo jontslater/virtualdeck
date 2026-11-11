@@ -157,8 +157,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onDeckLayoutRestored: (callback) =>
     ipcRenderer.on('deck-layout-restored', (_event, payload) => callback(payload)),
   sendTwitchChatMessage: async (message) => ipcRenderer.invoke('sendTwitchChatMessage', message),
-  // Bug Report
-  reportBug: async () => ipcRenderer.invoke('report-bug'),
+  // Bug Report (legacy — opens in-app feedback)
+  reportBug: async () => ipcRenderer.invoke('open-feedback'),
+  onOpenFeedbackModal: (callback) =>
+    ipcRenderer.on('open-feedback-modal', () => callback()),
+  feedbackGetState: async () => ipcRenderer.invoke('feedback-get-state'),
+  feedbackPatchState: async (patch) => ipcRenderer.invoke('feedback-patch-state', patch),
+  feedbackSubmit: async (body) => ipcRenderer.invoke('feedback-submit', body),
   // Profile Management
   getProfiles: async () => ipcRenderer.invoke('get-profiles'),
   getProfile: async (profileId) => ipcRenderer.invoke('get-profile', profileId),

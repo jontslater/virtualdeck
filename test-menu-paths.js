@@ -28,6 +28,8 @@ assert.ok(html.includes('menu-tools-deck-backup'), 'tools menu backup deck layou
 assert.ok(html.includes('menu-tools-checkins-backup'), 'tools menu backup check-ins');
 assert.ok(html.includes('preferences-deck-backup'), 'preferences backup deck layout');
 assert.ok(html.includes('preferences-checkins-backup'), 'preferences backup check-ins');
+assert.ok(html.includes('menu-help-feedback'), 'help menu feedback item');
+assert.ok(pre.includes('feedback-get-state'), 'preload feedback state IPC');
 assert.ok(html.includes('vd-packaged-ui.js'), 'packaged UI bootstrap');
 assert.ok(html.includes('id="overlay-ai-control-panel"'), 'overlay AI panel id for packaged hide');
 assert.ok(html.includes('id="overlay-vtuber-controls"'), 'overlay VTuber section id for packaged hide');
