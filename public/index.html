@@ -70,6 +70,8 @@
           <button id="menu-tools-raven-restart" class="menu-dropdown-item" role="menuitem">Restart Raven AI</button>
           <button id="menu-tools-raven-settings" class="menu-dropdown-item" role="menuitem">Open Raven settings…</button>
           <div class="menu-divider"></div>
+          <button id="menu-tools-deck-backup" class="menu-dropdown-item" role="menuitem">Back up deck layout…</button>
+          <button id="menu-tools-deck-restore" class="menu-dropdown-item" role="menuitem">Restore deck layout…</button>
           <button id="menu-tools-checkins-backup" class="menu-dropdown-item" role="menuitem">Back up check-ins…</button>
           <button id="menu-tools-checkins-restore" class="menu-dropdown-item" role="menuitem">Restore check-ins…</button>
           <div class="menu-divider"></div>
@@ -1368,6 +1370,17 @@
           </p>
           <div id="socials-editor-list" class="socials-editor-list"></div>
           <button type="button" id="socials-add-row" class="preference-button" style="margin-top: 8px;">Add link</button>
+        </div>
+
+        <!-- Deck layout backup -->
+        <div class="preferences-section" id="deck-layout-preferences-section">
+          <h3>Deck layout backup</h3>
+          <div class="preference-item license-actions">
+            <button type="button" id="preferences-deck-backup" class="preference-button">Back up deck layout…</button>
+            <button type="button" id="preferences-deck-restore" class="preference-button">Restore deck layout…</button>
+          </div>
+          <small>Export or import your soundboard profiles (buttons, order, hotkeys), macros, and media files stored under VirtualDeck&apos;s user data folder. This is separate from daily check-in backup.</small>
+          <p id="preferences-deck-message" class="raven-api-save-message" role="status"></p>
         </div>
 
         <!-- Daily check-in data -->

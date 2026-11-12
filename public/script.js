@@ -2360,12 +2360,15 @@ async function loadButtons() {
       appIconSrc = iconData;
       appIconAlt = button.name || button.label || 'App';
     }
+    if (button.pathMissing) {
+      card.classList.add('sound-card--path-missing');
+    }
     card.innerHTML = `
       <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
       <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
       <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type === 'twitch-clip' ? 'Clip' : button.type === 'post-socials' ? 'Socials' : button.type === 'run-ad' ? 'Ad' : button.type === 'speak-tts' ? 'TTS' : button.type}</div>
       <div class="sound-name">${button.name || button.label || button.sceneName || 'Unnamed'}</div>
-      <div class="sound-hotkey">${button.hotkey || 'No hotkey'}</div>
+      <div class="sound-hotkey">${button.pathMissing ? 'Missing file — open Edit to re-pick' : (button.hotkey || 'No hotkey')}</div>
     `;
     if (appIconSrc) insertAppIconIntoCard(card, appIconSrc, appIconAlt);
     if (window.vdLicense && typeof window.vdLicense.applyLockedStylesToCard === 'function') {
@@ -6938,6 +6941,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupHydrationSettings();
   setupAlertWidget();
   initDailyCheckinSystem();
+  wireDeckLayoutBackupRestoreButtons();
   // initialize left app menu
   if (typeof setupLeftAppMenu === 'function') {
     console.log('🔧 Setting up left app menu');
@@ -14313,6 +14317,80 @@ async function runDailyCheckinRestore(sourceMessageEl) {
   }
 }
 
+async function runDeckLayoutBackup(sourceMessageEl) {
+  if (!window.electronAPI || !window.electronAPI.backupDeckLayout) return;
+  const result = await window.electronAPI.backupDeckLayout();
+  if (sourceMessageEl) {
+    if (result && result.canceled) {
+      sourceMessageEl.textContent = '';
+    } else if (result && result.success) {
+      const s = result.summary;
+      const detail = s
+        ? ` (${s.profileCount} profile(s), ${s.buttonCount} button(s), ${s.macroCount} macro(s), ${s.mediaCount} media file(s))`
+        : '';
+      sourceMessageEl.textContent = `Deck layout saved to ${result.path}${detail}`;
+    } else {
+      sourceMessageEl.textContent = (result && result.error) || 'Deck backup failed.';
+    }
+  } else if (result && result.success && window.notificationManager) {
+    window.notificationManager.show('Deck layout backed up.', 'success');
+  }
+}
+
+async function applyRestoredDeckLayout(payload) {
+  if (window.profileManager && typeof window.profileManager.initialize === 'function') {
+    await window.profileManager.initialize();
+  }
+  await loadButtons();
+  if (window.macroUI && typeof window.macroUI.loadMacros === 'function') {
+    window.macroUI.loadMacros().catch(() => {});
+  }
+  return payload;
+}
+
+async function runDeckLayoutRestore(sourceMessageEl) {
+  if (!window.electronAPI || !window.electronAPI.restoreDeckLayout) return;
+  const result = await window.electronAPI.restoreDeckLayout();
+  if (result && result.success) {
+    const missing = result.summary && result.summary.missingFileButtons;
+    let msg = 'Deck layout restored. Previous profiles and macros were saved with a .bak suffix.';
+    if (typeof missing === 'number' && missing > 0) {
+      msg += ` ${missing} button(s) reference missing files — edit them to re-attach media.`;
+    }
+    if (sourceMessageEl) sourceMessageEl.textContent = msg;
+    else if (window.notificationManager) window.notificationManager.show(msg, 'success');
+    await applyRestoredDeckLayout(result);
+  } else if (result && result.canceled) {
+    if (sourceMessageEl) sourceMessageEl.textContent = '';
+  } else if (sourceMessageEl) {
+    sourceMessageEl.textContent = (result && result.error) || 'Deck restore failed.';
+  }
+}
+
+function wireDeckLayoutBackupRestoreButtons() {
+  const pairs = [
+    ['preferences-deck-backup', 'preferences-deck-restore', 'preferences-deck-message'],
+  ];
+  for (const [backupId, restoreId, messageId] of pairs) {
+    const msgEl = messageId ? document.getElementById(messageId) : null;
+    const backupBtn = document.getElementById(backupId);
+    const restoreBtn = document.getElementById(restoreId);
+    if (backupBtn) {
+      backupBtn.addEventListener('click', () => runDeckLayoutBackup(msgEl));
+    }
+    if (restoreBtn) {
+      restoreBtn.addEventListener('click', () => runDeckLayoutRestore(msgEl));
+    }
+  }
+  if (window.electronAPI && window.electronAPI.onDeckLayoutRestored) {
+    window.electronAPI.onDeckLayoutRestored((payload) => {
+      applyRestoredDeckLayout(payload).catch((err) =>
+        console.error('Failed to reload deck after restore:', err),
+      );
+    });
+  }
+}
+
 function wireDailyCheckinBackupRestoreButtons() {
   const pairs = [
     ['daily-checkin-backup', 'daily-checkin-restore', null],
@@ -15048,6 +15126,23 @@ function setupLeftAppMenu() {
       e.stopPropagation();
       closeToolsMenu();
       await runDailyCheckinRestore(null);
+    });
+  }
+
+  const toolsDeckBackup = document.getElementById('menu-tools-deck-backup');
+  const toolsDeckRestore = document.getElementById('menu-tools-deck-restore');
+  if (toolsDeckBackup && window.electronAPI && window.electronAPI.backupDeckLayout) {
+    toolsDeckBackup.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeToolsMenu();
+      await runDeckLayoutBackup(null);
+    });
+  }
+  if (toolsDeckRestore && window.electronAPI && window.electronAPI.restoreDeckLayout) {
+    toolsDeckRestore.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeToolsMenu();
+      await runDeckLayoutRestore(null);
     });
   }
   

@@ -1291,6 +1291,16 @@ html[data-theme], body[data-theme] {
   transform: none;
 }
 
+.sound-card.sound-card--path-missing {
+  border-color: #c62828;
+  box-shadow: inset 0 0 0 1px rgba(198, 40, 40, 0.35);
+}
+
+.sound-card.sound-card--path-missing .sound-hotkey {
+  color: #ef9a9a;
+  font-size: 11px;
+}
+
 .license-status-message {
   font-size: 13px;
   margin: 0 0 12px 0;
