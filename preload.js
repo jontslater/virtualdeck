@@ -152,6 +152,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   restoreDailyCheckins: async () => ipcRenderer.invoke('restore-daily-checkins'),
   onDailyCheckinsRestored: (callback) =>
     ipcRenderer.on('daily-checkins-restored', (_event, data) => callback(data)),
+  backupDeckLayout: async () => ipcRenderer.invoke('backup-deck-layout'),
+  restoreDeckLayout: async () => ipcRenderer.invoke('restore-deck-layout'),
+  onDeckLayoutRestored: (callback) =>
+    ipcRenderer.on('deck-layout-restored', (_event, payload) => callback(payload)),
   sendTwitchChatMessage: async (message) => ipcRenderer.invoke('sendTwitchChatMessage', message),
   // Bug Report
   reportBug: async () => ipcRenderer.invoke('report-bug'),
