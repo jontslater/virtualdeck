@@ -13,8 +13,8 @@ assert.match(
 
 assert.match(
   css,
-  /\.modal-content label:has\(> input\[type="checkbox"\]\)/,
-  'modal checkbox labels should use inline flex layout',
+  /\.modal-content label:has\(> input\[type="checkbox"\]\)[\s\S]*grid-template-columns: auto 1fr/,
+  'modal checkbox labels should use two-column grid for hang indent',
 );
 
 assert.match(
