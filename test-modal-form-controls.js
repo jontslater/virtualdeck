@@ -20,7 +20,7 @@ assert.match(
 assert.match(
   css,
   /\.modal-content label:has\(> input\[type="radio"\]\)/,
-  'modal radio labels should use inline flex layout',
+  'modal radio labels should use two-column grid for hang indent',
 );
 
 console.log('✅ test-modal-form-controls.js passed');
