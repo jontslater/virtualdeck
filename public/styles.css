@@ -1620,12 +1620,40 @@ body.vd-dragging .sound-card.draggable:hover {
   }
 }
 
-.modal-content input,
+.modal-content input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]),
 .modal-content select {
   width: 100%;
   margin: 5px 0 10px 0;
   box-sizing: border-box;
   padding: 6px;
+}
+
+.modal-content label:has(> input[type="checkbox"]),
+.modal-content label:has(> input[type="radio"]) {
+  display: grid !important;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  row-gap: 4px;
+  align-items: start;
+  cursor: pointer;
+}
+
+.modal-content label:has(> input[type="checkbox"]) > input[type="checkbox"],
+.modal-content label:has(> input[type="radio"]) > input[type="radio"] {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  margin-top: 0.15em;
+}
+
+.modal-content label:has(> input[type="checkbox"]) > :not(input),
+.modal-content label:has(> input[type="radio"]) > :not(input) {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
 }
 
 /* Volume control styling inside the settings modal */
