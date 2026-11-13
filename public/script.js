@@ -14856,22 +14856,6 @@ function setupLeftAppMenu() {
     });
   }
   
-  // Bug Report menu item
-  const helpBugReport = document.getElementById('menu-help-bug-report');
-  if (helpBugReport) {
-    helpBugReport.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      try {
-        if (window.electronAPI && window.electronAPI.reportBug) {
-          await window.electronAPI.reportBug();
-        }
-      } catch (error) {
-        console.error('Error opening bug report form:', error);
-      }
-      if (helpDropdown) helpDropdown.classList.add('hidden');
-      if (helpBtn) helpBtn.setAttribute('aria-expanded', 'false');
-    });
-  }
   
   // Placeholders Guide menu item
   const helpPlaceholders = document.getElementById('menu-help-placeholders');

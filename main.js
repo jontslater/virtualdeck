@@ -73,6 +73,15 @@ const {
 } = require('./lib/ai-audio-overlay');
 const { isValidTwitchLogin, normalizeTwitchLogin } = require('./lib/twitch-login');
 const { sanitizeTwitchProfileImageUrl: sanitizeTwitchProfileImageUrlLib } = require('./lib/twitch-profile-image');
+const {
+  recordFeedbackSession,
+  getFeedbackState,
+  shouldShowFeedbackPrompt,
+  patchFeedbackInPreferences,
+} = require('./lib/feedback/state');
+const { sanitizeFeedbackPayload, postFeedbackPayload } = require('./lib/feedback/submit');
+const { FEEDBACK_PROMPT_DELAY_MS } = require('./lib/feedback/constants');
+const { isFeedbackEndpointConfigured } = require('./lib/feedback/config');
 
 process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection]', reason);
@@ -4223,18 +4232,63 @@ ipcMain.handle('get-app-version', async () => {
   }
 });
 
-// IPC handler to open bug report form
+// Legacy alias + menu bridge: open in-app feedback (no external form).
 ipcMain.handle('report-bug', async () => {
   try {
-    const { shell } = require('electron');
-    const bugReportUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSdHUauA7LI_bJtfKRKrbD81lZ8Xs6R3egGOEalqAF2KHUNDdg/viewform';
-    await shell.openExternal(bugReportUrl);
-    console.log('Opened bug report form in browser');
-    return { success: true };
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('open-feedback-modal');
+    }
+    return { ok: true };
   } catch (error) {
-    console.error('Error opening bug report form:', error);
-    return { success: false, error: error.message };
+    return { ok: false, error: error && error.message };
   }
+});
+
+ipcMain.handle('open-feedback', async () => {
+  try {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('open-feedback-modal');
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error && error.message };
+  }
+});
+
+ipcMain.handle('feedback-get-state', async () => {
+  const feedback = getFeedbackState(getStoredPreferences());
+  return {
+    state: feedback,
+    shouldPrompt: shouldShowFeedbackPrompt(feedback),
+    promptDelayMs: FEEDBACK_PROMPT_DELAY_MS,
+    endpointConfigured: isFeedbackEndpointConfigured(),
+  };
+});
+
+ipcMain.handle('feedback-patch-state', async (_event, patch) => {
+  try {
+    const next = patchFeedbackInPreferences(getStoredPreferences(), patch || {});
+    saveStoredPreferences(next);
+    const feedback = getFeedbackState(next);
+    return { ok: true, state: feedback, shouldPrompt: shouldShowFeedbackPrompt(feedback) };
+  } catch (error) {
+    return { ok: false, error: error && error.message };
+  }
+});
+
+ipcMain.handle('feedback-submit', async (_event, body) => {
+  let appVersion = 'unknown';
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8'));
+    appVersion = packageJson.version || appVersion;
+  } catch (_) {
+    /* ignore */
+  }
+  const sanitized = sanitizeFeedbackPayload(body, { appVersion, platform: process.platform });
+  if (!sanitized.ok) {
+    return { ok: false, error: sanitized.error };
+  }
+  return postFeedbackPayload(sanitized.payload);
 });
 
 // Get connected overlays
@@ -6551,6 +6605,16 @@ function saveStoredPreferences(preferences) {
   }
 }
 
+function recordFeedbackAppSession() {
+  try {
+    const prefs = getStoredPreferences();
+    const { preferences } = recordFeedbackSession(prefs);
+    saveStoredPreferences(preferences);
+  } catch (error) {
+    console.warn('[Feedback] Failed to record app session:', error && error.message);
+  }
+}
+
 function initAppUpdater() {
   if (appUpdater) return appUpdater;
   appUpdater = createAppUpdater({
@@ -6585,6 +6649,7 @@ app.whenReady().then(() => {
     console.log('[AI Audio] Command watcher not started (VirtualDeck Pro license required)');
   }
   createWindow();
+  recordFeedbackAppSession();
   try {
     initTwitchOAuthHost();
     setTimeout(() => {
@@ -7302,7 +7367,13 @@ app.whenReady().then(() => {
   ipcMain.on('save-preferences', (event, preferences) => {
     try {
       console.log('Saving preferences:', preferences);
-      saveStoredPreferences(preferences);
+      const existing = getStoredPreferences();
+      const merged = {
+        ...existing,
+        ...(preferences && typeof preferences === 'object' ? preferences : {}),
+        feedback: (existing && existing.feedback) || (preferences && preferences.feedback),
+      };
+      saveStoredPreferences(merged);
       if (preferences && Array.isArray(preferences.socials)) {
         const profile = loadProfile(currentActiveProfile);
         profile.socials = normalizeSocials(preferences.socials);

@@ -88,7 +88,7 @@
       <button id="menu-help-btn" class="menu-button" aria-expanded="false" aria-controls="menu-help-dropdown">Help</button>
       <div id="menu-help-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Help menu">
         <div class="menu-dropdown-content">
-          <button id="menu-help-bug-report" class="menu-dropdown-item" role="menuitem">Report Bug</button>
+          <button id="menu-help-feedback" class="menu-dropdown-item" role="menuitem">Send feedback / Request a feature…</button>
           <div class="menu-divider"></div>
           <button id="menu-help-commands" class="menu-dropdown-item" role="menuitem">Chat Commands</button>
           <button id="menu-help-placeholders" class="menu-dropdown-item" role="menuitem">Twitch Placeholders Guide</button>
@@ -1458,6 +1458,15 @@
               <button id="copy-token-path" class="preference-button" title="Copy path to clipboard">Copy Path</button>
             </div>
             <small>Copy this path to sync VirtualDeck authentication across multiple PCs</small>
+          </div>
+        </div>
+
+        <!-- Feedback -->
+        <div class="preferences-section">
+          <h3>Feedback</h3>
+          <div class="preference-item">
+            <button type="button" id="preferences-feedback-btn" class="preference-button">Send feedback / Request a feature…</button>
+            <small>Tell us how VirtualDeck is working and what you want next. Optional email if you want a reply.</small>
           </div>
         </div>
 
@@ -2845,6 +2854,64 @@
 
   <!-- Custom Notification System -->
   <div id="notification-container" class="notification-container"></div>
+  <!-- Feedback modal -->
+  <div id="feedback-modal" class="hidden">
+    <div class="modal-content preferences-modal-content feedback-modal-content">
+      <div class="modal-header">
+        <h2 id="feedback-modal-title">Send feedback</h2>
+        <button id="feedback-modal-close" type="button" class="modal-close" aria-label="Close">✕</button>
+      </div>
+      <div class="feedback-modal-body">
+        <p class="feedback-modal-lead">Quick check-in — this never blocks your deck. Thanks for helping improve VirtualDeck.</p>
+
+        <fieldset class="feedback-fieldset">
+          <legend>How is VirtualDeck working for you?</legend>
+          <div class="feedback-rating-row" role="radiogroup" aria-label="Experience rating">
+            <label class="feedback-rating-option"><input type="radio" name="feedback-rating" id="feedback-rating-great" value="great" /> Great</label>
+            <label class="feedback-rating-option"><input type="radio" name="feedback-rating" id="feedback-rating-good" value="good" /> Good</label>
+            <label class="feedback-rating-option"><input type="radio" name="feedback-rating" id="feedback-rating-okay" value="okay" /> Okay</label>
+            <label class="feedback-rating-option"><input type="radio" name="feedback-rating" id="feedback-rating-rough" value="rough" /> Not great</label>
+          </div>
+          <label class="feedback-label" for="feedback-rating-comment">Optional comment</label>
+          <textarea id="feedback-rating-comment" class="preference-input feedback-textarea" rows="2" maxlength="2000" placeholder="Anything we should know?"></textarea>
+        </fieldset>
+
+        <fieldset class="feedback-fieldset">
+          <legend>What would you like to see in VirtualDeck next?</legend>
+          <div class="feedback-ideas-grid">
+            <label class="feedback-idea-chip"><input type="checkbox" id="feedback-idea-overlays" /> Overlays &amp; alerts</label>
+            <label class="feedback-idea-chip"><input type="checkbox" id="feedback-idea-twitch" /> Twitch tools</label>
+            <label class="feedback-idea-chip"><input type="checkbox" id="feedback-idea-macros" /> Macros</label>
+            <label class="feedback-idea-chip"><input type="checkbox" id="feedback-idea-ai" /> AI assistant</label>
+            <label class="feedback-idea-chip"><input type="checkbox" id="feedback-idea-themes" /> Themes</label>
+            <label class="feedback-idea-chip"><input type="checkbox" id="feedback-idea-performance" /> Performance</label>
+            <label class="feedback-idea-chip"><input type="checkbox" id="feedback-idea-other" /> Other</label>
+          </div>
+          <label class="feedback-label" for="feedback-feature-text">Details</label>
+          <textarea id="feedback-feature-text" class="preference-input feedback-textarea" rows="3" maxlength="4000" placeholder="Feature ideas, bugs, or workflow wishes…"></textarea>
+        </fieldset>
+
+        <fieldset class="feedback-fieldset">
+          <label class="feedback-label" for="feedback-email">Email (optional)</label>
+          <input type="email" id="feedback-email" class="preference-input" maxlength="200" placeholder="you@example.com — only if you want a reply" autocomplete="email" />
+        </fieldset>
+
+        <input type="text" id="feedback-honeypot" class="feedback-honeypot" tabindex="-1" autocomplete="off" aria-hidden="true" />
+
+        <p id="feedback-form-status" class="feedback-form-status" role="status"></p>
+
+        <div class="feedback-actions">
+          <button type="button" id="feedback-submit-btn" class="preference-button primary">Send feedback</button>
+          <button type="button" id="feedback-cancel-btn" class="preference-button">Close</button>
+        </div>
+        <div id="feedback-prompt-actions" class="feedback-prompt-actions hidden">
+          <button type="button" id="feedback-snooze-btn" class="preference-button">Remind me later</button>
+          <button type="button" id="feedback-never-btn" class="preference-button">Don&apos;t ask again</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- First Run Twitch Setup Popup -->
   <div id="first-run-twitch-popup" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10000;">
     <div class="modal-content" style="max-width: 500px; background: var(--bg-tertiary); color: var(--text-primary);">
@@ -2906,6 +2973,7 @@
   <script src="AddEditButtonForm.js"></script>
   <script src="alert-text-render.js"></script>
   <script src="license-ui.js"></script>
+  <script src="feedback-ui.js"></script>
   <script src="raven-setup-ui.js"></script>
   <script src="raven-status-notes.js"></script>
   <script src="deck-drop-utils.js"></script>

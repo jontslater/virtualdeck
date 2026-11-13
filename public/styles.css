@@ -1841,6 +1841,153 @@ body.vd-dragging .sound-card.draggable:hover {
   overflow-y: auto;
 }
 
+/* Feedback modal */
+#feedback-modal {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10500;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+#feedback-modal.hidden {
+  display: none;
+}
+
+.feedback-modal-content {
+  width: 520px;
+  max-width: 94vw;
+}
+
+.feedback-modal-body {
+  padding: 4px 4px 12px;
+}
+
+.feedback-modal-lead {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 14px;
+  line-height: 1.5;
+}
+
+.feedback-fieldset {
+  border: 1px solid var(--bg-tertiary);
+  border-radius: 8px;
+  margin: 0 0 12px;
+  padding: 12px 14px 14px;
+}
+
+.feedback-fieldset legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.feedback-rating-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.feedback-rating-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.feedback-rating-option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--bg-tertiary);
+}
+
+.feedback-ideas-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.feedback-idea-chip {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+}
+
+.feedback-idea-chip:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.feedback-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.feedback-textarea {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+}
+
+.feedback-honeypot {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.feedback-form-status {
+  min-height: 1.25em;
+  font-size: 13px;
+  margin: 8px 0 4px;
+  color: var(--accent);
+}
+
+.feedback-form-status.feedback-form-status-error {
+  color: #e07070;
+}
+
+.feedback-actions,
+.feedback-prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.feedback-prompt-actions {
+  padding-top: 8px;
+  border-top: 1px solid var(--bg-tertiary);
+  margin-top: 12px;
+}
+
+.feedback-prompt-actions.hidden {
+  display: none;
+}
+
 .preferences-content {
   padding: 10px 0;
 }
