@@ -1,0 +1,213 @@
+{
+  "name": "Thanksgiving (Cartoon)",
+  "description": "Cozy autumn Thanksgiving theme with warm harvest colors, drifting leaves, pumpkin sound buttons, turkey accents, and readable cream chat bubbles.",
+  "version": "1.0.0",
+  "author": "VirtualDeck Team",
+  "variables": {
+    "--bg-primary": "#2C1810",
+    "--bg-secondary": "#C45C26",
+    "--bg-tertiary": "#3D2314",
+    "--bg-quaternary": "#8B4513",
+    "--bg-quinary": "#F4D58D",
+    "--text-primary": "#FFF8E7",
+    "--text-secondary": "#FFF8E7",
+    "--text-tertiary": "#F4D58D",
+    "--text-quaternary": "#2C1810",
+    "--text-quinary": "#D97706",
+    "--border-primary": "#2C1810",
+    "--border-secondary": "#8B4513",
+    "--border-tertiary": "#B22222",
+    "--border-quaternary": "#F4D58D",
+    "--accent-primary": "#B22222",
+    "--accent-secondary": "#D97706",
+    "--accent-tertiary": "#F4D58D",
+    "--accent-quaternary": "#FFF8E7",
+    "--hover-bg": "#3D2314",
+    "--active-bg": "#2C1810",
+    "--focus-bg": "#C45C26",
+    "--shadow-color": "rgba(44, 24, 16, 0.5)",
+    "--shadow-hover": "rgba(196, 92, 38, 0.35)",
+    "--success-color": "#8B4513",
+    "--warning-color": "#D97706",
+    "--error-color": "#B22222",
+    "--info-color": "#F4D58D",
+    "--master-volume-track": "#5C3D2E",
+    "--master-volume-thumb": "#C45C26"
+  },
+  "css": "@keyframes vd-thanksgiving-drift{0%{background-position:12% -8%,48% -12%,78% -6%,30% -10%}100%{background-position:18% 108%,52% 112%,82% 106%,36% 110%}}body::before{content:\"\";position:fixed;inset:0;pointer-events:none;z-index:0;background-image:url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2228%22%20height%3D%2228%22%20viewBox%3D%220%200%2028%2028%22%3E%20%3Cpath%20fill%3D%22%23D97706%22%20d%3D%22M14%202c6%208%208%2014%208%2020-4%202-8%202-12%200%200-6%202-12%204-20z%22%2F%3E%20%3Cpath%20fill%3D%22%23B22222%22%20opacity%3D%220.6%22%20d%3D%22M14%206v16%22%2F%3E%20%3C%2Fsvg%3E),url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2228%22%20height%3D%2228%22%20viewBox%3D%220%200%2028%2028%22%3E%20%3Cpath%20fill%3D%22%23D97706%22%20d%3D%22M14%202c6%208%208%2014%208%2020-4%202-8%202-12%200%200-6%202-12%204-20z%22%2F%3E%20%3Cpath%20fill%3D%22%23B22222%22%20opacity%3D%220.6%22%20d%3D%22M14%206v16%22%2F%3E%20%3C%2Fsvg%3E),url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2228%22%20height%3D%2228%22%20viewBox%3D%220%200%2028%2028%22%3E%20%3Cpath%20fill%3D%22%23D97706%22%20d%3D%22M14%202c6%208%208%2014%208%2020-4%202-8%202-12%200%200-6%202-12%204-20z%22%2F%3E%20%3Cpath%20fill%3D%22%23B22222%22%20opacity%3D%220.6%22%20d%3D%22M14%206v16%22%2F%3E%20%3C%2Fsvg%3E),url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2228%22%20height%3D%2228%22%20viewBox%3D%220%200%2028%2028%22%3E%20%3Cpath%20fill%3D%22%23D97706%22%20d%3D%22M14%202c6%208%208%2014%208%2020-4%202-8%202-12%200%200-6%202-12%204-20z%22%2F%3E%20%3Cpath%20fill%3D%22%23B22222%22%20opacity%3D%220.6%22%20d%3D%22M14%206v16%22%2F%3E%20%3C%2Fsvg%3E);background-repeat:no-repeat;background-size:26px 26px,22px 22px,24px 24px,20px 20px;opacity:0.4;animation:vd-thanksgiving-drift 22s linear infinite;} #twitch-chat-container{background:#3D2314 url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22120%22%20height%3D%22120%22%20viewBox%3D%220%200%20120%20120%22%3E%20%3Crect%20width%3D%22120%22%20height%3D%22120%22%20fill%3D%22%233D2314%22%2F%3E%20%3Cpath%20fill%3D%22%23C45C26%22%20opacity%3D%220.12%22%20d%3D%22M30%2020c4-10%2014-10%2018%200l-6%2016c-2%206-10%206-12%200z%22%2F%3E%20%3Cpath%20fill%3D%22%23D97706%22%20opacity%3D%220.1%22%20d%3D%22M80%2070c4-10%2014-10%2018%200l-6%2016c-2%206-10%206-12%200z%22%2F%3E%20%3Cpath%20fill%3D%22%23F4D58D%22%20opacity%3D%220.08%22%20d%3D%22M20%2085c6-14%2022-14%2028%200l-8%2022c-3%208-14%208-17%200z%22%2F%3E%20%3C%2Fsvg%3E) repeat !important;border:4px solid #2C1810 !important;border-radius:16px !important;overflow:hidden} #twitch-chat-container .chat-header{background:url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22600%22%20height%3D%2244%22%20viewBox%3D%220%200%20600%2044%22%3E%20%3Crect%20width%3D%22600%22%20height%3D%2244%22%20rx%3D%2210%22%20fill%3D%22%238B4513%22%2F%3E%20%3Crect%20y%3D%226%22%20width%3D%22600%22%20height%3D%2232%22%20fill%3D%22%23C45C26%22%2F%3E%20%3Ctext%20x%3D%22300%22%20y%3D%2228%22%20text-anchor%3D%22middle%22%20font-family%3D%22Segoe%20UI%2C%20sans-serif%22%20font-size%3D%2216%22%20font-weight%3D%22800%22%20fill%3D%22%23FFF8E7%22%3EHarvest%20Chat%3C%2Ftext%3E%20%3Cg%20transform%3D%22translate(24%208)%22%3E%20%3Cellipse%20cx%3D%2214%22%20cy%3D%2222%22%20rx%3D%2212%22%20ry%3D%2210%22%20fill%3D%22%235C3D2E%22%2F%3E%20%3Ccircle%20cx%3D%2214%22%20cy%3D%2212%22%20r%3D%226%22%20fill%3D%22%23C45C26%22%2F%3E%20%3Cpath%20fill%3D%22%23B22222%22%20d%3D%22M6%2018c-4%202-6%206-4%2010%202%204%208%204%2012%200%204%204%2010%204%2012%200%202-4%200-8-4-10-2-2-6-2-8%200z%22%2F%3E%20%3C%2Fg%3E%20%3Cg%20transform%3D%22translate(540%2010)%22%3E%20%3Ccircle%20cx%3D%2216%22%20cy%3D%2218%22%20r%3D%2212%22%20fill%3D%22%23D97706%22%20stroke%3D%22%232C1810%22%20stroke-width%3D%222%22%2F%3E%20%3Crect%20x%3D%2213%22%20y%3D%224%22%20width%3D%226%22%20height%3D%228%22%20fill%3D%22%235C3D2E%22%2F%3E%20%3C%2Fg%3E%20%3C%2Fsvg%3E) left top/cover no-repeat !important;min-height:44px;border:none !important} #twitch-chat-container .chat-title{color:#FFF8E7 !important;font-weight:800;text-shadow:0 2px 0 #2C1810} #twitch-chat-container .toggle-chat-btn{background:#F4D58D !important;color:#2C1810 !important;border:3px solid #2C1810 !important;border-radius:8px} .status-indicator.connected{background:#8B4513 !important;border:2px solid #2C1810} #twitch-chat-messages > div{background:rgba(244,213,141,.96) !important;color:#2C1810 !important;border:3px solid #2C1810 !important;border-radius:14px !important;margin:8px 6px !important;padding:8px 10px !important;font-family:inherit !important} #twitch-chat-messages > div strong{color:#2C1810 !important;border-bottom:3px solid currentColor} #twitch-chat-messages .activity-message{color:#2C1810 !important} #twitch-chat-messages .badge-text{border-radius:6px !important} .chat-messages::-webkit-scrollbar{width:12px} .chat-messages::-webkit-scrollbar-track{background:#2C1810;border-radius:6px} .chat-messages::-webkit-scrollbar-thumb{background:url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%2260%22%20viewBox%3D%220%200%2010%2060%22%3E%20%3Crect%20width%3D%2210%22%20height%3D%2260%22%20rx%3D%225%22%20fill%3D%22%23D97706%22%20stroke%3D%22%232C1810%22%20stroke-width%3D%221%22%2F%3E%20%3C%2Fsvg%3E) repeat-y center/100% auto;border-radius:6px;border:1px solid #2C1810} .master-volume-label{color:#FFF8E7 !important;text-shadow:0 0 1px #2C1810,0 1px 2px #2C1810} #twitch-stats-container .stat-label,#twitch-stats-container .stat-value{color:#2C1810 !important}",
+  "components": {
+    ".app-menu-logo": {
+      "display": "none"
+    },
+    ".menu-button:hover": {
+      "background": "var(--bg-quaternary) !important",
+      "color": "var(--text-primary) !important",
+      "border-radius": "5px",
+      "transition": "background-color 120ms ease, color 120ms ease"
+    },
+    ".menu-button[aria-expanded=\"true\"]": {
+      "background": "var(--bg-quaternary) !important",
+      "color": "var(--text-primary) !important",
+      "border-radius": "5px",
+      "transition": "background-color 120ms ease, color 120ms ease"
+    },
+    ".hotkey-info": {
+      "background": "var(--bg-primary) !important",
+      "border": "none !important",
+      "color": "#FFF8E7 !important"
+    },
+    ".hotkey-help": {
+      "color": "var(--text-primary) !important"
+    },
+    ".stat-item": {
+      "border": "none !important",
+      "background": "url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22520%22%20height%3D%22146%22%20viewBox%3D%220%200%20520%20146%22%3E%20%3Crect%20x%3D%224%22%20y%3D%228%22%20width%3D%22512%22%20height%3D%22130%22%20rx%3D%2222%22%20fill%3D%22%23F4D58D%22%20stroke%3D%22%232C1810%22%20stroke-width%3D%226%22%2F%3E%20%3Crect%20x%3D%224%22%20y%3D%228%22%20width%3D%22512%22%20height%3D%2236%22%20rx%3D%2222%22%20fill%3D%22%23C45C26%22%2F%3E%20%3Crect%20x%3D%224%22%20y%3D%2230%22%20width%3D%22512%22%20height%3D%2214%22%20fill%3D%22%23C45C26%22%2F%3E%20%3Ccircle%20cx%3D%2248%22%20cy%3D%2228%22%20r%3D%2210%22%20fill%3D%22%23D97706%22%20stroke%3D%22%232C1810%22%20stroke-width%3D%223%22%2F%3E%20%3Ccircle%20cx%3D%22472%22%20cy%3D%2228%22%20r%3D%2210%22%20fill%3D%22%23D97706%22%20stroke%3D%22%232C1810%22%20stroke-width%3D%223%22%2F%3E%20%3Cpath%20fill%3D%22%23B22222%22%20opacity%3D%220.25%22%20d%3D%22M260%2050c-40%200-72%2024-72%2054h144c0-30-32-54-72-54z%22%2F%3E%20%3C%2Fsvg%3E) no-repeat top center / contain, var(--bg-quaternary) !important",
+      "background-repeat": "no-repeat, no-repeat",
+      "background-position": "top center, center",
+      "background-size": "contain, cover"
+    },
+    ".stat-content": {
+      "background": "rgba(244, 213, 141, 0.96) !important",
+      "border-radius": "10px !important",
+      "padding": "8px 12px !important",
+      "border": "2px solid #2C1810 !important",
+      "box-shadow": "0 2px 0 rgba(44, 24, 16, 0.25) !important",
+      "min-width": "72px !important"
+    },
+    ".stat-label": {
+      "color": "#2C1810 !important",
+      "font-weight": "700 !important",
+      "text-shadow": "none"
+    },
+    ".stat-value": {
+      "color": "#2C1810 !important",
+      "font-weight": "800 !important",
+      "text-shadow": "none"
+    },
+    ".stat-toggle-button": {
+      "background": "var(--bg-secondary) !important",
+      "border": "2px solid #2C1810 !important",
+      "color": "var(--text-primary) !important"
+    },
+    "#recent-activity-container, #recent-activity-container > div": {
+      "background": "rgba(44, 24, 16, 0.78) !important"
+    },
+    ".recent-label": {
+      "color": "var(--text-primary) !important"
+    },
+    ".recent-value": {
+      "color": "#FFF8E7 !important"
+    },
+    ".sound-controls": {
+      "background": "rgba(44, 24, 16, 0.62) !important",
+      "border": "none !important"
+    },
+    ".drag-toggle-btn": {
+      "border": "2px solid var(--text-primary) !important",
+      "background": "var(--bg-secondary) !important",
+      "font-weight": "bold !important",
+      "color": "var(--text-primary) !important"
+    },
+    ".drag-status": {
+      "color": "var(--text-primary) !important"
+    },
+    ".add-card": {
+      "background": "var(--bg-quaternary) !important",
+      "border": "2px solid #2C1810 !important",
+      "color": "var(--text-primary) !important"
+    },
+    ".sound-card": {
+      "background": "url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22106%22%20height%3D%22122%22%20viewBox%3D%220%200%20106%20122%22%3E%20%3Crect%20x%3D%226%22%20y%3D%2210%22%20width%3D%2294%22%20height%3D%22102%22%20rx%3D%2218%22%20fill%3D%22%23C45C26%22%20stroke%3D%22%232C1810%22%20stroke-width%3D%225%22%2F%3E%20%3Crect%20x%3D%2212%22%20y%3D%2216%22%20width%3D%2282%22%20height%3D%2288%22%20rx%3D%2214%22%20fill%3D%22%23E07A32%22%2F%3E%20%3Cellipse%20cx%3D%2253%22%20cy%3D%22108%22%20rx%3D%2236%22%20ry%3D%228%22%20fill%3D%22%232C1810%22%20opacity%3D%220.2%22%2F%3E%20%3Cpath%20fill%3D%22%235C3D2E%22%20d%3D%22M47%206h12v14h-12z%22%2F%3E%20%3Cpath%20fill%3D%22%23F4D58D%22%20opacity%3D%220.9%22%20d%3D%22M22%2032c0-8%206-14%2014-14h34c8%200%2014%206%2014%2014v8H22z%22%2F%3E%20%3Cpath%20fill%3D%22%238B4513%22%20d%3D%22M28%2078l-8-6%206-10%2010%204-8%2012zm50%200l8-6-6-10-10%204%208%2012z%22%2F%3E%20%3C%2Fsvg%3E) no-repeat center / contain !important",
+      "border": "none !important"
+    },
+    ".sound-card:hover": {
+      "filter": "brightness(1.08)",
+      "border": "none !important"
+    },
+    ".delete-x-button": {
+      "background": "var(--accent-primary) !important",
+      "color": "var(--text-primary) !important"
+    },
+    ".edit-button": {
+      "background": "var(--bg-quinary) !important",
+      "color": "var(--bg-primary) !important"
+    },
+    ".sound-type": {
+      "color": "#2C1810 !important",
+      "background": "rgba(244, 213, 141, 0.88) !important",
+      "border-radius": "6px !important",
+      "padding": "2px 6px !important"
+    },
+    ".sound-name": {
+      "color": "#2C1810 !important",
+      "background": "rgba(244, 213, 141, 0.92) !important",
+      "border-radius": "8px !important",
+      "padding": "4px 6px !important",
+      "text-shadow": "none"
+    },
+    ".sound-hotkey": {
+      "color": "var(--bg-primary) !important",
+      "background": "var(--bg-quinary) !important"
+    },
+    "#twitch-stats-container": {
+      "background": "none !important",
+      "border": "none !important"
+    },
+    ".chat-messages": {
+      "background": "transparent !important",
+      "color": "var(--text-primary) !important"
+    },
+    ".status-indicator.disconnected": {
+      "background": "var(--accent-primary) !important",
+      "border": "2px solid #2C1810 !important"
+    },
+    "body": {
+      "background": "url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221536%22%20height%3D%221024%22%20viewBox%3D%220%200%201536%201024%22%3E%20%3Cdefs%3E%20%3ClinearGradient%20id%3D%22sky%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%235C2E1A%22%2F%3E%20%3Cstop%20offset%3D%2245%25%22%20stop-color%3D%22%23C45C26%22%2F%3E%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%232C1810%22%2F%3E%20%3C%2FlinearGradient%3E%20%3CradialGradient%20id%3D%22glow%22%20cx%3D%2250%25%22%20cy%3D%2230%25%22%20r%3D%2260%25%22%3E%20%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23F4D58D%22%20stop-opacity%3D%220.35%22%2F%3E%20%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%232C1810%22%20stop-opacity%3D%220%22%2F%3E%20%3C%2FradialGradient%3E%20%3C%2Fdefs%3E%20%3Crect%20width%3D%221536%22%20height%3D%221024%22%20fill%3D%22url(%23sky)%22%2F%3E%20%3Crect%20width%3D%221536%22%20height%3D%221024%22%20fill%3D%22url(%23glow)%22%2F%3E%20%3Cg%20opacity%3D%220.2%22%20fill%3D%22%238B4513%22%3E%20%3Cellipse%20cx%3D%22200%22%20cy%3D%22900%22%20rx%3D%22280%22%20ry%3D%2280%22%2F%3E%20%3Cellipse%20cx%3D%221300%22%20cy%3D%22920%22%20rx%3D%22320%22%20ry%3D%2290%22%2F%3E%20%3C%2Fg%3E%20%3Cg%20opacity%3D%220.55%22%3E%20%3Cpath%20fill%3D%22%23D97706%22%20d%3D%22M120%20180c8-22%2032-22%2040%200l-20%2056c-6%2016-26%2016-32%200z%20M136%20160c0-12%2010-18%2018-10%208%208%202%2018-10%2018-8%200-8-8-8-8z%22%2F%3E%20%3Cpath%20fill%3D%22%23B22222%22%20d%3D%22M400%20120c10-18%2028-14%2034%206%206%2020-12%2034-30%2026s-12-24-4-32z%22%2F%3E%20%3Cpath%20fill%3D%22%23F4D58D%22%20d%3D%22M900%20200c6-16%2026-16%2032%200l-14%2040c-4%2012-18%2012-22%200z%22%2F%3E%20%3Ccircle%20fill%3D%22%23C45C26%22%20cx%3D%221250%22%20cy%3D%22280%22%20r%3D%2228%22%2F%3E%20%3Crect%20fill%3D%22%235C3D2E%22%20x%3D%221244%22%20y%3D%22250%22%20width%3D%2212%22%20height%3D%2218%22%20rx%3D%223%22%2F%3E%20%3C%2Fg%3E%20%3C%2Fsvg%3E) center/cover no-repeat #2C1810 !important"
+    },
+    ".selection-option": {
+      "background": "var(--bg-tertiary) !important"
+    },
+    ".modal-content": {
+      "background": "var(--bg-tertiary) !important",
+      "color": "var(--text-primary) !important",
+      "border": "2px solid var(--border-quaternary) !important"
+    },
+    ".option-description": {
+      "color": "var(--text-secondary) !important"
+    },
+    ".option-title": {
+      "color": "var(--text-tertiary) !important"
+    },
+    "#volume-value": {
+      "color": "var(--text-tertiary) !important"
+    },
+    "#volume-input[type='range']": {
+      "-webkit-appearance": "none !important",
+      "appearance": "none !important",
+      "background": "var(--master-volume-track, var(--bg-tertiary)) !important",
+      "border-radius": "5px !important",
+      "accent-color": "var(--master-volume-thumb, var(--text-quinary)) !important"
+    },
+    "#master-volume-input[type='range']": {
+      "-webkit-appearance": "none !important",
+      "appearance": "none !important",
+      "background": "var(--master-volume-track, var(--bg-tertiary)) !important",
+      "border-radius": "5px !important",
+      "accent-color": "var(--master-volume-thumb, var(--text-quinary)) !important"
+    },
+    "input[type='range']::-webkit-slider-thumb": {
+      "appearance": "none !important",
+      "width": "50px !important",
+      "height": "21px !important",
+      "background": "url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2250%22%20height%3D%2221%22%20viewBox%3D%220%200%2050%2021%22%3E%20%3Cpath%20fill%3D%22%23D97706%22%20stroke%3D%22%232C1810%22%20stroke-width%3D%222%22%20d%3D%22M8%203c6-4%2014-4%2020%200%208%206%2014%2014%2014%2014s-6%202-14%202H8c-8%200-14-2-14-2s6-8%2014-14z%22%2F%3E%20%3Cpath%20fill%3D%22%23B22222%22%20d%3D%22M25%203c-2%206-2%2010%200%2014%202-4%202-8%200-14z%22%2F%3E%20%3C%2Fsvg%3E) no-repeat center / contain",
+      "border": "none !important"
+    },
+    "input[type='range']::-moz-range-thumb": {
+      "appearance": "none !important",
+      "width": "50px !important",
+      "height": "21px !important",
+      "background": "url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2250%22%20height%3D%2221%22%20viewBox%3D%220%200%2050%2021%22%3E%20%3Cpath%20fill%3D%22%23D97706%22%20stroke%3D%22%232C1810%22%20stroke-width%3D%222%22%20d%3D%22M8%203c6-4%2014-4%2020%200%208%206%2014%2014%2014%2014s-6%202-14%202H8c-8%200-14-2-14-2s6-8%2014-14z%22%2F%3E%20%3Cpath%20fill%3D%22%23B22222%22%20d%3D%22M25%203c-2%206-2%2010%200%2014%202-4%202-8%200-14z%22%2F%3E%20%3C%2Fsvg%3E) no-repeat center / contain",
+      "border": "none !important"
+    }
+  }
+}
