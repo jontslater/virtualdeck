@@ -4266,6 +4266,117 @@ window.electronAPI.onTwitchCleared(() => {
   }
 });
 
+/** Active audio for Start/Stop (toggle) sound buttons, keyed by button id/label. */
+const soundboardActiveAudio = new Map();
+
+function normalizeSoundPlaybackMode(raw) {
+  return raw === 'toggle' ? 'toggle' : 'repeat';
+}
+
+function soundButtonPlaybackKey(button) {
+  if (!button) return '';
+  return button.id || button.label || button.name || '';
+}
+
+function readSoundPlaybackModeFromForm() {
+  const checked = document.querySelector('input[name="sound-playback-mode"]:checked');
+  return checked && checked.value === 'toggle' ? 'toggle' : 'repeat';
+}
+
+function applySoundPlaybackModeToForm(mode) {
+  const value = normalizeSoundPlaybackMode(mode);
+  const radio = document.querySelector(`input[name="sound-playback-mode"][value="${value}"]`);
+  if (radio) radio.checked = true;
+}
+
+function soundPlaybackModePayloadForSave(type) {
+  if (type !== 'audio') return {};
+  return readSoundPlaybackModeFromForm() === 'toggle' ? { playbackMode: 'toggle' } : {};
+}
+
+function stopSoundboardTogglePlayback(key) {
+  const entry = soundboardActiveAudio.get(key);
+  if (!entry || !entry.audio) return false;
+  try {
+    entry.audio.pause();
+    entry.audio.currentTime = 0;
+  } catch (e) {
+    /* non-fatal */
+  }
+  soundboardActiveAudio.delete(key);
+  clearOverlay();
+  return true;
+}
+
+async function playSoundboardButtonAudio(button) {
+  const playbackKey = soundButtonPlaybackKey(button);
+  const playbackMode = normalizeSoundPlaybackMode(button.playbackMode);
+
+  if (playbackMode === 'toggle' && playbackKey) {
+    const existing = soundboardActiveAudio.get(playbackKey);
+    if (existing && existing.audio && !existing.audio.paused && !existing.audio.ended) {
+      stopSoundboardTogglePlayback(playbackKey);
+      return;
+    }
+  }
+
+  const audioPath = await window.electronAPI.getSoundPath(button.src);
+  const cacheBuster = `?t=${Date.now()}`;
+  const audioUrl = audioPath + (audioPath.includes('?') ? '&' : '?') + cacheBuster;
+  const audio = new Audio(audioUrl);
+  console.log(`🔊 Loading audio with cache-busting URL: ${audioUrl}`);
+
+  try {
+    const vol = (typeof button.volume === 'number') ? button.volume : (button.volume ? parseFloat(button.volume) : 1.0);
+    if (window.masterVolume && typeof window.masterVolume.applyToAudioElement === 'function') {
+      window.masterVolume.applyToAudioElement(audio, vol);
+    } else {
+      audio.volume = 0;
+      audio.volume = Math.max(0, Math.min(1, !isNaN(vol) ? vol : 1.0));
+    }
+  } catch (err) {
+    audio.volume = 0;
+    audio.volume = 1.0;
+  }
+
+  audio.addEventListener('ended', () => {
+    if (playbackKey) soundboardActiveAudio.delete(playbackKey);
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`🎵 [${timestamp}] Audio finished playing, triggering overlay clear`);
+    clearOverlay();
+  });
+
+  audio.addEventListener('loadedmetadata', () => {
+    const duration = audio.duration;
+    if (duration && !isNaN(duration) && isFinite(duration)) {
+      const timestamp = new Date().toLocaleTimeString();
+      console.log(`🎵 [${timestamp}] Audio duration detected: ${duration.toFixed(2)}s, setting fallback clear timer for ${(duration + 0.5).toFixed(2)}s`);
+      setTimeout(() => {
+        const clearTimestamp = new Date().toLocaleTimeString();
+        console.log(`⏰ [${clearTimestamp}] Fallback timer triggered: clearing overlay after audio duration + buffer`);
+        clearOverlay();
+      }, (duration * 1000) + 500);
+    }
+  });
+
+  if (button.options && button.options.durationMs) {
+    const customDuration = button.options.durationMs / 1000;
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`⏰ [${timestamp}] Overriding audio duration with custom duration: ${customDuration.toFixed(2)}s`);
+    setTimeout(() => {
+      const clearTimestamp = new Date().toLocaleTimeString();
+      console.log(`⏰ [${clearTimestamp}] Custom duration override triggered: clearing overlay after ${customDuration.toFixed(2)}s`);
+      clearOverlay();
+    }, customDuration * 1000);
+  }
+
+  if (playbackMode === 'toggle' && playbackKey) {
+    soundboardActiveAudio.set(playbackKey, { audio });
+  }
+
+  audio.play().catch(() => {});
+}
+
 async function handleTrigger(button) {
   console.log(`🔍 handleTrigger called for button: "${button.name || button.label}" Type: ${button.type} Volume: ${button.volume}`);
   // Prevent accidental plays while editing/reordering
@@ -4278,67 +4389,7 @@ async function handleTrigger(button) {
   console.log('🧹 Audio cache cleared before button trigger');
 
   if (button.type === "audio") {
-    const audioPath = await window.electronAPI.getSoundPath(button.src);
-    // Add cache-busting parameter to ensure fresh audio files are loaded
-    const cacheBuster = `?t=${Date.now()}`;
-    const audioUrl = audioPath + (audioPath.includes('?') ? '&' : '?') + cacheBuster;
-    const audio = new Audio(audioUrl);
-    console.log(`🔊 Loading audio with cache-busting URL: ${audioUrl}`);
-    // Apply saved volume if present (expect 0.0 - 1.0). Fallback to 1.0
-    // Note: volume is stored per-button in `config.json` and only applied for
-    // audio-type buttons. The renderer sends `volume` as a float (0.0-1.0)
-    // when saving; the main process persists it into the button config.
-    try {
-      const vol = (typeof button.volume === 'number') ? button.volume : (button.volume ? parseFloat(button.volume) : 1.0);
-      if (window.masterVolume && typeof window.masterVolume.applyToAudioElement === 'function') {
-        window.masterVolume.applyToAudioElement(audio, vol);
-      } else {
-        // Set volume immediately to prevent loud burst
-        audio.volume = 0; // Start muted
-        audio.volume = Math.max(0, Math.min(1, !isNaN(vol) ? vol : 1.0)); // Then set to desired volume
-      }
-    } catch (err) {
-      // ignore and use default
-      audio.volume = 0;
-      audio.volume = 1.0;
-    }
-    
-    // Set up overlay clearing when audio finishes
-    audio.addEventListener('ended', () => {
-      const timestamp = new Date().toLocaleTimeString();
-      console.log(`🎵 [${timestamp}] Audio finished playing, triggering overlay clear`);
-      clearOverlay();
-    });
-    
-    // Also set up a fallback timer in case the 'ended' event doesn't fire
-    audio.addEventListener('loadedmetadata', () => {
-      const duration = audio.duration;
-      if (duration && !isNaN(duration) && isFinite(duration)) {
-        const timestamp = new Date().toLocaleTimeString();
-        console.log(`🎵 [${timestamp}] Audio duration detected: ${duration.toFixed(2)}s, setting fallback clear timer for ${(duration + 0.5).toFixed(2)}s`);
-        setTimeout(() => {
-          const clearTimestamp = new Date().toLocaleTimeString();
-          console.log(`⏰ [${clearTimestamp}] Fallback timer triggered: clearing overlay after audio duration + buffer`);
-          clearOverlay();
-        }, (duration * 1000) + 500); // Add 500ms buffer
-      }
-    });
-    
-    // Check for custom duration override (for simple audio buttons with duration option)
-    if (button.options && button.options.durationMs) {
-      const customDuration = button.options.durationMs / 1000;
-      const timestamp = new Date().toLocaleTimeString();
-      console.log(`⏰ [${timestamp}] Overriding audio duration with custom duration: ${customDuration.toFixed(2)}s`);
-      
-      setTimeout(() => {
-        const clearTimestamp = new Date().toLocaleTimeString();
-        console.log(`⏰ [${clearTimestamp}] Custom duration override triggered: clearing overlay after ${customDuration.toFixed(2)}s`);
-        clearOverlay();
-      }, customDuration * 1000);
-    }
-    
-    audio.play().catch(error => {
-    });
+    await playSoundboardButtonAudio(button);
   } else if (button.type === "app") {
     // If the button has args, pass them along
     if (button.args) {
@@ -5053,7 +5104,8 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       editingIndex: parseInt(form.dataset.editingIndex),
       chatCommand: chatCommand,
       aiAllowed: type === 'audio' ? aiAllowed : undefined,
-      description: type === 'audio' ? aiDescription : undefined
+      description: type === 'audio' ? aiDescription : undefined,
+      ...soundPlaybackModePayloadForSave(type),
     });
     window.electronAPI.refreshHotkeys();
     
@@ -5203,6 +5255,7 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       aiAllowed: type === 'audio' ? aiAllowed : undefined,
       description: type === 'audio' ? aiDescription : undefined,
       deckIcon: collectDeckIconFromForm(),
+      ...soundPlaybackModePayloadForSave(type),
     };
     
     console.log('Final addMediaData object:', addMediaData);
@@ -5462,6 +5515,9 @@ window.editButton = async (index) => {
     const percent = Math.round((!isNaN(vol) ? vol : 1.0) * 100);
     volumeInput.value = percent;
     if (volumeValue) volumeValue.textContent = `${percent}%`;
+  }
+  if (btn.type === 'audio') {
+    applySoundPlaybackModeToForm(btn.playbackMode);
   }
   // Update modal title
   const buttonName = btn.name || btn.label || 'Unknown';
@@ -6105,6 +6161,7 @@ function handleFileDrop(file) {
   if (aiDescriptionInput) aiDescriptionInput.value = '';
   if (aiDescriptionContainer) aiDescriptionContainer.style.display = 'none';
   applyDeckIconToForm({ source: 'auto' });
+  applySoundPlaybackModeToForm('repeat');
   
   document.querySelector('#settings-modal h2').textContent = 'Add New ' + (type === 'audio' ? 'Sound' : 'App');
   
@@ -18242,6 +18299,7 @@ function setupOverlayPreview() {
 function openAudioForm() {
   const settingsForm = document.getElementById('settings-form');
   settingsForm.reset();
+  applySoundPlaybackModeToForm('repeat');
   
   // Set the form type to 'audio'
   const typeInput = document.getElementById('type-input');

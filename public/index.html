@@ -473,6 +473,17 @@
           </label>
           <label for="volume-input" class="volume-label">Volume: <span id="volume-value">100%</span></label>
           <input type="range" id="volume-input" name="volume" min="0" max="100" value="100" />
+          <fieldset id="sound-playback-mode-fieldset" style="margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border-color, #333); border-radius: 6px;">
+            <legend style="padding: 0 4px; font-size: 14px;">Playback</legend>
+            <label style="display: block; margin-bottom: 6px; cursor: pointer;">
+              <input type="radio" name="sound-playback-mode" value="repeat" checked />
+              <span><strong>Repeat</strong> — each press starts the sound again (rapid presses overlap)</span>
+            </label>
+            <label style="display: block; cursor: pointer;">
+              <input type="radio" name="sound-playback-mode" value="toggle" />
+              <span><strong>Start/Stop</strong> — press to play; press again while playing to stop</span>
+            </label>
+          </fieldset>
           <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color, #333);">
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; cursor: pointer;">
               <input type="checkbox" id="ai-allowed-checkbox" name="aiAllowed" />

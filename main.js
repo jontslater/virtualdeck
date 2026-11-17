@@ -2355,6 +2355,10 @@ ipcMain.on('add-media', (event, data) => {
     deckIcon: data.deckIcon && data.deckIcon.source ? data.deckIcon : undefined,
   };
 
+  if (data.playbackMode === 'toggle') {
+    newButton.playbackMode = 'toggle';
+  }
+
   // Ensure each button has a stable unique id
   if (typeof data.editingIndex === 'number') {
     // Preserve existing id if present
