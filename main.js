@@ -73,6 +73,15 @@ const {
 } = require('./lib/ai-audio-overlay');
 const { isValidTwitchLogin, normalizeTwitchLogin } = require('./lib/twitch-login');
 const { sanitizeTwitchProfileImageUrl: sanitizeTwitchProfileImageUrlLib } = require('./lib/twitch-profile-image');
+const {
+  recordFeedbackSession,
+  getFeedbackState,
+  shouldShowFeedbackPrompt,
+  patchFeedbackInPreferences,
+} = require('./lib/feedback/state');
+const { sanitizeFeedbackPayload, postFeedbackPayload } = require('./lib/feedback/submit');
+const { FEEDBACK_PROMPT_DELAY_MS } = require('./lib/feedback/constants');
+const { isFeedbackEndpointConfigured } = require('./lib/feedback/config');
 
 process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection]', reason);
@@ -3456,6 +3465,17 @@ const {
   backupCurrentCheckinsFile,
   formatExportBasename,
 } = require('./lib/checkins-backup');
+const {
+  buildDeckBackupPayload,
+  readDeckBackupJsonFile,
+  formatDeckExportBasename,
+  summarizeDeckBackup,
+  writeDeckBackupJsonFile,
+  writeBundledMedia,
+  applyMissingPathFlagsToProfiles,
+  backupFileIfExists,
+  listOrphanProfileIds,
+} = require('./lib/deck-backup');
 const { filterMenuTemplateForPackaged, filterRavenMenuItems } = require('./lib/packaged-ui-policy');
 
 async function runBackupDailyCheckinsDialog() {
@@ -3521,6 +3541,159 @@ async function runRestoreDailyCheckinsDialog() {
 
 ipcMain.handle('backup-daily-checkins', async () => runBackupDailyCheckinsDialog());
 ipcMain.handle('restore-daily-checkins', async () => runRestoreDailyCheckinsDialog());
+
+function readAppVersionFromPackage() {
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8'));
+    return packageJson.version || null;
+  } catch {
+    return null;
+  }
+}
+
+async function runBackupDeckLayoutDialog() {
+  try {
+    const meta = loadProfilesMeta();
+    const profiles = {};
+    for (const entry of meta.profiles) {
+      profiles[entry.id] = loadProfile(entry.id);
+    }
+    let macros = {};
+    if (macroManager) {
+      macroManager.reload();
+      for (const macro of macroManager.list()) {
+        if (!macro || !macro.id) continue;
+        const { id, ...rest } = macro;
+        macros[id] = rest;
+      }
+    } else if (fs.existsSync(path.join(userDataPath, 'macros.json'))) {
+      macros = JSON.parse(fs.readFileSync(path.join(userDataPath, 'macros.json'), 'utf-8'));
+    }
+    const payload = buildDeckBackupPayload({
+      profilesMeta: meta,
+      profiles,
+      macros,
+      userDataPath,
+      appVersion: readAppVersionFromPackage(),
+    });
+    const defaultPath = path.join(app.getPath('documents'), formatDeckExportBasename());
+    const result = await dialog.showSaveDialog(win, {
+      title: 'Back up deck layout',
+      defaultPath,
+      filters: [{ name: 'VirtualDeck deck backup', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+    writeDeckBackupJsonFile(result.filePath, payload);
+    const summary = summarizeDeckBackup(payload);
+    return { success: true, path: result.filePath, summary };
+  } catch (err) {
+    console.error('Backup deck layout failed:', err);
+    return { success: false, error: err && err.message ? err.message : String(err) };
+  }
+}
+
+async function runRestoreDeckLayoutDialog() {
+  try {
+    const open = await dialog.showOpenDialog(win, {
+      title: 'Restore deck layout',
+      filters: [
+        { name: 'VirtualDeck deck backup', extensions: ['json'] },
+        { name: 'JSON', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+      properties: ['openFile'],
+    });
+    if (open.canceled || !open.filePaths.length) {
+      return { canceled: true };
+    }
+    const validated = readDeckBackupJsonFile(open.filePaths[0]);
+    if (!validated.ok) {
+      return { success: false, error: validated.error };
+    }
+    const backup = validated.data;
+    const summary = summarizeDeckBackup(backup);
+    const confirm = dialog.showMessageBoxSync(win, {
+      type: 'warning',
+      buttons: ['Replace deck layout', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      title: 'Restore deck layout',
+      message: 'Replace your current button layout and macros?',
+      detail:
+        `This file contains ${summary.profileCount} profile(s), ${summary.buttonCount} button(s), ` +
+        `${summary.macroCount} macro(s), and ${summary.mediaCount} bundled media file(s). ` +
+        'Profiles, macros.json, and referenced userData media will be overwritten. ' +
+        'A .bak copy is made of the current profiles-meta.json, each profile file, and macros.json first.',
+    });
+    if (confirm !== 0) {
+      return { canceled: true };
+    }
+
+    backupFileIfExists(profilesMetaPath);
+    const macrosPath = path.join(userDataPath, 'macros.json');
+    backupFileIfExists(macrosPath);
+    const existingMeta = loadProfilesMeta();
+    for (const entry of existingMeta.profiles) {
+      backupFileIfExists(getProfilePath(entry.id));
+    }
+
+    writeBundledMedia({ bundledMedia: backup.bundledMedia, userDataPath });
+
+    const flaggedProfiles = applyMissingPathFlagsToProfiles(backup.profiles, userDataPath);
+    const newMeta = backup.profilesMeta;
+    saveProfilesMeta(newMeta);
+    for (const entry of newMeta.profiles) {
+      const profileData = flaggedProfiles[entry.id];
+      if (profileData) saveProfile(entry.id, profileData);
+    }
+
+    const backupIds = newMeta.profiles.map((p) => p.id);
+    const orphanIds = listOrphanProfileIds(
+      existingMeta.profiles.map((p) => p.id),
+      backupIds,
+    );
+    for (const orphanId of orphanIds) {
+      const orphanPath = getProfilePath(orphanId);
+      if (fs.existsSync(orphanPath)) fs.unlinkSync(orphanPath);
+    }
+
+    if (backup.macros) {
+      fs.writeFileSync(macrosPath, JSON.stringify(backup.macros, null, 2), 'utf-8');
+    }
+    if (macroManager) {
+      macroManager.reload();
+    }
+
+    currentActiveProfile = newMeta.activeProfile || 'default';
+    registerHotkeys();
+
+    const restoreSummary = {
+      ...summary,
+      missingFileButtons: Object.values(flaggedProfiles).reduce((n, profile) => {
+        const buttons = profile && profile.buttons ? profile.buttons : [];
+        return n + buttons.filter((b) => b && b.pathMissing).length;
+      }, 0),
+    };
+
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('deck-layout-restored', {
+        activeProfile: currentActiveProfile,
+        profilesMeta: newMeta,
+        summary: restoreSummary,
+      });
+      win.webContents.send('refresh-ui');
+    }
+    return { success: true, summary: restoreSummary };
+  } catch (err) {
+    console.error('Restore deck layout failed:', err);
+    return { success: false, error: err && err.message ? err.message : String(err) };
+  }
+}
+
+ipcMain.handle('backup-deck-layout', async () => runBackupDeckLayoutDialog());
+ipcMain.handle('restore-deck-layout', async () => runRestoreDeckLayoutDialog());
 
 // IPC: load daily check-ins data
 ipcMain.handle('loadDailyCheckins', async () => {
@@ -4059,18 +4232,63 @@ ipcMain.handle('get-app-version', async () => {
   }
 });
 
-// IPC handler to open bug report form
+// Legacy alias + menu bridge: open in-app feedback (no external form).
 ipcMain.handle('report-bug', async () => {
   try {
-    const { shell } = require('electron');
-    const bugReportUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSdHUauA7LI_bJtfKRKrbD81lZ8Xs6R3egGOEalqAF2KHUNDdg/viewform';
-    await shell.openExternal(bugReportUrl);
-    console.log('Opened bug report form in browser');
-    return { success: true };
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('open-feedback-modal');
+    }
+    return { ok: true };
   } catch (error) {
-    console.error('Error opening bug report form:', error);
-    return { success: false, error: error.message };
+    return { ok: false, error: error && error.message };
   }
+});
+
+ipcMain.handle('open-feedback', async () => {
+  try {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('open-feedback-modal');
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error && error.message };
+  }
+});
+
+ipcMain.handle('feedback-get-state', async () => {
+  const feedback = getFeedbackState(getStoredPreferences());
+  return {
+    state: feedback,
+    shouldPrompt: shouldShowFeedbackPrompt(feedback),
+    promptDelayMs: FEEDBACK_PROMPT_DELAY_MS,
+    endpointConfigured: isFeedbackEndpointConfigured(),
+  };
+});
+
+ipcMain.handle('feedback-patch-state', async (_event, patch) => {
+  try {
+    const next = patchFeedbackInPreferences(getStoredPreferences(), patch || {});
+    saveStoredPreferences(next);
+    const feedback = getFeedbackState(next);
+    return { ok: true, state: feedback, shouldPrompt: shouldShowFeedbackPrompt(feedback) };
+  } catch (error) {
+    return { ok: false, error: error && error.message };
+  }
+});
+
+ipcMain.handle('feedback-submit', async (_event, body) => {
+  let appVersion = 'unknown';
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8'));
+    appVersion = packageJson.version || appVersion;
+  } catch (_) {
+    /* ignore */
+  }
+  const sanitized = sanitizeFeedbackPayload(body, { appVersion, platform: process.platform });
+  if (!sanitized.ok) {
+    return { ok: false, error: sanitized.error };
+  }
+  return postFeedbackPayload(sanitized.payload);
 });
 
 // Get connected overlays
@@ -6387,6 +6605,16 @@ function saveStoredPreferences(preferences) {
   }
 }
 
+function recordFeedbackAppSession() {
+  try {
+    const prefs = getStoredPreferences();
+    const { preferences } = recordFeedbackSession(prefs);
+    saveStoredPreferences(preferences);
+  } catch (error) {
+    console.warn('[Feedback] Failed to record app session:', error && error.message);
+  }
+}
+
 function initAppUpdater() {
   if (appUpdater) return appUpdater;
   appUpdater = createAppUpdater({
@@ -6421,6 +6649,7 @@ app.whenReady().then(() => {
     console.log('[AI Audio] Command watcher not started (VirtualDeck Pro license required)');
   }
   createWindow();
+  recordFeedbackAppSession();
   try {
     initTwitchOAuthHost();
     setTimeout(() => {
@@ -7138,7 +7367,13 @@ app.whenReady().then(() => {
   ipcMain.on('save-preferences', (event, preferences) => {
     try {
       console.log('Saving preferences:', preferences);
-      saveStoredPreferences(preferences);
+      const existing = getStoredPreferences();
+      const merged = {
+        ...existing,
+        ...(preferences && typeof preferences === 'object' ? preferences : {}),
+        feedback: (existing && existing.feedback) || (preferences && preferences.feedback),
+      };
+      saveStoredPreferences(merged);
       if (preferences && Array.isArray(preferences.socials)) {
         const profile = loadProfile(currentActiveProfile);
         profile.socials = normalizeSocials(preferences.socials);
