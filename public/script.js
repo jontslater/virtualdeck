@@ -4429,6 +4429,10 @@ async function handleTrigger(button) {
       } else {
         console.warn('startTwitchCommercial API not available');
       }
+    } else if (button.type === 'log-hydration') {
+      if (window.electronAPI && window.electronAPI.updateHydrationProgress) {
+        window.electronAPI.updateHydrationProgress().catch((err) => console.error('Log drink failed:', err));
+      }
     } else if (button.type === 'speak-tts') {
       if (window.electronAPI && window.electronAPI.speakTtsDeck) {
         window.electronAPI
@@ -4982,6 +4986,20 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       type: 'run-ad',
       commercialLength: lenEl ? lenEl.value : 60,
       chatMessage: msgEl ? msgEl.value.trim() : '',
+      hotkey: completeHotkey,
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex, 10) : undefined,
+      chatCommand: chatCommand,
+    });
+    window.electronAPI.refreshHotkeys();
+    document.getElementById('settings-modal').classList.add('hidden');
+    if (window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+    return;
+  }
+
+  if (type === 'log-hydration') {
+    window.electronAPI.addMedia({
+      label,
+      type: 'log-hydration',
       hotkey: completeHotkey,
       editingIndex: isEditing ? parseInt(form.dataset.editingIndex, 10) : undefined,
       chatCommand: chatCommand,
@@ -17984,6 +18002,7 @@ function setupButtonTypeSelection() {
   const postSocialsOption = document.querySelector('[data-type="post-socials"]');
   const runAdOption = document.querySelector('[data-type="run-ad"]');
   const speakTtsOption = document.querySelector('[data-type="speak-tts"]');
+  const logHydrationOption = document.querySelector('[data-type="log-hydration"]');
   const macroOption = document.querySelector('[data-type="macro"]');
   const cancelBtn = document.querySelector('.cancel-selection');
 
@@ -18037,6 +18056,13 @@ function setupButtonTypeSelection() {
     speakTtsOption.addEventListener('click', () => {
       selectionModal.classList.add('hidden');
       openSpeakTtsForm();
+    });
+  }
+
+  if (logHydrationOption) {
+    logHydrationOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      openLogHydrationForm();
     });
   }
 
@@ -18146,6 +18172,25 @@ function showSpeakTtsSection(existingButton) {
   if (textEl) {
     textEl.value = (existingButton && existingButton.speakText) || '';
   }
+}
+
+function openLogHydrationForm() {
+  const settingsForm = document.getElementById('settings-form');
+  settingsForm.reset();
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'log-hydration';
+  delete settingsForm.dataset.editingIndex;
+  delete settingsForm.dataset.editingId;
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  hideMeldSceneSection();
+  hideRunAdSection();
+  hideSpeakTtsSection();
+  if (audioFileSection) audioFileSection.style.display = 'none';
+  if (appFileSection) appFileSection.style.display = 'none';
+  document.getElementById('settings-modal-title').textContent = 'Add Log Drink Button';
+  document.getElementById('settings-modal').classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
 }
 
 function openPostSocialsForm() {

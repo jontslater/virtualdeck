@@ -7,6 +7,7 @@
   <title>Virtual Deck</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="AddEditButtonForm.css" />
+  <link rel="stylesheet" href="hydration-panel.css" />
   <!-- Google Material Icons -->
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   <!-- Google Fonts: Roboto (UI) + Roboto Mono (monospace) + Custom Alert Fonts -->
@@ -61,6 +62,7 @@
       <div id="menu-tools-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Tools menu">
         <div class="menu-dropdown-content">
           <button id="menu-tools-overlay" class="menu-dropdown-item" role="menuitem">Overlay Controls</button>
+          <button id="menu-tools-hydration" class="menu-dropdown-item" role="menuitem">Hydration Tracker…</button>
           <button id="menu-tools-alerts" class="menu-dropdown-item" role="menuitem">Alert Widget</button>
           <button id="menu-tools-raid-favorites" class="menu-dropdown-item" role="menuitem">Raid Favorites</button>
           <div class="menu-divider"></div>
@@ -373,6 +375,13 @@
             <div class="option-title">Run Ad</div>
             <div class="option-description">Start a Twitch mid-roll commercial (requires live stream)</div>
             <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">Requires channel:edit:commercial scope</div>
+          </div>
+        </button>
+        <button class="selection-option" data-type="log-hydration">
+          <div class="option-icon">💧</div>
+          <div class="option-content">
+            <div class="option-title">Log drink</div>
+            <div class="option-description">Increment hydration tracker (hotkey or chat command)</div>
           </div>
         </button>
         <button class="selection-option" data-type="speak-tts">
@@ -1775,6 +1784,127 @@
     </div>
   </div>
 
+  <!-- Hydration Tracker Panel -->
+  <div id="hydration-panel-modal" class="hidden">
+    <div class="modal-content preferences-modal-content" style="max-width: 960px; width: 95vw;">
+      <div class="modal-header">
+        <h2>💧 Hydration Tracker</h2>
+        <button id="hydration-panel-close" class="modal-close" type="button">✕</button>
+      </div>
+      <div class="hydration-layout">
+        <div class="hydration-scroll">
+          <details class="hydration-section" id="hydration-sec-gauge" open>
+            <summary><h4 style="display:inline;margin:0">Gauge &amp; style</h4></summary>
+            <label for="hydration-gauge-select">Gauge style</label>
+            <select id="hydration-gauge-select">
+              <option value="circular">Circular</option>
+              <option value="bottle">Bottle / glass</option>
+              <option value="vertical">Vertical bar</option>
+              <option value="horizontal">Horizontal bar</option>
+              <option value="minimal">Minimal (in-gauge info)</option>
+            </select>
+            <label for="hydration-units-select">Units</label>
+            <select id="hydration-units-select"><option value="oz">oz</option><option value="ml">ml</option></select>
+            <label><input type="checkbox" id="hydration-show-plate" checked /> Dark plate behind gauge</label>
+            <label><input type="checkbox" id="hydration-match-theme" /> Match my VirtualDeck theme / skin</label>
+            <div class="hydration-row">
+              <label for="hydration-size-input">Size</label>
+              <input type="number" id="hydration-size-input" min="80" max="400" value="200" style="width:80px" />
+              <label for="hydration-pos-x-input">X%</label>
+              <input type="number" id="hydration-pos-x-input" min="0" max="100" value="50" style="width:60px" />
+              <label for="hydration-pos-y-input">Y%</label>
+              <input type="number" id="hydration-pos-y-input" min="0" max="100" value="50" style="width:60px" />
+            </div>
+          </details>
+          <details class="hydration-section" id="hydration-sec-colors" open>
+            <summary><h4 style="display:inline;margin:0">Colors</h4></summary>
+            <label for="hydration-fill-color">Fill / water</label>
+            <input type="color" id="hydration-fill-color" value="#4fc3f7" />
+            <label for="hydration-text-color-input">Text</label>
+            <input type="color" id="hydration-text-color-input" value="#ffffff" />
+            <label for="hydration-accent-color">Accent / chips</label>
+            <input type="color" id="hydration-accent-color" value="#29b6f6" />
+            <label for="hydration-plate-color">Plate (use hex in overlay)</label>
+            <input type="text" id="hydration-plate-color" value="rgba(12,16,24,0.82)" />
+          </details>
+          <details class="hydration-section" id="hydration-sec-effects" open>
+            <summary><h4 style="display:inline;margin:0">Effects</h4></summary>
+            <label><input type="checkbox" id="hydration-effects-enabled" checked /> Enable level-up effects</label>
+            <label for="hydration-effects-intensity">Intensity</label>
+            <select id="hydration-effects-intensity">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+            <label><input type="checkbox" id="hydration-confetti" checked /> Confetti when goal met</label>
+          </details>
+          <details class="hydration-section" id="hydration-sec-sound" open>
+            <summary><h4 style="display:inline;margin:0">Sound</h4></summary>
+            <p style="font-size:11px;color:var(--text-tertiary);margin:0 0 8px">Sounds play on the browser-source overlay so your stream (OBS) hears them—not the desktop app.</p>
+            <label><input type="checkbox" id="hydration-sound-enabled" /> Play sound on log</label>
+            <label for="hydration-sound-path">Log sound (relative path under userData)</label>
+            <input type="text" id="hydration-sound-path" placeholder="assets/sounds/..." />
+            <label for="hydration-sound-volume">Log volume</label>
+            <input type="range" id="hydration-sound-volume" min="0" max="100" value="70" />
+            <label for="hydration-goal-sound-path">Goal met sound</label>
+            <input type="text" id="hydration-goal-sound-path" placeholder="optional" />
+            <label for="hydration-goal-sound-volume">Goal volume</label>
+            <input type="range" id="hydration-goal-sound-volume" min="0" max="100" value="70" />
+          </details>
+          <details class="hydration-section" id="hydration-sec-trigger" open>
+            <summary><h4 style="display:inline;margin:0">Trigger</h4></summary>
+            <div class="hydration-row">
+              <select id="hydration-reward-select" style="flex:1"></select>
+              <button type="button" id="hydration-load-rewards-btn" class="action-btn secondary">Refresh rewards</button>
+            </div>
+            <input type="hidden" id="hydration-reward-id" />
+            <p id="hydration-reward-scope-hint">Load Twitch custom rewards (needs channel:read:redemptions) or use keyword fallback.</p>
+            <label for="hydration-keyword-input">Keyword fallback</label>
+            <input type="text" id="hydration-keyword-input" value="hydrate" />
+            <label for="hydration-log-hotkey">Global hotkey (log drink)</label>
+            <input type="text" id="hydration-log-hotkey" placeholder="e.g. Ctrl+Shift+H" readonly />
+            <p style="font-size:11px;color:var(--text-tertiary)">Add a deck button type “Log drink” from the + menu for one-tap logging.</p>
+          </details>
+          <details class="hydration-section" id="hydration-sec-goal" open>
+            <summary><h4 style="display:inline;margin:0">Goal &amp; reset</h4></summary>
+            <label for="hydration-goal-input">Daily goal</label>
+            <input type="number" id="hydration-goal-input" value="64" />
+            <label for="hydration-drink-input">Drink increment</label>
+            <input type="number" id="hydration-drink-input" value="8" />
+            <label for="hydration-sip-input">Sip increment</label>
+            <input type="number" id="hydration-sip-input" value="4" />
+            <label for="hydration-reset-mode">Reset progress</label>
+            <select id="hydration-reset-mode">
+              <option value="go-live">On go-live</option>
+              <option value="midnight">At local midnight</option>
+              <option value="manual">Manual only</option>
+            </select>
+            <label for="hydration-reminder-minutes">Chat reminder every N minutes (0 = off)</label>
+            <input type="number" id="hydration-reminder-minutes" min="0" value="0" />
+          </details>
+          <details class="hydration-section" id="hydration-sec-url" open>
+            <summary><h4 style="display:inline;margin:0">Overlay URL</h4></summary>
+            <code id="hydration-overlay-url" style="display:block;padding:8px;background:var(--bg-primary);border-radius:6px;font-size:11px;word-break:break-all">http://localhost:8080/hydration</code>
+            <div class="hydration-actions" style="margin-top:10px">
+              <button type="button" id="hydration-copy-url-btn" class="action-btn secondary">Copy URL</button>
+            </div>
+          </details>
+          <div class="hydration-actions">
+            <button type="button" id="hydration-log-drink-btn" class="action-btn">Log drink</button>
+            <button type="button" id="hydration-log-sip-btn" class="action-btn secondary">+ Sip</button>
+            <button type="button" id="hydration-undo-btn" class="action-btn secondary">Undo</button>
+            <button type="button" id="hydration-reset-btn" class="action-btn danger">Reset</button>
+            <button type="button" id="hydration-save-btn" class="action-btn primary">Save settings</button>
+          </div>
+        </div>
+        <aside class="hydration-preview-pane">
+          <h4 style="margin:0 0 8px;font-size:13px">Live preview</h4>
+          <iframe id="hydration-preview-frame" title="Hydration overlay preview"></iframe>
+        </aside>
+      </div>
+    </div>
+  </div>
+
   <!-- Raid Favorites Modal -->
   <div id="raid-favorites-modal" class="hidden">
     <div class="modal-content preferences-modal-content raid-favorites-modal">
@@ -2995,6 +3125,7 @@
   <script src="macro-button-picker.js"></script>
   <script src="macros-ui.js"></script>
   <script src="raid-favorites-ui.js"></script>
+  <script src="hydration-panel.js"></script>
   <script src="ai-audio-modal.js"></script>
   <script src="../TwitchConnected/tc.js"></script>
 </body>
