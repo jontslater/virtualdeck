@@ -39,15 +39,29 @@
       height: 100%;
       pointer-events: none;
     }
+  </style>
+  <style>
     #alert-root {
       position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
       opacity: 0;
       transform: translateY(28px) scale(0.72);
-      transition: opacity 0.35s ease, transform 0.55s cubic-bezier(0.2, 0.95, 0.25, 1.15);
       text-align: center;
       border-radius: 22px;
       border: 3px solid rgba(255, 255, 255, 0.35);
       box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), 0 0 40px rgba(0, 0, 0, 0.35);
+    }
+    #alert-root.layout-above { flex-direction: column; }
+    #alert-root.layout-beside { flex-direction: row; text-align: left; align-items: center; }
+    #alert-root.layout-mediaOnly {
+      border: none;
+      background: transparent !important;
+      box-shadow: none;
+      padding: 0 !important;
     }
     #alert-root.visible {
       opacity: 1;
@@ -57,7 +71,55 @@
       animation: none !important;
       opacity: 1 !important;
       transform: translateY(0) scale(var(--ws-scale, 1)) !important;
-      filter: brightness(1.15);
+      filter: brightness(1.12);
+    }
+    #alert-root.builtin-card-off {
+      border-color: rgba(255, 255, 255, 0.2);
+      background: rgba(0, 0, 0, 0.35) !important;
+    }
+    #ws-media-slot {
+      flex: 0 0 auto;
+      max-width: min(720px, 92vw);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #ws-media-slot.hidden { display: none; }
+    #ws-media-slot img,
+    #ws-media-slot video {
+      max-width: 560px;
+      max-height: 420px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      display: block;
+      filter: drop-shadow(0 12px 28px rgba(0, 0, 0, 0.55));
+    }
+    #alert-root.layout-mediaOnly #ws-media-slot img,
+    #alert-root.layout-mediaOnly #ws-media-slot video {
+      max-width: 900px;
+      max-height: 720px;
+    }
+    #ws-card.hidden { display: none !important; }
+    .ws-label {
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ws-accent, #ffd54f);
+      text-shadow: 0 2px 0 #000, 0 0 16px rgba(0, 0, 0, 0.9);
+      margin-bottom: 10px;
+    }
+    #ws-title {
+      font-weight: 900;
+      color: var(--ws-text, #fff);
+      line-height: 1.12;
+      text-shadow: 0 4px 0 #000, 0 0 22px rgba(0, 0, 0, 0.9), 2px 2px 0 #000;
+    }
+    #ws-sub {
+      margin-top: 12px;
+      font-weight: 700;
+      color: #f8f8f8;
+      text-shadow: 0 2px 0 #000, 0 0 14px rgba(0, 0, 0, 0.85);
     }
     #alert-root.effect-glow.visible { animation: ws-glow 2.4s ease-in-out 1 forwards; }
     #alert-root.effect-pulse.visible { animation: ws-pulse 1.4s ease-in-out 2 forwards; }
@@ -81,26 +143,12 @@
       animation: ws-epic 3s ease-out 1 forwards;
       box-shadow: 0 28px 90px rgba(255, 215, 64, 0.45), 0 0 100px rgba(233, 30, 99, 0.3);
     }
-    .ws-label {
-      font-weight: 800;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--ws-accent, #ffd54f);
-      text-shadow: 0 2px 0 #000, 0 0 16px rgba(0,0,0,0.9);
-      margin-bottom: 10px;
-    }
-    #ws-title {
-      font-weight: 900;
-      color: var(--ws-text, #fff);
-      line-height: 1.12;
-      text-shadow: 0 4px 0 #000, 0 0 22px rgba(0,0,0,0.9), 2px 2px 0 #000;
-    }
-    #ws-sub {
-      margin-top: 12px;
-      font-weight: 700;
-      color: #f8f8f8;
-      text-shadow: 0 2px 0 #000, 0 0 14px rgba(0,0,0,0.85);
-    }
+    #alert-root.enter-fade { transition: opacity 0.45s ease, transform 0.55s cubic-bezier(0.2, 0.95, 0.25, 1.15); }
+    #alert-root.enter-slide { transition: opacity 0.4s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+    #alert-root.enter-pop { transition: opacity 0.35s ease, transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    #alert-root.exit-fade { transition: opacity 0.4s ease, transform 0.45s ease; opacity: 0 !important; }
+    #alert-root.exit-slide { transition: opacity 0.4s ease, transform 0.5s ease; transform: translateY(40px) scale(calc(var(--ws-scale, 1) * 0.9)) !important; opacity: 0 !important; }
+    #alert-root.exit-pop { transition: opacity 0.35s ease, transform 0.4s ease; transform: scale(calc(var(--ws-scale, 1) * 0.5)) !important; opacity: 0 !important; }
     @keyframes ws-glow {
       0% { filter: brightness(0.85); }
       50% { filter: brightness(1.2); box-shadow: 0 22px 55px rgba(255,255,255,0.15); }
@@ -136,9 +184,12 @@
   <canvas id="fx-canvas" width="1920" height="1080"></canvas>
   <div id="stage">
     <div id="alert-root" aria-live="polite">
-      <div class="ws-label">Watch streak</div>
-      <div id="ws-title"></div>
-      <div id="ws-sub"></div>
+      <div id="ws-media-slot" class="hidden"></div>
+      <div id="ws-card">
+        <div class="ws-label">Watch streak</div>
+        <div id="ws-title"></div>
+        <div id="ws-sub"></div>
+      </div>
     </div>
   </div>
   <script>
@@ -149,13 +200,17 @@
       }
       const OVERLAY_NAME = 'watchStreak';
       const root = document.getElementById('alert-root');
+      const mediaSlot = document.getElementById('ws-media-slot');
+      const cardEl = document.getElementById('ws-card');
       const titleEl = document.getElementById('ws-title');
       const subEl = document.getElementById('ws-sub');
       const fxCanvas = document.getElementById('fx-canvas');
       const fxCtx = fxCanvas && fxCanvas.getContext('2d');
       let hideTimer = null;
+      let exitTimer = null;
       let particles = [];
       let particleRaf = null;
+      let activeMediaEl = null;
 
       function fitStage() {
         const stage = document.getElementById('stage');
@@ -167,6 +222,52 @@
       }
       window.addEventListener('resize', fitStage);
       fitStage();
+
+      function mediaUrl(relative) {
+        if (!relative) return '';
+        if (String(relative).startsWith('http')) return relative;
+        return location.protocol + '//' + location.host + '/media/' + encodeURI(String(relative).replace(/^\/+/, ''));
+      }
+
+      function clearMediaSlot() {
+        if (activeMediaEl) {
+          try {
+            activeMediaEl.pause && activeMediaEl.pause();
+          } catch (e) {}
+        }
+        mediaSlot.innerHTML = '';
+        activeMediaEl = null;
+        mediaSlot.classList.add('hidden');
+      }
+
+      function mountMedia(payload) {
+        clearMediaSlot();
+        if (!payload.mediaFile) return;
+        const url = mediaUrl(payload.mediaFile);
+        const type = String(payload.mediaType || '').toLowerCase();
+        if (type === 'video' || /\.(webm|mp4|mov|m4v)$/i.test(payload.mediaFile)) {
+          const vid = document.createElement('video');
+          vid.src = url;
+          vid.muted = false;
+          vid.playsInline = true;
+          vid.autoplay = true;
+          vid.loop = !params.has('freeze');
+          vid.preload = 'auto';
+          vid.play().catch(function () {
+            vid.muted = true;
+            vid.play().catch(function () {});
+          });
+          activeMediaEl = vid;
+          mediaSlot.appendChild(vid);
+        } else {
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = '';
+          activeMediaEl = img;
+          mediaSlot.appendChild(img);
+        }
+        mediaSlot.classList.remove('hidden');
+      }
 
       function sparkBurst(intensity) {
         if (!fxCtx) return;
@@ -213,8 +314,7 @@
 
       function playSound(src, volume) {
         if (!src) return;
-        const mediaBase = location.protocol + '//' + location.host + '/media/';
-        const url = src.startsWith('http') ? src : mediaBase + encodeURI(src.replace(/^\/+/, ''));
+        const url = mediaUrl(src);
         try {
           const audio = new Audio(url);
           audio.volume = Math.min(1, Math.max(0, (volume || 80) / 100));
@@ -227,21 +327,65 @@
         return map[effect] || 900;
       }
 
+      function applyLayout(payload) {
+        root.classList.remove('layout-above', 'layout-beside', 'layout-mediaOnly', 'builtin-card-off');
+        const layout = payload.mediaLayout || 'above';
+        root.classList.add('layout-' + layout);
+        const hasMedia = !!payload.mediaFile;
+        const mediaOnly = layout === 'mediaOnly' && hasMedia;
+        if (mediaOnly) {
+          cardEl.classList.add('hidden');
+          root.classList.add('builtin-card-off');
+        } else {
+          cardEl.classList.remove('hidden');
+          if (hasMedia && !payload.useBuiltInCard) {
+            root.classList.add('builtin-card-off');
+          }
+        }
+      }
+
+      function resetAnimations(enterAnim, exitAnim) {
+        ['enter-fade', 'enter-slide', 'enter-pop', 'exit-fade', 'exit-slide', 'exit-pop'].forEach(function (c) {
+          root.classList.remove(c);
+        });
+        root.classList.add('enter-' + (enterAnim || 'fade'));
+        root._exitAnim = exitAnim || 'fade';
+      }
+
       function showAlert(payload) {
         if (!payload) return;
         clearTimeout(hideTimer);
+        clearTimeout(exitTimer);
         root.className = '';
         root.classList.remove('hold-peak');
+        clearMediaSlot();
+        const hasMedia = !!payload.mediaFile;
+        const layout = payload.mediaLayout || 'above';
+        const mediaOnly = hasMedia && layout === 'mediaOnly';
+        const useBuiltinCard = !hasMedia;
         const scale = payload.scale || 1;
         root.style.setProperty('--ws-scale', String(scale));
-        root.style.setProperty('--ws-font-size', (payload.fontSize || 48) + 'px');
         root.style.setProperty('--ws-accent', payload.accentColor || '#ffd54f');
         root.style.setProperty('--ws-text', payload.textColor || '#ffffff');
-        root.style.maxWidth = (payload.maxWidth || 900) + 'px';
-        root.style.padding = payload.padding || '24px 48px';
-        root.style.borderColor = payload.borderColor || 'rgba(255,255,255,0.35)';
-        const bg = payload.backgroundColor || 'rgba(48, 18, 86, 0.94)';
-        root.style.background = bg.includes('gradient') ? bg : bg;
+        if (useBuiltinCard) {
+          root.style.setProperty('--ws-font-size', (payload.fontSize || 48) + 'px');
+          root.style.maxWidth = (payload.maxWidth || 900) + 'px';
+          root.style.padding = payload.padding || '24px 48px';
+          root.style.borderColor = payload.borderColor || 'rgba(255,255,255,0.35)';
+          const bg = payload.backgroundColor || 'rgba(48, 18, 86, 0.94)';
+          root.style.background = bg.includes('gradient') ? bg : bg;
+        } else if (mediaOnly) {
+          root.style.padding = '0';
+          root.style.maxWidth = 'none';
+          root.style.background = 'transparent';
+          root.style.border = 'none';
+        } else {
+          root.style.setProperty('--ws-font-size', (payload.fontSize || 40) + 'px');
+          root.style.maxWidth = (payload.maxWidth || 1100) + 'px';
+          root.style.padding = '16px 22px';
+          root.style.borderColor = payload.borderColor || 'rgba(255,255,255,0.25)';
+          root.style.background = 'rgba(0, 0, 0, 0.45)';
+        }
         const label = root.querySelector('.ws-label');
         if (label) label.style.fontSize = (payload.labelSize || 22) + 'px';
         titleEl.style.fontSize = (payload.fontSize || 48) + 'px';
@@ -254,6 +398,9 @@
           ' · ' +
           (payload.streakCount || '?') +
           ' streams';
+        applyLayout(payload);
+        resetAnimations(payload.enterAnimation, payload.exitAnimation);
+        if (hasMedia) mountMedia(payload);
         requestAnimationFrame(function () {
           root.classList.add('visible');
         });
@@ -262,14 +409,25 @@
         }
         if (effect === 'confetti') sparkBurst(200);
         playSound(payload.soundFile, payload.soundVolume);
-        const duration = Math.max(3000, payload.durationMs || 5000);
+        const duration = Math.max(2500, payload.durationMs || 5000);
+        const exitAnim = payload.exitAnimation || 'fade';
         hideTimer = setTimeout(function () {
           root.classList.remove('visible');
+          root.classList.add('exit-' + exitAnim);
+          exitTimer = setTimeout(function () {
+            root.classList.remove('exit-' + exitAnim);
+            clearMediaSlot();
+          }, 450);
         }, duration);
 
         if (params.has('freeze')) {
           setTimeout(function () {
             root.classList.add('hold-peak');
+            if (activeMediaEl && activeMediaEl.tagName === 'VIDEO') {
+              try {
+                activeMediaEl.pause();
+              } catch (e) {}
+            }
           }, peakDelayForEffect(effect));
         }
       }

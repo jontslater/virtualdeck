@@ -6,9 +6,9 @@
  */
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const http = require('http');
 const { chromium } = require('playwright');
-const WebSocket = require('ws');
 const {
   migrateWatchStreakConfig,
   resolveActiveTier,
@@ -19,8 +19,67 @@ const {
 const outDir = '/opt/cursor/artifacts';
 const debugPort = Number(process.env.VD_DEBUG_PORT || 9333);
 const overlayPort = Number(process.env.VD_OVERLAY_PORT || 8080);
+const DEMO_GIF = path.join(__dirname, '../TwitchConnected/tc.gif');
 
 fs.mkdirSync(outDir, { recursive: true });
+
+function userDataDir() {
+  return process.env.VD_USER_DATA || path.join(os.homedir(), '.config', 'virtualdeck');
+}
+
+function seedDemoWatchStreakData() {
+  const userData = userDataDir();
+  fs.mkdirSync(userData, { recursive: true });
+  const rel = 'media/watch-streak-tier_50/image_demo.gif';
+  const abs = path.join(userData, rel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  if (fs.existsSync(DEMO_GIF)) fs.copyFileSync(DEMO_GIF, abs);
+
+  const cfg = migrateWatchStreakConfig({ enabled: true });
+  const tier50 = cfg.tiers.find((t) => t.threshold === 50);
+  if (tier50) {
+    tier50.mediaFile = rel.replace(/\\/g, '/');
+    tier50.mediaType = 'gif';
+    tier50.mediaLayout = 'above';
+    tier50.enterAnimation = 'pop';
+    tier50.exitAnimation = 'fade';
+    tier50.alertDurationMs = 5500;
+  }
+  fs.writeFileSync(path.join(userData, 'watch-streak-config.json'), JSON.stringify(cfg, null, 2));
+
+  const leaders = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    viewers: {
+      loyal: {
+        userId: '1',
+        login: 'LoyalFan',
+        displayName: 'LoyalFan',
+        highestSharedStreak: 50,
+        lastSharedStreak: 50,
+        lastSharedAt: '2026-11-20T18:00:00.000Z',
+      },
+      reg: {
+        userId: '2',
+        login: 'Regular',
+        displayName: 'Regular',
+        highestSharedStreak: 10,
+        lastSharedStreak: 10,
+        lastSharedAt: '2026-11-19T12:00:00.000Z',
+      },
+      newbie: {
+        userId: '3',
+        login: 'NewStreaker',
+        displayName: 'NewStreaker',
+        highestSharedStreak: 3,
+        lastSharedStreak: 3,
+        lastSharedAt: '2026-11-21T10:00:00.000Z',
+      },
+    },
+  };
+  fs.writeFileSync(path.join(userData, 'watch-streak-leaders.json'), JSON.stringify(leaders, null, 2));
+  return rel.replace(/\\/g, '/');
+}
 
 function httpGet(url) {
   return new Promise((resolve, reject) => {
@@ -42,7 +101,7 @@ function httpGet(url) {
   });
 }
 
-function buildPayload(streakCount) {
+function buildPayload(streakCount, mediaRel) {
   const cfg = migrateWatchStreakConfig({ enabled: true });
   const share = {
     streakCount,
@@ -53,28 +112,20 @@ function buildPayload(streakCount) {
     username: 'DemoViewer',
     test: true,
   };
-  const tier = resolveActiveTier(cfg, streakCount);
+  const tier = { ...resolveActiveTier(cfg, streakCount) };
+  if (mediaRel && streakCount === 50) {
+    tier.mediaFile = mediaRel;
+    tier.mediaType = 'gif';
+    tier.mediaLayout = 'above';
+    tier.enterAnimation = 'pop';
+  }
   const text = formatAlertText(tier.textTemplate, share);
   return buildWatchStreakOverlayPayload(tier, share, text);
 }
 
 function peakMs(payload) {
   const m = { glow: 700, pulse: 900, shine: 800, flare: 1000, burst: 1100, epic: 1550, confetti: 1650 };
-  return m[payload.effect] || 1000;
-}
-
-function sendOverlayAlert(port, payload) {
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/?overlay=watchStreak`);
-    ws.on('open', () => {
-      ws.send(JSON.stringify(payload));
-      setTimeout(() => {
-        ws.close();
-        resolve();
-      }, 80);
-    });
-    ws.on('error', reject);
-  });
+  return Math.max(m[payload.effect] || 1000, payload.enterAnimation === 'pop' ? 950 : 0);
 }
 
 async function waitOverlayReady(page) {
@@ -90,34 +141,36 @@ async function fireAlertOnPage(page, payload) {
   await page.evaluate((p) => window.__wsShowAlert(p), payload);
 }
 
-async function captureOverlays(browser, port) {
+async function captureOverlays(browser, port, mediaRel) {
   for (const t of [3, 10, 50, 100, 200]) {
-    const payload = buildPayload(t);
+    const payload = buildPayload(t, t === 50 ? mediaRel : null);
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     await page.goto(`http://127.0.0.1:${port}/watch-streak?obs=1&freeze=1`, { waitUntil: 'domcontentloaded' });
     await fireAlertOnPage(page, payload);
-    await page.waitForTimeout(peakMs(payload) + 350);
-    await page.screenshot({ path: path.join(outDir, `watch-streak-overlay-tier-${t}.png`) });
+    await page.waitForTimeout(peakMs(payload) + 450);
+    const name =
+      t === 50 && mediaRel ? 'watch-streak-overlay-custom-gif.png' : `watch-streak-overlay-tier-${t}.png`;
+    await page.screenshot({ path: path.join(outDir, name) });
     await page.close();
   }
 
+  const payload50 = buildPayload(50, mediaRel);
   const gifPage = await browser.newPage({
     viewport: { width: 1280, height: 720 },
     recordVideo: { dir: outDir, size: { width: 1280, height: 720 } },
   });
-  const payload200 = buildPayload(200);
   await gifPage.goto(`http://127.0.0.1:${port}/watch-streak?obs=1`, { waitUntil: 'domcontentloaded' });
-  await fireAlertOnPage(gifPage, payload200);
-  await gifPage.waitForTimeout(4500);
+  await fireAlertOnPage(gifPage, payload50);
+  await gifPage.waitForTimeout(5500);
   const vpath = await gifPage.video().path();
   await gifPage.close();
   if (vpath) {
-    fs.copyFileSync(vpath, path.join(outDir, 'watch-streak-alert-200.webm'));
-    const gifOut = path.join(outDir, 'watch-streak-alert-200.gif');
+    fs.copyFileSync(vpath, path.join(outDir, 'watch-streak-custom-media-alert.webm'));
+    const gifOut = path.join(outDir, 'watch-streak-custom-media-alert.gif');
     try {
       const { execSync } = require('child_process');
       execSync(
-        `ffmpeg -y -i "${path.join(outDir, 'watch-streak-alert-200.webm')}" -vf "fps=12,scale=1280:-1" -loop 0 "${gifOut}"`,
+        `ffmpeg -y -i "${path.join(outDir, 'watch-streak-custom-media-alert.webm')}" -vf "fps=12,scale=1280:-1" -loop 0 "${gifOut}"`,
         { stdio: 'ignore' },
       );
     } catch (e) {
@@ -132,16 +185,16 @@ async function captureElectronUi() {
   const ctx = browser.contexts()[0];
   const page = ctx.pages().find((p) => p.url().includes('index.html')) || ctx.pages()[0];
   if (!page) throw new Error('No Electron renderer page found');
-  await page.setViewportSize({ width: 1360, height: 1400 });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   await page.evaluate(async () => {
-    const fr = document.getElementById('first-run-twitch-popup');
-    if (fr) fr.classList.add('hidden');
+    document.getElementById('first-run-twitch-popup')?.classList.add('hidden');
     document.getElementById('welcome-popup-dismiss')?.click();
     const modalEl = document.querySelector('.watch-streak-modal');
     if (modalEl) {
-      modalEl.style.maxHeight = 'none';
-      modalEl.style.overflow = 'visible';
+      modalEl.style.maxHeight = '85vh';
+      modalEl.style.overflow = 'auto';
     }
     if (window.openWatchStreakModal) window.openWatchStreakModal();
     else {
@@ -150,64 +203,36 @@ async function captureElectronUi() {
     }
     const cb = document.getElementById('watch-streak-enabled');
     if (cb) cb.checked = true;
-    const list = document.getElementById('watch-streak-leaders-list');
-    if (list) {
-      list.innerHTML = `<table class="watch-streak-leaders-table">
-        <thead><tr><th>Viewer</th><th>Highest shared</th><th>Last shared</th></tr></thead>
-        <tbody>
-          <tr><td>LoyalFan</td><td>50</td><td>50 <small>2026-11-20</small></td></tr>
-          <tr><td>Regular</td><td>10</td><td>10 <small>2026-11-19</small></td></tr>
-        </tbody></table>`;
-    }
-    if (window.electronAPI?.getWatchStreakOverlayUrl) {
-      const res = await window.electronAPI.getWatchStreakOverlayUrl();
-      const urlEl = document.getElementById('watch-streak-overlay-url');
-      if (urlEl && res?.url) urlEl.textContent = res.url;
-    }
+    document.getElementById('watch-streak-simple-mode').checked = false;
+    window.watchStreakSetExpandedIndex?.(-1);
+    await window.hydrateWatchStreakPreviews?.();
   });
-  await page.evaluate(() => {
-    const simple = document.getElementById('watch-streak-simple-mode');
-    if (simple) simple.checked = false;
-    if (typeof renderWatchStreakTiers === 'function') renderWatchStreakTiers();
-  });
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(900);
 
   const modal = page.locator('#watch-streak-settings-modal .watch-streak-modal');
-  const scrollHeight = await modal.evaluate((el) => el.scrollHeight);
-  await page.setViewportSize({ width: 1360, height: Math.min(3400, scrollHeight + 120) });
-  await modal.evaluate((el) => el.scrollTo(0, 0));
-  await page.waitForTimeout(200);
-  await modal.screenshot({ path: path.join(outDir, 'watch-streak-settings-full.png') });
-  await page.locator('.watch-streak-section').nth(0).screenshot({
-    path: path.join(outDir, 'watch-streak-section-browser-source.png'),
+  await modal.screenshot({ path: path.join(outDir, 'watch-streak-settings-collapsed.png') });
+
+  await page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('.watch-streak-tier-row'));
+    const idx = rows.findIndex((r) => r.querySelector('.ws-tier-test')?.dataset?.threshold === '50');
+    window.watchStreakSetExpandedIndex?.(idx >= 0 ? idx : 6);
   });
+  await page.waitForTimeout(600);
+  await page.locator('.watch-streak-tier-row.is-expanded').screenshot({
+    path: path.join(outDir, 'watch-streak-settings-tier-expanded.png'),
+  });
+  await modal.screenshot({ path: path.join(outDir, 'watch-streak-settings-panel.png') });
+
   await page.locator('#watch-streak-per-tier-panel').screenshot({
     path: path.join(outDir, 'watch-streak-section-tiers.png'),
-  });
-  await page.locator('.watch-streak-tier-row').first().screenshot({
-    path: path.join(outDir, 'watch-streak-section-tier-controls.png'),
   });
   await page.locator('#watch-streak-leaders-list').screenshot({
     path: path.join(outDir, 'watch-streak-top-streakers.png'),
   });
-  await page.evaluate(() => {
-    const el = document.getElementById('watch-streak-simple-mode');
-    if (el) el.checked = false;
-    if (typeof renderWatchStreakTiers === 'function') renderWatchStreakTiers();
-  });
-  await page.locator('.watch-streak-tier-row').first().screenshot({
-    path: path.join(outDir, 'watch-streak-test-flow.png'),
+  await page.locator('.watch-streak-section').nth(0).screenshot({
+    path: path.join(outDir, 'watch-streak-section-browser-source.png'),
   });
 
-  await page.evaluate(() => {
-    const el = document.getElementById('watch-streak-simple-mode');
-    if (el) el.checked = true;
-    if (typeof renderWatchStreakTiers === 'function') renderWatchStreakTiers();
-  });
-  await page.waitForTimeout(350);
-  await page.locator('#watch-streak-simple-tier-panel').screenshot({
-    path: path.join(outDir, 'watch-streak-section-simple-mode.png'),
-  });
   await browser.close();
 }
 
@@ -224,6 +249,9 @@ function waitForOverlay(port) {
 }
 
 async function main() {
+  const mediaRel = seedDemoWatchStreakData();
+  console.log('Seeded demo watch-streak config with media:', mediaRel);
+
   try {
     await waitForOverlay(overlayPort);
   } catch (e) {
@@ -233,7 +261,7 @@ async function main() {
 
   const browser = await chromium.launch();
   try {
-    await captureOverlays(browser, overlayPort);
+    await captureOverlays(browser, overlayPort, mediaRel);
   } finally {
     await browser.close();
   }

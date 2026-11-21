@@ -1820,7 +1820,24 @@
         <h3>Unified alert</h3>
         <label>Alert text <input type="text" id="watch-streak-simple-text" class="preference-input" style="width: 100%;" /></label>
         <label>Chat reply <input type="text" id="watch-streak-simple-chat" class="preference-input" style="width: 100%;" /></label>
-        <label>Effect
+        <div class="ws-tier-section">
+          <h4>Custom media</h4>
+          <div class="ws-tier-media-row">
+            <label>Media file <input type="text" id="watch-streak-simple-media-path" class="preference-input" readonly /></label>
+            <button type="button" id="watch-streak-simple-browse-media" class="preference-button">Browse…</button>
+            <button type="button" id="watch-streak-simple-clear-media" class="preference-button">Clear</button>
+            <input type="file" id="watch-streak-simple-media-file" class="hidden" accept="image/*,video/webm,video/mp4,.gif,.webm,.mp4" />
+          </div>
+          <img id="watch-streak-simple-media-preview" class="ws-tier-media-preview hidden" alt="Unified media preview" />
+          <label>Layout
+            <select id="watch-streak-simple-media-layout" class="preference-input">
+              <option value="above">Media above text</option>
+              <option value="beside">Media beside text</option>
+              <option value="mediaOnly">Media only</option>
+            </select>
+          </label>
+        </div>
+        <label>Built-in card effect
           <select id="watch-streak-simple-effect">
             <option value="glow">glow</option>
             <option value="pulse">pulse</option>
@@ -1831,7 +1848,16 @@
             <option value="confetti">confetti</option>
           </select>
         </label>
-        <label>Sound file <input type="text" id="watch-streak-simple-sound" class="preference-input" /></label>
+        <div class="ws-tier-anim-grid">
+          <label>Enter <select id="watch-streak-simple-enter" class="preference-input"><option value="fade">fade</option><option value="slide">slide</option><option value="pop">pop</option></select></label>
+          <label>Exit <select id="watch-streak-simple-exit" class="preference-input"><option value="fade">fade</option><option value="slide">slide</option><option value="pop">pop</option></select></label>
+          <label>Duration (ms) <input type="number" id="watch-streak-simple-duration" class="preference-input" min="0" step="500" value="0" /></label>
+        </div>
+        <div class="ws-tier-sound-row">
+          <label>Sound file <input type="text" id="watch-streak-simple-sound" class="preference-input" /></label>
+          <button type="button" id="watch-streak-simple-browse-sound" class="preference-button">Browse…</button>
+          <input type="file" id="watch-streak-simple-sound-file" class="hidden" accept="audio/*" />
+        </div>
         <label>Volume <input type="range" id="watch-streak-simple-volume" min="0" max="100" value="80" /></label>
         <button type="button" id="watch-streak-simple-test" class="preference-button">Test alert</button>
       </section>

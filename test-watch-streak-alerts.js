@@ -12,13 +12,15 @@ const {
   TWITCH_REPORTED_WATCH_STREAK_MILESTONES,
   formatAlertText,
   scopesIncludeWatchStreakChat,
+  buildWatchStreakOverlayPayload,
+  inferWatchStreakMediaType,
 } = require('./lib/watch-streak-alerts');
 
 assert.deepStrictEqual(TWITCH_REPORTED_WATCH_STREAK_MILESTONES.slice(0, 3), [3, 5, 10]);
 
 const cfg = migrateWatchStreakConfig({ enabled: true, tiers: [{ threshold: 5, textTemplate: 'five' }] });
 assert.strictEqual(cfg.tiers[0].textTemplate, 'five');
-assert.strictEqual(cfg.version, 2);
+assert.strictEqual(cfg.version, 3);
 
 const tiers = [
   { threshold: 3, textTemplate: 'a' },
@@ -63,6 +65,16 @@ assert.strictEqual(text, 'Pat — 5');
 
 assert.ok(scopesIncludeWatchStreakChat(['chat:read', 'user:read:chat']));
 assert.ok(!scopesIncludeWatchStreakChat(['chat:read']));
+
+assert.strictEqual(inferWatchStreakMediaType('media/x/celebrate.gif'), 'gif');
+const tierMedia = buildWatchStreakOverlayPayload(
+  { threshold: 50, mediaFile: 'media/foo.gif', mediaLayout: 'beside', enterAnimation: 'pop', effect: 'flare' },
+  { streakCount: 50, login: 'x', displayName: 'X' },
+  'Hi',
+);
+assert.strictEqual(tierMedia.mediaLayout, 'beside');
+assert.strictEqual(tierMedia.enterAnimation, 'pop');
+assert.strictEqual(tierMedia.useBuiltInCard, false);
 
 const mainJs = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
 assert.ok(mainJs.includes('watch-streak-config'), 'main persists watch streak config');
