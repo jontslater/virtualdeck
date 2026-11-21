@@ -82,6 +82,23 @@ const {
 const { sanitizeFeedbackPayload, postFeedbackPayload } = require('./lib/feedback/submit');
 const { FEEDBACK_PROMPT_DELAY_MS } = require('./lib/feedback/constants');
 const { isFeedbackEndpointConfigured } = require('./lib/feedback/config');
+const {
+  getWhatsNewState,
+  recordFreshInstallBaseline,
+  shouldAutoShowWhatsNew,
+  shouldDeferWhatsNewPrompt,
+  markWhatsNewSeen,
+  patchWhatsNewInPreferences,
+} = require('./lib/whats-new/state');
+const {
+  PATCH_NOTES_URL,
+  WHATS_NEW_PROMPT_DELAY_MS,
+  WHATS_NEW_DEFER_POLL_MS,
+} = require('./lib/whats-new/constants');
+const {
+  resolveReleaseForAppVersion,
+  hasReleaseNotesForVersion,
+} = require('./lib/whats-new/load');
 const { createHydrationService } = require('./lib/hydration-service');
 
 process.on('unhandledRejection', (reason) => {
@@ -4303,11 +4320,96 @@ ipcMain.handle('get-sound-path', async (event, relativePath) => {
 // IPC handler to get app version
 ipcMain.handle('get-app-version', async () => {
   try {
-    const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8'));
-    return packageJson.version || 'Unknown';
+    return readAppVersionFromPackage();
   } catch (error) {
     console.error('Error reading package.json:', error);
     return 'Unknown';
+  }
+});
+
+ipcMain.handle('whats-new-get-release', async () => {
+  const appVersion = readAppVersionFromPackage();
+  const resolved = resolveReleaseForAppVersion(appVersion);
+  return {
+    appVersion,
+    release: resolved ? resolved.release : null,
+    resolvedVersion: resolved ? resolved.resolvedVersion : null,
+    patchNotesUrl: PATCH_NOTES_URL,
+  };
+});
+
+ipcMain.handle('whats-new-get-prompt', async () => {
+  ensureWhatsNewFreshInstallBaseline();
+  const appVersion = readAppVersionFromPackage();
+  const prefs = getStoredPreferences();
+  const state = getWhatsNewState(prefs);
+  const hasNotes = hasReleaseNotesForVersion(appVersion);
+  const shouldPrompt = shouldAutoShowWhatsNew(state, appVersion, hasNotes);
+  const resolved = resolveReleaseForAppVersion(appVersion);
+  return {
+    appVersion,
+    shouldPrompt,
+    state,
+    release: resolved ? resolved.release : null,
+    promptDelayMs: WHATS_NEW_PROMPT_DELAY_MS,
+    deferPollMs: WHATS_NEW_DEFER_POLL_MS,
+    patchNotesUrl: PATCH_NOTES_URL,
+  };
+});
+
+ipcMain.handle('whats-new-should-defer', async (_event, ctx) => {
+  return shouldDeferWhatsNewPrompt(ctx || {});
+});
+
+ipcMain.handle('whats-new-mark-seen', async () => {
+  try {
+    const appVersion = readAppVersionFromPackage();
+    const next = markWhatsNewSeen(getStoredPreferences(), appVersion);
+    saveStoredPreferences(next);
+    return { ok: true, state: getWhatsNewState(next) };
+  } catch (error) {
+    return { ok: false, error: error && error.message };
+  }
+});
+
+ipcMain.handle('whats-new-patch-state', async (_event, patch) => {
+  try {
+    const next = patchWhatsNewInPreferences(getStoredPreferences(), patch || {});
+    saveStoredPreferences(next);
+    return { ok: true, state: getWhatsNewState(next) };
+  } catch (error) {
+    return { ok: false, error: error && error.message };
+  }
+});
+
+ipcMain.handle('whats-new-open-patch-notes', async () => {
+  try {
+    await shell.openExternal(PATCH_NOTES_URL);
+    return { ok: true, url: PATCH_NOTES_URL };
+  } catch (error) {
+    return { ok: false, error: error && error.message };
+  }
+});
+
+ipcMain.handle('open-whats-new', async () => {
+  try {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('open-whats-new-modal');
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error && error.message };
+  }
+});
+
+ipcMain.handle('open-watch-streak-alerts', async () => {
+  try {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('open-watch-streak-alerts');
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error && error.message };
   }
 });
 
@@ -6708,6 +6810,29 @@ function recordFeedbackAppSession() {
   }
 }
 
+function readAppVersionFromPackage() {
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8'));
+    return packageJson.version || '0.0.0';
+  } catch (error) {
+    return '0.0.0';
+  }
+}
+
+function ensureWhatsNewFreshInstallBaseline() {
+  try {
+    const appVersion = readAppVersionFromPackage();
+    const prefs = getStoredPreferences();
+    const state = getWhatsNewState(prefs);
+    if (!state.lastSeenVersion) {
+      const { preferences } = recordFreshInstallBaseline(prefs, appVersion);
+      saveStoredPreferences(preferences);
+    }
+  } catch (error) {
+    console.warn('[WhatsNew] Baseline failed:', error && error.message);
+  }
+}
+
 function initAppUpdater() {
   if (appUpdater) return appUpdater;
   appUpdater = createAppUpdater({
@@ -6743,6 +6868,7 @@ app.whenReady().then(() => {
   }
   createWindow();
   recordFeedbackAppSession();
+  ensureWhatsNewFreshInstallBaseline();
   try {
     initTwitchOAuthHost();
     setTimeout(() => {
@@ -6827,6 +6953,10 @@ app.whenReady().then(() => {
       { role: 'reload' }
     ] },
     { label: 'Help', submenu: [ 
+      { label: "What's new...", click: () => {
+        if (win && !win.isDestroyed()) win.webContents.send('open-whats-new-modal');
+      } },
+      { type: 'separator' },
       { label: 'Report Bug', click: async () => {
         try {
           const { shell } = require('electron');

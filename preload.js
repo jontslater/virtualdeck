@@ -164,6 +164,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   feedbackGetState: async () => ipcRenderer.invoke('feedback-get-state'),
   feedbackPatchState: async (patch) => ipcRenderer.invoke('feedback-patch-state', patch),
   feedbackSubmit: async (body) => ipcRenderer.invoke('feedback-submit', body),
+  whatsNewGetRelease: async () => ipcRenderer.invoke('whats-new-get-release'),
+  whatsNewGetPrompt: async () => ipcRenderer.invoke('whats-new-get-prompt'),
+  whatsNewShouldDefer: async (ctx) => ipcRenderer.invoke('whats-new-should-defer', ctx || {}),
+  whatsNewMarkSeen: async () => ipcRenderer.invoke('whats-new-mark-seen'),
+  whatsNewOpenPatchNotes: async () => ipcRenderer.invoke('whats-new-open-patch-notes'),
+  openWatchStreakAlerts: async () => ipcRenderer.invoke('open-watch-streak-alerts'),
+  onOpenWhatsNewModal: (callback) => ipcRenderer.on('open-whats-new-modal', () => callback()),
   // Profile Management
   getProfiles: async () => ipcRenderer.invoke('get-profiles'),
   getProfile: async (profileId) => ipcRenderer.invoke('get-profile', profileId),

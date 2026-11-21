@@ -1841,6 +1841,104 @@ body.vd-dragging .sound-card.draggable:hover {
   overflow-y: auto;
 }
 
+/* What's New modal */
+#whats-new-modal {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10450;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+#whats-new-modal.hidden {
+  display: none;
+}
+
+.whats-new-modal-content {
+  width: 560px;
+  max-width: 94vw;
+  max-height: 88vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.whats-new-modal-body {
+  padding: 4px 4px 16px;
+  overflow-y: auto;
+}
+
+.whats-new-intro {
+  font-size: 14px;
+  color: var(--text-primary);
+  margin: 0 0 14px;
+  line-height: 1.55;
+  font-weight: 500;
+}
+
+.whats-new-feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.whats-new-feature {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-tertiary);
+}
+
+.whats-new-feature:has(.whats-new-feature-media) {
+  grid-template-columns: minmax(120px, 36%) 1fr;
+  align-items: start;
+}
+
+.whats-new-feature-media img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--bg-tertiary);
+}
+
+.whats-new-feature-body h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.whats-new-feature-body p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.whats-new-try-btn {
+  margin-top: 2px;
+}
+
+.whats-new-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 4px;
+  border-top: 1px solid var(--bg-tertiary);
+}
+
 /* Feedback modal */
 #feedback-modal {
   position: fixed;

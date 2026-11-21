@@ -1,0 +1,28 @@
+{
+  "version": "1.2.8",
+  "headline": "Seasonal style, watch streaks, and release notes",
+  "intro": "Highlights for this release. Reopen Help → What's new… anytime.",
+  "features": [
+    {
+      "id": "thanksgiving-skin",
+      "title": "Thanksgiving (Cartoon) skin",
+      "body": "A warm harvest theme with drifting leaves, pumpkin accents, and high-contrast cream panels on Twitch stats. Pick it under Tools → Themes after updating.",
+      "image": "whats-new/assets/thanksgiving-badge.svg",
+      "tryAction": "apply-theme",
+      "tryPayload": { "themeId": "thanksgiving" },
+      "tryLabel": "Try it"
+    },
+    {
+      "id": "watch-streak-alerts",
+      "title": "Watch Streak milestone alerts",
+      "body": "Celebrate viewers who share Twitch watch streak milestones in chat. Set per-tier overlay media, sounds, and chat replies in Tools → Watch Streak Alerts.",
+      "tryAction": "watch-streak-alerts",
+      "tryLabel": "Try it"
+    },
+    {
+      "id": "whats-new-modal",
+      "title": "What's new in the app",
+      "body": "After each update, VirtualDeck shows a short summary once (when you're not live). You can always reopen it from Help or Preferences."
+    }
+  ]
+}
