@@ -133,7 +133,7 @@
         plate.style.border = 'none';
       }
     }
-    const size = currentConfig.gaugeSize || 200;
+    const size = currentConfig.gaugeSize || 280;
     document.querySelectorAll('[data-gauge-canvas]').forEach((c) => {
       const aspect = c.dataset.gaugeCanvas;
       if (aspect === 'circle') {
@@ -168,21 +168,144 @@
     });
   }
 
+  function effectIntensityScale() {
+    const level = currentConfig.effectsIntensity || 'medium';
+    if (level === 'low') return 0.55;
+    if (level === 'high') return 1.55;
+    return 1;
+  }
+
+  function gaugeAnchor() {
+    const plate = document.getElementById('hydration-plate');
+    const rect = plate ? plate.getBoundingClientRect() : { left: 0, top: 0, width: 200, height: 200 };
+    return {
+      cx: rect.left + rect.width / 2,
+      cy: rect.top + rect.height * 0.38,
+    };
+  }
+
+  function spawnSparkles() {
+    const layer = document.getElementById('effects-layer');
+    if (!layer) return;
+    const scale = effectIntensityScale();
+    const fill = currentConfig.fillColor || currentConfig.accentColor || '#4fc3f7';
+    const { cx, cy } = gaugeAnchor();
+    const count = Math.round(14 * scale);
+    for (let i = 0; i < count; i++) {
+      const s = document.createElement('span');
+      s.className = 'fx-star';
+      s.textContent = '✦';
+      const angle = (i / count) * Math.PI * 2;
+      const dist = (70 + Math.random() * 50) * scale;
+      s.style.left = `${cx + Math.cos(angle) * dist}px`;
+      s.style.top = `${cy + Math.sin(angle) * dist * 0.75}px`;
+      s.style.setProperty('--star-size', `${22 + 14 * scale}px`);
+      s.style.setProperty('--star-glow', fill);
+      s.style.animationDelay = `${Math.random() * 0.15}s`;
+      layer.appendChild(s);
+      setTimeout(() => s.remove(), 1200);
+    }
+  }
+
+  function spawnSplash() {
+    const layer = document.getElementById('effects-layer');
+    if (!layer) return;
+    const scale = effectIntensityScale();
+    const fill = currentConfig.fillColor || '#4fc3f7';
+    const { cx, cy } = gaugeAnchor();
+    for (let i = 0; i < (scale > 1 ? 3 : 2); i++) {
+      const d = document.createElement('div');
+      d.className = 'fx-splash';
+      const sz = 160 * scale;
+      d.style.setProperty('--splash-size', `${sz}px`);
+      d.style.setProperty('--splash-border', `${4 + 2 * scale}px`);
+      d.style.borderColor = i % 2 ? 'rgba(255,255,255,0.85)' : fill;
+      d.style.left = `${cx}px`;
+      d.style.top = `${cy}px`;
+      layer.appendChild(d);
+      setTimeout(() => d.remove(), 1000);
+    }
+  }
+
+  function spawnBubbles() {
+    const layer = document.getElementById('effects-layer');
+    if (!layer) return;
+    const scale = effectIntensityScale();
+    const { cx } = gaugeAnchor();
+    const n = Math.round(10 * scale);
+    for (let i = 0; i < n; i++) {
+      const b = document.createElement('div');
+      b.className = 'fx-bubble';
+      const sz = (14 + Math.random() * 16) * scale;
+      b.style.width = `${sz}px`;
+      b.style.height = `${sz}px`;
+      b.style.left = `${cx - 60 * scale + Math.random() * 120 * scale}px`;
+      b.style.animationDelay = `${i * 0.04}s`;
+      layer.appendChild(b);
+      setTimeout(() => b.remove(), 1300);
+    }
+  }
+
+  function spawnConfetti() {
+    const layer = document.getElementById('effects-layer');
+    if (!layer) return;
+    const scale = effectIntensityScale();
+    const { cx, cy } = gaugeAnchor();
+    const palette = [
+      currentConfig.fillColor || '#4fc3f7',
+      currentConfig.accentColor || '#29b6f6',
+      '#ffeb3b',
+      '#ff5252',
+      '#69f0ae',
+      '#e040fb',
+    ];
+    const pieces = Math.round(48 * scale);
+    for (let i = 0; i < pieces; i++) {
+      const p = document.createElement('span');
+      p.className = 'confetti-piece';
+      const tx = (Math.random() - 0.5) * 420 * scale;
+      const ty = 180 + Math.random() * 320 * scale;
+      p.style.left = `${cx - 8}px`;
+      p.style.top = `${cy}px`;
+      p.style.setProperty('--confetti-tx', `${tx}px`);
+      p.style.setProperty('--confetti-ty', `${ty}px`);
+      p.style.setProperty('--confetti-rot', `${200 + Math.random() * 500}deg`);
+      p.style.setProperty('--confetti-w', `${12 + Math.random() * 10 * scale}px`);
+      p.style.setProperty('--confetti-h', `${16 + Math.random() * 12 * scale}px`);
+      p.style.background = palette[i % palette.length];
+      p.style.animationDelay = `${Math.random() * 0.08}s`;
+      layer.appendChild(p);
+      setTimeout(() => p.remove(), 1600);
+    }
+  }
+
+  function triggerNumberPop() {
+    const block = document.getElementById('hydration-stats-block');
+    const minimal = document.getElementById('minimal-ring-wrap');
+    if (block) {
+      block.classList.remove('fx-number-pop');
+      void block.offsetWidth;
+      block.classList.add('fx-number-pop');
+    }
+    if (minimal) {
+      minimal.classList.remove('fx-number-pop');
+      void minimal.offsetWidth;
+      minimal.classList.add('fx-number-pop');
+    }
+  }
+
   function triggerEffects(data) {
     if (prefersReducedMotion || currentConfig.enableEffects === false) return;
     const layer = document.getElementById('effects-layer');
     if (!layer) return;
     if (data.celebration && currentConfig.goalConfetti !== false) {
-      for (let i = 0; i < 24; i++) {
-        const p = document.createElement('span');
-        p.className = 'confetti-piece';
-        p.style.left = `${50 + (Math.random() - 0.5) * 40}%`;
-        p.style.background = i % 2 ? currentConfig.accentColor : currentConfig.fillColor;
-        p.style.animationDelay = `${Math.random() * 0.4}s`;
-        layer.appendChild(p);
-        setTimeout(() => p.remove(), 2200);
-      }
+      spawnConfetti();
+      spawnSparkles();
     } else if (data.leveledUp) {
+      spawnSparkles();
+      spawnSplash();
+      spawnBubbles();
+      triggerNumberPop();
       layer.classList.add('flash');
       setTimeout(() => layer.classList.remove('flash'), 450);
     }
@@ -202,12 +325,29 @@
       streak.textContent = state.streak > 0 ? `🔥 ${state.streak}` : '🔥 0';
       streak.classList.toggle('hidden', !state.streak && currentConfig.dailyStreak === 0);
     }
-    const minimalPct = document.getElementById('minimal-pct');
-    if (minimalPct) minimalPct.textContent = `${Math.round(p)}%`;
+    const minMain = document.getElementById('minimal-amount-main');
+    const minSub = document.getElementById('minimal-amount-sub');
+    if (minMain) minMain.textContent = formatAmount(state.current, u);
+    if (minSub) minSub.textContent = `${Math.round(p)}% · of ${formatAmount(state.goal, u)}`;
     const statsBlock = document.getElementById('hydration-stats-block');
     if (statsBlock) {
       statsBlock.classList.toggle('hidden', currentConfig.gaugeStyle === 'minimal');
     }
+    const chips = document.querySelector('.hydration-chips');
+    if (chips) chips.classList.toggle('hidden', currentConfig.gaugeStyle === 'minimal');
+  }
+
+  function updateMinimalRing(pct) {
+    const arc = document.getElementById('minimal-progress-arc');
+    const wrap = document.getElementById('minimal-ring-wrap');
+    if (!arc) return;
+    const r = 84;
+    const circ = 2 * Math.PI * r;
+    const filled = circ * Math.min(1, Math.max(0, pct));
+    arc.setAttribute('stroke-dasharray', `${filled} ${circ - filled}`);
+    arc.setAttribute('stroke', currentConfig.fillColor || currentConfig.waterColor || '#4fc3f7');
+    const size = currentConfig.gaugeSize || 280;
+    if (wrap) wrap.style.setProperty('--minimal-size', `${size}px`);
   }
 
   function drawCircular(animateWave) {
@@ -346,8 +486,7 @@
     else if (style === 'horizontal') startLoop(() => drawBar(false));
     else if (style === 'minimal') {
       displayProgress = targetProgress;
-      const ring = document.getElementById('minimal-ring');
-      if (ring) ring.style.setProperty('--progress', `${Math.round(pct * 100)}%`);
+      updateMinimalRing(pct);
     }
   }
 
@@ -369,20 +508,24 @@
     if (!sameProgress && (data.leveledUp || data.celebration)) triggerEffects(data);
   }
 
+  function isPreviewMode() {
+    return /[?&]preview=1/.test(location.search);
+  }
+
+  window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'hydrationPreview' && event.data.payload) {
+      updateHydration(event.data.payload, event.data.payload);
+    }
+  });
+
   window.__hydrationDemoUpdate = (data) => updateHydration(data, data);
   window.__hydrationDemoFx = (opts) => triggerEffects(opts || { leveledUp: true });
-  window.__hydrationDemoSparkle = () => {
-    const layer = document.getElementById('effects-layer');
-    if (!layer) return;
-    for (let i = 0; i < 12; i++) {
-      const s = document.createElement('span');
-      s.className = 'fx-sparkle';
-      s.style.left = `${30 + Math.random() * 40}%`;
-      s.style.top = `${25 + Math.random() * 30}%`;
-      layer.appendChild(s);
-    }
-  };
+  window.__hydrationDemoSparkle = () => spawnSparkles();
+  window.__hydrationDemoSplash = () => spawnSplash();
+  window.__hydrationDemoBubbles = () => spawnBubbles();
+  window.__hydrationDemoConfetti = () => spawnConfetti();
+  window.__hydrationDemoNumberPop = () => triggerNumberPop();
 
-  connectWebSocket();
-  applyLayout();
+  if (!isPreviewMode()) connectWebSocket();
+  else applyLayout();
 })();

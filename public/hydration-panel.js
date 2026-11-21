@@ -2,7 +2,8 @@
  * Hydration tracker dashboard panel (Tools → Hydration).
  */
 (function () {
-  const state = { config: null, overlayUrl: '', saving: false };
+  const state = { config: null, overlayUrl: '', previewReady: false };
+  let previewTimer = null;
 
   function $(id) {
     return document.getElementById(id);
@@ -12,6 +13,50 @@
     return window.electronAPI && window.electronAPI[name];
   }
 
+  function hexToRgb(hex) {
+    const h = String(hex || '').replace('#', '');
+    const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+    if (full.length < 6) return { r: 12, g: 16, b: 24 };
+    return {
+      r: parseInt(full.slice(0, 2), 16),
+      g: parseInt(full.slice(2, 4), 16),
+      b: parseInt(full.slice(4, 6), 16),
+    };
+  }
+
+  function parsePlateColor(str) {
+    const s = String(str || '').trim();
+    const m = s.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/i);
+    if (m) {
+      const a = m[4] != null ? Number(m[4]) : 1;
+      const hex =
+        '#' +
+        [m[1], m[2], m[3]]
+          .map((n) => {
+            const x = Number(n);
+            return (x < 16 ? '0' : '') + x.toString(16);
+          })
+          .join('');
+      return { hex, opacity: Math.round(a * 100) };
+    }
+    if (s.startsWith('#')) return { hex: s.slice(0, 7), opacity: 82 };
+    return { hex: '#0c1018', opacity: 82 };
+  }
+
+  function readPlateRgba() {
+    const hex = $('hydration-plate-color-hex')?.value || '#0c1018';
+    const op = readNumber('hydration-plate-opacity', 82) / 100;
+    const { r, g, b } = hexToRgb(hex);
+    return `rgba(${r}, ${g}, ${b}, ${op.toFixed(2)})`;
+  }
+
+  function syncPlateHiddenField() {
+    const hidden = $('hydration-plate-color');
+    if (hidden) hidden.value = readPlateRgba();
+    const val = $('hydration-plate-opacity-val');
+    if (val) val.textContent = `${Math.round(readNumber('hydration-plate-opacity', 82))}%`;
+  }
+
   async function refreshOverlayUrl() {
     if (api('getHydrationUrl')) {
       const url = await api('getHydrationUrl');
@@ -19,7 +64,14 @@
       const el = $('hydration-overlay-url');
       if (el) el.textContent = url;
       const frame = $('hydration-preview-frame');
-      if (frame && url) frame.src = `${url}?preview=1`;
+      if (frame && url) {
+        state.previewReady = false;
+        frame.onload = () => {
+          state.previewReady = true;
+          pushPreviewToFrame();
+        };
+        frame.src = `${url}?preview=1&t=${Date.now()}`;
+      }
     }
   }
 
@@ -53,7 +105,10 @@
     setField('hydration-fill-color', cfg.fillColor || cfg.waterColor);
     setField('hydration-text-color-input', cfg.textColor);
     setField('hydration-accent-color', cfg.accentColor);
-    setField('hydration-plate-color', cfg.plateColor || cfg.backgroundColor);
+    const plate = parsePlateColor(cfg.plateColor || cfg.backgroundColor);
+    setField('hydration-plate-color-hex', plate.hex);
+    setField('hydration-plate-opacity', plate.opacity);
+    syncPlateHiddenField();
     setField('hydration-reset-mode', cfg.resetMode || 'go-live');
     setField('hydration-reminder-minutes', cfg.reminderMinutes);
     setField('hydration-effects-enabled', cfg.enableEffects !== false);
@@ -72,7 +127,41 @@
     }
   }
 
+  function buildPreviewPayload() {
+    const existing = state.config || {};
+    const merged = collectForm(existing);
+    const progress = existing.currentProgress != null ? existing.currentProgress : 32;
+    const goal = merged.streamGoal || 64;
+    return {
+      current: progress,
+      goal,
+      percentage: goal > 0 ? (progress / goal) * 100 : 0,
+      streak: merged.dailyStreak || 2,
+      units: merged.units || 'oz',
+      config: { ...merged, currentProgress: progress },
+    };
+  }
+
+  function pushPreviewToFrame() {
+    const frame = $('hydration-preview-frame');
+    if (!frame?.contentWindow) return;
+    try {
+      frame.contentWindow.postMessage(
+        { type: 'hydrationPreview', payload: buildPreviewPayload() },
+        '*',
+      );
+    } catch (e) {
+      /* cross-origin until loaded */
+    }
+  }
+
+  function schedulePreview() {
+    if (previewTimer) clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => pushPreviewToFrame(), 80);
+  }
+
   function collectForm(existing) {
+    syncPlateHiddenField();
     const base = { ...(existing || {}), ...(state.config || {}) };
     return {
       ...base,
@@ -85,15 +174,15 @@
       gaugeStyle: $('hydration-gauge-select')?.value || 'circular',
       showPlate: $('hydration-show-plate')?.checked !== false,
       matchTheme: !!$('hydration-match-theme')?.checked,
-      gaugeSize: readNumber('hydration-size-input', 200),
+      gaugeSize: readNumber('hydration-size-input', 280),
       positionX: readNumber('hydration-pos-x-input', 50),
       positionY: readNumber('hydration-pos-y-input', 50),
       fillColor: $('hydration-fill-color')?.value,
       waterColor: $('hydration-fill-color')?.value,
       textColor: $('hydration-text-color-input')?.value,
       accentColor: $('hydration-accent-color')?.value,
-      plateColor: $('hydration-plate-color')?.value,
-      backgroundColor: $('hydration-plate-color')?.value,
+      plateColor: readPlateRgba(),
+      backgroundColor: readPlateRgba(),
       resetMode: $('hydration-reset-mode')?.value || 'go-live',
       resetOnLive: ($('hydration-reset-mode')?.value || 'go-live') === 'go-live',
       reminderMinutes: readNumber('hydration-reminder-minutes', 0),
@@ -130,10 +219,6 @@
       }
       if (hint) hint.textContent = `${result.rewards.length} custom rewards loaded.`;
       if (prev) select.value = prev;
-      select.addEventListener('change', () => {
-        const opt = select.options[select.selectedIndex];
-        $('hydration-reward-id').value = opt?.dataset?.rewardId || '';
-      });
     } catch (err) {
       if (hint) hint.textContent = err.message || String(err);
     }
@@ -151,6 +236,7 @@
       state.config = merged;
       if (api('refreshHotkeys')) api('refreshHotkeys')();
       if (api('testHydration')) await api('testHydration')();
+      pushPreviewToFrame();
       if (typeof showCustomAlert === 'function') showCustomAlert('Hydration settings saved.', 'success');
     }
   }
@@ -158,11 +244,13 @@
   async function logDrink(amount) {
     if (!api('updateHydrationProgress')) return;
     await api('updateHydrationProgress')(amount);
+    state.config = await api('getHydrationConfig')();
     await previewPulse();
   }
 
   async function previewPulse() {
     if (api('testHydration')) await api('testHydration')();
+    pushPreviewToFrame();
   }
 
   function openPanel() {
@@ -186,6 +274,7 @@
     await refreshOverlayUrl();
     await loadRewards();
     if (api('testHydration')) await api('testHydration')();
+    schedulePreview();
   }
 
   function bind() {
@@ -203,12 +292,14 @@
     $('hydration-undo-btn')?.addEventListener('click', async () => {
       if (api('undoHydrationProgress')) {
         await api('undoHydrationProgress')();
+        state.config = await api('getHydrationConfig')();
         await previewPulse();
       }
     });
     $('hydration-reset-btn')?.addEventListener('click', async () => {
       if (!confirm('Reset hydration progress to 0?')) return;
       if (api('resetHydration')) await api('resetHydration')();
+      state.config = await api('getHydrationConfig')();
       await previewPulse();
     });
     $('hydration-copy-url-btn')?.addEventListener('click', () => {
@@ -217,20 +308,39 @@
         if (typeof showCustomAlert === 'function') showCustomAlert('Hydration overlay URL copied.', 'success');
       });
     });
+    $('hydration-reward-select')?.addEventListener('change', () => {
+      const opt = $('hydration-reward-select')?.options[$('hydration-reward-select').selectedIndex];
+      if ($('hydration-reward-id')) $('hydration-reward-id').value = opt?.dataset?.rewardId || '';
+      schedulePreview();
+    });
     $('hydration-match-theme')?.addEventListener('change', async (e) => {
       if (!e.target.checked) return;
       const style = getComputedStyle(document.documentElement);
       const accent = style.getPropertyValue('--accent-primary').trim() || '#4fc3f7';
       const text = style.getPropertyValue('--text-primary').trim() || '#ffffff';
-      const bg = style.getPropertyValue('--bg-secondary').trim() || 'rgba(12,16,24,0.85)';
+      const bg = style.getPropertyValue('--bg-secondary').trim() || 'rgb(22, 33, 62)';
       setField('hydration-fill-color', accent);
       setField('hydration-accent-color', accent);
       setField('hydration-text-color-input', text);
-      setField('hydration-plate-color', bg);
-      await saveConfig();
+      const parsed = parsePlateColor(bg);
+      setField('hydration-plate-color-hex', parsed.hex);
+      setField('hydration-plate-opacity', parsed.opacity);
+      syncPlateHiddenField();
+      schedulePreview();
     });
+    $('hydration-plate-opacity')?.addEventListener('input', () => {
+      syncPlateHiddenField();
+      schedulePreview();
+    });
+    const scroll = document.querySelector('#hydration-panel-modal .hydration-scroll');
+    scroll?.addEventListener('input', schedulePreview);
+    scroll?.addEventListener('change', schedulePreview);
+
     if (api('onHydrationStateChanged')) {
-      api('onHydrationStateChanged')(() => previewPulse());
+      api('onHydrationStateChanged')((data) => {
+        if (data) state.config = { ...state.config, ...data };
+        schedulePreview();
+      });
     }
   }
 
@@ -239,5 +349,5 @@
     $('menu-tools-hydration')?.addEventListener('click', openPanel);
   });
 
-  window.vdHydrationPanel = { openPanel, closePanel, loadPanel };
+  window.vdHydrationPanel = { openPanel, closePanel, loadPanel, buildPreviewPayload, pushPreviewToFrame };
 })();

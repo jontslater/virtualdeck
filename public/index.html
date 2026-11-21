@@ -1808,8 +1808,8 @@
             <label><input type="checkbox" id="hydration-show-plate" checked /> Dark plate behind gauge</label>
             <label><input type="checkbox" id="hydration-match-theme" /> Match my VirtualDeck theme / skin</label>
             <div class="hydration-row">
-              <label for="hydration-size-input">Size</label>
-              <input type="number" id="hydration-size-input" min="80" max="400" value="200" style="width:80px" />
+            <label for="hydration-size-input">Size</label>
+            <input type="number" id="hydration-size-input" min="80" max="400" value="280" style="width:80px" />
               <label for="hydration-pos-x-input">X%</label>
               <input type="number" id="hydration-pos-x-input" min="0" max="100" value="50" style="width:60px" />
               <label for="hydration-pos-y-input">Y%</label>
@@ -1818,14 +1818,27 @@
           </details>
           <details class="hydration-section" id="hydration-sec-colors" open>
             <summary><h4 style="display:inline;margin:0">Colors</h4></summary>
-            <label for="hydration-fill-color">Fill / water</label>
-            <input type="color" id="hydration-fill-color" value="#4fc3f7" />
-            <label for="hydration-text-color-input">Text</label>
-            <input type="color" id="hydration-text-color-input" value="#ffffff" />
-            <label for="hydration-accent-color">Accent / chips</label>
-            <input type="color" id="hydration-accent-color" value="#29b6f6" />
-            <label for="hydration-plate-color">Plate (use hex in overlay)</label>
-            <input type="text" id="hydration-plate-color" value="rgba(12,16,24,0.82)" />
+            <div class="hydration-color-row">
+              <div class="hydration-color-field">
+                <label for="hydration-fill-color">Fill</label>
+                <input type="color" id="hydration-fill-color" value="#4fc3f7" />
+              </div>
+              <div class="hydration-color-field">
+                <label for="hydration-text-color-input">Text</label>
+                <input type="color" id="hydration-text-color-input" value="#ffffff" />
+              </div>
+              <div class="hydration-color-field">
+                <label for="hydration-accent-color">Accent</label>
+                <input type="color" id="hydration-accent-color" value="#29b6f6" />
+              </div>
+              <div class="hydration-color-field hydration-color-field--plate">
+                <label for="hydration-plate-color-hex">Plate</label>
+                <input type="color" id="hydration-plate-color-hex" value="#0c1018" />
+                <label for="hydration-plate-opacity" class="hydration-opacity-label">Opacity <span id="hydration-plate-opacity-val">82%</span></label>
+                <input type="range" id="hydration-plate-opacity" min="0" max="100" value="82" />
+              </div>
+            </div>
+            <input type="hidden" id="hydration-plate-color" value="rgba(12,16,24,0.82)" />
           </details>
           <details class="hydration-section" id="hydration-sec-effects" open>
             <summary><h4 style="display:inline;margin:0">Effects</h4></summary>
@@ -1899,7 +1912,9 @@
         </div>
         <aside class="hydration-preview-pane">
           <h4 style="margin:0 0 8px;font-size:13px">Live preview</h4>
-          <iframe id="hydration-preview-frame" title="Hydration overlay preview"></iframe>
+          <div class="hydration-preview-viewport">
+            <iframe id="hydration-preview-frame" title="Hydration overlay preview"></iframe>
+          </div>
         </aside>
       </div>
     </div>

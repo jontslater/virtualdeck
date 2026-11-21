@@ -88,7 +88,8 @@ function demoPayload(style, progress, goal, extra = {}) {
       plateColor: extra.plateColor || 'rgba(12,16,24,0.85)',
       backgroundColor: extra.plateColor || 'rgba(12,16,24,0.85)',
       showPlate: extra.showPlate !== false,
-      gaugeSize: 200,
+      gaugeSize: 280,
+      effectsIntensity: extra.effectsIntensity || 'medium',
       positionX: 50,
       positionY: 50,
       goalConfetti: true,
@@ -131,6 +132,23 @@ const demoRewards = `<option value="">— Keyword fallback —</option>
 <option value="rw1" data-reward-id="rw1" data-reward-title="Hydrate">Hydrate (100 pts)</option>
 <option value="rw2" data-reward-id="rw2" data-reward-title="Water Break">Water Break (50 pts)</option>`;
 
+const panelPreviewPayload = demoPayload('circular', 32, 64, { streak: 2, dailyStreak: 2 });
+
+async function wirePanelPreview() {
+  await page.evaluate((previewUrl) => {
+  const frame = document.getElementById('hydration-preview-frame');
+    if (frame) frame.src = previewUrl;
+  }, `${base}/hydration?preview=1`);
+  await page.waitForTimeout(400);
+  const frame = page.frames().find((f) => f.url().includes('/hydration'));
+  if (frame) {
+    await frame.evaluate((payload) => {
+      window.__hydrationDemoUpdate(payload);
+    }, panelPreviewPayload);
+    await page.waitForTimeout(350);
+  }
+}
+
 for (const sec of SECTIONS) {
   const hideOthers = SECTIONS.map((s) =>
     s.id === sec.id ? '' : `#${s.id}{opacity:0.35;max-height:52px;overflow:hidden;}`,
@@ -162,14 +180,16 @@ for (const sec of SECTIONS) {
       if (u) u.textContent = 'http://localhost:8080/hydration';
     });
   }
+  await wirePanelPreview();
   await page.locator(`#${sec.id}`).scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(outDir, sec.file) });
 }
 
 await page.setContent(panelShell(skinVars(minimalWhite)), { waitUntil: 'load' });
+await wirePanelPreview();
 await page.screenshot({ path: path.join(outDir, 'hydration_panel_full.png'), fullPage: true });
 
-const overlayPage = await browser.newPage({ viewport: { width: 960, height: 540 } });
+const overlayPage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 
 for (const bgName of Object.keys(BACKGROUNDS)) {
   for (const gauge of GAUGES) {
@@ -235,7 +255,7 @@ for (const [skinName, skin] of [
               plateColor: plate,
               backgroundColor: plate,
               showPlate: true,
-              gaugeSize: 200,
+              gaugeSize: 280,
               positionX: 50,
               positionY: 50,
               matchTheme: true,
@@ -248,21 +268,20 @@ for (const [skinName, skin] of [
   await overlayPage.screenshot({ path: path.join(outDir, `hydration_theme_match_${skinName}.png`) });
 }
 
-const fxPage = await browser.newPage({ viewport: { width: 960, height: 540 } });
-await fxPage.goto(`${base}/hydration`, { waitUntil: 'networkidle' });
+const fxPage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 
 const effectShots = [
-  { file: 'hydration_effect_sparkles.png', kind: 'sparkles' },
-  { file: 'hydration_effect_splash_ripple.png', kind: 'splash' },
-  { file: 'hydration_effect_bubbles.png', kind: 'bubbles' },
-  { file: 'hydration_effect_number_pop.png', kind: 'numpop' },
-  { file: 'hydration_effect_confetti_goal_met.png', kind: 'confetti' },
+  { file: 'hydration_effect_sparkles.png', kind: 'sparkle', wait: 420 },
+  { file: 'hydration_effect_splash_ripple.png', kind: 'splash', wait: 300 },
+  { file: 'hydration_effect_bubbles.png', kind: 'bubbles', wait: 520 },
+  { file: 'hydration_effect_number_pop.png', kind: 'numpop', wait: 240 },
+  { file: 'hydration_effect_confetti_goal_met.png', kind: 'confetti', wait: 480 },
 ];
 for (const shot of effectShots) {
-  await fxPage.goto(`${base}/hydration`, { waitUntil: 'networkidle' });
+  await fxPage.goto(`${base}/hydration?preview=1`, { waitUntil: 'networkidle' });
   await fxPage.evaluate(
     ({ kind, darkBg, brightBg }) => {
-      const payload = (style, progress) => ({
+      const basePayload = (style, progress) => ({
         current: progress,
         goal: 64,
         percentage: (progress / 64) * 100,
@@ -273,48 +292,41 @@ for (const shot of effectShots) {
           currentProgress: progress,
           fillColor: '#4fc3f7',
           waterColor: '#4fc3f7',
-          gaugeSize: 200,
+          accentColor: '#29b6f6',
+          gaugeSize: 280,
           positionX: 50,
-          positionY: 50,
+          positionY: 48,
           showPlate: true,
+          enableEffects: true,
+          effectsIntensity: 'high',
         },
       });
-      if (kind === 'sparkles') {
+      if (kind === 'sparkle') {
         document.body.style.background = darkBg;
-        window.__hydrationDemoUpdate(payload('circular', 28));
-        window.__hydrationDemoSparkle && window.__hydrationDemoSparkle();
+        window.__hydrationDemoUpdate(basePayload('circular', 28));
+        window.__hydrationDemoSparkle();
       } else if (kind === 'splash') {
         document.body.style.background = darkBg;
-        window.__hydrationDemoUpdate(payload('circular', 30));
-        const d = document.createElement('div');
-        d.className = 'fx-splash';
-        document.getElementById('effects-layer').appendChild(d);
+        window.__hydrationDemoUpdate(basePayload('circular', 30));
+        window.__hydrationDemoSplash();
       } else if (kind === 'bubbles') {
         document.body.style.background = brightBg;
-        window.__hydrationDemoUpdate(payload('bottle', 36));
-        const l = document.getElementById('effects-layer');
-        for (let i = 0; i < 8; i++) {
-          const b = document.createElement('div');
-          b.className = 'fx-bubble';
-          const sz = 8 + Math.random() * 10;
-          b.style.width = `${sz}px`;
-          b.style.height = `${sz}px`;
-          b.style.left = `${40 + Math.random() * 20}%`;
-          l.appendChild(b);
-        }
+        window.__hydrationDemoUpdate(basePayload('bottle', 36));
+        window.__hydrationDemoBubbles();
       } else if (kind === 'numpop') {
         document.body.style.background = darkBg;
-        window.__hydrationDemoUpdate(payload('horizontal', 40));
-        document.getElementById('hydration-stats-block')?.classList.add('fx-number-pop');
+        window.__hydrationDemoUpdate(basePayload('horizontal', 40));
+        window.__hydrationDemoNumberPop();
       } else if (kind === 'confetti') {
         document.body.style.background = darkBg;
-        window.__hydrationDemoUpdate(payload('circular', 64));
-        window.__hydrationDemoFx({ celebration: true, leveledUp: true });
+        window.__hydrationDemoUpdate(basePayload('circular', 64));
+        window.__hydrationDemoConfetti();
+        window.__hydrationDemoSparkle();
       }
     },
     { kind: shot.kind, darkBg: BACKGROUNDS.dark, brightBg: BACKGROUNDS.bright },
   );
-  await fxPage.waitForTimeout(350);
+  await fxPage.waitForTimeout(shot.wait);
   await fxPage.screenshot({ path: path.join(outDir, shot.file) });
 }
 
