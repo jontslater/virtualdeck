@@ -8,16 +8,36 @@ function escapeHtmlWs(text) {
 
 let watchStreakUiConfig = null;
 
+function tierBackgroundColorToInput(bg) {
+  if (!bg || String(bg).includes('gradient')) return '#4a148c';
+  const m = String(bg).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (!m) return '#4a148c';
+  const hex = (n) => Number(n).toString(16).padStart(2, '0');
+  return `#${hex(m[1])}${hex(m[2])}${hex(m[3])}`;
+}
+
+function inputColorToBackground(hex) {
+  if (!hex) return 'rgba(74, 20, 140, 0.94)';
+  const h = String(hex).replace('#', '');
+  if (h.length !== 6) return 'rgba(74, 20, 140, 0.94)';
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `linear-gradient(135deg, rgba(${r},${g},${b},0.96), rgba(${Math.max(0, r - 30)},${Math.max(0, g - 30)},${Math.max(0, b - 30)},0.92))`;
+}
+
 async function watchStreakOverlayUrl() {
+  let base = '';
   if (window.electronAPI?.getWatchStreakOverlayUrl) {
     const res = await window.electronAPI.getWatchStreakOverlayUrl();
     if (res?.success && res.url) return res.url;
   }
-  const base = window.electronAPI?.getOverlayUrl
-    ? await window.electronAPI.getOverlayUrl()
-  : 'http://localhost:8080/overlay';
-  const origin = String(base).replace(/\/overlay.*$/, '');
-  return `${origin}/watch-streak`;
+  if (window.electronAPI?.getOverlayUrl) {
+    base = await window.electronAPI.getOverlayUrl();
+  }
+  const origin = String(base || '').replace(/\/overlay.*$/, '');
+  if (origin) return `${origin}/watch-streak`;
+  return `${location.protocol}//${location.hostname}:8080/watch-streak`;
 }
 
 function openWatchStreakModal() {
@@ -92,19 +112,25 @@ function renderWatchStreakTiers() {
         <div class="ws-tier-colors">
           <label>Text <input type="color" class="ws-tier-text-color" value="${tier.textColor || '#ffffff'}" /></label>
           <label>Accent <input type="color" class="ws-tier-accent" value="${tier.accentColor || '#ffd54f'}" /></label>
+          <label>Card tint <input type="color" class="ws-tier-bg" value="${tierBackgroundColorToInput(tier.backgroundColor)}" /></label>
+        </div>
+        <div class="ws-tier-sound-row">
+          <label>Sound file
+            <input type="text" class="ws-tier-sound" value="${escapeHtmlWs(tier.soundFile || '')}" placeholder="sounds/my-streak.mp3" />
+          </label>
+          <button type="button" class="preference-button ws-tier-browse-sound">Browse…</button>
+          <input type="file" class="ws-tier-sound-file hidden" accept="audio/*" />
         </div>
         <label>Effect
           <select class="ws-tier-effect">
-            ${['glow', 'pulse', 'shine', 'flare', 'burst', 'epic']
+            ${['glow', 'pulse', 'shine', 'flare', 'burst', 'epic', 'confetti']
               .map((e) => `<option value="${e}" ${tier.effect === e ? 'selected' : ''}>${e}</option>`)
               .join('')}
           </select>
         </label>
-        <label>Sound file (sounds folder, optional)
-          <input type="text" class="ws-tier-sound" value="${escapeHtmlWs(tier.soundFile || '')}" placeholder="my-streak.mp3" />
-        </label>
-        <label>Volume
+        <label class="ws-tier-volume-label">Volume
           <input type="range" class="ws-tier-volume" min="0" max="100" value="${tier.soundVolume != null ? tier.soundVolume : 80}" />
+          <span class="ws-tier-volume-val">${tier.soundVolume != null ? tier.soundVolume : 80}%</span>
         </label>
         <button type="button" class="preference-button ws-tier-test" data-threshold="${tier.threshold}">Test this tier</button>
         <button type="button" class="preference-button ws-tier-remove">Remove tier</button>
@@ -123,7 +149,7 @@ function collectTierFromRow(row, baseTier = {}) {
     chatMessage: row.querySelector('.ws-tier-chat')?.value || '',
     textColor: row.querySelector('.ws-tier-text-color')?.value || '#ffffff',
     accentColor: row.querySelector('.ws-tier-accent')?.value || '#ffd54f',
-    backgroundColor: baseTier.backgroundColor,
+    backgroundColor: inputColorToBackground(row.querySelector('.ws-tier-bg')?.value),
     effect: row.querySelector('.ws-tier-effect')?.value || 'glow',
     soundFile: row.querySelector('.ws-tier-sound')?.value || '',
     soundVolume: parseInt(row.querySelector('.ws-tier-volume')?.value, 10) || 80,
@@ -256,6 +282,13 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('watch-streak-tiers-list')?.addEventListener('click', async (e) => {
+    const browse = e.target.closest('.ws-tier-browse-sound');
+    if (browse) {
+      const row = browse.closest('.watch-streak-tier-row');
+      const fileInput = row?.querySelector('.ws-tier-sound-file');
+      fileInput?.click();
+      return;
+    }
     const testBtn = e.target.closest('.ws-tier-test');
     if (testBtn) {
       const threshold = parseInt(testBtn.dataset.threshold, 10) || 10;
@@ -275,6 +308,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('watch-streak-simple-test')?.addEventListener('click', async () => {
     await window.electronAPI.testWatchStreakTier({ threshold: 12 });
+  });
+
+  document.getElementById('watch-streak-tiers-list')?.addEventListener('change', async (e) => {
+    const fileInput = e.target.closest('.ws-tier-sound-file');
+    if (!fileInput?.files?.[0]) return;
+    const row = fileInput.closest('.watch-streak-tier-row');
+    const text = row?.querySelector('.ws-tier-sound');
+    if (window.electronAPI?.saveAudioFileToSounds) {
+      const path = fileInput.files[0].path || '';
+      const res = await window.electronAPI.saveAudioFileToSounds({
+        originalPath: path,
+        fileName: fileInput.files[0].name,
+      });
+      if (res?.relativePath && text) text.value = res.relativePath;
+    } else if (text) {
+      text.value = fileInput.files[0].name;
+    }
+  });
+
+  document.getElementById('watch-streak-tiers-list')?.addEventListener('input', (e) => {
+    const vol = e.target.closest('.ws-tier-volume');
+    if (vol) {
+      const lbl = vol.closest('.ws-tier-volume-label')?.querySelector('.ws-tier-volume-val');
+      if (lbl) lbl.textContent = `${vol.value}%`;
+    }
   });
 
   window.electronAPI?.onWatchStreakAlertFired?.(() => loadWatchStreakLeadersUi());

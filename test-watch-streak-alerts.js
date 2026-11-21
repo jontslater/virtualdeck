@@ -18,7 +18,7 @@ assert.deepStrictEqual(TWITCH_REPORTED_WATCH_STREAK_MILESTONES.slice(0, 3), [3, 
 
 const cfg = migrateWatchStreakConfig({ enabled: true, tiers: [{ threshold: 5, textTemplate: 'five' }] });
 assert.strictEqual(cfg.tiers[0].textTemplate, 'five');
-assert.strictEqual(cfg.version, 1);
+assert.strictEqual(cfg.version, 2);
 
 const tiers = [
   { threshold: 3, textTemplate: 'a' },

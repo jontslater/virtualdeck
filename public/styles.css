@@ -5778,6 +5778,52 @@ body.resizing-chat * {
   margin-bottom: 10px;
   background: rgba(0, 0, 0, 0.15);
 }
+.watch-streak-tier-head {
+  display: block;
+  color: var(--text-primary, #f0f0f0);
+  text-decoration: none;
+  margin-bottom: 6px;
+}
+.watch-streak-tier-head strong {
+  color: var(--accent, #a6f34a);
+}
+.watch-streak-tier-body {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.watch-streak-tier-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-primary, #eaeaea);
+}
+.watch-streak-tier-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.watch-streak-tier-colors label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.ws-tier-sound-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+.ws-tier-sound-row label {
+  flex: 1;
+  min-width: 200px;
+}
+.ws-tier-volume-val {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--text-secondary, #a8b2c1);
+}
 .watch-streak-tier-preview {
   display: block;
   font-size: 12px;
