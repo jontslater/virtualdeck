@@ -271,75 +271,105 @@ for (const [skinName, skin] of [
 const fxPage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 
 const effectShots = [
-  { file: 'hydration_effect_sparkles.png', kind: 'sparkle', wait: 520 },
-  { file: 'hydration_effect_splash_ripple.png', kind: 'splash', wait: 450 },
-  { file: 'hydration_effect_bubbles.png', kind: 'bubbles', wait: 620 },
-  { file: 'hydration_effect_number_pop.png', kind: 'numpop', wait: 280 },
-  { file: 'hydration_effect_confetti_goal_met.png', kind: 'confetti', wait: 650 },
+  { file: 'hydration_effect_sparkles.png', kind: 'sparkle', style: 'circular', progress: 28, bg: 'dark', wait: 520 },
+  { file: 'hydration_effect_sparkles_bottle.png', kind: 'sparkle', style: 'bottle', progress: 36, bg: 'bright', wait: 520 },
+  { file: 'hydration_effect_sparkles_minimal.png', kind: 'sparkle', style: 'minimal', progress: 32, bg: 'dark', wait: 520 },
+  { file: 'hydration_effect_splash_ripple.png', kind: 'splash', style: 'circular', progress: 30, bg: 'dark', wait: 450 },
+  { file: 'hydration_effect_splash_bottle.png', kind: 'splash', style: 'bottle', progress: 34, bg: 'dark', wait: 450 },
+  { file: 'hydration_effect_bubbles.png', kind: 'bubbles', style: 'bottle', progress: 36, bg: 'bright', wait: 620 },
+  { file: 'hydration_effect_bubbles_minimal.png', kind: 'bubbles', style: 'minimal', progress: 40, bg: 'dark', wait: 620 },
+  { file: 'hydration_effect_number_pop.png', kind: 'numpop', style: 'horizontal', progress: 40, bg: 'dark', wait: 280 },
+  { file: 'hydration_effect_confetti_goal_met.png', kind: 'confetti', style: 'circular', progress: 64, bg: 'dark', wait: 650 },
+  { file: 'hydration_effect_confetti_goal_met_minimal.png', kind: 'confetti', style: 'minimal', progress: 64, bg: 'dark', wait: 650 },
 ];
 
-async function triggerEffectInPage(page, kind) {
+async function triggerEffectInPage(page, spec) {
+  const opts =
+    typeof spec === 'string'
+      ? { kind: spec, style: 'circular', progress: 40, bg: 'dark' }
+      : spec;
   await page.evaluate(
-    ({ kind, darkBg, brightBg }) => {
-      const basePayload = (style, progress) => ({
-        current: progress,
+    ({ kind, style, progress, bgKey, darkBg, brightBg }) => {
+      const background = bgKey === 'bright' ? brightBg : darkBg;
+      const basePayload = (gaugeStyle, oz) => ({
+        current: oz,
         goal: 64,
-        percentage: (progress / 64) * 100,
+        percentage: (oz / 64) * 100,
         units: 'oz',
         config: {
-          gaugeStyle: style,
+          gaugeStyle,
           streamGoal: 64,
-          currentProgress: progress,
+          currentProgress: oz,
           fillColor: '#4fc3f7',
           waterColor: '#4fc3f7',
           accentColor: '#29b6f6',
           gaugeSize: 280,
           positionX: 50,
           positionY: 48,
-          showPlate: true,
+          displayStyle: gaugeStyle === 'minimal' ? 'minimal' : 'plate',
+          showPlate: gaugeStyle !== 'minimal',
           enableEffects: true,
-          effectsIntensity: 'high',
+          effectsIntensity: 'medium',
           effectSet: ['sparkles', 'splash', 'numberPop'],
           goalConfetti: true,
         },
       });
+      const snap = () => window.__hydrationDemoSnapLevel(progress / 64);
+      const run = (gaugeStyle, oz) => {
+        window.__hydrationDemoUpdate(basePayload(gaugeStyle, oz));
+        snap();
+      };
       if (kind === 'sparkle') {
-        document.body.style.background = darkBg;
-        window.__hydrationDemoUpdate(basePayload('circular', 28));
+        document.body.style.background = background;
+        run(style, progress);
         window.__hydrationDemoSparkle();
       } else if (kind === 'splash') {
-        document.body.style.background = darkBg;
-        window.__hydrationDemoUpdate(basePayload('circular', 30));
+        document.body.style.background = background;
+        run(style, progress);
         window.__hydrationDemoSplash();
       } else if (kind === 'bubbles') {
-        document.body.style.background = brightBg;
-        window.__hydrationDemoUpdate(basePayload('bottle', 36));
+        document.body.style.background = background;
+        run(style, progress);
         window.__hydrationDemoBubbles();
       } else if (kind === 'numpop') {
-        document.body.style.background = darkBg;
-        window.__hydrationDemoUpdate(basePayload('horizontal', 40));
+        document.body.style.background = background;
+        run(style, progress);
         window.__hydrationDemoNumberPop();
       } else if (kind === 'confetti') {
-        document.body.style.background = darkBg;
-        window.__hydrationDemoUpdate(basePayload('circular', 64));
+        document.body.style.background = background;
+        run(style, progress);
         window.__hydrationDemoConfetti();
         window.__hydrationDemoSparkle();
       } else if (kind === 'idle') {
         document.body.style.background = darkBg;
-        window.__hydrationDemoUpdate(basePayload('circular', 40));
+        run(style, progress);
       } else if (kind === 'fill') {
         document.body.style.background = darkBg;
-        window.__hydrationDemoUpdate(basePayload('circular', 16));
+        run('circular', 16);
         window.__hydrationDemoFill(0.25, 0.7);
         window.__hydrationDemoSplash();
         window.__hydrationDemoSparkle();
       }
     },
-    { kind, darkBg: BACKGROUNDS.dark, brightBg: BACKGROUNDS.bright },
+    {
+      kind: opts.kind,
+      style: opts.style || 'circular',
+      progress: opts.progress ?? 40,
+      bgKey: opts.bg || 'dark',
+      darkBg: BACKGROUNDS.dark,
+      brightBg: BACKGROUNDS.bright,
+    },
+  );
+  await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      }),
   );
 }
 
-async function recordWebm(browser, kind, fileBase, durationMs = 3200) {
+async function recordWebm(browser, spec, fileBase, durationMs = 3200) {
+  const kind = typeof spec === 'string' ? spec : spec.kind;
   const videoDir = path.join(outDir, '_video_tmp');
   fs.mkdirSync(videoDir, { recursive: true });
   const context = await browser.newContext({
@@ -348,7 +378,9 @@ async function recordWebm(browser, kind, fileBase, durationMs = 3200) {
   });
   const vpage = await context.newPage();
   await vpage.goto(`${base}/hydration?preview=1`, { waitUntil: 'networkidle' });
-  await triggerEffectInPage(vpage, kind);
+  await triggerEffectInPage(vpage, spec);
+  const leadIn = kind === 'idle' ? 700 : 220;
+  await vpage.waitForTimeout(leadIn);
   await vpage.waitForTimeout(durationMs);
   const webmPath = path.join(outDir, `${fileBase}.webm`);
   await vpage.close();
@@ -363,13 +395,15 @@ async function recordWebm(browser, kind, fileBase, durationMs = 3200) {
   return webmPath;
 }
 
-async function webmToGif(webmPath, gifPath, fps = 12) {
+async function webmToGif(webmPath, gifPath, fps = 12, trimStartSec = 0.85) {
   const { execFileSync } = await import('child_process');
   const palette = webmPath.replace('.webm', '_palette.png');
   execFileSync(
     'ffmpeg',
     [
       '-y',
+      '-ss',
+      String(trimStartSec),
       '-i',
       webmPath,
       '-vf',
@@ -382,6 +416,8 @@ async function webmToGif(webmPath, gifPath, fps = 12) {
     'ffmpeg',
     [
       '-y',
+      '-ss',
+      String(trimStartSec),
       '-i',
       webmPath,
       '-i',
@@ -402,24 +438,32 @@ async function webmToGif(webmPath, gifPath, fps = 12) {
 }
 for (const shot of effectShots) {
   await fxPage.goto(`${base}/hydration?preview=1`, { waitUntil: 'networkidle' });
-  await triggerEffectInPage(fxPage, shot.kind);
+  await triggerEffectInPage(fxPage, shot);
   await fxPage.waitForTimeout(shot.wait);
   await fxPage.screenshot({ path: path.join(outDir, shot.file) });
 }
 
 const loopClips = [
-  { kind: 'idle', base: 'hydration_idle_wave' },
-  { kind: 'sparkle', base: 'hydration_loop_sparkles' },
-  { kind: 'splash', base: 'hydration_loop_splash' },
-  { kind: 'bubbles', base: 'hydration_loop_bubbles' },
-  { kind: 'confetti', base: 'hydration_loop_confetti_goal' },
-  { kind: 'fill', base: 'hydration_loop_fill_slosh' },
+  { kind: 'idle', style: 'circular', progress: 40, base: 'hydration_idle_wave' },
+  { kind: 'sparkle', style: 'circular', progress: 28, base: 'hydration_loop_sparkles' },
+  { kind: 'sparkle', style: 'bottle', progress: 36, base: 'hydration_loop_sparkles_bottle' },
+  { kind: 'sparkle', style: 'minimal', progress: 32, base: 'hydration_loop_sparkles_minimal' },
+  { kind: 'splash', style: 'circular', progress: 30, base: 'hydration_loop_splash' },
+  { kind: 'splash', style: 'bottle', progress: 34, base: 'hydration_loop_splash_bottle' },
+  { kind: 'bubbles', style: 'bottle', progress: 36, base: 'hydration_loop_bubbles' },
+  { kind: 'bubbles', style: 'minimal', progress: 40, base: 'hydration_loop_bubbles_minimal' },
+  { kind: 'confetti', style: 'circular', progress: 64, base: 'hydration_loop_confetti_goal' },
+  { kind: 'confetti', style: 'minimal', progress: 64, base: 'hydration_loop_confetti_goal_minimal' },
+  { kind: 'fill', style: 'circular', progress: 16, base: 'hydration_loop_fill_slosh' },
 ];
 for (const clip of loopClips) {
-  const dur = clip.kind === 'idle' ? 4000 : 3200;
-  const webm = await recordWebm(browser, clip.kind, clip.base, dur);
+  const dur = clip.kind === 'idle' ? 3600 : 3200;
+  const webm = await recordWebm(browser, clip, clip.base, dur);
   const gif = path.join(outDir, `${clip.base}.gif`);
-  if (fs.existsSync(webm)) await webmToGif(webm, gif);
+  if (fs.existsSync(webm)) {
+    const trim = clip.kind === 'idle' ? 1.05 : 0.9;
+    await webmToGif(webm, gif, 12, trim);
+  }
 }
 
 // Before state placeholder (legacy overlay style reference)

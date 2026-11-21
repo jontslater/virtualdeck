@@ -17,6 +17,7 @@
   let progressAnimStart = 0;
   let progressAnimFrom = 0;
   let progressAnimating = false;
+  let activeTweenGoal = NaN;
 
   let wavePhase1 = 0;
   let wavePhase2 = 0;
@@ -80,9 +81,11 @@
   function shadeColor(color, pct) {
     const p = parseHex(color);
     if (!p) return color;
-    const clamp = (n) => Math.max(0, Math.min(255, n));
-    const h = (n) => (n < 16 ? '0' : '') + n.toString(16);
-    return `#${h(clamp(p.r + pct))}${h(clamp(p.g + pct))}${h(clamp(p.b + pct))}`;
+    const amt = Number(pct);
+    if (!Number.isFinite(amt)) return color;
+    const clamp8 = (n) => Math.max(0, Math.min(255, Math.round(n)));
+    const byte = (n) => clamp8(n).toString(16).padStart(2, '0');
+    return `#${byte(p.r + amt)}${byte(p.g + amt)}${byte(p.b + amt)}`;
   }
 
   function formatAmount(n, units) {
@@ -91,21 +94,36 @@
 
   function effectIntensityScale() {
     const level = currentConfig.effectsIntensity || 'medium';
-    if (level === 'low') return 0.55;
+    if (level === 'low') return 0.6;
     if (level === 'high') return 1.55;
-    return 1;
+    return 1.2;
   }
 
   function fillColor() {
     return currentConfig.fillColor || currentConfig.waterColor || '#4fc3f7';
   }
 
-  function startProgressTween() {
+  function startProgressTween(forceImmediate) {
     if (prefersReducedMotion) {
       displayProgress = targetProgress;
+      progressAnimating = false;
+      activeTweenGoal = targetProgress;
       return;
     }
-    if (Math.abs(targetProgress - displayProgress) < 0.002) return;
+    if (Math.abs(targetProgress - displayProgress) < 0.002) {
+      displayProgress = targetProgress;
+      progressAnimating = false;
+      activeTweenGoal = targetProgress;
+      return;
+    }
+    if (
+      !forceImmediate &&
+      progressAnimating &&
+      Math.abs(activeTweenGoal - targetProgress) < 0.0001
+    ) {
+      return;
+    }
+    activeTweenGoal = targetProgress;
     progressAnimFrom = displayProgress;
     progressAnimStart = performance.now();
     progressAnimating = true;
@@ -179,10 +197,10 @@
 
     const n =
       kind === 'bubble'
-        ? Math.round(14 * scale)
+        ? Math.round(16 * scale)
         : kind === 'sparkle'
-          ? Math.round(18 * scale)
-          : Math.round(28 * scale);
+          ? Math.round(22 * scale)
+          : Math.round(32 * scale);
 
     const waterTop = Math.max(0.06, 1 - displayProgress + 0.04);
 
@@ -201,7 +219,8 @@
               : -(0.15 + Math.random() * 0.25) * scale,
         life: 1.4 + Math.random() * 0.9,
         maxLife: 2.3,
-        size: (kind === 'sparkle' ? 3 : kind === 'bubble' ? 5 : 3.5) * (0.7 + scale * 0.35) + Math.random() * 2,
+        size:
+          (kind === 'sparkle' ? 4.5 : kind === 'bubble' ? 6 : 4) * (0.85 + scale * 0.4) + Math.random() * 2.5,
         rot: Math.random() * Math.PI,
         color: palette[i % palette.length],
         twinkle: Math.random() * Math.PI,
@@ -296,8 +315,11 @@
         const tw = 0.55 + 0.45 * Math.sin(p.twinkle);
         ctx.fillStyle = '#ffffff';
         ctx.shadowColor = p.color;
-        ctx.shadowBlur = 8 * tw;
-        drawStar(ctx, px, py, p.size * (1 + tw * 0.5), p.twinkle);
+        ctx.shadowBlur = 14 * tw;
+        drawStar(ctx, px, py, p.size * (1 + tw * 0.65), p.twinkle);
+        ctx.globalAlpha = alpha * (0.85 + tw * 0.15);
+        ctx.fillStyle = p.color;
+        drawStar(ctx, px, py, p.size * 0.55 * tw, p.twinkle + 0.4);
       } else if (p.kind === 'bubble') {
         const g = ctx.createRadialGradient(px - p.size * 0.2, py - p.size * 0.2, 0, px, py, p.size);
         g.addColorStop(0, 'rgba(255,255,255,0.95)');
@@ -576,7 +598,11 @@
     }
     lastFrameTs = now;
     tickSimulation(dt);
-    drawFrame();
+    try {
+      drawFrame();
+    } catch (err) {
+      console.error('Hydration draw error', err);
+    }
     if (needsAnimationLoop() || displayProgress > 0) scheduleLoop();
   }
 
@@ -590,16 +616,29 @@
     if (!container) return;
     container.style.left = `${currentConfig.positionX ?? 50}%`;
     container.style.top = `${currentConfig.positionY ?? 50}%`;
-    const showPlate = currentConfig.showPlate !== false && currentConfig.displayStyle !== 'minimal';
+    const gaugeStyle = currentConfig.gaugeStyle || 'circular';
+    const isMinimalGauge = gaugeStyle === 'minimal';
+    const showPlate =
+      !isMinimalGauge && currentConfig.showPlate !== false && currentConfig.displayStyle !== 'minimal';
     const plate = document.getElementById('hydration-plate');
     if (plate) {
-      plate.classList.toggle('hidden', !showPlate);
-      plate.style.background = currentConfig.plateColor || currentConfig.backgroundColor || 'rgba(12,16,24,0.85)';
-      plate.style.borderRadius = `${currentConfig.borderRadius ?? 16}px`;
-      plate.style.border =
-        currentConfig.borderWidth > 0
-          ? `${currentConfig.borderWidth}px solid ${currentConfig.borderColor || '#fff'}`
-          : 'none';
+      plate.classList.toggle('hidden', !showPlate && !isMinimalGauge);
+      if (isMinimalGauge) {
+        plate.style.background = 'transparent';
+        plate.style.boxShadow = 'none';
+        plate.style.padding = '0';
+        plate.style.border = 'none';
+      } else {
+        plate.style.background =
+          currentConfig.plateColor || currentConfig.backgroundColor || 'rgba(12,16,24,0.85)';
+        plate.style.borderRadius = `${currentConfig.borderRadius ?? 16}px`;
+        plate.style.border =
+          currentConfig.borderWidth > 0
+            ? `${currentConfig.borderWidth}px solid ${currentConfig.borderColor || '#fff'}`
+            : 'none';
+        plate.style.boxShadow = '0 8px 28px rgba(0,0,0,0.45)';
+        plate.style.padding = '14px 20px 16px';
+      }
     }
     const size = currentConfig.gaugeSize || 280;
     document.querySelectorAll('[data-gauge-canvas]').forEach((c) => {
@@ -658,14 +697,24 @@
     if (chips) chips.classList.toggle('hidden', currentConfig.gaugeStyle === 'minimal');
   }
 
+  function syncLiquidLevel(pct, animate) {
+    const next = Math.min(1, Math.max(0, pct));
+    if (Math.abs(targetProgress - next) > 0.0001) {
+      targetProgress = next;
+      if (animate) startProgressTween();
+      else {
+        displayProgress = next;
+        progressAnimating = false;
+      }
+    } else if (!progressAnimating && Math.abs(displayProgress - next) > 0.0001) {
+      displayProgress = next;
+    }
+  }
+
   function render() {
     const pct = state.goal > 0 ? Math.min(1, state.current / state.goal) : 0;
-    if (Math.abs(targetProgress - pct) > 0.0001) {
-      targetProgress = pct;
-      startProgressTween();
-    } else if (!progressAnimating) {
-      displayProgress = pct;
-    }
+    const shouldAnimate = !prefersReducedMotion;
+    syncLiquidLevel(pct, shouldAnimate);
     updateText();
     scheduleLoop();
   }
@@ -702,8 +751,8 @@
   window.__hydrationDemoUpdate = (data) => updateHydration(data, data);
   window.__hydrationDemoFx = (opts) => triggerEffects(opts || { leveledUp: true });
   window.__hydrationDemoSparkle = () => {
-    glowBoost = Math.max(glowBoost, 0.5);
-    spawnInWater('sparkle', 1.2);
+    glowBoost = Math.max(glowBoost, 0.75);
+    spawnInWater('sparkle', 1.35);
     scheduleLoop();
   };
   window.__hydrationDemoSplash = () => {
@@ -725,10 +774,14 @@
   window.__hydrationDemoFill = (from, to) => {
     displayProgress = from;
     targetProgress = to;
-    startProgressTween();
+    startProgressTween(true);
     scheduleLoop();
   };
-
+  window.__hydrationDemoSnapLevel = (pct) => {
+    syncLiquidLevel(pct, false);
+    drawFrame();
+    scheduleLoop();
+  };
   if (!isPreviewMode()) connectWebSocket();
   applyLayout();
   scheduleLoop();
