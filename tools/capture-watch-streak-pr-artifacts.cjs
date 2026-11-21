@@ -189,6 +189,12 @@ async function captureElectronUi() {
   await page.setViewportSize({ width: 1280, height: 900 });
 
   await page.evaluate(async () => {
+    try {
+      localStorage.setItem('vd_hide_twitch_banner', '1');
+    } catch (e) {
+      /* ignore */
+    }
+    document.getElementById('vd-twitch-conn-banner')?.remove();
     document.getElementById('first-run-twitch-popup')?.classList.add('hidden');
     document.getElementById('welcome-popup-dismiss')?.click();
     const modalEl = document.querySelector('.watch-streak-modal');

@@ -5745,6 +5745,35 @@ body.resizing-chat * {
   background: #dc2626;
 }
 
+/* Tools modals (Watch Streak, Raid Favorites) — above Twitch connect banner (10050) */
+#watch-streak-settings-modal,
+#raid-favorites-modal {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 11050;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+#watch-streak-settings-modal.hidden,
+#raid-favorites-modal.hidden {
+  display: none;
+}
+
+#watch-streak-settings-modal .modal-content,
+#raid-favorites-modal .modal-content {
+  z-index: 11051;
+  position: relative;
+}
+
 /* Watch Streak Alerts */
 .watch-streak-modal {
   max-width: 920px;

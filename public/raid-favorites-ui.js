@@ -5,6 +5,11 @@ let raidFavoritesDragLogin = null;
 function openRaidFavoritesModal() {
   const modal = document.getElementById('raid-favorites-modal');
   if (!modal) return;
+  try {
+    document.getElementById('vd-twitch-conn-banner')?.remove();
+  } catch (e) {
+    /* ignore */
+  }
   modal.classList.remove('hidden');
   refreshRaidFavoritesView();
 }

@@ -63,9 +63,18 @@ async function watchStreakOverlayUrl() {
   return `${location.protocol}//${location.hostname}:8080/watch-streak`;
 }
 
+function dismissTwitchConnectBannerForToolsModal() {
+  try {
+    document.getElementById('vd-twitch-conn-banner')?.remove();
+  } catch (e) {
+    /* ignore */
+  }
+}
+
 function openWatchStreakModal() {
   const modal = document.getElementById('watch-streak-settings-modal');
   if (!modal) return;
+  dismissTwitchConnectBannerForToolsModal();
   modal.classList.remove('hidden');
   loadWatchStreakSettingsUi();
 }
