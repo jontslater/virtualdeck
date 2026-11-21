@@ -1,0 +1,123 @@
+#hydration-panel-modal .hydration-layout {
+  display: grid;
+  grid-template-columns: 1fr minmax(280px, 340px);
+  gap: 20px;
+  max-height: calc(100vh - 160px);
+  overflow: hidden;
+}
+#hydration-panel-modal .hydration-scroll {
+  overflow-y: auto;
+  padding-right: 8px;
+  max-height: calc(100vh - 180px);
+}
+#hydration-panel-modal .hydration-section {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--border-color, rgba(255,255,255,0.08));
+}
+#hydration-panel-modal .hydration-section h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+#hydration-panel-modal label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+}
+#hydration-panel-modal input[type="text"],
+#hydration-panel-modal input[type="number"],
+#hydration-panel-modal select,
+#hydration-panel-modal textarea {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #444);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+#hydration-panel-modal .hydration-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+#hydration-panel-modal .hydration-preview-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+}
+.hydration-preview-viewport {
+  height: 300px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #1a2838, #0d1218);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+#hydration-preview-frame {
+  width: 960px;
+  height: 540px;
+  border: none;
+  background: transparent;
+  transform: scale(0.55);
+  transform-origin: center center;
+  pointer-events: none;
+}
+.hydration-color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-start;
+}
+.hydration-color-field {
+  flex: 1 1 100px;
+  min-width: 88px;
+}
+.hydration-color-field input[type="color"] {
+  width: 100%;
+  height: 36px;
+  padding: 2px;
+  margin-bottom: 0;
+}
+.hydration-color-field--plate {
+  flex: 1 1 140px;
+}
+.hydration-opacity-label {
+  font-size: 11px;
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+#hydration-panel-modal .hydration-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+#hydration-panel-modal .hydration-actions button {
+  flex: 1 1 auto;
+  min-width: 100px;
+}
+#hydration-reward-scope-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 6px;
+}
+@media (max-width: 900px) {
+  #hydration-panel-modal .hydration-layout {
+    grid-template-columns: 1fr;
+  }
+}
