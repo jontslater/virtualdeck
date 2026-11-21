@@ -5745,6 +5745,57 @@ body.resizing-chat * {
   background: #dc2626;
 }
 
+/* Watch Streak Alerts */
+.watch-streak-modal {
+  max-width: 920px;
+  width: 95%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.watch-streak-section {
+  margin: 16px 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.watch-streak-section h3 {
+  margin: 0 0 8px 0;
+  font-size: 1rem;
+  color: var(--accent, #a6f34a);
+}
+.watch-streak-url {
+  display: block;
+  padding: 8px 10px;
+  margin: 8px 0;
+  background: var(--bg-secondary, #1a1a1a);
+  border-radius: 6px;
+  word-break: break-all;
+  font-size: 12px;
+}
+.watch-streak-tier-row {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: rgba(0, 0, 0, 0.15);
+}
+.watch-streak-tier-preview {
+  display: block;
+  font-size: 12px;
+  opacity: 0.75;
+  margin-top: 4px;
+}
+.watch-streak-leaders-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.watch-streak-leaders-table th,
+.watch-streak-leaders-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 /* Raid Favorites */
 .raid-favorites-modal {
   max-width: 960px;

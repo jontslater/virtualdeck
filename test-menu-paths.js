@@ -24,6 +24,7 @@ assert.ok(pre.includes('restore-daily-checkins'), 'preload check-in restore IPC'
 assert.ok(pre.includes('backup-deck-layout'), 'preload deck layout backup IPC');
 assert.ok(pre.includes('restore-deck-layout'), 'preload deck layout restore IPC');
 
+assert.ok(html.includes('menu-tools-watch-streak'), 'tools menu watch streak alerts');
 assert.ok(html.includes('menu-tools-deck-backup'), 'tools menu backup deck layout');
 assert.ok(html.includes('menu-tools-checkins-backup'), 'tools menu backup check-ins');
 assert.ok(html.includes('preferences-deck-backup'), 'preferences backup deck layout');

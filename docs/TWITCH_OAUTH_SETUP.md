@@ -16,7 +16,7 @@ Device Code Grant is enabled for public clients on Twitch; no separate toggle is
 
 ### Scopes
 
-VirtualDeck requests the scopes in `lib/twitch-oauth-scopes.js` (chat, channel points, raids, etc.). Users approve these on Twitch during login.
+VirtualDeck requests the scopes in `lib/twitch-oauth-scopes.js` (chat, `user:read:chat` for watch-streak EventSub, channel points, raids, etc.). Users approve these on Twitch during login.
 
 ## End-user experience
 

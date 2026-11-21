@@ -63,6 +63,7 @@
           <button id="menu-tools-overlay" class="menu-dropdown-item" role="menuitem">Overlay Controls</button>
           <button id="menu-tools-alerts" class="menu-dropdown-item" role="menuitem">Alert Widget</button>
           <button id="menu-tools-raid-favorites" class="menu-dropdown-item" role="menuitem">Raid Favorites</button>
+          <button id="menu-tools-watch-streak" class="menu-dropdown-item" role="menuitem">Watch Streak Alerts…</button>
           <div class="menu-divider"></div>
           <div class="menu-dropdown-section-label" style="padding: 6px 12px 4px; font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.04em;">Raven AI</div>
           <button id="menu-tools-raven-start" class="menu-dropdown-item" role="menuitem">Start Raven AI</button>
@@ -381,6 +382,13 @@
             <div class="option-title">Speak (TTS)</div>
             <div class="option-description">Raven speaks custom text (aiAudio overlay only)</div>
             <div class="option-note" style="font-size: 11px; color: #4fc3f7; margin-top: 4px;">Requires Pro AI + Raven running</div>
+          </div>
+        </button>
+        <button class="selection-option" data-type="replay-watch-streak">
+          <div class="option-icon">🔥</div>
+          <div class="option-content">
+            <div class="option-title">Replay Watch Streak Alert</div>
+            <div class="option-description">Replay the most recent watch streak overlay alert</div>
           </div>
         </button>
         <button class="selection-option" data-type="macro">
@@ -1775,6 +1783,68 @@
     </div>
   </div>
 
+  <!-- Watch Streak Alerts Modal -->
+  <div id="watch-streak-settings-modal" class="hidden">
+    <div class="modal-content preferences-modal-content watch-streak-modal">
+      <div class="modal-header">
+        <h2>Watch Streak Alerts</h2>
+        <button id="watch-streak-settings-close" class="modal-close" type="button">✕</button>
+      </div>
+      <div id="watch-streak-scope-warning" class="daily-checkin-eventsub-warning" style="display: none; margin-bottom: 12px; padding: 10px; background: rgba(255, 152, 0, 0.12); border: 1px solid rgba(255, 152, 0, 0.45); border-radius: 6px; font-size: 12px; color: var(--text-primary);"></div>
+      <div class="preference-item">
+        <label class="checkbox-label">
+          <input type="checkbox" id="watch-streak-enabled" />
+          Enable watch streak milestone alerts
+        </label>
+      </div>
+      <div class="preference-item">
+        <label class="checkbox-label">
+          <input type="checkbox" id="watch-streak-simple-mode" />
+          Same alert for every streak
+        </label>
+        <small>When off, each milestone tier uses its own look, sound, and chat reply.</small>
+      </div>
+      <section class="watch-streak-section">
+        <h3>Browser source</h3>
+        <p class="raid-muted">Add this URL as an OBS browser source (transparent background).</p>
+        <code id="watch-streak-overlay-url" class="watch-streak-url"></code>
+        <button type="button" id="watch-streak-copy-url" class="preference-button">Copy overlay URL</button>
+      </section>
+      <section id="watch-streak-per-tier-panel" class="watch-streak-section">
+        <h3>Milestone tiers</h3>
+        <p class="raid-muted">Defaults follow Twitch share milestones (3, 5, 10, …). Alerts escalate for bigger streaks.</p>
+        <div id="watch-streak-tiers-list"></div>
+        <button type="button" id="watch-streak-add-tier" class="preference-button">Add tier</button>
+      </section>
+      <section id="watch-streak-simple-tier-panel" class="watch-streak-section" style="display: none;">
+        <h3>Unified alert</h3>
+        <label>Alert text <input type="text" id="watch-streak-simple-text" class="preference-input" style="width: 100%;" /></label>
+        <label>Chat reply <input type="text" id="watch-streak-simple-chat" class="preference-input" style="width: 100%;" /></label>
+        <label>Effect
+          <select id="watch-streak-simple-effect">
+            <option value="glow">glow</option>
+            <option value="pulse">pulse</option>
+            <option value="shine">shine</option>
+            <option value="flare">flare</option>
+            <option value="burst">burst</option>
+            <option value="epic">epic</option>
+          </select>
+        </label>
+        <label>Sound file <input type="text" id="watch-streak-simple-sound" class="preference-input" /></label>
+        <label>Volume <input type="range" id="watch-streak-simple-volume" min="0" max="100" value="80" /></label>
+        <button type="button" id="watch-streak-simple-test" class="preference-button">Test alert</button>
+      </section>
+      <section class="watch-streak-section">
+        <h3>Top streakers (shared in chat)</h3>
+        <div id="watch-streak-leaders-list"></div>
+        <button type="button" id="watch-streak-clear-leaders" class="preference-button">Clear log</button>
+      </section>
+      <div class="watch-streak-actions">
+        <button type="button" id="watch-streak-save" class="preference-button primary">Save settings</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Raid Favorites Modal -->
   <div id="raid-favorites-modal" class="hidden">
     <div class="modal-content preferences-modal-content raid-favorites-modal">
@@ -2995,6 +3065,7 @@
   <script src="macro-button-picker.js"></script>
   <script src="macros-ui.js"></script>
   <script src="raid-favorites-ui.js"></script>
+  <script src="watch-streak-ui.js"></script>
   <script src="ai-audio-modal.js"></script>
   <script src="../TwitchConnected/tc.js"></script>
 </body>
