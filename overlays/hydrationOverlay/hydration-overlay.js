@@ -203,13 +203,21 @@
           : Math.round(32 * scale);
 
     const waterTop = Math.max(0.06, 1 - displayProgress + 0.04);
+    const isMinimal = (currentConfig.gaugeStyle || '') === 'minimal';
 
     for (let i = 0; i < n; i++) {
-      const baseY = waterTop + Math.random() * Math.max(0.08, 0.96 - waterTop);
+      let x = 0.12 + Math.random() * 0.76;
+      let y = waterTop + Math.random() * Math.max(0.08, 0.96 - waterTop);
+      if (isMinimal) {
+        for (let t = 0; t < 8 && particleNormInTextDeadZone(x, y); t++) {
+          x = 0.1 + Math.random() * 0.8;
+          y = waterTop + Math.random() * Math.max(0.08, 0.96 - waterTop);
+        }
+      }
       particles.push({
         kind,
-        x: 0.12 + Math.random() * 0.76,
-        y: baseY,
+        x,
+        y,
         vx: (Math.random() - 0.5) * (kind === 'confetti' ? 0.35 : 0.08) * scale,
         vy:
           kind === 'bubble'
@@ -287,6 +295,16 @@
     return { ctx, w, h };
   }
 
+  function particleNormInTextDeadZone(x, y) {
+    const nx = (x - 0.5) / 0.36;
+    const ny = (y - 0.5) / 0.2;
+    return nx * nx + ny * ny < 1;
+  }
+
+  function particleInTextDeadZone(px, py, w, h) {
+    return particleNormInTextDeadZone(px / w, py / h);
+  }
+
   function drawParticles(ctx, w, h, progress, mode) {
     const level =
       mode === 'horizontal'
@@ -303,6 +321,9 @@
         inside = px <= w * progress + 2 && py <= h;
       } else if (mode === 'vertical') {
         inside = py >= h * (1 - progress) - 2;
+      } else if (mode === 'minimal') {
+        inside = py >= h * (1 - progress) - 4;
+        if (inside && particleInTextDeadZone(px, py, w, h)) inside = false;
       } else {
         inside = py >= h * (1 - progress) - 4;
       }
@@ -353,7 +374,7 @@
     ctx.fill();
   }
 
-  function drawWaterFillBottom(ctx, w, h, progress) {
+  function drawWaterFillBottom(ctx, w, h, progress, particleMode = 'circular') {
     if (progress <= 0.001) return;
     const fill = fillColor();
     const amp = waveAmplitude();
@@ -391,7 +412,9 @@
       ctx.stroke();
     }
 
-    drawParticles(ctx, w, h, progress, 'circular');
+    if (particleMode && particleMode !== 'none') {
+      drawParticles(ctx, w, h, progress, particleMode);
+    }
   }
 
   function drawCircular() {
@@ -531,34 +554,42 @@
     if (wrap) wrap.style.setProperty('--minimal-size', `${size}px`);
   }
 
-  function drawMinimalFx() {
-    const canvas = document.getElementById('minimal-fx-canvas');
+  function drawMinimalWater() {
+    const canvas = document.getElementById('minimal-water-canvas');
     if (!canvas) return;
     const { ctx, w, h } = setupCanvas(canvas);
+    const pctState = state.goal > 0 ? Math.min(1, state.current / state.goal) : 0;
+    const waterLevel = Math.max(pctState, displayProgress);
     ctx.clearRect(0, 0, w, h);
     ctx.save();
+    const basinR = Math.min(w, h) * 0.48;
     ctx.beginPath();
-    ctx.arc(w / 2, h / 2, Math.min(w, h) * 0.42, 0, Math.PI * 2);
+    ctx.arc(w / 2, h / 2, basinR, 0, Math.PI * 2);
     ctx.clip();
-    if (glowBoost > 0) {
-      ctx.fillStyle = `rgba(79, 195, 247, ${0.08 * glowBoost})`;
-      ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+    ctx.fillRect(0, 0, w, h);
+    if (waterLevel > 0.001) {
+      drawWaterFillBottom(ctx, w, h, waterLevel, 'minimal');
     }
-    const pct = state.goal > 0 ? Math.min(1, state.current / state.goal) : displayProgress;
-    drawParticles(ctx, w, h, Math.max(pct, displayProgress), 'circular');
-    if (!prefersReducedMotion && pct > 0.02) {
-      const r = Math.min(w, h) * 0.38;
-      const start = -Math.PI / 2;
-      const end = start + Math.PI * 2 * pct;
-      const band = 0.55 + Math.sin(shimmerPhase) * 0.12;
-      const shimStart = Math.max(start, end - band);
-      ctx.strokeStyle = `rgba(255,255,255,${0.14 + glowBoost * 0.18})`;
-      ctx.lineWidth = 10;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.arc(w / 2, h / 2, r, shimStart, end);
-      ctx.stroke();
-    }
+    ctx.restore();
+  }
+
+  function drawMinimalArcShimmer(pct) {
+    const canvas = document.getElementById('minimal-water-canvas');
+    if (!canvas || prefersReducedMotion || pct <= 0.02) return;
+    const { ctx, w, h } = setupCanvas(canvas);
+    const r = Math.min(w, h) * 0.47;
+    const start = -Math.PI / 2;
+    const end = start + Math.PI * 2 * pct;
+    const band = 0.55 + Math.sin(shimmerPhase) * 0.12;
+    const shimStart = Math.max(start, end - band);
+    ctx.save();
+    ctx.strokeStyle = `rgba(255,255,255,${0.12 + glowBoost * 0.15})`;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, r, shimStart, end);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -571,7 +602,8 @@
     else if (style === 'minimal') {
       const pct = state.goal > 0 ? Math.min(1, state.current / state.goal) : 0;
       updateMinimalRing(pct);
-      drawMinimalFx();
+      drawMinimalWater();
+      drawMinimalArcShimmer(pct);
     }
   }
 

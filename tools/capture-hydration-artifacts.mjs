@@ -123,6 +123,8 @@ const BACKGROUNDS = {
 
 fs.mkdirSync(outDir, { recursive: true });
 
+const minimalOnly = process.argv.includes('--minimal-only');
+
 const { srv, base } = await startStaticServer();
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
@@ -149,7 +151,7 @@ async function wirePanelPreview() {
   }
 }
 
-for (const sec of SECTIONS) {
+if (!minimalOnly) for (const sec of SECTIONS) {
   const hideOthers = SECTIONS.map((s) =>
     s.id === sec.id ? '' : `#${s.id}{opacity:0.35;max-height:52px;overflow:hidden;}`,
   ).join('');
@@ -185,13 +187,15 @@ for (const sec of SECTIONS) {
   await page.screenshot({ path: path.join(outDir, sec.file) });
 }
 
-await page.setContent(panelShell(skinVars(minimalWhite)), { waitUntil: 'load' });
-await wirePanelPreview();
-await page.screenshot({ path: path.join(outDir, 'hydration_panel_full.png'), fullPage: true });
+if (!minimalOnly) {
+  await page.setContent(panelShell(skinVars(minimalWhite)), { waitUntil: 'load' });
+  await wirePanelPreview();
+  await page.screenshot({ path: path.join(outDir, 'hydration_panel_full.png'), fullPage: true });
+}
 
-const overlayPage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const overlayPage = minimalOnly ? null : await browser.newPage({ viewport: { width: 1280, height: 720 } });
 
-for (const bgName of Object.keys(BACKGROUNDS)) {
+if (!minimalOnly) for (const bgName of Object.keys(BACKGROUNDS)) {
   for (const gauge of GAUGES) {
     for (const st of STATES) {
       await overlayPage.goto(`${base}/hydration`, { waitUntil: 'networkidle' });
@@ -209,25 +213,27 @@ for (const bgName of Object.keys(BACKGROUNDS)) {
   }
 }
 
-await overlayPage.goto(`${base}/hydration`, { waitUntil: 'networkidle' });
-await overlayPage.evaluate(
-  ({ bg, payload }) => {
-    document.body.style.background = bg;
-    window.__hydrationDemoUpdate(payload);
-  },
-  {
-    bg: BACKGROUNDS.dark,
-    payload: demoPayload('circular', 40, 64, {
-      fillColor: '#ff6b9d',
-      accentColor: '#ffc107',
-      textColor: '#ffffff',
-      plateColor: 'rgba(40,0,60,0.88)',
-    }),
-  },
-);
-await overlayPage.screenshot({ path: path.join(outDir, 'hydration_custom_colors.png') });
+if (!minimalOnly) {
+  await overlayPage.goto(`${base}/hydration`, { waitUntil: 'networkidle' });
+  await overlayPage.evaluate(
+    ({ bg, payload }) => {
+      document.body.style.background = bg;
+      window.__hydrationDemoUpdate(payload);
+    },
+    {
+      bg: BACKGROUNDS.dark,
+      payload: demoPayload('circular', 40, 64, {
+        fillColor: '#ff6b9d',
+        accentColor: '#ffc107',
+        textColor: '#ffffff',
+        plateColor: 'rgba(40,0,60,0.88)',
+      }),
+    },
+  );
+  await overlayPage.screenshot({ path: path.join(outDir, 'hydration_custom_colors.png') });
+}
 
-for (const [skinName, skin] of [
+if (!minimalOnly) for (const [skinName, skin] of [
   ['christmas', christmas],
   ['minimal_white', minimalWhite],
 ]) {
@@ -436,7 +442,11 @@ async function webmToGif(webmPath, gifPath, fps = 12, trimStartSec = 0.85) {
     /* ignore */
   }
 }
-for (const shot of effectShots) {
+const shotsToRun = minimalOnly
+  ? effectShots.filter((s) => s.file.includes('minimal'))
+  : effectShots;
+
+for (const shot of shotsToRun) {
   await fxPage.goto(`${base}/hydration?preview=1`, { waitUntil: 'networkidle' });
   await triggerEffectInPage(fxPage, shot);
   await fxPage.waitForTimeout(shot.wait);
@@ -445,6 +455,7 @@ for (const shot of effectShots) {
 
 const loopClips = [
   { kind: 'idle', style: 'circular', progress: 40, base: 'hydration_idle_wave' },
+  { kind: 'idle', style: 'minimal', progress: 40, base: 'hydration_idle_wave_minimal' },
   { kind: 'sparkle', style: 'circular', progress: 28, base: 'hydration_loop_sparkles' },
   { kind: 'sparkle', style: 'bottle', progress: 36, base: 'hydration_loop_sparkles_bottle' },
   { kind: 'sparkle', style: 'minimal', progress: 32, base: 'hydration_loop_sparkles_minimal' },
@@ -456,7 +467,11 @@ const loopClips = [
   { kind: 'confetti', style: 'minimal', progress: 64, base: 'hydration_loop_confetti_goal_minimal' },
   { kind: 'fill', style: 'circular', progress: 16, base: 'hydration_loop_fill_slosh' },
 ];
-for (const clip of loopClips) {
+const loopsToRun = minimalOnly
+  ? loopClips.filter((c) => c.style === 'minimal')
+  : loopClips;
+
+for (const clip of loopsToRun) {
   const dur = clip.kind === 'idle' ? 3600 : 3200;
   const webm = await recordWebm(browser, clip, clip.base, dur);
   const gif = path.join(outDir, `${clip.base}.gif`);
@@ -467,17 +482,19 @@ for (const clip of loopClips) {
 }
 
 // Before state placeholder (legacy overlay style reference)
-await overlayPage.goto(`${base}/hydration`, { waitUntil: 'networkidle' });
-await overlayPage.evaluate(() => {
-  document.body.style.background = '#222';
-  window.__hydrationDemoUpdate({
-    current: 0,
-    goal: 64,
-    percentage: 0,
-    config: { gaugeStyle: 'circular', textColor: '#aaa', fillColor: '#4fc3f7', gaugeSize: 200, positionX: 50, positionY: 50, showPlate: false },
+if (!minimalOnly) await overlayPage.goto(`${base}/hydration`, { waitUntil: 'networkidle' });
+if (!minimalOnly) {
+  await overlayPage.evaluate(() => {
+    document.body.style.background = '#222';
+    window.__hydrationDemoUpdate({
+      current: 0,
+      goal: 64,
+      percentage: 0,
+      config: { gaugeStyle: 'circular', textColor: '#aaa', fillColor: '#4fc3f7', gaugeSize: 200, positionX: 50, positionY: 50, showPlate: false },
+    });
   });
-});
-await overlayPage.screenshot({ path: path.join(outDir, 'hydration_before_legacy_empty.png') });
+  await overlayPage.screenshot({ path: path.join(outDir, 'hydration_before_legacy_empty.png') });
+}
 
 const manifest = fs
   .readdirSync(outDir)
