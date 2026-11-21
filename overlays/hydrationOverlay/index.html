@@ -87,26 +87,23 @@
       pointer-events: none;
       z-index: 2;
     }
-    .minimal-inner::before {
-      content: '';
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      width: 74%;
-      height: 34%;
-      border-radius: 999px;
-      background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.35) 55%, rgba(0, 0, 0, 0) 100%);
-      z-index: -1;
-    }
     .minimal-inner .hydration-text {
+      font-weight: 900;
+      letter-spacing: 0.02em;
+      paint-order: stroke fill;
+      -webkit-text-stroke: 2px #000000;
       text-shadow:
-        0 0 12px rgba(0, 0, 0, 0.95),
-        0 2px 6px rgba(0, 0, 0, 0.9),
-        0 0 2px rgba(0, 0, 0, 1);
+        1px 0 0 #000,
+        -1px 0 0 #000,
+        0 1px 0 #000,
+        0 -1px 0 #000,
+        1.5px 1.5px 0 #000,
+        -1.5px -1.5px 0 #000,
+        1.5px -1.5px 0 #000,
+        -1.5px 1.5px 0 #000;
     }
-    #minimal-amount-main { font-size: 2rem; line-height: 1.1; }
-    #minimal-amount-sub { font-size: 1rem; opacity: 0.92; margin-top: 4px; }
+    #minimal-amount-main { font-size: 2.2rem; line-height: 1.08; }
+    #minimal-amount-sub { font-size: 1.05rem; margin-top: 5px; opacity: 1; }
     .fx-number-pop #hydration-amount-main,
     #minimal-ring-wrap.fx-number-pop #minimal-amount-main {
       animation: num-pop 0.55s ease-out;
@@ -139,10 +136,7 @@
       <div data-gauge="minimal" class="hidden">
         <div id="minimal-ring-wrap">
           <svg class="minimal-svg" viewBox="0 0 200 200" aria-hidden="true">
-            <circle cx="100" cy="100" r="84" fill="none" stroke="none" />
-            <circle id="minimal-track-arc" cx="100" cy="100" r="84" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="12" />
-            <circle id="minimal-progress-arc" cx="100" cy="100" r="84" fill="none" stroke="#4fc3f7" stroke-width="12" stroke-linecap="round"
-              stroke-dasharray="0 528" transform="rotate(-90 100 100)" />
+            <circle id="minimal-border-ring" cx="100" cy="100" r="84" fill="none" stroke="rgba(255,255,255,0.42)" stroke-width="3" />
           </svg>
           <canvas id="minimal-water-canvas" width="200" height="200"></canvas>
           <div class="minimal-inner">

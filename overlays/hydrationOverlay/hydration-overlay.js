@@ -535,21 +535,17 @@
     ctx.stroke();
   }
 
-  function updateMinimalRing(pct) {
-    const arc = document.getElementById('minimal-progress-arc');
+  function updateMinimalRing() {
+    const ring = document.getElementById('minimal-border-ring');
     const wrap = document.getElementById('minimal-ring-wrap');
-    const track = document.getElementById('minimal-track-arc');
-    if (!arc) return;
-    const r = 84;
-    const circ = 2 * Math.PI * r;
-    const filled = circ * Math.min(1, Math.max(0, pct));
-    arc.setAttribute('stroke-dasharray', `${filled} ${circ - filled}`);
+    if (!ring) return;
     const c = fillColor();
-    arc.setAttribute('stroke', c);
     const flash = outlineFlash;
-    arc.setAttribute('stroke-width', String(12 + flash * 4));
-    arc.style.filter = flash > 0 ? `drop-shadow(0 0 ${8 + flash * 12}px ${c})` : '';
-    if (track) track.setAttribute('stroke', `rgba(255,255,255,${0.22 + flash * 0.2})`);
+  const baseStroke = 2.5 + flash * 1.25;
+    ring.setAttribute('stroke-width', String(baseStroke));
+    ring.setAttribute('stroke', flash > 0 ? c : 'rgba(255,255,255,0.42)');
+    ring.style.filter =
+      flash > 0 ? `drop-shadow(0 0 ${6 + flash * 10}px ${c})` : '';
     const size = currentConfig.gaugeSize || 280;
     if (wrap) wrap.style.setProperty('--minimal-size', `${size}px`);
   }
@@ -574,25 +570,6 @@
     ctx.restore();
   }
 
-  function drawMinimalArcShimmer(pct) {
-    const canvas = document.getElementById('minimal-water-canvas');
-    if (!canvas || prefersReducedMotion || pct <= 0.02) return;
-    const { ctx, w, h } = setupCanvas(canvas);
-    const r = Math.min(w, h) * 0.47;
-    const start = -Math.PI / 2;
-    const end = start + Math.PI * 2 * pct;
-    const band = 0.55 + Math.sin(shimmerPhase) * 0.12;
-    const shimStart = Math.max(start, end - band);
-    ctx.save();
-    ctx.strokeStyle = `rgba(255,255,255,${0.12 + glowBoost * 0.15})`;
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.arc(w / 2, h / 2, r, shimStart, end);
-    ctx.stroke();
-    ctx.restore();
-  }
-
   function drawFrame() {
     const style = currentConfig.gaugeStyle || 'circular';
     if (style === 'circular') drawCircular();
@@ -600,10 +577,8 @@
     else if (style === 'vertical') drawVertical();
     else if (style === 'horizontal') drawHorizontal();
     else if (style === 'minimal') {
-      const pct = state.goal > 0 ? Math.min(1, state.current / state.goal) : 0;
-      updateMinimalRing(pct);
+      updateMinimalRing();
       drawMinimalWater();
-      drawMinimalArcShimmer(pct);
     }
   }
 

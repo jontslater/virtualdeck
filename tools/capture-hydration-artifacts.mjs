@@ -287,6 +287,14 @@ const effectShots = [
   { file: 'hydration_effect_number_pop.png', kind: 'numpop', style: 'horizontal', progress: 40, bg: 'dark', wait: 280 },
   { file: 'hydration_effect_confetti_goal_met.png', kind: 'confetti', style: 'circular', progress: 64, bg: 'dark', wait: 650 },
   { file: 'hydration_effect_confetti_goal_met_minimal.png', kind: 'confetti', style: 'minimal', progress: 64, bg: 'dark', wait: 650 },
+  {
+    file: 'hydration_gauge_minimal_low_bg_dark.png',
+    kind: 'idle',
+    style: 'minimal',
+    progress: 10,
+    bg: 'dark',
+    wait: 400,
+  },
 ];
 
 async function triggerEffectInPage(page, spec) {
