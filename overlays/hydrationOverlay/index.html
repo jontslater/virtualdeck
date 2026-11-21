@@ -22,7 +22,7 @@
       gap: 8px;
       pointer-events: none;
     }
-  #hydration-plate {
+    #hydration-plate {
       padding: 14px 20px 16px;
       backdrop-filter: blur(6px);
       box-shadow: 0 8px 28px rgba(0,0,0,0.45);
@@ -55,45 +55,22 @@
       text-align: center;
     }
     canvas { display: block; }
-    #effects-layer {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      overflow: hidden;
-    }
-    #effects-layer.flash {
-      animation: flash 0.45s ease-out;
-    }
-    @keyframes flash {
-      from { background: rgba(79, 195, 247, 0.25); }
-      to { background: transparent; }
-    }
-    .confetti-piece {
-      position: absolute;
-      top: 28%;
-      width: var(--confetti-w, 14px);
-      height: var(--confetti-h, 18px);
-      border-radius: 2px;
-      box-shadow: 0 0 6px rgba(255,255,255,0.35);
-      animation: confetti-burst 1.35s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
-    }
-    @keyframes confetti-burst {
-      0% { transform: translate(0, 0) rotate(0deg) scale(0.4); opacity: 1; }
-      45% { opacity: 1; }
-      100% {
-        transform: translate(var(--confetti-tx, 0px), var(--confetti-ty, 220px)) rotate(var(--confetti-rot, 360deg)) scale(1);
-        opacity: 0.85;
-      }
-    }
     #minimal-ring-wrap {
       position: relative;
-      width: var(--minimal-size, 200px);
-      height: var(--minimal-size, 200px);
+      width: var(--minimal-size, 280px);
+      height: var(--minimal-size, 280px);
     }
     .minimal-svg {
       width: 100%;
       height: 100%;
       display: block;
+    }
+    #minimal-fx-canvas {
+      position: absolute;
+      inset: 12%;
+      width: 76%;
+      height: 76%;
+      pointer-events: none;
     }
     .minimal-inner {
       position: absolute;
@@ -105,53 +82,10 @@
       text-align: center;
       padding: 24px;
       pointer-events: none;
+      z-index: 2;
     }
     #minimal-amount-main { font-size: 2rem; line-height: 1.1; }
     #minimal-amount-sub { font-size: 1rem; opacity: 0.92; margin-top: 4px; }
-    .fx-star {
-      position: absolute;
-      font-size: var(--star-size, 28px);
-      color: #fff;
-      text-shadow: 0 0 8px var(--star-glow, #4fc3f7), 0 0 18px var(--star-glow, #4fc3f7);
-      animation: star-burst 1s ease-out forwards;
-      line-height: 1;
-    }
-    @keyframes star-burst {
-      0% { transform: scale(0.2) rotate(0deg); opacity: 1; }
-      35% { transform: scale(1.25) rotate(20deg); opacity: 1; }
-      100% { transform: scale(0.9) rotate(45deg); opacity: 0; }
-    }
-    .fx-splash {
-      position: absolute;
-      left: 50%;
-      top: 42%;
-      width: var(--splash-size, 200px);
-      height: var(--splash-size, 200px);
-      margin: calc(var(--splash-size, 200px) / -2) 0 0 calc(var(--splash-size, 200px) / -2);
-      border: var(--splash-border, 6px) solid rgba(79,195,247,0.95);
-      border-radius: 50%;
-      box-shadow: 0 0 24px rgba(79,195,247,0.55), inset 0 0 20px rgba(255,255,255,0.2);
-      animation: ripple 0.9s ease-out forwards;
-    }
-    .fx-splash:nth-child(2) { animation-delay: 0.12s; border-color: rgba(255,255,255,0.7); }
-    @keyframes ripple {
-      0% { transform: scale(0.25); opacity: 1; }
-      50% { opacity: 0.85; }
-      100% { transform: scale(1.85); opacity: 0; }
-    }
-    .fx-bubble {
-      position: absolute;
-      bottom: 38%;
-      border-radius: 50%;
-      background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(79,195,247,0.55));
-      border: 2px solid rgba(255,255,255,0.65);
-      box-shadow: 0 0 10px rgba(79,195,247,0.45);
-      animation: bubble-rise 1.2s ease-out forwards;
-    }
-    @keyframes bubble-rise {
-      0% { transform: translateY(0) scale(0.6); opacity: 0.95; }
-      100% { transform: translateY(-120px) scale(1); opacity: 0; }
-    }
     .fx-number-pop #hydration-amount-main,
     #minimal-ring-wrap.fx-number-pop #minimal-amount-main {
       animation: num-pop 0.55s ease-out;
@@ -161,35 +95,35 @@
       100% { transform: scale(1); }
     }
     @media (prefers-reduced-motion: reduce) {
-      .confetti-piece, #effects-layer.flash,
-      .fx-star, .fx-splash, .fx-bubble, .fx-number-pop #hydration-amount-main { animation: none !important; }
+      .fx-number-pop #hydration-amount-main,
+      #minimal-ring-wrap.fx-number-pop #minimal-amount-main { animation: none !important; }
     }
   </style>
 </head>
 <body>
-  <div id="effects-layer" aria-hidden="true"></div>
   <div id="hydration-container">
     <div id="hydration-plate">
       <div data-gauge="circular">
-        <canvas id="canvas-circular" data-gauge-canvas="circle" width="200" height="200"></canvas>
+        <canvas id="canvas-circular" data-gauge-canvas="circle" width="280" height="280"></canvas>
       </div>
       <div data-gauge="bottle" class="hidden">
-        <canvas id="canvas-bottle" data-gauge-canvas="circle" width="120" height="200"></canvas>
+        <canvas id="canvas-bottle" data-gauge-canvas="circle" width="168" height="280"></canvas>
       </div>
       <div data-gauge="vertical" class="hidden">
-        <canvas id="canvas-vertical" data-gauge-canvas="vert" width="70" height="200"></canvas>
+        <canvas id="canvas-vertical" data-gauge-canvas="vert" width="98" height="280"></canvas>
       </div>
       <div data-gauge="horizontal" class="hidden">
-        <canvas id="canvas-horizontal" data-gauge-canvas="horiz" width="280" height="70"></canvas>
+        <canvas id="canvas-horizontal" data-gauge-canvas="horiz" width="392" height="98"></canvas>
       </div>
       <div data-gauge="minimal" class="hidden">
         <div id="minimal-ring-wrap">
           <svg class="minimal-svg" viewBox="0 0 200 200" aria-hidden="true">
             <circle cx="100" cy="100" r="84" fill="rgba(0,0,0,0.45)" stroke="none" />
-            <circle cx="100" cy="100" r="84" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="12" />
+            <circle id="minimal-track-arc" cx="100" cy="100" r="84" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="12" />
             <circle id="minimal-progress-arc" cx="100" cy="100" r="84" fill="none" stroke="#4fc3f7" stroke-width="12" stroke-linecap="round"
               stroke-dasharray="0 528" transform="rotate(-90 100 100)" />
           </svg>
+          <canvas id="minimal-fx-canvas" width="200" height="200"></canvas>
           <div class="minimal-inner">
             <span id="minimal-amount-main" class="hydration-text">0 oz</span>
             <span id="minimal-amount-sub" class="hydration-text">50% · of 64 oz</span>

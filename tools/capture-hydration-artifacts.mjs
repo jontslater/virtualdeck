@@ -271,15 +271,15 @@ for (const [skinName, skin] of [
 const fxPage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 
 const effectShots = [
-  { file: 'hydration_effect_sparkles.png', kind: 'sparkle', wait: 420 },
-  { file: 'hydration_effect_splash_ripple.png', kind: 'splash', wait: 300 },
-  { file: 'hydration_effect_bubbles.png', kind: 'bubbles', wait: 520 },
-  { file: 'hydration_effect_number_pop.png', kind: 'numpop', wait: 240 },
-  { file: 'hydration_effect_confetti_goal_met.png', kind: 'confetti', wait: 480 },
+  { file: 'hydration_effect_sparkles.png', kind: 'sparkle', wait: 520 },
+  { file: 'hydration_effect_splash_ripple.png', kind: 'splash', wait: 450 },
+  { file: 'hydration_effect_bubbles.png', kind: 'bubbles', wait: 620 },
+  { file: 'hydration_effect_number_pop.png', kind: 'numpop', wait: 280 },
+  { file: 'hydration_effect_confetti_goal_met.png', kind: 'confetti', wait: 650 },
 ];
-for (const shot of effectShots) {
-  await fxPage.goto(`${base}/hydration?preview=1`, { waitUntil: 'networkidle' });
-  await fxPage.evaluate(
+
+async function triggerEffectInPage(page, kind) {
+  await page.evaluate(
     ({ kind, darkBg, brightBg }) => {
       const basePayload = (style, progress) => ({
         current: progress,
@@ -299,6 +299,8 @@ for (const shot of effectShots) {
           showPlate: true,
           enableEffects: true,
           effectsIntensity: 'high',
+          effectSet: ['sparkles', 'splash', 'numberPop'],
+          goalConfetti: true,
         },
       });
       if (kind === 'sparkle') {
@@ -322,12 +324,102 @@ for (const shot of effectShots) {
         window.__hydrationDemoUpdate(basePayload('circular', 64));
         window.__hydrationDemoConfetti();
         window.__hydrationDemoSparkle();
+      } else if (kind === 'idle') {
+        document.body.style.background = darkBg;
+        window.__hydrationDemoUpdate(basePayload('circular', 40));
+      } else if (kind === 'fill') {
+        document.body.style.background = darkBg;
+        window.__hydrationDemoUpdate(basePayload('circular', 16));
+        window.__hydrationDemoFill(0.25, 0.7);
+        window.__hydrationDemoSplash();
+        window.__hydrationDemoSparkle();
       }
     },
-    { kind: shot.kind, darkBg: BACKGROUNDS.dark, brightBg: BACKGROUNDS.bright },
+    { kind, darkBg: BACKGROUNDS.dark, brightBg: BACKGROUNDS.bright },
   );
+}
+
+async function recordWebm(browser, kind, fileBase, durationMs = 3200) {
+  const videoDir = path.join(outDir, '_video_tmp');
+  fs.mkdirSync(videoDir, { recursive: true });
+  const context = await browser.newContext({
+    viewport: { width: 720, height: 720 },
+    recordVideo: { dir: videoDir, size: { width: 720, height: 720 } },
+  });
+  const vpage = await context.newPage();
+  await vpage.goto(`${base}/hydration?preview=1`, { waitUntil: 'networkidle' });
+  await triggerEffectInPage(vpage, kind);
+  await vpage.waitForTimeout(durationMs);
+  const webmPath = path.join(outDir, `${fileBase}.webm`);
+  await vpage.close();
+  const vid = vpage.video();
+  if (vid) await vid.saveAs(webmPath);
+  await context.close();
+  try {
+    fs.rmSync(videoDir, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
+  return webmPath;
+}
+
+async function webmToGif(webmPath, gifPath, fps = 12) {
+  const { execFileSync } = await import('child_process');
+  const palette = webmPath.replace('.webm', '_palette.png');
+  execFileSync(
+    'ffmpeg',
+    [
+      '-y',
+      '-i',
+      webmPath,
+      '-vf',
+      `fps=${fps},scale=480:-1:flags=lanczos,palettegen`,
+      palette,
+    ],
+    { stdio: 'pipe' },
+  );
+  execFileSync(
+    'ffmpeg',
+    [
+      '-y',
+      '-i',
+      webmPath,
+      '-i',
+      palette,
+      '-lavfi',
+      `fps=${fps},scale=480:-1:flags=lanczos[x];[x][1:v]paletteuse`,
+      '-loop',
+      '0',
+      gifPath,
+    ],
+    { stdio: 'pipe' },
+  );
+  try {
+    fs.unlinkSync(palette);
+  } catch {
+    /* ignore */
+  }
+}
+for (const shot of effectShots) {
+  await fxPage.goto(`${base}/hydration?preview=1`, { waitUntil: 'networkidle' });
+  await triggerEffectInPage(fxPage, shot.kind);
   await fxPage.waitForTimeout(shot.wait);
   await fxPage.screenshot({ path: path.join(outDir, shot.file) });
+}
+
+const loopClips = [
+  { kind: 'idle', base: 'hydration_idle_wave' },
+  { kind: 'sparkle', base: 'hydration_loop_sparkles' },
+  { kind: 'splash', base: 'hydration_loop_splash' },
+  { kind: 'bubbles', base: 'hydration_loop_bubbles' },
+  { kind: 'confetti', base: 'hydration_loop_confetti_goal' },
+  { kind: 'fill', base: 'hydration_loop_fill_slosh' },
+];
+for (const clip of loopClips) {
+  const dur = clip.kind === 'idle' ? 4000 : 3200;
+  const webm = await recordWebm(browser, clip.kind, clip.base, dur);
+  const gif = path.join(outDir, `${clip.base}.gif`);
+  if (fs.existsSync(webm)) await webmToGif(webm, gif);
 }
 
 // Before state placeholder (legacy overlay style reference)
@@ -343,9 +435,11 @@ await overlayPage.evaluate(() => {
 });
 await overlayPage.screenshot({ path: path.join(outDir, 'hydration_before_legacy_empty.png') });
 
-const manifest = fs.readdirSync(outDir).filter((f) => f.endsWith('.png') && f.includes('hydration'));
+const manifest = fs
+  .readdirSync(outDir)
+  .filter((f) => /hydration/.test(f) && /\.(png|gif|webm)$/.test(f));
 fs.writeFileSync(path.join(outDir, 'hydration_artifacts_manifest.txt'), manifest.sort().join('\n'));
 
 await browser.close();
 srv.close();
-console.log(`Wrote ${manifest.length} hydration PNGs to ${outDir}`);
+console.log(`Wrote ${manifest.length} hydration artifacts to ${outDir}`);

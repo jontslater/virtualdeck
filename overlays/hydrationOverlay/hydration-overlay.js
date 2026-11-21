@@ -1,18 +1,33 @@
-/* global window, document */
+/* global window, document, performance, requestAnimationFrame, cancelAnimationFrame */
 (function () {
   'use strict';
 
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const IDLE_MS = prefersReducedMotion ? 999999 : 1000 / 30;
+
   let ws = null;
   let reconnectTimeout = null;
   let currentConfig = {};
   let state = { current: 0, goal: 64, percentage: 0, streak: 0, units: 'oz' };
-  let animating = false;
   let rafId = null;
-  let wavePhase = 0;
+  let lastFrameTs = 0;
+
   let displayProgress = 0;
   let targetProgress = 0;
+  let progressAnimStart = 0;
+  let progressAnimFrom = 0;
+  let progressAnimating = false;
+
+  let wavePhase1 = 0;
+  let wavePhase2 = 0;
+  let splashBoost = 0;
+  let glowBoost = 0;
+  let outlineFlash = 0;
+  let shimmerPhase = 0;
   let lastBroadcastJson = '';
+
+  /** @type {Array<{kind:string,x:number,y:number,vx:number,vy:number,life:number,maxLife:number,size:number,rot:number,color:string,twinkle:number}>} */
+  let particles = [];
 
   function wsUrl() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -22,9 +37,7 @@
   function connectWebSocket() {
     try {
       ws = new WebSocket(wsUrl());
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'ping' }));
-      };
+      ws.onopen = () => ws.send(JSON.stringify({ type: 'ping' }));
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
@@ -76,98 +89,6 @@
     return `${Math.round(n * 10) / 10} ${units}`;
   }
 
-  function stopLoop() {
-    if (rafId) cancelAnimationFrame(rafId);
-    rafId = null;
-    animating = false;
-  }
-
-  function startLoop(drawFn) {
-    if (prefersReducedMotion) {
-      drawFn(true);
-      return;
-    }
-    if (animating) return;
-    animating = true;
-    const tick = () => {
-      const delta = targetProgress - displayProgress;
-      if (Math.abs(delta) < 0.001) displayProgress = targetProgress;
-      else displayProgress += delta * 0.15;
-      const needsWave = !prefersReducedMotion && displayProgress > 0.01 && displayProgress < 0.995;
-      drawFn(needsWave);
-      if (needsWave || Math.abs(targetProgress - displayProgress) > 0.001) {
-        rafId = requestAnimationFrame(tick);
-      } else {
-        stopLoop();
-      }
-    };
-    rafId = requestAnimationFrame(tick);
-  }
-
-  function setupCanvas(canvas) {
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    const w = rect.width || canvas.width;
-    const h = rect.height || canvas.height;
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    return { ctx, w, h };
-  }
-
-  function applyLayout() {
-    const container = document.getElementById('hydration-container');
-    if (!container) return;
-    container.style.left = `${currentConfig.positionX ?? 50}%`;
-    container.style.top = `${currentConfig.positionY ?? 50}%`;
-    const showPlate = currentConfig.showPlate !== false && currentConfig.displayStyle !== 'minimal';
-    const plate = document.getElementById('hydration-plate');
-    if (plate) {
-      plate.classList.toggle('hidden', !showPlate);
-      plate.style.background = currentConfig.plateColor || currentConfig.backgroundColor || 'rgba(12,16,24,0.85)';
-      plate.style.borderRadius = `${currentConfig.borderRadius ?? 16}px`;
-      if (currentConfig.borderWidth > 0) {
-        plate.style.border = `${currentConfig.borderWidth}px solid ${currentConfig.borderColor || '#fff'}`;
-      } else {
-        plate.style.border = 'none';
-      }
-    }
-    const size = currentConfig.gaugeSize || 280;
-    document.querySelectorAll('[data-gauge-canvas]').forEach((c) => {
-      const aspect = c.dataset.gaugeCanvas;
-      if (aspect === 'circle') {
-        c.style.width = `${size}px`;
-        c.style.height = `${size}px`;
-      } else if (aspect === 'vert') {
-        c.style.width = `${size * 0.35}px`;
-        c.style.height = `${size}px`;
-      } else if (aspect === 'horiz') {
-        c.style.width = `${size * 1.4}px`;
-        c.style.height = `${size * 0.35}px`;
-      }
-    });
-    const textEls = document.querySelectorAll('.hydration-text');
-    const stroke = '0 0 4px rgba(0,0,0,0.9), 0 2px 12px rgba(0,0,0,0.75)';
-    textEls.forEach((el) => {
-      el.style.color = currentConfig.textColor || '#ffffff';
-      el.style.textShadow = stroke;
-    });
-    const chips = document.querySelectorAll('.hydration-chip');
-    chips.forEach((chip) => {
-      chip.style.color = currentConfig.textColor || '#fff';
-      chip.style.borderColor = currentConfig.accentColor || currentConfig.fillColor || '#4fc3f7';
-      chip.style.background = 'rgba(0,0,0,0.45)';
-    });
-    showGauge(currentConfig.gaugeStyle || 'circular');
-  }
-
-  function showGauge(style) {
-    document.querySelectorAll('[data-gauge]').forEach((el) => {
-      el.classList.toggle('hidden', el.dataset.gauge !== style);
-    });
-  }
-
   function effectIntensityScale() {
     const level = currentConfig.effectsIntensity || 'medium';
     if (level === 'low') return 0.55;
@@ -175,108 +96,136 @@
     return 1;
   }
 
-  function gaugeAnchor() {
-    const plate = document.getElementById('hydration-plate');
-    const rect = plate ? plate.getBoundingClientRect() : { left: 0, top: 0, width: 200, height: 200 };
-    return {
-      cx: rect.left + rect.width / 2,
-      cy: rect.top + rect.height * 0.38,
-    };
+  function fillColor() {
+    return currentConfig.fillColor || currentConfig.waterColor || '#4fc3f7';
   }
 
-  function spawnSparkles() {
-    const layer = document.getElementById('effects-layer');
-    if (!layer) return;
-    const scale = effectIntensityScale();
-    const fill = currentConfig.fillColor || currentConfig.accentColor || '#4fc3f7';
-    const { cx, cy } = gaugeAnchor();
-    const count = Math.round(14 * scale);
-    for (let i = 0; i < count; i++) {
-      const s = document.createElement('span');
-      s.className = 'fx-star';
-      s.textContent = '✦';
-      const angle = (i / count) * Math.PI * 2;
-      const dist = (70 + Math.random() * 50) * scale;
-      s.style.left = `${cx + Math.cos(angle) * dist}px`;
-      s.style.top = `${cy + Math.sin(angle) * dist * 0.75}px`;
-      s.style.setProperty('--star-size', `${22 + 14 * scale}px`);
-      s.style.setProperty('--star-glow', fill);
-      s.style.animationDelay = `${Math.random() * 0.15}s`;
-      layer.appendChild(s);
-      setTimeout(() => s.remove(), 1200);
+  function startProgressTween() {
+    if (prefersReducedMotion) {
+      displayProgress = targetProgress;
+      return;
     }
+    if (Math.abs(targetProgress - displayProgress) < 0.002) return;
+    progressAnimFrom = displayProgress;
+    progressAnimStart = performance.now();
+    progressAnimating = true;
+    splashBoost = Math.max(splashBoost, 0.85);
   }
 
-  function spawnSplash() {
-    const layer = document.getElementById('effects-layer');
-    if (!layer) return;
-    const scale = effectIntensityScale();
-    const fill = currentConfig.fillColor || '#4fc3f7';
-    const { cx, cy } = gaugeAnchor();
-    for (let i = 0; i < (scale > 1 ? 3 : 2); i++) {
-      const d = document.createElement('div');
-      d.className = 'fx-splash';
-      const sz = 160 * scale;
-      d.style.setProperty('--splash-size', `${sz}px`);
-      d.style.setProperty('--splash-border', `${4 + 2 * scale}px`);
-      d.style.borderColor = i % 2 ? 'rgba(255,255,255,0.85)' : fill;
-      d.style.left = `${cx}px`;
-      d.style.top = `${cy}px`;
-      layer.appendChild(d);
-      setTimeout(() => d.remove(), 1000);
+  function easeFill(t) {
+    const c1 = 1.70158;
+    const c3 = c1 + 1;
+    const eased = 1 + c3 * (t - 1) ** 3 + c1 * (t - 1) ** 2;
+    return t < 1 ? eased : 1;
+  }
+
+  function tickSimulation(dt) {
+    splashBoost = Math.max(0, splashBoost - dt * 1.2);
+    glowBoost = Math.max(0, glowBoost - dt * 1.1);
+    outlineFlash = Math.max(0, outlineFlash - dt * 2.2);
+
+    if (!prefersReducedMotion) {
+      wavePhase1 += dt * 1.35;
+      wavePhase2 -= dt * 0.92;
+      shimmerPhase += dt * 2.5;
     }
-  }
 
-  function spawnBubbles() {
-    const layer = document.getElementById('effects-layer');
-    if (!layer) return;
-    const scale = effectIntensityScale();
-    const { cx } = gaugeAnchor();
-    const n = Math.round(10 * scale);
-    for (let i = 0; i < n; i++) {
-      const b = document.createElement('div');
-      b.className = 'fx-bubble';
-      const sz = (14 + Math.random() * 16) * scale;
-      b.style.width = `${sz}px`;
-      b.style.height = `${sz}px`;
-      b.style.left = `${cx - 60 * scale + Math.random() * 120 * scale}px`;
-      b.style.animationDelay = `${i * 0.04}s`;
-      layer.appendChild(b);
-      setTimeout(() => b.remove(), 1300);
+    const now = performance.now();
+    if (progressAnimating) {
+      const t = Math.min(1, (now - progressAnimStart) / 1000);
+      displayProgress = progressAnimFrom + (targetProgress - progressAnimFrom) * easeFill(t);
+      if (t >= 1) {
+        displayProgress = targetProgress;
+        progressAnimating = false;
+        splashBoost = Math.max(splashBoost, 0.35);
+      }
     }
+
+    const next = [];
+    for (const p of particles) {
+      p.life -= dt;
+      if (p.life <= 0) continue;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.twinkle += dt * 6;
+      if (p.kind === 'confetti') p.rot += dt * 3;
+      if (p.y < 0.06) p.y = 0.06;
+      if (p.y > 0.98) p.y = 0.98;
+      if (p.x < 0.05) p.x = 0.05;
+      if (p.x > 0.95) p.x = 0.95;
+      next.push(p);
+    }
+    particles = next;
   }
 
-  function spawnConfetti() {
-    const layer = document.getElementById('effects-layer');
-    if (!layer) return;
-    const scale = effectIntensityScale();
-    const { cx, cy } = gaugeAnchor();
+  function hasEffect(name) {
+    const set = currentConfig.effectSet;
+    if (!Array.isArray(set)) return true;
+    return set.includes(name);
+  }
+
+  function spawnInWater(kind, countMul) {
+    if (currentConfig.enableEffects === false) return;
+    const scale = effectIntensityScale() * (countMul || 1);
     const palette = [
-      currentConfig.fillColor || '#4fc3f7',
+      fillColor(),
       currentConfig.accentColor || '#29b6f6',
       '#ffeb3b',
       '#ff5252',
       '#69f0ae',
       '#e040fb',
+      '#ffffff',
     ];
-    const pieces = Math.round(48 * scale);
-    for (let i = 0; i < pieces; i++) {
-      const p = document.createElement('span');
-      p.className = 'confetti-piece';
-      const tx = (Math.random() - 0.5) * 420 * scale;
-      const ty = 180 + Math.random() * 320 * scale;
-      p.style.left = `${cx - 8}px`;
-      p.style.top = `${cy}px`;
-      p.style.setProperty('--confetti-tx', `${tx}px`);
-      p.style.setProperty('--confetti-ty', `${ty}px`);
-      p.style.setProperty('--confetti-rot', `${200 + Math.random() * 500}deg`);
-      p.style.setProperty('--confetti-w', `${12 + Math.random() * 10 * scale}px`);
-      p.style.setProperty('--confetti-h', `${16 + Math.random() * 12 * scale}px`);
-      p.style.background = palette[i % palette.length];
-      p.style.animationDelay = `${Math.random() * 0.08}s`;
-      layer.appendChild(p);
-      setTimeout(() => p.remove(), 1600);
+
+    const n =
+      kind === 'bubble'
+        ? Math.round(14 * scale)
+        : kind === 'sparkle'
+          ? Math.round(18 * scale)
+          : Math.round(28 * scale);
+
+    const waterTop = Math.max(0.06, 1 - displayProgress + 0.04);
+
+    for (let i = 0; i < n; i++) {
+      const baseY = waterTop + Math.random() * Math.max(0.08, 0.96 - waterTop);
+      particles.push({
+        kind,
+        x: 0.12 + Math.random() * 0.76,
+        y: baseY,
+        vx: (Math.random() - 0.5) * (kind === 'confetti' ? 0.35 : 0.08) * scale,
+        vy:
+          kind === 'bubble'
+            ? -(0.45 + Math.random() * 0.55) * scale
+            : kind === 'sparkle'
+              ? -(0.25 + Math.random() * 0.35) * scale
+              : -(0.15 + Math.random() * 0.25) * scale,
+        life: 1.4 + Math.random() * 0.9,
+        maxLife: 2.3,
+        size: (kind === 'sparkle' ? 3 : kind === 'bubble' ? 5 : 3.5) * (0.7 + scale * 0.35) + Math.random() * 2,
+        rot: Math.random() * Math.PI,
+        color: palette[i % palette.length],
+        twinkle: Math.random() * Math.PI,
+      });
     }
+  }
+
+  function triggerEffects(data) {
+    if (prefersReducedMotion || currentConfig.enableEffects === false) return;
+    if (data.celebration && currentConfig.goalConfetti !== false) {
+      glowBoost = Math.max(glowBoost, 1.35);
+      outlineFlash = 1;
+      spawnInWater('confetti', 2.2);
+      if (hasEffect('sparkles')) spawnInWater('sparkle', 1.8);
+      spawnInWater('bubble', 0.8);
+      if (hasEffect('numberPop')) triggerNumberPop();
+    } else if (data.leveledUp) {
+      glowBoost = Math.max(glowBoost, 0.65);
+      if (hasEffect('sparkles')) spawnInWater('sparkle', 1);
+      spawnInWater('bubble', 0.9);
+      if (hasEffect('splash')) splashBoost = Math.max(splashBoost, 1.1);
+      if (hasEffect('numberPop')) triggerNumberPop();
+    }
+    scheduleLoop();
   }
 
   function triggerNumberPop() {
@@ -294,67 +243,140 @@
     }
   }
 
-  function triggerEffects(data) {
-    if (prefersReducedMotion || currentConfig.enableEffects === false) return;
-    const layer = document.getElementById('effects-layer');
-    if (!layer) return;
-    if (data.celebration && currentConfig.goalConfetti !== false) {
-      spawnConfetti();
-      spawnSparkles();
-    } else if (data.leveledUp) {
-      spawnSparkles();
-      spawnSplash();
-      spawnBubbles();
-      triggerNumberPop();
-      layer.classList.add('flash');
-      setTimeout(() => layer.classList.remove('flash'), 450);
+  function waveAmplitude() {
+    const base = prefersReducedMotion ? 0 : 4;
+    return base + splashBoost * 14;
+  }
+
+  function surfaceY(x, w, level, amp) {
+    const w1 = Math.sin((x / w) * Math.PI * 3 + wavePhase1) * amp;
+    const w2 = Math.sin((x / w) * Math.PI * 5.2 + wavePhase2) * amp * 0.55;
+    return level + w1 + w2;
+  }
+
+  function setupCanvas(canvas) {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width || canvas.clientWidth || 200;
+    const h = rect.height || canvas.clientHeight || 200;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+    }
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx, w, h };
+  }
+
+  function drawParticles(ctx, w, h, progress, mode) {
+    const level =
+      mode === 'horizontal'
+        ? progress
+        : mode === 'vertical'
+          ? 1 - progress
+          : 1 - progress;
+
+    for (const p of particles) {
+      const px = p.x * w;
+      const py = p.y * h;
+      let inside = false;
+      if (mode === 'horizontal') {
+        inside = px <= w * progress + 2 && py <= h;
+      } else if (mode === 'vertical') {
+        inside = py >= h * (1 - progress) - 2;
+      } else {
+        inside = py >= h * (1 - progress) - 4;
+      }
+      if (!inside) continue;
+
+      const alpha = Math.min(1, (p.life / p.maxLife) * 1.1);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      if (p.kind === 'sparkle') {
+        const tw = 0.55 + 0.45 * Math.sin(p.twinkle);
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 8 * tw;
+        drawStar(ctx, px, py, p.size * (1 + tw * 0.5), p.twinkle);
+      } else if (p.kind === 'bubble') {
+        const g = ctx.createRadialGradient(px - p.size * 0.2, py - p.size * 0.2, 0, px, py, p.size);
+        g.addColorStop(0, 'rgba(255,255,255,0.95)');
+        g.addColorStop(1, 'rgba(255,255,255,0.15)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(px, py, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      } else {
+        ctx.translate(px, py);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size / 2, -p.size, p.size, p.size * 1.4);
+      }
+      ctx.restore();
     }
   }
 
-  function updateText() {
-    const u = state.units || 'oz';
-    const main = document.getElementById('hydration-amount-main');
-    const sub = document.getElementById('hydration-amount-goal');
-    const pct = document.getElementById('hydration-pct-chip');
-    const streak = document.getElementById('hydration-streak-chip');
-    if (main) main.textContent = formatAmount(state.current, u);
-    if (sub) sub.textContent = `of ${formatAmount(state.goal, u)}`;
-    const p = state.goal > 0 ? Math.min(999, (state.current / state.goal) * 100) : 0;
-    if (pct) pct.textContent = `${Math.round(p)}%`;
-    if (streak) {
-      streak.textContent = state.streak > 0 ? `🔥 ${state.streak}` : '🔥 0';
-      streak.classList.toggle('hidden', !state.streak && currentConfig.dailyStreak === 0);
+  function drawStar(ctx, x, y, r, phase) {
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const a = phase + (i * Math.PI) / 2;
+      ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+      const a2 = a + Math.PI / 4;
+      ctx.lineTo(x + Math.cos(a2) * r * 0.35, y + Math.sin(a2) * r * 0.35);
     }
-    const minMain = document.getElementById('minimal-amount-main');
-    const minSub = document.getElementById('minimal-amount-sub');
-    if (minMain) minMain.textContent = formatAmount(state.current, u);
-    if (minSub) minSub.textContent = `${Math.round(p)}% · of ${formatAmount(state.goal, u)}`;
-    const statsBlock = document.getElementById('hydration-stats-block');
-    if (statsBlock) {
-      statsBlock.classList.toggle('hidden', currentConfig.gaugeStyle === 'minimal');
-    }
-    const chips = document.querySelector('.hydration-chips');
-    if (chips) chips.classList.toggle('hidden', currentConfig.gaugeStyle === 'minimal');
+    ctx.closePath();
+    ctx.fill();
   }
 
-  function updateMinimalRing(pct) {
-    const arc = document.getElementById('minimal-progress-arc');
-    const wrap = document.getElementById('minimal-ring-wrap');
-    if (!arc) return;
-    const r = 84;
-    const circ = 2 * Math.PI * r;
-    const filled = circ * Math.min(1, Math.max(0, pct));
-    arc.setAttribute('stroke-dasharray', `${filled} ${circ - filled}`);
-    arc.setAttribute('stroke', currentConfig.fillColor || currentConfig.waterColor || '#4fc3f7');
-    const size = currentConfig.gaugeSize || 280;
-    if (wrap) wrap.style.setProperty('--minimal-size', `${size}px`);
+  function drawWaterFillBottom(ctx, w, h, progress) {
+    if (progress <= 0.001) return;
+    const fill = fillColor();
+    const amp = waveAmplitude();
+    const level = h * (1 - progress);
+    const brighten = 1 + glowBoost * 0.45;
+
+    const g = ctx.createLinearGradient(0, level, 0, h);
+    g.addColorStop(0, shadeColor(fill, 8 * brighten));
+    g.addColorStop(1, shadeColor(fill, -22));
+
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    if (prefersReducedMotion) {
+      ctx.lineTo(0, level);
+      ctx.lineTo(w, level);
+    } else {
+      for (let x = 0; x <= w; x++) {
+        ctx.lineTo(x, surfaceY(x, w, level, amp));
+      }
+    }
+    ctx.lineTo(w, h);
+    ctx.closePath();
+    ctx.fillStyle = g;
+    ctx.fill();
+
+    if (!prefersReducedMotion && progress > 0.02) {
+      ctx.beginPath();
+      for (let x = 0; x <= w; x++) {
+        const y = surfaceY(x, w, level, amp) - 1.5;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = `rgba(255,255,255,${0.35 + glowBoost * 0.25})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    drawParticles(ctx, w, h, progress, 'circular');
   }
 
-  function drawCircular(animateWave) {
+  function drawCircular() {
     const canvas = document.getElementById('canvas-circular');
     if (!canvas) return;
     const { ctx, w, h } = setupCanvas(canvas);
-    const fill = currentConfig.fillColor || currentConfig.waterColor || '#4fc3f7';
+    const fill = fillColor();
     const r = Math.min(w, h) / 2 - 4;
     ctx.clearRect(0, 0, w, h);
     ctx.save();
@@ -366,66 +388,15 @@
     ctx.clip();
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
     ctx.fillRect(0, 0, w, h);
-  const level = h * (1 - displayProgress);
-    const grad = ctx.createLinearGradient(0, level, 0, h);
-    grad.addColorStop(0, fill);
-    grad.addColorStop(1, shadeColor(fill, -25));
-    ctx.beginPath();
-    if (animateWave) {
-      for (let x = 0; x <= w; x++) {
-        const y = 6 * Math.sin((x / 40) * Math.PI * 2 + wavePhase) + level;
-        ctx.lineTo(x, y);
-      }
-    } else {
-      ctx.moveTo(0, level);
-      ctx.lineTo(w, level);
-    }
-    ctx.lineTo(w, h);
-    ctx.lineTo(0, h);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.restore();
-    if (animateWave) wavePhase += 0.06;
-  }
-
-  function drawBar(vertical) {
-    const id = vertical ? 'canvas-vertical' : 'canvas-horizontal';
-    const canvas = document.getElementById(id);
-    if (!canvas) return;
-    const { ctx, w, h } = setupCanvas(canvas);
-    const fill = currentConfig.fillColor || '#4fc3f7';
-    ctx.clearRect(0, 0, w, h);
-    const radius = 12;
-    roundRect(ctx, 0, 0, w, h, radius);
-    ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    ctx.fill();
-    ctx.save();
-    roundRect(ctx, 0, 0, w, h, radius);
-    ctx.clip();
-    if (vertical) {
-      const fh = h * displayProgress;
-      const g = ctx.createLinearGradient(0, h - fh, 0, h);
-      g.addColorStop(0, shadeColor(fill, 10));
-      g.addColorStop(1, fill);
-      ctx.fillStyle = g;
-      ctx.fillRect(0, h - fh, w, fh);
-    } else {
-      const fw = w * displayProgress;
-      const g = ctx.createLinearGradient(0, 0, fw, 0);
-      g.addColorStop(0, shadeColor(fill, -10));
-      g.addColorStop(1, fill);
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, fw, h);
-    }
+    drawWaterFillBottom(ctx, w, h, displayProgress);
     ctx.restore();
   }
 
-  function drawBottle(animateWave) {
+  function drawBottle() {
     const canvas = document.getElementById('canvas-bottle');
     if (!canvas) return;
     const { ctx, w, h } = setupCanvas(canvas);
-    const fill = currentConfig.fillColor || '#4fc3f7';
+    const fill = fillColor();
     ctx.clearRect(0, 0, w, h);
     ctx.strokeStyle = currentConfig.textColor || '#fff';
     ctx.lineWidth = 3;
@@ -440,59 +411,269 @@
     ctx.stroke();
     ctx.save();
     ctx.clip();
-    const level = h * (1 - displayProgress * 0.88) - h * 0.08;
-    ctx.fillStyle = fill;
-    ctx.globalAlpha = 0.9;
-    ctx.beginPath();
-    if (animateWave) {
-      for (let x = 0; x <= w; x++) {
-        const y = 4 * Math.sin((x / 30) * Math.PI * 2 + wavePhase) + level;
-        ctx.lineTo(x, y);
-      }
-    } else {
-      ctx.moveTo(0, level);
-      ctx.lineTo(w, level);
-    }
-    ctx.lineTo(w, h);
-    ctx.lineTo(0, h);
-    ctx.closePath();
-    ctx.fill();
+    drawWaterFillBottom(ctx, w, h, displayProgress * 0.92);
     ctx.restore();
-    if (animateWave) wavePhase += 0.05;
   }
 
-  function roundRect(ctx, x, y, w, h, r) {
+  function roundRect(ctx, x, y, rw, rh, rad) {
     ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.moveTo(x + rad, y);
+    ctx.lineTo(x + rw - rad, y);
+    ctx.quadraticCurveTo(x + rw, y, x + rw, y + rad);
+    ctx.lineTo(x + rw, y + rh - rad);
+    ctx.quadraticCurveTo(x + rw, y + rh, x + rw - rad, y + rh);
+    ctx.lineTo(x + rad, y + rh);
+    ctx.quadraticCurveTo(x, y + rh, x, y + rh - rad);
+    ctx.lineTo(x, y + rad);
+    ctx.quadraticCurveTo(x, y, x + rad, y);
     ctx.closePath();
+  }
+
+  function drawVertical() {
+    const canvas = document.getElementById('canvas-vertical');
+    if (!canvas) return;
+    const { ctx, w, h } = setupCanvas(canvas);
+    const fill = fillColor();
+    const radius = 12;
+    ctx.clearRect(0, 0, w, h);
+    roundRect(ctx, 0, 0, w, h, radius);
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fill();
+    ctx.save();
+    roundRect(ctx, 0, 0, w, h, radius);
+    ctx.clip();
+    drawWaterFillBottom(ctx, w, h, displayProgress);
+    ctx.restore();
+    ctx.strokeStyle = shadeColor(fill, -20);
+    ctx.lineWidth = 2;
+    roundRect(ctx, 1, 1, w - 2, h - 2, radius);
+    ctx.stroke();
+  }
+
+  function drawHorizontal() {
+    const canvas = document.getElementById('canvas-horizontal');
+    if (!canvas) return;
+    const { ctx, w, h } = setupCanvas(canvas);
+    const fill = fillColor();
+    const radius = 12;
+    const fw = w * displayProgress;
+    ctx.clearRect(0, 0, w, h);
+    roundRect(ctx, 0, 0, w, h, radius);
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fill();
+    ctx.save();
+    roundRect(ctx, 0, 0, w, h, radius);
+    ctx.clip();
+    if (fw > 0.5) {
+      const g = ctx.createLinearGradient(0, 0, fw, 0);
+      g.addColorStop(0, shadeColor(fill, -12));
+      g.addColorStop(0.85, fill);
+      g.addColorStop(1, shadeColor(fill, 12));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, fw, h);
+      if (!prefersReducedMotion) {
+        const bandW = 40;
+        const sx = ((shimmerPhase * 80) % (fw + bandW)) - bandW;
+        const sg = ctx.createLinearGradient(sx, 0, sx + bandW, 0);
+        sg.addColorStop(0, 'rgba(255,255,255,0)');
+        sg.addColorStop(0.5, `rgba(255,255,255,${0.22 + glowBoost * 0.2})`);
+        sg.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = sg;
+        ctx.fillRect(0, 0, fw, h);
+      }
+      drawParticles(ctx, w, h, displayProgress, 'horizontal');
+    }
+    ctx.restore();
+    roundRect(ctx, 1, 1, w - 2, h - 2, radius);
+    ctx.strokeStyle = shadeColor(fill, -25);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  function updateMinimalRing(pct) {
+    const arc = document.getElementById('minimal-progress-arc');
+    const wrap = document.getElementById('minimal-ring-wrap');
+    const track = document.getElementById('minimal-track-arc');
+    if (!arc) return;
+    const r = 84;
+    const circ = 2 * Math.PI * r;
+    const filled = circ * Math.min(1, Math.max(0, pct));
+    arc.setAttribute('stroke-dasharray', `${filled} ${circ - filled}`);
+    const c = fillColor();
+    arc.setAttribute('stroke', c);
+    const flash = outlineFlash;
+    arc.setAttribute('stroke-width', String(12 + flash * 4));
+    arc.style.filter = flash > 0 ? `drop-shadow(0 0 ${8 + flash * 12}px ${c})` : '';
+    if (track) track.setAttribute('stroke', `rgba(255,255,255,${0.22 + flash * 0.2})`);
+    const size = currentConfig.gaugeSize || 280;
+    if (wrap) wrap.style.setProperty('--minimal-size', `${size}px`);
+  }
+
+  function drawMinimalFx() {
+    const canvas = document.getElementById('minimal-fx-canvas');
+    if (!canvas) return;
+    const { ctx, w, h } = setupCanvas(canvas);
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, Math.min(w, h) * 0.42, 0, Math.PI * 2);
+    ctx.clip();
+    if (glowBoost > 0) {
+      ctx.fillStyle = `rgba(79, 195, 247, ${0.08 * glowBoost})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+    const pct = state.goal > 0 ? Math.min(1, state.current / state.goal) : displayProgress;
+    drawParticles(ctx, w, h, Math.max(pct, displayProgress), 'circular');
+    if (!prefersReducedMotion && pct > 0.02) {
+      const r = Math.min(w, h) * 0.38;
+      const start = -Math.PI / 2;
+      const end = start + Math.PI * 2 * pct;
+      const band = 0.55 + Math.sin(shimmerPhase) * 0.12;
+      const shimStart = Math.max(start, end - band);
+      ctx.strokeStyle = `rgba(255,255,255,${0.14 + glowBoost * 0.18})`;
+      ctx.lineWidth = 10;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(w / 2, h / 2, r, shimStart, end);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawFrame() {
+    const style = currentConfig.gaugeStyle || 'circular';
+    if (style === 'circular') drawCircular();
+    else if (style === 'bottle') drawBottle();
+    else if (style === 'vertical') drawVertical();
+    else if (style === 'horizontal') drawHorizontal();
+    else if (style === 'minimal') {
+      const pct = state.goal > 0 ? Math.min(1, state.current / state.goal) : 0;
+      updateMinimalRing(pct);
+      drawMinimalFx();
+    }
+  }
+
+  function needsAnimationLoop() {
+    if (prefersReducedMotion) return progressAnimating || particles.length > 0;
+    return true;
+  }
+
+  function loop(now) {
+    rafId = null;
+    const dt = lastFrameTs ? Math.min(0.05, (now - lastFrameTs) / 1000) : 1 / 30;
+    const elapsed = now - lastFrameTs;
+    const style = currentConfig.gaugeStyle || 'circular';
+    const idleOnly =
+      !progressAnimating &&
+      particles.length === 0 &&
+      splashBoost < 0.02 &&
+      glowBoost < 0.02 &&
+      style !== 'minimal';
+
+    if (!prefersReducedMotion && idleOnly && elapsed < IDLE_MS) {
+      scheduleLoop();
+      return;
+    }
+    lastFrameTs = now;
+    tickSimulation(dt);
+    drawFrame();
+    if (needsAnimationLoop() || displayProgress > 0) scheduleLoop();
+  }
+
+  function scheduleLoop() {
+    if (rafId != null) return;
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function applyLayout() {
+    const container = document.getElementById('hydration-container');
+    if (!container) return;
+    container.style.left = `${currentConfig.positionX ?? 50}%`;
+    container.style.top = `${currentConfig.positionY ?? 50}%`;
+    const showPlate = currentConfig.showPlate !== false && currentConfig.displayStyle !== 'minimal';
+    const plate = document.getElementById('hydration-plate');
+    if (plate) {
+      plate.classList.toggle('hidden', !showPlate);
+      plate.style.background = currentConfig.plateColor || currentConfig.backgroundColor || 'rgba(12,16,24,0.85)';
+      plate.style.borderRadius = `${currentConfig.borderRadius ?? 16}px`;
+      plate.style.border =
+        currentConfig.borderWidth > 0
+          ? `${currentConfig.borderWidth}px solid ${currentConfig.borderColor || '#fff'}`
+          : 'none';
+    }
+    const size = currentConfig.gaugeSize || 280;
+    document.querySelectorAll('[data-gauge-canvas]').forEach((c) => {
+      const aspect = c.dataset.gaugeCanvas;
+      if (aspect === 'circle') {
+        c.style.width = `${size}px`;
+        c.style.height = `${size}px`;
+      } else if (aspect === 'vert') {
+        c.style.width = `${size * 0.35}px`;
+        c.style.height = `${size}px`;
+      } else if (aspect === 'horiz') {
+        c.style.width = `${size * 1.4}px`;
+        c.style.height = `${size * 0.35}px`;
+      }
+    });
+    const stroke = '0 0 4px rgba(0,0,0,0.9), 0 2px 12px rgba(0,0,0,0.75)';
+    document.querySelectorAll('.hydration-text').forEach((el) => {
+      el.style.color = currentConfig.textColor || '#ffffff';
+      el.style.textShadow = stroke;
+    });
+    document.querySelectorAll('.hydration-chip').forEach((chip) => {
+      chip.style.color = currentConfig.textColor || '#fff';
+      chip.style.borderColor = currentConfig.accentColor || fillColor();
+      chip.style.background = 'rgba(0,0,0,0.45)';
+    });
+    showGauge(currentConfig.gaugeStyle || 'circular');
+  }
+
+  function showGauge(style) {
+    document.querySelectorAll('[data-gauge]').forEach((el) => {
+      el.classList.toggle('hidden', el.dataset.gauge !== style);
+    });
+  }
+
+  function updateText() {
+    const u = state.units || 'oz';
+    const main = document.getElementById('hydration-amount-main');
+    const sub = document.getElementById('hydration-amount-goal');
+    const pctEl = document.getElementById('hydration-pct-chip');
+    const streak = document.getElementById('hydration-streak-chip');
+    if (main) main.textContent = formatAmount(state.current, u);
+    if (sub) sub.textContent = `of ${formatAmount(state.goal, u)}`;
+    const p = state.goal > 0 ? Math.min(999, (state.current / state.goal) * 100) : 0;
+    if (pctEl) pctEl.textContent = `${Math.round(p)}%`;
+    if (streak) {
+      streak.textContent = state.streak > 0 ? `🔥 ${state.streak}` : '🔥 0';
+      streak.classList.toggle('hidden', !state.streak && !currentConfig.dailyStreak);
+    }
+    const minMain = document.getElementById('minimal-amount-main');
+    const minSub = document.getElementById('minimal-amount-sub');
+    if (minMain) minMain.textContent = formatAmount(state.current, u);
+    if (minSub) minSub.textContent = `${Math.round(p)}% · of ${formatAmount(state.goal, u)}`;
+    const statsBlock = document.getElementById('hydration-stats-block');
+    if (statsBlock) statsBlock.classList.toggle('hidden', currentConfig.gaugeStyle === 'minimal');
+    const chips = document.querySelector('.hydration-chips');
+    if (chips) chips.classList.toggle('hidden', currentConfig.gaugeStyle === 'minimal');
   }
 
   function render() {
-    const style = currentConfig.gaugeStyle || 'circular';
     const pct = state.goal > 0 ? Math.min(1, state.current / state.goal) : 0;
-    targetProgress = pct;
-    updateText();
-    if (style === 'circular') startLoop(drawCircular);
-    else if (style === 'bottle') startLoop(drawBottle);
-    else if (style === 'vertical') startLoop(() => drawBar(true));
-    else if (style === 'horizontal') startLoop(() => drawBar(false));
-    else if (style === 'minimal') {
-      displayProgress = targetProgress;
-      updateMinimalRing(pct);
+    if (Math.abs(targetProgress - pct) > 0.0001) {
+      targetProgress = pct;
+      startProgressTween();
+    } else if (!progressAnimating) {
+      displayProgress = pct;
     }
+    updateText();
+    scheduleLoop();
   }
 
   function updateHydration(data, configPatch) {
+    const prevTarget = targetProgress;
     const json = JSON.stringify(data);
-    const sameProgress = json === lastBroadcastJson;
+    const sameBroadcast = json === lastBroadcastJson;
     lastBroadcastJson = json;
     if (data.config) currentConfig = { ...currentConfig, ...data.config };
     else if (configPatch && configPatch.config) currentConfig = { ...currentConfig, ...configPatch.config };
@@ -505,7 +686,7 @@
     };
     applyLayout();
     render();
-    if (!sameProgress && (data.leveledUp || data.celebration)) triggerEffects(data);
+    if (!sameBroadcast && (data.leveledUp || data.celebration)) triggerEffects(data);
   }
 
   function isPreviewMode() {
@@ -520,12 +701,35 @@
 
   window.__hydrationDemoUpdate = (data) => updateHydration(data, data);
   window.__hydrationDemoFx = (opts) => triggerEffects(opts || { leveledUp: true });
-  window.__hydrationDemoSparkle = () => spawnSparkles();
-  window.__hydrationDemoSplash = () => spawnSplash();
-  window.__hydrationDemoBubbles = () => spawnBubbles();
-  window.__hydrationDemoConfetti = () => spawnConfetti();
+  window.__hydrationDemoSparkle = () => {
+    glowBoost = Math.max(glowBoost, 0.5);
+    spawnInWater('sparkle', 1.2);
+    scheduleLoop();
+  };
+  window.__hydrationDemoSplash = () => {
+    splashBoost = 1.4;
+    scheduleLoop();
+  };
+  window.__hydrationDemoBubbles = () => {
+    spawnInWater('bubble', 1.1);
+    scheduleLoop();
+  };
+  window.__hydrationDemoConfetti = () => {
+    glowBoost = Math.max(glowBoost, 1.2);
+    outlineFlash = 1;
+    spawnInWater('confetti', 2);
+    spawnInWater('sparkle', 0.8);
+    scheduleLoop();
+  };
   window.__hydrationDemoNumberPop = () => triggerNumberPop();
+  window.__hydrationDemoFill = (from, to) => {
+    displayProgress = from;
+    targetProgress = to;
+    startProgressTween();
+    scheduleLoop();
+  };
 
   if (!isPreviewMode()) connectWebSocket();
-  else applyLayout();
+  applyLayout();
+  scheduleLoop();
 })();
