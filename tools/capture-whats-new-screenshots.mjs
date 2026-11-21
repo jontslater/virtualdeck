@@ -42,14 +42,19 @@ ${css}
 </html>`;
 }
 
+function fileToDataUri(relative) {
+  const imgPath = path.join(root, 'public', String(relative).replace(/^public\//, ''));
+  if (!fs.existsSync(imgPath)) return '';
+  const body = fs.readFileSync(imgPath);
+  const isSvg = imgPath.endsWith('.svg');
+  const mime = isSvg ? 'image/svg+xml' : 'image/png';
+  return `data:${mime};base64,${body.toString('base64')}`;
+}
+
 function renderFeatures(features) {
   return features
     .map((feat) => {
-      const relative = feat.image ? String(feat.image).replace(/^public\//, '') : '';
-      const imgPath = relative ? path.join(root, 'public', relative) : '';
-      const src = imgPath
-        ? `/${relative.split('/').map(encodeURIComponent).join('/')}`
-        : '';
+      const src = feat.image ? fileToDataUri(feat.image) : '';
       const mediaTag = feat.image
         ? `<div class="whats-new-feature-media"><img src="${src}" alt="${feat.title || ''}" /></div>`
         : '';
