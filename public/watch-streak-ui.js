@@ -158,15 +158,18 @@ function renderWatchStreakTiers() {
       <div class="watch-streak-tier-body">
         <div class="ws-tier-section">
           <h4>Milestone</h4>
-          <label>Milestone (streams)
-            <input type="number" class="ws-tier-threshold" min="1" value="${tier.threshold}" />
-          </label>
-          <label>Alert text
-            <input type="text" class="ws-tier-text" value="${escapeHtmlWs(tier.textTemplate || '')}" />
-          </label>
-          <label>Chat reply (optional)
-            <input type="text" class="ws-tier-chat" value="${escapeHtmlWs(tier.chatMessage || '')}" />
-          </label>
+          <div class="setting-group">
+            <label for="ws-tier-threshold-${index}">Milestone (streams)</label>
+            <input type="number" id="ws-tier-threshold-${index}" class="preference-input ws-tier-threshold" min="1" value="${tier.threshold}" />
+          </div>
+          <div class="setting-group">
+            <label for="ws-tier-text-${index}">Alert text</label>
+            <input type="text" id="ws-tier-text-${index}" class="preference-input ws-tier-text" value="${escapeHtmlWs(tier.textTemplate || '')}" placeholder="{user} hit a {count}-stream watch streak!" />
+          </div>
+          <div class="setting-group">
+            <label for="ws-tier-chat-${index}">Chat reply (optional)</label>
+            <input type="text" id="ws-tier-chat-${index}" class="preference-input ws-tier-chat" value="${escapeHtmlWs(tier.chatMessage || '')}" placeholder="Thanks for the loyalty, {user}! ({count} streams)" />
+          </div>
         </div>
         <div class="ws-tier-section">
           <h4>Custom media</h4>

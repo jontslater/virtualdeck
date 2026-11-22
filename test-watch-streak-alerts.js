@@ -64,6 +64,13 @@ const text = formatAlertText('{user} — {count}', {
 });
 assert.strictEqual(text, 'Pat — 5');
 
+const aliasText = formatAlertText('{username} / {streakCount} / {displayName}', {
+  login: 'pat123',
+  displayName: 'Pat',
+  streakCount: 12,
+});
+assert.strictEqual(aliasText, 'pat123 / 12 / Pat');
+
 assert.ok(scopesIncludeWatchStreakChat(['chat:read', 'user:read:chat']));
 assert.ok(!scopesIncludeWatchStreakChat(['chat:read']));
 

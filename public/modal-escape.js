@@ -22,6 +22,7 @@
     'multi-media-modal': 'closeMultiMediaModal',
     'twitch-alert-widget': 'closeTwitchAlertWidget',
     'alert-widget': 'hideAlertWidget',
+    'hydration-panel-modal': 'closeHydrationPanel',
     'overlay-widget': 'hideOverlayWidget'
   };
   var CONTAINER_SELECTOR = '[id$="-modal"], .modal, .overlay-widget, .alert-widget, #twitch-alert-widget';

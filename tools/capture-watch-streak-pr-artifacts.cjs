@@ -191,6 +191,7 @@ async function captureElectronUi() {
   await page.evaluate(async () => {
     try {
       localStorage.setItem('vd_hide_twitch_banner', '1');
+      localStorage.setItem('vd-hide-welcome-twitch-popup', '1');
     } catch (e) {
       /* ignore */
     }
@@ -210,6 +211,19 @@ async function captureElectronUi() {
   await page.waitForTimeout(600);
 
   const widget = page.locator('#alert-widget .alert-widget-content');
+  await page.evaluate(() => {
+    const sel = document.getElementById('alert-type');
+    if (!sel) return;
+    sel.value = 'watch-streak';
+    sel.size = Math.min(sel.options.length, 14);
+    sel.style.height = 'auto';
+    sel.style.minHeight = `${sel.size * 28}px`;
+    sel.style.background = 'var(--bg-primary)';
+    sel.style.color = 'var(--text-primary)';
+    sel.style.border = '1px solid var(--border-primary)';
+    sel.style.borderRadius = '6px';
+    sel.style.padding = '4px';
+  });
   await page.locator('.alert-type-selector').screenshot({
     path: path.join(outDir, 'watch-streak-alert-widget-type-dropdown.png'),
     force: true,

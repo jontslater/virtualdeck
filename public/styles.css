@@ -5781,6 +5781,39 @@ body.resizing-chat * {
   overflow-y: auto;
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
+#watch-streak-alert-settings .setting-group {
+  margin-bottom: 12px;
+}
+#watch-streak-alert-settings .setting-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+#watch-streak-alert-settings .setting-group input:not([type="range"]):not([type="color"]),
+#watch-streak-alert-settings .setting-group select,
+#watch-streak-alert-settings .watch-streak-tier-body input.preference-input,
+#watch-streak-alert-settings .ws-tier-section input:not([type="color"]):not([type="range"]):not([type="file"]),
+#watch-streak-alert-settings .ws-tier-section select {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+#watch-streak-alert-settings .setting-group input:focus,
+#watch-streak-alert-settings .setting-group select:focus,
+#watch-streak-alert-settings .ws-tier-section input:not([type="color"]):not([type="range"]):focus,
+#watch-streak-alert-settings .ws-tier-section select:focus {
+  outline: none;
+  border-color: var(--accent-color, var(--accent-primary));
+  box-shadow: 0 0 0 2px rgba(166, 243, 74, 0.15);
+}
 .watch-streak-section {
   margin: 16px 0;
   padding-top: 8px;

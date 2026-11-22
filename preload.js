@@ -252,4 +252,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ravenConnectionStatus: async () => ipcRenderer.invoke('raven-connection-status'),
   ravenTestLlmKey: async (payload) => ipcRenderer.invoke('raven-test-llm-key', payload || {}),
   ravenTestTtsKey: async (payload) => ipcRenderer.invoke('raven-test-tts-key', payload || {}),
+  getHydrationConfig: async () => ipcRenderer.invoke('get-hydration-config'),
+  saveHydrationConfig: async (config) => ipcRenderer.invoke('save-hydration-config', config),
+  updateHydrationProgress: async (amount) => ipcRenderer.invoke('update-hydration-progress', amount),
+  undoHydrationProgress: async () => ipcRenderer.invoke('undo-hydration-progress'),
+  resetHydration: async () => ipcRenderer.invoke('reset-hydration'),
+  testHydration: async () => ipcRenderer.invoke('test-hydration'),
+  getHydrationUrl: async () => ipcRenderer.invoke('get-hydration-url'),
+  pickAudioFileForSounds: async () => ipcRenderer.invoke('pick-audio-file-for-sounds'),
+  onHydrationStateChanged: (callback) => ipcRenderer.on('hydration-state-changed', (_event, data) => callback(data)),
 });

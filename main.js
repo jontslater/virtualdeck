@@ -101,6 +101,7 @@ const {
 const { sanitizeFeedbackPayload, postFeedbackPayload } = require('./lib/feedback/submit');
 const { FEEDBACK_PROMPT_DELAY_MS } = require('./lib/feedback/constants');
 const { isFeedbackEndpointConfigured } = require('./lib/feedback/config');
+const { createHydrationService } = require('./lib/hydration-service');
 
 process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection]', reason);
@@ -367,6 +368,8 @@ const hydrationConfigPath = path.join(userDataPath, 'hydration-config.json');
 const watchStreakConfigPath = path.join(userDataPath, 'watch-streak-config.json');
 const watchStreakLeadersPath = path.join(userDataPath, 'watch-streak-leaders.json');
 let lastWatchStreakAlertPayload = null;
+const hydrationService = createHydrationService(hydrationConfigPath);
+let hydrationStreamLiveState = null;
 const aiEventsLogPath = path.join(userDataPath, 'ai-events.log');
 const aiCommandsPath = path.join(userDataPath, 'ai-commands.json');
 const aiTtsSoundsDir = path.join(userDataPath, 'sounds', 'ai-tts');
@@ -883,42 +886,12 @@ function saveTcConfig(cfg) {
   fs.writeFileSync(tcConfigPath, JSON.stringify(toSave, null, 2));
 }
 
-// Hydration config management
 function loadHydrationConfig() {
-  try {
-    if (fs.existsSync(hydrationConfigPath)) {
-      return JSON.parse(fs.readFileSync(hydrationConfigPath, 'utf-8'));
-    }
-  } catch (e) {
-    console.error('Error loading hydration config:', e);
-  }
-  // Default config
-  return {
-    streamGoal: 64,
-    incrementAmount: 8,
-    redemptionKeyword: "hydrate",
-    currentProgress: 0,
-    gaugeStyle: "circular",
-    waterColor: "#4fc3f7",
-    backgroundColor: "transparent",
-    textColor: "#ffffff",
-    gaugeSize: 200,
-    positionX: 50,
-    positionY: 50,
-    borderWidth: 0,
-    borderColor: "#ffffff",
-    borderRadius: 10,
-    resetOnLive: true
-  };
+  return hydrationService.loadHydrationConfig();
 }
 
 function saveHydrationConfig(cfg) {
-  try {
-    fs.writeFileSync(hydrationConfigPath, JSON.stringify(cfg, null, 2));
-    console.log('Hydration config saved');
-  } catch (e) {
-    console.error('Error saving hydration config:', e);
-  }
+  return hydrationService.saveHydrationConfig(cfg);
 }
 
 function loadWatchStreakConfig() {
@@ -1013,71 +986,101 @@ async function processWatchStreakShare(share, options = {}) {
   return { ok: true, tier, text: renderedText, overlayPayload };
 }
 
-function broadcastHydrationUpdate(config) {
-  const percentage = config.streamGoal > 0 ? (config.currentProgress / config.streamGoal) * 100 : 0;
-  const payload = {
-    type: 'hydrationUpdate',
-    data: {
-      current: config.currentProgress,
-      goal: config.streamGoal,
-      percentage: percentage,
-      config: config
-    }
-  };
-  
-  // Broadcast to all connected overlay clients
-  overlayClients.forEach(client => {
-    if (client.readyState === 1) { // WebSocket.OPEN
-      try {
-        client.send(JSON.stringify(payload));
-      } catch (error) {
-        console.error('Error broadcasting hydration update:', error);
-      }
-    }
-  });
+function broadcastHydrationUpdate(config, extras) {
+  hydrationService.broadcastHydrationUpdate(overlayClients, config, extras || {});
 }
 
-// Stream monitor for auto-reset hydration
-let lastStreamLiveState = false;
 let streamMonitorInterval = null;
+
+async function queryStreamIsLive() {
+  if (!twitchClientId || !twitchToken || !twitchUserId) return null;
+  const resp = await fetch(`https://api.twitch.tv/helix/streams?user_id=${encodeURIComponent(twitchUserId)}`, {
+    headers: {
+      'Client-ID': twitchClientId,
+      Authorization: `Bearer ${twitchToken}`,
+    },
+  });
+  const data = await resp.json();
+  return !!(data.data && data.data.length > 0);
+}
 
 async function checkStreamAndResetHydration() {
   try {
-    const config = loadHydrationConfig();
-    if (!config.resetOnLive) return;
-    
-    // Check if stream is live
-    if (!twitchClientId || !twitchToken || !twitchUserId) return;
-    
-    const resp = await fetch(`https://api.twitch.tv/helix/streams?user_id=${encodeURIComponent(twitchUserId)}`, {
-      headers: {
-        'Client-ID': twitchClientId,
-        'Authorization': `Bearer ${twitchToken}`
+    const isLive = await queryStreamIsLive();
+    if (isLive === null) return;
+
+    const transition = hydrationService.resolveStreamLiveTransition(hydrationStreamLiveState, isLive);
+    hydrationStreamLiveState = transition.previous;
+
+    if (transition.shouldReset) {
+      const config = loadHydrationConfig();
+      if (hydrationService.shouldResetForGoLive(config)) {
+        console.log('Stream went live - resetting hydration tracker');
+        const { resetHydrationProgress } = require('./lib/hydration-config');
+        const next = hydrationService.saveHydrationConfig(resetHydrationProgress(config));
+        broadcastHydrationUpdate(next);
       }
-    });
-    const data = await resp.json();
-    const isLive = data.data && data.data.length > 0;
-    
-    // If stream just went live (transition from offline to live), reset hydration
-    if (isLive && !lastStreamLiveState) {
-      console.log('Stream went live - resetting hydration tracker');
-      config.currentProgress = 0;
-      saveHydrationConfig(config);
-      broadcastHydrationUpdate(config);
     }
-    
-    lastStreamLiveState = isLive;
   } catch (error) {
     console.error('Error in stream monitor:', error);
   }
 }
 
+function checkHydrationMidnightReset() {
+  try {
+    let config = loadHydrationConfig();
+    if (!hydrationService.shouldResetAtMidnight(config)) return;
+    const { applyMidnightReset } = require('./lib/hydration-config');
+    config = hydrationService.saveHydrationConfig(applyMidnightReset(config));
+    broadcastHydrationUpdate(config);
+    console.log('Hydration reset at midnight');
+  } catch (err) {
+    console.error('Midnight hydration reset failed:', err);
+  }
+}
+
+async function checkHydrationChatReminder() {
+  try {
+    const config = loadHydrationConfig();
+    const mins = config.reminderMinutes || 0;
+    if (mins <= 0) return;
+    const isLive = await queryStreamIsLive();
+    if (!isLive) return;
+    const now = Date.now();
+    const intervalMs = mins * 60 * 1000;
+    if (config.lastReminderAt && now - config.lastReminderAt < intervalMs) return;
+    if (config.currentProgress >= config.streamGoal) return;
+    const u = config.units || 'oz';
+    const msg = `💧 Hydration check: ${config.currentProgress}/${config.streamGoal} ${u} — stay hydrated!`;
+    if (twitchClient && twitchClient.readyState() === 'OPEN') {
+      const channels = twitchClient.getChannels();
+      if (channels && channels.length > 0) {
+        await twitchClient.say(channels[0], msg);
+      }
+    }
+    config.lastReminderAt = now;
+    hydrationService.saveHydrationConfig(config);
+  } catch (err) {
+    console.error('Hydration reminder failed:', err);
+  }
+}
+
 function startStreamMonitor() {
   if (streamMonitorInterval) return;
-  // Check every 2 minutes
-  streamMonitorInterval = setInterval(checkStreamAndResetHydration, 120000);
-  // Also check immediately on start
+  streamMonitorInterval = setInterval(() => {
+    checkStreamAndResetHydration();
+    checkHydrationMidnightReset();
+    checkHydrationChatReminder();
+  }, 120000);
   checkStreamAndResetHydration();
+  checkHydrationMidnightReset();
+  hydrationService.scheduleMidnightCheck(checkHydrationMidnightReset);
+  hydrationService.scheduleReminderCheck(checkHydrationChatReminder);
+  queryStreamIsLive()
+    .then((isLive) => {
+      if (isLive !== null) hydrationStreamLiveState = isLive;
+    })
+    .catch(() => {});
 }
 
 function stopStreamMonitor() {
@@ -1085,6 +1088,7 @@ function stopStreamMonitor() {
     clearInterval(streamMonitorInterval);
     streamMonitorInterval = null;
   }
+  hydrationService.stopSchedulers();
 }
 
 let win;
@@ -1249,6 +1253,20 @@ function startOverlayServer() {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization',
+        });
+        res.end(data);
+      });
+    } else if (req.url === '/hydration-overlay.js') {
+      const jsPath = path.join(__dirname, 'overlays', 'hydrationOverlay', 'hydration-overlay.js');
+      fs.readFile(jsPath, (err, data) => {
+        if (err) {
+          res.writeHead(500);
+          res.end('Error loading hydration overlay script');
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'application/javascript',
+          'Access-Control-Allow-Origin': '*',
         });
         res.end(data);
       });
@@ -1475,6 +1493,14 @@ function startOverlayServer() {
     
     console.log(`✅ WebSocket connected for overlay: "${overlayName}"`);
     console.log(`📊 Registry status:`, Array.from(overlayRegistry.entries()).map(([name, clients]) => `${name}:${clients.size}`));
+
+    try {
+      const hConfig = loadHydrationConfig();
+      const payload = hydrationService.makeBroadcastPayload(hConfig);
+      ws.send(JSON.stringify(payload));
+    } catch (hydrationErr) {
+      console.warn('Failed to send hydration state on connect:', hydrationErr.message || hydrationErr);
+    }
     
     ws.on('message', (message) => {
       try {
@@ -2306,6 +2332,27 @@ ipcMain.on('add-media', (event, data) => {
       return;
     }
 
+    if (data.type === 'log-hydration') {
+      const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
+      const newButton = {
+        id: (existing && existing.id) || nextUniqueButtonId(config.buttons),
+        label: data.label,
+        name: data.label,
+        type: 'log-hydration',
+        src: '',
+        hotkey: data.hotkey || undefined,
+        chatCommand: data.chatCommand || undefined,
+      };
+      if (typeof data.editingIndex === 'number') {
+        config.buttons[data.editingIndex] = newButton;
+      } else {
+        config.buttons.push(newButton);
+      }
+      saveProfile(currentActiveProfile, config);
+      if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
+      return;
+    }
+
     if (data.type === 'speak-tts') {
       const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
       const speakText = String(data.speakText || '').trim();
@@ -2857,60 +2904,44 @@ ipcMain.handle('switch-profile', async (event, profileId) => {
 // HYDRATION TRACKER IPC HANDLERS
 // ============================================================
 
-// Get hydration config
-ipcMain.handle('get-hydration-config', async () => {
-  try {
-    return loadHydrationConfig();
-  } catch (error) {
-    console.error('Error getting hydration config:', error);
-    return loadHydrationConfig(); // Return default
-  }
-});
+ipcMain.handle('get-hydration-config', async () => loadHydrationConfig());
 
-// Save hydration config
 ipcMain.handle('save-hydration-config', async (event, config) => {
   try {
-    saveHydrationConfig(config);
-    broadcastHydrationUpdate(config);
-    return { success: true };
+    const existing = loadHydrationConfig();
+    const merged = hydrationService.saveHydrationConfig({ ...existing, ...config });
+    broadcastHydrationUpdate(merged);
+    if (win && !win.isDestroyed()) win.webContents.send('hydration-state-changed', merged);
+    return { success: true, config: merged };
   } catch (error) {
     console.error('Error saving hydration config:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Update hydration progress (increment)
-ipcMain.handle('update-hydration-progress', async () => {
+ipcMain.handle('update-hydration-progress', async (_event, amount) => {
   try {
     const config = loadHydrationConfig();
-    // Allow currentProgress to exceed streamGoal (for numerical display)
-    config.currentProgress = config.currentProgress + config.incrementAmount;
-    saveHydrationConfig(config);
-    broadcastHydrationUpdate(config);
-    console.log(`Hydration updated: ${config.currentProgress}/${config.streamGoal} oz`);
-    return { success: true, config };
+    const amt = amount != null ? Number(amount) : config.incrementAmount;
+    const result = hydrationService.incrementHydration(overlayClients, amt, 'manual', { win });
+    return { success: true, config: result.config };
   } catch (error) {
     console.error('Error updating hydration progress:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Reset hydration progress
-ipcMain.handle('reset-hydration', async () => {
+ipcMain.handle('undo-hydration-progress', async () => {
   try {
-    const config = loadHydrationConfig();
-    config.currentProgress = 0;
-    saveHydrationConfig(config);
-    broadcastHydrationUpdate(config);
-    console.log('Hydration progress reset to 0');
-    return { success: true, config };
+    return hydrationService.undoLastHydrationDelta(overlayClients, { win });
   } catch (error) {
-    console.error('Error resetting hydration:', error);
+    console.error('Error undoing hydration:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Test hydration (for preview)
+ipcMain.handle('reset-hydration', async () => hydrationService.resetHydration(overlayClients, { win }));
+
 ipcMain.handle('test-hydration', async () => {
   try {
     const config = loadHydrationConfig();
@@ -3027,6 +3058,11 @@ ipcMain.handle('watch-streak-health', async () => {
       oauth.eventSubConnected &&
       hasChatNotificationSub,
   };
+});
+
+ipcMain.handle('get-hydration-url', async () => {
+  const port = overlayServerPort || 8080;
+  return hydrationService.getHydrationUrl(port);
 });
 
 // ============================================================================
@@ -3481,6 +3517,45 @@ ipcMain.handle('save-audio-file-to-sounds', async (event, { base64Data, label, o
   } catch (error) {
     console.error('Error saving audio file to sounds:', error);
     return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('pick-audio-file-for-sounds', async () => {
+  try {
+    if (!win || win.isDestroyed()) return { canceled: true };
+    if (!fs.existsSync(userSoundsDir)) {
+      fs.mkdirSync(userSoundsDir, { recursive: true });
+    }
+    const open = await dialog.showOpenDialog(win, {
+      title: 'Choose sound file',
+      filters: [
+        { name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+      properties: ['openFile'],
+    });
+    if (open.canceled || !open.filePaths.length) {
+      return { canceled: true };
+    }
+    const sourcePath = open.filePaths[0];
+    if (!fs.existsSync(sourcePath)) {
+      return { success: false, error: 'File not found' };
+    }
+    const base = path.basename(sourcePath);
+    const stem = path.basename(base, path.extname(base)).replace(/[^a-z0-9_\-]/gi, '_');
+    const ext = path.extname(base) || '.mp3';
+    let filename = `${stem}${ext}`;
+    let destPath = path.join(userSoundsDir, filename);
+    if (fs.existsSync(destPath)) {
+      filename = `${stem}_${Date.now()}${ext}`;
+      destPath = path.join(userSoundsDir, filename);
+    }
+    fse.copySync(sourcePath, destPath);
+    const relativePath = path.relative(userDataPath, destPath).replace(/\\/g, '/');
+    return { success: true, filePath: relativePath, canceled: false };
+  } catch (error) {
+    console.error('pick-audio-file-for-sounds:', error);
+    return { success: false, error: error.message || String(error) };
   }
 });
 
@@ -6740,6 +6815,9 @@ function startTwitchEventSub({ username, oauth, clientId}) {
         console.log(`[EventSub] ${type}:`, eventData);
         appendAiEventSubToLog(type, eventData, msg.metadata && msg.metadata.message_id);
         handleRaidEventSubNotification(type, eventData);
+        if (type === 'channel.channel_points_custom_reward_redemption.add') {
+          hydrationService.tryHandleRedemption(overlayClients, eventData, { win });
+        }
       }
     });
     eventSubWs.on('error', (err) => {
@@ -6871,6 +6949,17 @@ function registerHotkeysNow() {
   });
   // unregisterAll above also cleared macro hotkeys; register them again after the buttons.
   syncMacroHotkeys();
+  const hydrationCfg = loadHydrationConfig();
+  const hk = hydrationCfg.logHotkey && String(hydrationCfg.logHotkey).trim();
+  if (hk) {
+    try {
+      globalShortcut.register(hk, () => {
+        hydrationService.incrementHydration(overlayClients, undefined, 'hotkey', { win });
+      });
+    } catch (error) {
+      console.warn('Failed to register hydration hotkey:', hk, error);
+    }
+  }
 }
 
 // Preferences management
