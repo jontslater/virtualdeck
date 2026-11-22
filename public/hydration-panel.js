@@ -349,5 +349,6 @@
     $('menu-tools-hydration')?.addEventListener('click', openPanel);
   });
 
+  window.closeHydrationPanel = closePanel;
   window.vdHydrationPanel = { openPanel, closePanel, loadPanel, buildPreviewPayload, pushPreviewToFrame };
 })();

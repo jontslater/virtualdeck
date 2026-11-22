@@ -1785,10 +1785,10 @@
   </div>
 
   <!-- Hydration Tracker Panel -->
-  <div id="hydration-panel-modal" class="hidden">
-    <div class="modal-content preferences-modal-content" style="max-width: 960px; width: 95vw;">
+  <div id="hydration-panel-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="hydration-panel-title">
+    <div class="modal-content preferences-modal-content">
       <div class="modal-header">
-        <h2>💧 Hydration Tracker</h2>
+        <h2 id="hydration-panel-title">💧 Hydration Tracker</h2>
         <button id="hydration-panel-close" class="modal-close" type="button">✕</button>
       </div>
       <div class="hydration-layout">
