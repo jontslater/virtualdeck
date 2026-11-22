@@ -2358,6 +2358,13 @@ async function loadButtons() {
           '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#7c4dff"/><text x="24" y="30" font-size="10" text-anchor="middle" fill="white">TTS</text></svg>',
         );
       appIconAlt = 'Speak TTS';
+    } else if (button.type === 'replay-watch-streak') {
+      appIconSrc =
+        'data:image/svg+xml;charset=utf-8,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#ff6f00"/><text x="24" y="30" font-size="12" text-anchor="middle" fill="white">🔥</text></svg>',
+        );
+      appIconAlt = 'Replay Watch Streak';
     } else if (button.type === 'app') {
       let iconData = await window.electronAPI.getAppIcon(button.src);
       if (generation !== loadButtonsGeneration) return;
@@ -2371,7 +2378,7 @@ async function loadButtons() {
     card.innerHTML = `
       <button class="edit-button" onclick="editButtonByEl(this)">Edit</button>
       <button class="delete-x-button" onclick="deleteButtonByEl(this)" title="Delete">&times;</button>
-      <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type === 'twitch-clip' ? 'Clip' : button.type === 'post-socials' ? 'Socials' : button.type === 'run-ad' ? 'Ad' : button.type === 'speak-tts' ? 'TTS' : button.type}</div>
+      <div class="sound-type">${button.type === 'meld-scene' ? 'Meld' : button.type === 'twitch-clip' ? 'Clip' : button.type === 'post-socials' ? 'Socials' : button.type === 'run-ad' ? 'Ad' : button.type === 'speak-tts' ? 'TTS' : button.type === 'replay-watch-streak' ? 'Streak' : button.type}</div>
       <div class="sound-name">${button.name || button.label || button.sceneName || 'Unnamed'}</div>
       <div class="sound-hotkey">${button.pathMissing ? 'Missing file — open Edit to re-pick' : (button.hotkey || 'No hotkey')}</div>
     `;
@@ -4454,6 +4461,15 @@ async function handleTrigger(button) {
       } else {
         console.warn('speakTtsDeck API not available');
       }
+    } else if (button.type === 'replay-watch-streak') {
+      if (window.electronAPI?.replayLastWatchStreakAlert) {
+        window.electronAPI
+          .replayLastWatchStreakAlert()
+          .then((r) => {
+            if (r && !r.success && r.error) console.warn('Replay watch streak:', r.error);
+          })
+          .catch((err) => console.error('Replay watch streak failed:', err));
+      }
     } else if (button.type === "multi-media") {
     // Handle multi-media button trigger
     await handleMultiMediaTrigger(button);
@@ -4991,6 +5007,20 @@ document.getElementById('settings-form').onsubmit = async (e) => {
       type: 'run-ad',
       commercialLength: lenEl ? lenEl.value : 60,
       chatMessage: msgEl ? msgEl.value.trim() : '',
+      hotkey: completeHotkey,
+      editingIndex: isEditing ? parseInt(form.dataset.editingIndex, 10) : undefined,
+      chatCommand: chatCommand,
+    });
+    window.electronAPI.refreshHotkeys();
+    document.getElementById('settings-modal').classList.add('hidden');
+    if (window.electronAPI.enableHotkeys) window.electronAPI.enableHotkeys();
+    return;
+  }
+
+  if (type === 'replay-watch-streak') {
+    window.electronAPI.addMedia({
+      label,
+      type: 'replay-watch-streak',
       hotkey: completeHotkey,
       editingIndex: isEditing ? parseInt(form.dataset.editingIndex, 10) : undefined,
       chatCommand: chatCommand,
@@ -11088,6 +11118,7 @@ function setupAlertTypeFilter() {
         'bits': 'Bits',
         'ban': 'Ban',
         'daily-checkin': 'Daily Checkin',
+        'watch-streak': 'Watch Streak',
         'first-chat-walkon': 'Walk On (First Chat)'
       };
       
@@ -11108,6 +11139,7 @@ function setupAlertTypeFilter() {
       'ban': 'Ban',
       'channel-points': 'Channel Point Redemption',
       'daily-checkin': 'Daily Checkin',
+      'watch-streak': 'Watch Streak',
       'first-chat-walkon': 'Walk On (First Chat)'
     };
     selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
@@ -11186,6 +11218,7 @@ function setupAlertWidget() {
       bits: 'Bits',
       'channel-points': 'Channel Point Redemption',
       'daily-checkin': 'Daily Checkin',
+      'watch-streak': 'Watch Streak',
       'first-chat-walkon': 'Walk On (First Chat)',
     };
     return typeNames[alertType] || alertType;
@@ -11378,6 +11411,13 @@ function setupAlertWidget() {
       if (channelPointsSettings) {
         channelPointsSettings.style.display = selectedType === 'channel-points' ? 'block' : 'none';
       }
+
+      if (typeof window.updateWatchStreakAlertTypeVisibility === 'function') {
+        window.updateWatchStreakAlertTypeVisibility();
+        if (selectedType === 'watch-streak' && typeof window.loadWatchStreakSettingsUi === 'function') {
+          window.loadWatchStreakSettingsUi();
+        }
+      }
       
       // Update alert list to show only matching alerts
       updateAlertList();
@@ -11394,7 +11434,8 @@ function setupAlertWidget() {
           'bits': 'Bits',
           'ban': 'Ban',
           'channel-points': 'Channel Point Redemption',
-          'daily-checkin': 'Daily Checkin'
+          'daily-checkin': 'Daily Checkin',
+          'watch-streak': 'Watch Streak',
         };
         selectedAlertTypeName.textContent = typeNames[selectedType] || 'Unknown';
       }
@@ -11882,6 +11923,7 @@ function setupAlertWidget() {
       'bits': 'Bits Donation',
       'channel-points': 'Channel Point Redemption',
       'daily-checkin': 'Daily Checkin',
+      'watch-streak': 'Watch Streak',
       'first-chat-walkon': 'Walk On (First Chat)'
     };
     return typeNames[type] || type;
@@ -12048,6 +12090,12 @@ function setupAlertWidget() {
   if (saveAlertBtn) {
     saveAlertBtn.addEventListener('click', async () => {
       const type = alertTypeSelect.value;
+      if (type === 'watch-streak') {
+        if (typeof window.saveWatchStreakSettingsUi === 'function') {
+          await window.saveWatchStreakSettingsUi();
+        }
+        return;
+      }
       const text = alertTextInput.value.trim();
       let duration = parseInt(alertDurationInput.value) || 5;
       const soundFile = alertSoundInput.files[0];
@@ -13743,9 +13791,14 @@ function showAlertWidget() {
         dailyCheckinSettings.style.display = 'none';
       }
     }
+
+    if (typeof window.updateWatchStreakAlertTypeVisibility === 'function') {
+      window.updateWatchStreakAlertTypeVisibility();
+    }
     
     // Focus on the alert text input after a short delay to ensure DOM is ready
     setTimeout(() => {
+      if (alertTypeSelect?.value === 'watch-streak') return;
       const alertTextInput = document.getElementById('alert-text');
       if (alertTextInput) {
         alertTextInput.focus();
@@ -17813,6 +17866,7 @@ function setupButtonTypeSelection() {
   const postSocialsOption = document.querySelector('[data-type="post-socials"]');
   const runAdOption = document.querySelector('[data-type="run-ad"]');
   const speakTtsOption = document.querySelector('[data-type="speak-tts"]');
+  const replayWatchStreakOption = document.querySelector('[data-type="replay-watch-streak"]');
   const logHydrationOption = document.querySelector('[data-type="log-hydration"]');
   const macroOption = document.querySelector('[data-type="macro"]');
   const cancelBtn = document.querySelector('.cancel-selection');
@@ -17867,6 +17921,13 @@ function setupButtonTypeSelection() {
     speakTtsOption.addEventListener('click', () => {
       selectionModal.classList.add('hidden');
       openSpeakTtsForm();
+    });
+  }
+
+  if (replayWatchStreakOption) {
+    replayWatchStreakOption.addEventListener('click', () => {
+      selectionModal.classList.add('hidden');
+      openReplayWatchStreakForm();
     });
   }
 
@@ -17983,6 +18044,27 @@ function showSpeakTtsSection(existingButton) {
   if (textEl) {
     textEl.value = (existingButton && existingButton.speakText) || '';
   }
+}
+
+function openReplayWatchStreakForm(existingButton) {
+  const settingsForm = document.getElementById('settings-form');
+  settingsForm.reset();
+  const typeInput = document.getElementById('type-input');
+  if (typeInput) typeInput.value = 'replay-watch-streak';
+  if (existingButton && existingButton.label) {
+    document.getElementById('label-input').value = existingButton.label;
+  }
+  delete settingsForm.dataset.editingIndex;
+  const audioFileSection = document.getElementById('audio-file-section');
+  const appFileSection = document.getElementById('app-file-section');
+  hideMeldSceneSection();
+  hideRunAdSection();
+  hideSpeakTtsSection();
+  if (audioFileSection) audioFileSection.style.display = 'none';
+  if (appFileSection) appFileSection.style.display = 'none';
+  document.getElementById('settings-modal-title').textContent = 'Add Replay Watch Streak Button';
+  document.getElementById('settings-modal').classList.remove('hidden');
+  if (window.electronAPI && window.electronAPI.disableHotkeys) window.electronAPI.disableHotkeys();
 }
 
 function openLogHydrationForm() {

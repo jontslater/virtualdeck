@@ -2260,11 +2260,13 @@ try {
       if (document.getElementById('vd-twitch-conn-banner')) return;
       const b = document.createElement('div');
       b.id = 'vd-twitch-conn-banner';
+      if (document.querySelector('[id$="-modal"]:not(.hidden)')) return;
       b.style.position = 'fixed';
-      b.style.top = '50%';
-      b.style.left = '50%';
-      b.style.transform = 'translate(-50%, -50%)';
-      b.style.zIndex = '10050';
+      b.style.top = 'auto';
+      b.style.bottom = '20px';
+      b.style.left = '20px';
+      b.style.transform = 'none';
+      b.style.zIndex = '9990';
       b.style.background = 'linear-gradient(180deg,#0b0b0b,#141414)';
       b.style.color = '#fff';
       b.style.padding = '10px 14px';

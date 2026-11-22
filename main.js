@@ -71,6 +71,25 @@ const {
   RAVEN_AI_AUDIO_OVERLAY,
   hasAiAudioOverlayClients,
 } = require('./lib/ai-audio-overlay');
+const { WATCH_STREAK_OVERLAY } = require('./lib/watch-streak-overlay');
+const {
+  migrateWatchStreakConfig,
+  getDefaultConfig: getDefaultWatchStreakConfig,
+  migrateLeadersStore,
+  getDefaultLeadersStore,
+  parseWatchStreakEventSub,
+  resolveActiveTier,
+  formatAlertText,
+  recordStreakShare,
+  listTopStreakers,
+  buildWatchStreakOverlayPayload,
+  buildWatchStreakButtonTriggerPayload,
+  TWITCH_CHAT_NOTIFICATION_TYPE,
+} = require('./lib/watch-streak-alerts');
+const {
+  TWITCH_WATCH_STREAK_CHAT_SCOPE,
+  scopesIncludeWatchStreakChat,
+} = require('./lib/twitch-oauth-scopes');
 const { isValidTwitchLogin, normalizeTwitchLogin } = require('./lib/twitch-login');
 const { sanitizeTwitchProfileImageUrl: sanitizeTwitchProfileImageUrlLib } = require('./lib/twitch-profile-image');
 const {
@@ -346,6 +365,9 @@ const defaultSkinsDir = path.join(__dirname, 'skins');
 const tcConfigPath = path.join(userDataPath, 'tc_config.json');
 const dailyCheckinsPath = path.join(userDataPath, 'checkins.json');
 const hydrationConfigPath = path.join(userDataPath, 'hydration-config.json');
+const watchStreakConfigPath = path.join(userDataPath, 'watch-streak-config.json');
+const watchStreakLeadersPath = path.join(userDataPath, 'watch-streak-leaders.json');
+let lastWatchStreakAlertPayload = null;
 const hydrationService = createHydrationService(hydrationConfigPath);
 let hydrationStreamLiveState = null;
 const aiEventsLogPath = path.join(userDataPath, 'ai-events.log');
@@ -872,6 +894,98 @@ function saveHydrationConfig(cfg) {
   return hydrationService.saveHydrationConfig(cfg);
 }
 
+function loadWatchStreakConfig() {
+  try {
+    if (fs.existsSync(watchStreakConfigPath)) {
+      return migrateWatchStreakConfig(JSON.parse(fs.readFileSync(watchStreakConfigPath, 'utf-8')));
+    }
+  } catch (e) {
+    console.error('Error loading watch streak config:', e);
+  }
+  return getDefaultWatchStreakConfig();
+}
+
+function saveWatchStreakConfig(cfg) {
+  try {
+    const migrated = migrateWatchStreakConfig(cfg);
+    fs.writeFileSync(watchStreakConfigPath, JSON.stringify(migrated, null, 2));
+    console.log('Watch streak config saved');
+    return migrated;
+  } catch (e) {
+    console.error('Error saving watch streak config:', e);
+    return migrateWatchStreakConfig(cfg);
+  }
+}
+
+function loadWatchStreakLeaders() {
+  try {
+    if (fs.existsSync(watchStreakLeadersPath)) {
+      return migrateLeadersStore(JSON.parse(fs.readFileSync(watchStreakLeadersPath, 'utf-8')));
+    }
+  } catch (e) {
+    console.error('Error loading watch streak leaders:', e);
+  }
+  return getDefaultLeadersStore();
+}
+
+function saveWatchStreakLeaders(store) {
+  try {
+    const migrated = migrateLeadersStore(store);
+    fs.writeFileSync(watchStreakLeadersPath, JSON.stringify(migrated, null, 2));
+    return migrated;
+  } catch (e) {
+    console.error('Error saving watch streak leaders:', e);
+    return migrateLeadersStore(store);
+  }
+}
+
+function getWatchStreakOverlayPageUrl() {
+  return getOverlayServerUrl();
+}
+
+async function processWatchStreakShare(share, options = {}) {
+  const config = loadWatchStreakConfig();
+  if (!config.enabled && !options.force) {
+    return { ok: false, reason: 'disabled' };
+  }
+  const tier = resolveActiveTier(config, share.streakCount);
+  if (!tier) {
+    return { ok: false, reason: 'no_tier' };
+  }
+  const renderedText = formatAlertText(tier.textTemplate, share);
+  const targetOverlay = config.overlay || 'main';
+  const overlayPayload = buildWatchStreakButtonTriggerPayload(tier, share, renderedText, {
+    overlayPort: overlayServerPort || 8080,
+    targetOverlay,
+  });
+  lastWatchStreakAlertPayload = { ...overlayPayload, at: new Date().toISOString() };
+  broadcastToOverlay(overlayPayload, targetOverlay);
+
+  const chatTemplate = String(tier.chatMessage || '').trim();
+  if (chatTemplate && !options.skipChat && !share.test) {
+    const chatText = formatAlertText(chatTemplate, share);
+    if (chatText) await sayInTwitchChat(chatText);
+  }
+
+  if (!share.test) {
+    const leaders = loadWatchStreakLeaders();
+    const { store } = recordStreakShare(leaders, share);
+    saveWatchStreakLeaders(store);
+  }
+
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('watch-streak-alert-fired', {
+      share,
+      tier,
+      text: renderedText,
+      test: !!share.test,
+      source: options.source || 'unknown',
+    });
+  }
+
+  return { ok: true, tier, text: renderedText, overlayPayload };
+}
+
 function broadcastHydrationUpdate(config, extras) {
   hydrationService.broadcastHydrationUpdate(overlayClients, config, extras || {});
 }
@@ -1123,6 +1237,22 @@ function startOverlayServer() {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization'
+        });
+        res.end(data);
+      });
+    } else if (req.url === '/watch-streak' || req.url.startsWith('/watch-streak?')) {
+      const watchStreakPath = path.join(__dirname, 'overlays', 'watchStreakOverlay', 'index.html');
+      fs.readFile(watchStreakPath, (err, data) => {
+        if (err) {
+          res.writeHead(500);
+          res.end('Error loading watch streak overlay');
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'text/html',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, X-VD-Auth, Authorization',
         });
         res.end(data);
       });
@@ -2246,6 +2376,27 @@ ipcMain.on('add-media', (event, data) => {
       return;
     }
 
+    if (data.type === 'replay-watch-streak') {
+      const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
+      const newButton = {
+        id: (existing && existing.id) || nextUniqueButtonId(config.buttons),
+        label: data.label,
+        name: data.label,
+        type: 'replay-watch-streak',
+        src: '',
+        hotkey: data.hotkey || undefined,
+        chatCommand: data.chatCommand || undefined,
+      };
+      if (typeof data.editingIndex === 'number') {
+        config.buttons[data.editingIndex] = newButton;
+      } else {
+        config.buttons.push(newButton);
+      }
+      saveProfile(currentActiveProfile, config);
+      if (win && !win.isDestroyed()) win.webContents.send('refresh-ui');
+      return;
+    }
+
     if (data.type === 'run-ad') {
       const existing = typeof data.editingIndex === 'number' ? config.buttons[data.editingIndex] : null;
       let commercialLength = Number(data.commercialLength);
@@ -2800,6 +2951,113 @@ ipcMain.handle('test-hydration', async () => {
     console.error('Error testing hydration:', error);
     return { success: false, error: error.message };
   }
+});
+
+// ============================================================
+// WATCH STREAK ALERTS IPC
+// ============================================================
+
+ipcMain.handle('get-watch-streak-config', async () => loadWatchStreakConfig());
+
+ipcMain.handle('save-watch-streak-config', async (_event, config) => {
+  try {
+    const saved = saveWatchStreakConfig(config);
+    if (saved.enabled && eventSubSessionId) {
+      await ensureWatchStreakEventSub(eventSubSessionId);
+    }
+    return { success: true, config: saved };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('get-watch-streak-leaders', async () => {
+  const store = loadWatchStreakLeaders();
+  return { success: true, leaders: listTopStreakers(store, 200), store };
+});
+
+ipcMain.handle('clear-watch-streak-leaders', async () => {
+  const cleared = getDefaultLeadersStore();
+  saveWatchStreakLeaders(cleared);
+  return { success: true };
+});
+
+ipcMain.handle('test-watch-streak-tier', async (_event, payload = {}) => {
+  const threshold = Number(payload.threshold) || Number(payload.streakCount) || 10;
+  const share = {
+    streakCount: threshold,
+    channelPointsAwarded: payload.channelPointsAwarded || 350,
+    userId: 'test-user',
+    login: payload.login || 'TestViewer',
+    displayName: payload.displayName || 'TestViewer',
+    username: payload.login || 'TestViewer',
+    test: true,
+  };
+  const result = await processWatchStreakShare(share, { force: true, skipChat: true, source: 'test' });
+  return result;
+});
+
+ipcMain.handle('replay-last-watch-streak-alert', async () => {
+  if (!lastWatchStreakAlertPayload) {
+    return { success: false, error: 'No watch streak alert to replay yet.' };
+  }
+  const target = lastWatchStreakAlertPayload.targetOverlay || 'main';
+  broadcastToOverlay(lastWatchStreakAlertPayload, target);
+  return { success: true };
+});
+
+ipcMain.handle('open-watch-streak-alerts', async () => {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('open-watch-streak-alerts');
+    return { success: true };
+  }
+  return { success: false, error: 'Window not available' };
+});
+
+ipcMain.handle('get-watch-streak-overlay-url', async () => ({
+  success: true,
+  url: getWatchStreakOverlayPageUrl(),
+}));
+
+ipcMain.handle('watch-streak-health', async () => {
+  const oauth = await getTwitchOAuthStatus();
+  let hasChatNotificationSub = false;
+  try {
+    const listed = await listEventSubscriptions();
+    const rows = listed && listed.data ? listed.data : [];
+    hasChatNotificationSub = rows.some((s) => s.type === TWITCH_CHAT_NOTIFICATION_TYPE);
+  } catch (e) {
+    console.warn('watch-streak-health list subs:', e.message || e);
+  }
+  const config = loadWatchStreakConfig();
+  let hasWatchStreakScope = false;
+  const session = twitchOAuthHost ? twitchOAuthHost.readStoredTokens() : readStoredTokensFromTc();
+  if (session.accessToken) {
+    try {
+      const { validateTwitchAccessToken } = require('./lib/twitch-oauth');
+      const validation = await validateTwitchAccessToken(fetch, session.accessToken);
+      if (validation.ok) {
+        hasWatchStreakScope = scopesIncludeWatchStreakChat(validation.scopes);
+      }
+    } catch (e) {
+      console.warn('watch-streak-health scope validation:', e.message || e);
+    }
+  }
+  const missingScope = oauth.hasSession && !hasWatchStreakScope;
+  return {
+    ...oauth,
+    enabled: config.enabled,
+    eventSubWsOpen: isEventSubConnected(),
+    hasChatNotificationSub,
+    hasWatchStreakScope,
+    missingScope,
+    scopeRequired: TWITCH_WATCH_STREAK_CHAT_SCOPE,
+    ready:
+      config.enabled &&
+      hasWatchStreakScope &&
+      oauth.eventSubConnected &&
+      hasChatNotificationSub,
+  };
 });
 
 ipcMain.handle('get-hydration-url', async () => {
@@ -6326,12 +6584,33 @@ function buildSubscriptionFromKey(key, userId) {
       return { type: 'channel.cheer', condition: { broadcaster_user_id: userId } };
     case 'channel.ban':
       return { type: 'channel.ban', condition: { broadcaster_user_id: userId } };
+    case 'channel.chat.notification':
+      return {
+        type: 'channel.chat.notification',
+        condition: { broadcaster_user_id: userId, user_id: userId },
+      };
     default:
       return null;
   }
 }
 
 // Apply subscriptions for the given session id using saved tc_config topics
+async function ensureWatchStreakEventSub(sessionId) {
+  try {
+    const cfg = loadWatchStreakConfig();
+    if (!cfg.enabled) return;
+    if (!twitchUserId) await getUserId();
+    if (!twitchUserId || !sessionId) return;
+    await subscribeEventSub(
+      'channel.chat.notification',
+      { broadcaster_user_id: twitchUserId, user_id: twitchUserId },
+      sessionId,
+    );
+  } catch (err) {
+    console.warn('[Watch Streak] Could not subscribe to channel.chat.notification:', err);
+  }
+}
+
 async function ensureOutgoingRaidEventSub(sessionId) {
   try {
     if (!twitchUserId) await getUserId();
@@ -6453,6 +6732,7 @@ async function applyEventSubSubscriptions(sessionId) {
     }
 
     await ensureOutgoingRaidEventSub(sessionId);
+    await ensureWatchStreakEventSub(sessionId);
   } catch (err) {
     console.error('Error applying EventSub subscriptions:', err);
   } finally {
@@ -6521,6 +6801,14 @@ function startTwitchEventSub({ username, oauth, clientId}) {
       if (msg.metadata && msg.payload && msg.payload.subscription) {
         const type = msg.payload.subscription.type;
         const eventData = msg.payload.event;
+        if (type === TWITCH_CHAT_NOTIFICATION_TYPE) {
+          const share = parseWatchStreakEventSub(eventData);
+          if (share) {
+            processWatchStreakShare(share, { source: 'eventsub' }).catch((err) => {
+              console.warn('[Watch Streak] process error:', err.message || err);
+            });
+          }
+        }
         if (win && win.webContents) {
           win.webContents.send('twitch-eventsub', { type, event: eventData });
         }

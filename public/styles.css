@@ -5745,6 +5745,295 @@ body.resizing-chat * {
   background: #dc2626;
 }
 
+/* Tools modals (Raid Favorites) — above Twitch connect banner (10050) */
+#raid-favorites-modal {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 11050;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+#raid-favorites-modal.hidden {
+  display: none;
+}
+
+#raid-favorites-modal .modal-content {
+  z-index: 11051;
+  position: relative;
+}
+
+/* Watch Streak Alerts (Alert Widget section) */
+#watch-streak-alert-settings {
+  margin: 12px 0;
+  padding: 12px 14px;
+  background: var(--bg-secondary, #1a1a1a);
+  border-radius: 8px;
+  max-height: min(58vh, 520px);
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+#watch-streak-alert-settings .setting-group {
+  margin-bottom: 12px;
+}
+#watch-streak-alert-settings .setting-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+#watch-streak-alert-settings .setting-group input:not([type="range"]):not([type="color"]),
+#watch-streak-alert-settings .setting-group select,
+#watch-streak-alert-settings .watch-streak-tier-body input.preference-input,
+#watch-streak-alert-settings .ws-tier-section input:not([type="color"]):not([type="range"]):not([type="file"]),
+#watch-streak-alert-settings .ws-tier-section select,
+#watch-streak-alert-settings input.ws-tier-threshold,
+#watch-streak-alert-settings input.ws-tier-text,
+#watch-streak-alert-settings input.ws-tier-chat,
+#watch-streak-alert-settings input.ws-tier-sound,
+#watch-streak-alert-settings input.ws-tier-media-path,
+#watch-streak-alert-settings input.ws-tier-alert-duration,
+#watch-streak-alert-settings .preference-input {
+  width: 100%;
+  padding: 8px 12px !important;
+  font-size: 14px !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: 6px !important;
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  box-sizing: border-box !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+  min-width: 0 !important;
+}
+#watch-streak-alert-settings .setting-group input:focus,
+#watch-streak-alert-settings .setting-group select:focus,
+#watch-streak-alert-settings .ws-tier-section input:not([type="color"]):not([type="range"]):focus,
+#watch-streak-alert-settings .ws-tier-section select:focus {
+  outline: none;
+  border-color: var(--accent-color, var(--accent-primary));
+  box-shadow: 0 0 0 2px rgba(166, 243, 74, 0.15);
+}
+.watch-streak-section {
+  margin: 16px 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.watch-streak-section h3 {
+  margin: 0 0 8px 0;
+  font-size: 1rem;
+  color: var(--accent, #a6f34a);
+}
+.watch-streak-url {
+  display: block;
+  padding: 8px 10px;
+  margin: 8px 0;
+  background: var(--bg-secondary, #1a1a1a);
+  border-radius: 6px;
+  word-break: break-all;
+  font-size: 12px;
+}
+.watch-streak-tier-row {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+.watch-streak-tier-row.is-collapsed .watch-streak-tier-body {
+  display: none;
+}
+.watch-streak-tier-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.watch-streak-tier-row.is-collapsed .watch-streak-tier-summary {
+  border-bottom: none;
+}
+.ws-tier-expand {
+  border: none;
+  background: transparent;
+  color: var(--accent, #a6f34a);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 6px;
+  line-height: 1;
+}
+.ws-tier-summary-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ws-tier-summary-text strong {
+  color: var(--accent, #a6f34a);
+  font-size: 14px;
+}
+.ws-tier-thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+}
+.ws-tier-thumb-empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--text-secondary, #a8b2c1);
+}
+.watch-streak-tier-body {
+  padding: 12px 14px 14px;
+}
+.ws-tier-section {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.ws-tier-section:last-of-type {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+.ws-tier-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  color: var(--accent, #a6f34a);
+  font-weight: 700;
+}
+.ws-tier-hint {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+}
+.watch-streak-colors-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 8px 0 10px;
+}
+.watch-streak-colors-row label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-primary, #eaeaea);
+}
+.watch-streak-colors-row label span {
+  font-weight: 600;
+}
+.ws-tier-media-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+  margin-bottom: 8px;
+}
+.ws-tier-media-row label {
+  flex: 1;
+  min-width: 200px;
+}
+.ws-tier-media-preview {
+  max-width: 160px;
+  max-height: 90px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  margin: 8px 0;
+  display: block;
+}
+.ws-tier-media-preview.hidden {
+  display: none;
+}
+.ws-tier-anim-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+.ws-tier-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.watch-streak-tier-head {
+  display: block;
+  color: var(--text-primary, #f0f0f0);
+  text-decoration: none;
+  margin-bottom: 6px;
+}
+.watch-streak-tier-head strong {
+  color: var(--accent, #a6f34a);
+}
+.watch-streak-tier-body {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.watch-streak-tier-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-primary, #eaeaea);
+}
+.watch-streak-tier-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.watch-streak-tier-colors label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.ws-tier-sound-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+.ws-tier-sound-row label {
+  flex: 1;
+  min-width: 200px;
+}
+.ws-tier-volume-val {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--text-secondary, #a8b2c1);
+}
+.watch-streak-tier-preview {
+  display: block;
+  font-size: 12px;
+  opacity: 0.75;
+  margin-top: 4px;
+}
+.watch-streak-leaders-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.watch-streak-leaders-table th,
+.watch-streak-leaders-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 /* Raid Favorites */
 .raid-favorites-modal {
   max-width: 960px;
