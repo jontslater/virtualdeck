@@ -5795,16 +5795,24 @@ body.resizing-chat * {
 #watch-streak-alert-settings .setting-group select,
 #watch-streak-alert-settings .watch-streak-tier-body input.preference-input,
 #watch-streak-alert-settings .ws-tier-section input:not([type="color"]):not([type="range"]):not([type="file"]),
-#watch-streak-alert-settings .ws-tier-section select {
+#watch-streak-alert-settings .ws-tier-section select,
+#watch-streak-alert-settings input.ws-tier-threshold,
+#watch-streak-alert-settings input.ws-tier-text,
+#watch-streak-alert-settings input.ws-tier-chat,
+#watch-streak-alert-settings input.ws-tier-sound,
+#watch-streak-alert-settings input.ws-tier-media-path,
+#watch-streak-alert-settings input.ws-tier-alert-duration,
+#watch-streak-alert-settings .preference-input {
   width: 100%;
-  padding: 8px 12px;
-  font-size: 14px;
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  box-sizing: border-box;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  padding: 8px 12px !important;
+  font-size: 14px !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: 6px !important;
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  box-sizing: border-box !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+  min-width: 0 !important;
 }
 #watch-streak-alert-settings .setting-group input:focus,
 #watch-streak-alert-settings .setting-group select:focus,
