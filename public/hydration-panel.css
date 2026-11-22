@@ -1,3 +1,12 @@
+#hydration-panel-modal .modal-content.preferences-modal-content {
+  width: min(95vw, 960px);
+  max-width: 960px;
+  max-height: calc(100vh - 40px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 #hydration-panel-modal .hydration-layout {
   display: grid;
   grid-template-columns: 1fr minmax(280px, 340px);

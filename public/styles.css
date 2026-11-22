@@ -5899,6 +5899,23 @@ body.resizing-chat * {
 }
 #ai-audio-modal.hidden { display: none; }
 .ai-audio-modal-content { width: 640px; max-width: 95vw; max-height: 85vh; overflow-y: auto; }
+
+/* Hydration Tracker panel (same overlay shell as Preferences / AI Audio Settings) */
+#hydration-panel-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 11000;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  padding: 20px;
+  box-sizing: border-box;
+}
+#hydration-panel-modal.hidden {
+  display: none;
+}
 #ai-audio-modal .ai-management-panel { margin: 0; border: none; box-shadow: none; padding: 4px 0 0; background: transparent; }
 #ai-audio-modal .ai-management-header { display: none; }
 
