@@ -247,5 +247,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   resetHydration: async () => ipcRenderer.invoke('reset-hydration'),
   testHydration: async () => ipcRenderer.invoke('test-hydration'),
   getHydrationUrl: async () => ipcRenderer.invoke('get-hydration-url'),
+  pickAudioFileForSounds: async () => ipcRenderer.invoke('pick-audio-file-for-sounds'),
   onHydrationStateChanged: (callback) => ipcRenderer.on('hydration-state-changed', (_event, data) => callback(data)),
 });

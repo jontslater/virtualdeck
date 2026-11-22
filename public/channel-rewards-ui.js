@@ -36,17 +36,21 @@
   }
 
   async function loadRewardsIntoSelect(selectElement, options) {
+    const placeholder = (options && options.placeholder) || '-- Select reward --';
     if (!global.electronAPI || !global.electronAPI.getChannelRewards) {
-      throw new Error('Twitch API not available');
+      populateRewardSelect(selectElement, [], { ...options, placeholder });
+      return {
+        ok: false,
+        rewards: [],
+        error: 'Twitch is not connected in VirtualDeck. Reconnect Twitch to load rewards.',
+      };
     }
     const payload = await global.electronAPI.getChannelRewards();
     const rewards = Array.isArray(payload) ? payload : (payload && payload.rewards) || [];
+    const ok = Array.isArray(payload) ? true : payload?.ok !== false;
     const error = payload && !Array.isArray(payload) ? payload.error : null;
     populateRewardSelect(selectElement, rewards, options);
-    if (error && !rewards.length) {
-      throw new Error(error);
-    }
-    return rewards;
+    return { ok, rewards, error };
   }
 
   global.vdChannelRewards = {

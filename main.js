@@ -3262,6 +3262,45 @@ ipcMain.handle('save-audio-file-to-sounds', async (event, { base64Data, label, o
   }
 });
 
+ipcMain.handle('pick-audio-file-for-sounds', async () => {
+  try {
+    if (!win || win.isDestroyed()) return { canceled: true };
+    if (!fs.existsSync(userSoundsDir)) {
+      fs.mkdirSync(userSoundsDir, { recursive: true });
+    }
+    const open = await dialog.showOpenDialog(win, {
+      title: 'Choose sound file',
+      filters: [
+        { name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+      properties: ['openFile'],
+    });
+    if (open.canceled || !open.filePaths.length) {
+      return { canceled: true };
+    }
+    const sourcePath = open.filePaths[0];
+    if (!fs.existsSync(sourcePath)) {
+      return { success: false, error: 'File not found' };
+    }
+    const base = path.basename(sourcePath);
+    const stem = path.basename(base, path.extname(base)).replace(/[^a-z0-9_\-]/gi, '_');
+    const ext = path.extname(base) || '.mp3';
+    let filename = `${stem}${ext}`;
+    let destPath = path.join(userSoundsDir, filename);
+    if (fs.existsSync(destPath)) {
+      filename = `${stem}_${Date.now()}${ext}`;
+      destPath = path.join(userSoundsDir, filename);
+    }
+    fse.copySync(sourcePath, destPath);
+    const relativePath = path.relative(userDataPath, destPath).replace(/\\/g, '/');
+    return { success: true, filePath: relativePath, canceled: false };
+  } catch (error) {
+    console.error('pick-audio-file-for-sounds:', error);
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
 // IPC handler to save media file from base64 data (for backwards compatibility and small files)
 ipcMain.handle('save-media-file', async (event, { base64Data, buttonId, mediaType, originalName }) => {
   try {

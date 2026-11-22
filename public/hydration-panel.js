@@ -57,22 +57,46 @@
     if (val) val.textContent = `${Math.round(readNumber('hydration-plate-opacity', 82))}%`;
   }
 
-  async function refreshOverlayUrl() {
-    if (api('getHydrationUrl')) {
-      const url = await api('getHydrationUrl');
-      state.overlayUrl = url;
-      const el = $('hydration-overlay-url');
-      if (el) el.textContent = url;
-      const frame = $('hydration-preview-frame');
-      if (frame && url) {
-        state.previewReady = false;
-        frame.onload = () => {
-          state.previewReady = true;
-          pushPreviewToFrame();
-        };
-        frame.src = `${url}?preview=1&t=${Date.now()}`;
-      }
+  function normalizeOverlayUrl(value) {
+    const s = value != null ? String(value).trim() : '';
+    if (!s || s.includes('[native code]') || s.includes('function')) {
+      return `http://localhost:8080/hydration`;
     }
+    return s;
+  }
+
+  async function refreshOverlayUrl() {
+    let url = '';
+    if (api('getHydrationUrl')) {
+      url = await api('getHydrationUrl')();
+    }
+    url = normalizeOverlayUrl(url);
+    state.overlayUrl = url;
+    const el = $('hydration-overlay-url');
+    if (el) el.textContent = url;
+    const frame = $('hydration-preview-frame');
+    if (frame && url) {
+      state.previewReady = false;
+      frame.onload = () => {
+        state.previewReady = true;
+        pushPreviewToFrame();
+        fitHydrationPreview();
+        setTimeout(pushPreviewToFrame, 120);
+      };
+      frame.src = `${url.split('?')[0]}?preview=1&t=${Date.now()}`;
+    }
+    fitHydrationPreview();
+  }
+
+  function fitHydrationPreview() {
+    const viewport = document.querySelector('#hydration-panel-modal .hydration-preview-viewport');
+    const stage = $('hydration-preview-stage');
+    if (!viewport || !stage) return;
+    const w = viewport.clientWidth;
+    const h = viewport.clientHeight || (w > 0 ? (w * 9) / 16 : 0);
+    if (w <= 0 || h <= 0) return;
+    const scale = Math.min(w / 1920, h / 1080);
+    stage.style.transform = `scale(${scale})`;
   }
 
   function setField(id, value) {
@@ -198,29 +222,80 @@
     };
   }
 
+  function applyRewardSelectFromConfig(cfg) {
+    const select = $('hydration-reward-select');
+    if (!select || !cfg?.rewardId) return;
+    const opt = Array.from(select.options).find((o) => o.dataset.rewardId === String(cfg.rewardId));
+    if (opt) select.value = opt.value;
+  }
+
+  function rewardHintMessage(result) {
+    if (!result) return 'Reconnect Twitch to load rewards.';
+    if (!result.ok) {
+      const err = result.error || '';
+      if (/401|403|scope|unauthorized|forbidden/i.test(err)) {
+        return 'Reconnect Twitch (needs channel:read:redemptions) to load rewards, or use keyword fallback.';
+      }
+      if (/not connected/i.test(err)) {
+        return 'Reconnect Twitch in VirtualDeck to load channel point rewards.';
+      }
+      return err || 'Reconnect Twitch to load rewards.';
+    }
+    if (!result.rewards.length) {
+      return 'No custom rewards on this channel yet. Create one on Twitch or use keyword fallback.';
+    }
+    return `${result.rewards.length} reward(s) loaded. Pick one or leave on keyword fallback.`;
+  }
+
   async function loadRewards() {
     const select = $('hydration-reward-select');
     const hint = $('hydration-reward-scope-hint');
-    if (!select || !api('getChannelRewards')) return;
+    const lib = window.vdChannelRewards;
+    if (!select) return;
+    if (!lib?.loadRewardsIntoSelect) {
+      if (hint) hint.textContent = 'Reward list UI failed to load. Restart the app.';
+      return;
+    }
     const prev = select.value;
     try {
-      const result = await api('getChannelRewards')();
-      if (!result.ok) {
-        if (hint) {
-          hint.textContent =
-            result.error ||
-            'Could not load rewards. Use keyword fallback or reconnect Twitch with channel:read:redemptions.';
-        }
-        return;
+      const result = await lib.loadRewardsIntoSelect(select, {
+        valueField: 'id',
+        placeholder: '— Keyword fallback —',
+      });
+      if (hint) hint.textContent = rewardHintMessage(result);
+      applyRewardSelectFromConfig(state.config);
+      if (prev && Array.from(select.options).some((o) => o.value === prev)) {
+        select.value = prev;
       }
-      const lib = window.vdChannelRewards;
-      if (lib && lib.populateRewardSelect) {
-        lib.populateRewardSelect(select, result.rewards, { valueField: 'id', placeholder: '— Keyword fallback —' });
+      const opt = select.selectedOptions[0];
+      if ($('hydration-reward-id')) {
+        $('hydration-reward-id').value = opt?.dataset?.rewardId || '';
       }
-      if (hint) hint.textContent = `${result.rewards.length} custom rewards loaded.`;
-      if (prev) select.value = prev;
     } catch (err) {
-      if (hint) hint.textContent = err.message || String(err);
+      lib.populateRewardSelect(select, [], { valueField: 'id', placeholder: '— Keyword fallback —' });
+      if (hint) hint.textContent = err.message || 'Reconnect Twitch to load rewards.';
+    }
+  }
+
+  async function browseSoundInto(inputId) {
+    const input = $(inputId);
+    if (!input) return;
+    const pick = api('pickAudioFileForSounds');
+    if (!pick) {
+      if (typeof showCustomAlert === 'function') {
+        showCustomAlert('Sound picker is unavailable. Enter a path under sounds/ manually.', 'error');
+      }
+      return;
+    }
+    const result = await pick();
+    if (result?.canceled) return;
+    if (result?.success && result.filePath) {
+      input.value = result.filePath;
+      schedulePreview();
+      return;
+    }
+    if (typeof showCustomAlert === 'function') {
+      showCustomAlert(result?.error || 'Could not add sound file.', 'error');
     }
   }
 
@@ -259,6 +334,7 @@
     modal.classList.remove('hidden');
     if (api('disableHotkeys')) api('disableHotkeys')();
     loadPanel();
+    requestAnimationFrame(() => fitHydrationPreview());
   }
 
   function closePanel() {
@@ -279,9 +355,9 @@
 
   function bind() {
     $('hydration-panel-close')?.addEventListener('click', closePanel);
-    $('hydration-panel-modal')?.addEventListener('click', (e) => {
-      if (e.target === $('hydration-panel-modal')) closePanel();
-    });
+    $('hydration-panel-backdrop')?.addEventListener('click', closePanel);
+    $('hydration-browse-log-sound')?.addEventListener('click', () => browseSoundInto('hydration-sound-path'));
+    $('hydration-browse-goal-sound')?.addEventListener('click', () => browseSoundInto('hydration-goal-sound-path'));
     $('hydration-save-btn')?.addEventListener('click', () => saveConfig());
     $('hydration-load-rewards-btn')?.addEventListener('click', () => loadRewards());
     $('hydration-log-drink-btn')?.addEventListener('click', () => logDrink());
@@ -342,12 +418,23 @@
         schedulePreview();
       });
     }
+
+    const previewViewport = document.querySelector('#hydration-panel-modal .hydration-preview-viewport');
+    if (previewViewport && window.ResizeObserver) {
+      const ro = new ResizeObserver(() => fitHydrationPreview());
+      ro.observe(previewViewport);
+    }
+    window.addEventListener('resize', () => fitHydrationPreview());
   }
 
   document.addEventListener('DOMContentLoaded', () => {
     bind();
-    $('menu-tools-hydration')?.addEventListener('click', openPanel);
+    $('menu-tools-hydration')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      openPanel();
+    });
   });
 
+  window.closeHydrationPanel = closePanel;
   window.vdHydrationPanel = { openPanel, closePanel, loadPanel, buildPreviewPayload, pushPreviewToFrame };
 })();

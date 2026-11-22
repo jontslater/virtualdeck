@@ -13,6 +13,11 @@
       font-family: 'Segoe UI', system-ui, sans-serif;
       background: transparent;
     }
+    html.hydration-embed-preview,
+    html.hydration-embed-preview body {
+      width: 100%;
+      height: 100%;
+    }
     #hydration-container {
       position: absolute;
       transform: translate(-50%, -50%);
@@ -155,6 +160,11 @@
       </div>
     </div>
   </div>
+  <script>
+    if (/[?&]preview=1/.test(location.search)) {
+      document.documentElement.classList.add('hydration-embed-preview');
+    }
+  </script>
   <script src="/hydration-overlay.js"></script>
 </body>
 </html>
