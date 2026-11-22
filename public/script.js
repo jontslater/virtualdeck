@@ -1105,12 +1105,17 @@ async function loadChannelRedemptions(selectElement, inputElement, options) {
     return [];
   }
   try {
-    const rewards = await window.vdChannelRewards.loadRewardsIntoSelect(selectElement, {
+    const result = await window.vdChannelRewards.loadRewardsIntoSelect(selectElement, {
       valueField: (options && options.valueField) || 'title',
       placeholder: (options && options.placeholder) || '-- Select or type manually --',
     });
+    const rewards = result.rewards || [];
+    if (!result.ok) {
+      showCustomAlert(result.error || 'Failed to load redemptions from Twitch. Reconnect Twitch and try again.', 'error');
+      return [];
+    }
     if (!rewards.length) {
-      showCustomAlert('No channel point redemptions found. Make sure you\'re connected to Twitch.', 'error');
+      showCustomAlert('No channel point redemptions found. Create rewards on Twitch or use keyword fallback.', 'error');
       return [];
     }
     if (inputElement && selectElement.value) {
@@ -10815,216 +10820,22 @@ function setupOverlayWidget() {
     console.log('🔄 Refreshed overlay selects after delay');
   }, 1000);
   
-  // Hydration tracker handlers
-  const openHydrationSettingsBtn = document.getElementById('open-hydration-settings');
-  const copyHydrationUrlBtn = document.getElementById('copy-hydration-url');
-  
-  if (openHydrationSettingsBtn) {
-    openHydrationSettingsBtn.addEventListener('click', () => {
+}
+
+function openHydrationSettings() {
+  if (window.vdHydrationPanel && typeof window.vdHydrationPanel.openPanel === 'function') {
+    window.vdHydrationPanel.openPanel();
+  }
+}
+
+function setupHydrationSettings() {
+  const legacyOpen = document.getElementById('open-hydration-settings');
+  if (legacyOpen) {
+    legacyOpen.addEventListener('click', (e) => {
+      e.preventDefault();
       openHydrationSettings();
     });
   }
-  
-  if (copyHydrationUrlBtn) {
-    copyHydrationUrlBtn.addEventListener('click', () => {
-      const url = 'http://localhost:8080/hydration';
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(url).then(() => {
-          showCustomAlert('Hydration overlay URL copied to clipboard!', 'success');
-        }).catch(err => {
-          console.error('Failed to copy:', err);
-          showCustomAlert('Failed to copy URL to clipboard', 'error');
-        });
-      }
-    });
-  }
-}
-
-// Hydration Settings Functions
-async function openHydrationSettings() {
-  const modal = document.getElementById('hydration-settings-modal');
-  if (!modal) return;
-  
-  // Load current config
-  if (window.electronAPI && window.electronAPI.getHydrationConfig) {
-    try {
-      const config = await window.electronAPI.getHydrationConfig();
-      
-      // Populate form fields
-      document.getElementById('hydration-goal').value = config.streamGoal || 64;
-      document.getElementById('hydration-increment').value = config.incrementAmount || 8;
-      document.getElementById('hydration-keyword').value = config.redemptionKeyword || 'hydrate';
-      document.getElementById('hydration-reset-on-live').checked = config.resetOnLive !== false;
-      document.getElementById('hydration-water-color').value = config.waterColor || '#4fc3f7';
-      document.getElementById('hydration-text-color').value = config.textColor || '#ffffff';
-      document.getElementById('hydration-size').value = config.gaugeSize || 200;
-      document.getElementById('hydration-size-value').textContent = config.gaugeSize || 200;
-      document.getElementById('hydration-pos-x').value = config.positionX || 50;
-      document.getElementById('hydration-pos-y').value = config.positionY || 50;
-      
-      // Set gauge style radio button
-      const gaugeStyleRadio = document.querySelector(`input[name="gauge-style"][value="${config.gaugeStyle || 'circular'}"]`);
-      if (gaugeStyleRadio) gaugeStyleRadio.checked = true;
-      updateGaugeStyleButtons();
-    } catch (error) {
-      console.error('Error loading hydration config:', error);
-    }
-  }
-  
-  modal.classList.remove('hidden');
-  
-  // Disable hotkeys when modal is open
-  if (window.electronAPI && window.electronAPI.disableHotkeys) {
-    window.electronAPI.disableHotkeys();
-  }
-}
-
-function closeHydrationSettings() {
-  const modal = document.getElementById('hydration-settings-modal');
-  if (modal) {
-    modal.classList.add('hidden');
-    
-    // Re-enable hotkeys
-    if (window.electronAPI && window.electronAPI.enableHotkeys) {
-      window.electronAPI.enableHotkeys();
-    }
-  }
-}
-
-async function saveHydrationSettings() {
-  if (!window.electronAPI || !window.electronAPI.saveHydrationConfig) {
-    console.error('electronAPI not available');
-    return;
-  }
-  
-  try {
-    const config = {
-      streamGoal: parseInt(document.getElementById('hydration-goal').value) || 64,
-      incrementAmount: parseInt(document.getElementById('hydration-increment').value) || 8,
-      redemptionKeyword: document.getElementById('hydration-keyword').value.trim() || 'hydrate',
-      currentProgress: 0, // Keep existing progress, will be loaded from saved config
-      gaugeStyle: document.querySelector('input[name="gauge-style"]:checked')?.value || 'circular',
-      waterColor: document.getElementById('hydration-water-color').value,
-      backgroundColor: 'transparent',
-      textColor: document.getElementById('hydration-text-color').value,
-      gaugeSize: parseInt(document.getElementById('hydration-size').value) || 200,
-      positionX: parseInt(document.getElementById('hydration-pos-x').value) || 50,
-      positionY: parseInt(document.getElementById('hydration-pos-y').value) || 50,
-      borderWidth: 0,
-      borderColor: '#ffffff',
-      borderRadius: 10,
-      resetOnLive: document.getElementById('hydration-reset-on-live').checked
-    };
-    
-    // Load existing config to preserve currentProgress
-    const existingConfig = await window.electronAPI.getHydrationConfig();
-    config.currentProgress = existingConfig.currentProgress || 0;
-    
-    const result = await window.electronAPI.saveHydrationConfig(config);
-    if (result.success) {
-      showCustomAlert('Hydration settings saved!', 'success');
-      closeHydrationSettings();
-    } else {
-      showCustomAlert('Failed to save hydration settings', 'error');
-    }
-  } catch (error) {
-    console.error('Error saving hydration settings:', error);
-    showCustomAlert('Error saving settings: ' + error.message, 'error');
-  }
-}
-
-function updateGaugeStyleButtons() {
-  const radioLabels = document.querySelectorAll('label:has(input[name="gauge-style"])');
-  radioLabels.forEach(label => {
-    const radio = label.querySelector('input[type="radio"]');
-    if (radio && radio.checked) {
-      label.style.background = 'var(--accent)';
-      label.style.color = 'white';
-      label.style.borderColor = 'var(--accent)';
-    } else {
-      label.style.background = 'var(--bg-secondary)';
-      label.style.color = 'var(--text-primary)';
-      label.style.borderColor = 'var(--border-color)';
-    }
-  });
-}
-
-// Setup hydration settings event handlers
-function setupHydrationSettings() {
-  // Close button
-  const closeBtn = document.getElementById('hydration-settings-close');
-  if (closeBtn) {
-    closeBtn.addEventListener('click', () => closeHydrationSettings());
-  }
-  
-  // Close on backdrop click
-  const modal = document.getElementById('hydration-settings-modal');
-  if (modal) {
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) {
-        closeHydrationSettings();
-      }
-    });
-  }
-  
-  // Save button
-  const saveBtn = document.getElementById('hydration-save');
-  if (saveBtn) {
-    saveBtn.addEventListener('click', () => saveHydrationSettings());
-  }
-  
-  // Test button
-  const testBtn = document.getElementById('hydration-test');
-  if (testBtn) {
-    testBtn.addEventListener('click', async () => {
-      if (window.electronAPI && window.electronAPI.updateHydrationProgress) {
-        try {
-          await window.electronAPI.updateHydrationProgress();
-          showCustomAlert('Hydration updated! Check your overlay.', 'success');
-        } catch (error) {
-          console.error('Error testing hydration:', error);
-          showCustomAlert('Error testing hydration', 'error');
-        }
-      }
-    });
-  }
-  
-  // Manual reset button
-  const resetBtn = document.getElementById('hydration-manual-reset');
-  if (resetBtn) {
-    resetBtn.addEventListener('click', async () => {
-      if (confirm('Are you sure you want to reset hydration progress to 0?')) {
-        if (window.electronAPI && window.electronAPI.resetHydration) {
-          try {
-            await window.electronAPI.resetHydration();
-            showCustomAlert('Hydration progress reset to 0', 'success');
-          } catch (error) {
-            console.error('Error resetting hydration:', error);
-            showCustomAlert('Error resetting hydration', 'error');
-          }
-        }
-      }
-    });
-  }
-  
-  // Gauge style radio buttons
-  const gaugeStyleRadios = document.querySelectorAll('input[name="gauge-style"]');
-  gaugeStyleRadios.forEach(radio => {
-    radio.addEventListener('change', () => {
-      updateGaugeStyleButtons();
-    });
-  });
-  
-  // Size slider update
-  const sizeSlider = document.getElementById('hydration-size');
-  const sizeValue = document.getElementById('hydration-size-value');
-  if (sizeSlider && sizeValue) {
-    sizeSlider.addEventListener('input', () => {
-      sizeValue.textContent = sizeSlider.value;
-    });
-  }
-  
-  console.log('✅ Hydration settings handlers setup complete');
 }
 
 // Predefined overlay cards function removed - only user-created overlays are supported

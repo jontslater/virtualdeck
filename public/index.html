@@ -1784,13 +1784,15 @@
     </div>
   </div>
 
-  <!-- Hydration Tracker Panel -->
-  <div id="hydration-panel-modal" class="hidden">
-    <div class="modal-content preferences-modal-content" style="max-width: 960px; width: 95vw;">
-      <div class="modal-header">
-        <h2>💧 Hydration Tracker</h2>
-        <button id="hydration-panel-close" class="modal-close" type="button">✕</button>
+  <!-- Hydration Tracker Panel (floating widget — same shell as alert-widget) -->
+  <div id="hydration-panel-modal" class="alert-widget hidden" role="dialog" aria-labelledby="hydration-panel-title" aria-modal="true">
+    <div id="hydration-panel-backdrop" class="alert-widget-backdrop" aria-hidden="true"></div>
+    <div class="alert-widget-content hydration-widget-content">
+      <div class="widget-header">
+        <h3 id="hydration-panel-title">💧 Hydration Tracker</h3>
+        <button id="hydration-panel-close" class="close-btn" type="button" title="Close Hydration Tracker">✕</button>
       </div>
+      <div class="widget-content hydration-widget-body">
       <div class="hydration-layout">
         <div class="hydration-scroll">
           <details class="hydration-section" id="hydration-sec-gauge" open>
@@ -1855,12 +1857,18 @@
             <summary><h4 style="display:inline;margin:0">Sound</h4></summary>
             <p style="font-size:11px;color:var(--text-tertiary);margin:0 0 8px">Sounds play on the browser-source overlay so your stream (OBS) hears them—not the desktop app.</p>
             <label><input type="checkbox" id="hydration-sound-enabled" /> Play sound on log</label>
-            <label for="hydration-sound-path">Log sound (relative path under userData)</label>
-            <input type="text" id="hydration-sound-path" placeholder="assets/sounds/..." />
+            <label for="hydration-sound-path">Log sound (stored under your VirtualDeck user data)</label>
+            <div class="hydration-row hydration-sound-path-row">
+              <input type="text" id="hydration-sound-path" placeholder="sounds/my-ding.mp3" style="flex:1;margin-bottom:0" />
+              <button type="button" id="hydration-browse-log-sound" class="action-btn secondary">Browse…</button>
+            </div>
             <label for="hydration-sound-volume">Log volume</label>
             <input type="range" id="hydration-sound-volume" min="0" max="100" value="70" />
             <label for="hydration-goal-sound-path">Goal met sound</label>
-            <input type="text" id="hydration-goal-sound-path" placeholder="optional" />
+            <div class="hydration-row hydration-sound-path-row">
+              <input type="text" id="hydration-goal-sound-path" placeholder="optional" style="flex:1;margin-bottom:0" />
+              <button type="button" id="hydration-browse-goal-sound" class="action-btn secondary">Browse…</button>
+            </div>
             <label for="hydration-goal-sound-volume">Goal volume</label>
             <input type="range" id="hydration-goal-sound-volume" min="0" max="100" value="70" />
           </details>
@@ -1896,10 +1904,13 @@
             <input type="number" id="hydration-reminder-minutes" min="0" value="0" />
           </details>
           <details class="hydration-section" id="hydration-sec-url" open>
-            <summary><h4 style="display:inline;margin:0">Overlay URL</h4></summary>
-            <code id="hydration-overlay-url" style="display:block;padding:8px;background:var(--bg-primary);border-radius:6px;font-size:11px;word-break:break-all">http://localhost:8080/hydration</code>
-            <div class="hydration-actions" style="margin-top:10px">
-              <button type="button" id="hydration-copy-url-btn" class="action-btn secondary">Copy URL</button>
+            <summary><h4 style="display:inline;margin:0">Browser source URL</h4></summary>
+            <p style="font-size:11px;color:var(--text-tertiary);margin:0 0 8px">Add this URL as a Browser Source in OBS (1920×1080, transparent background).</p>
+            <div class="overlay-url-display hydration-overlay-url-display">
+              <div class="url-display">
+                <code id="hydration-overlay-url">http://localhost:8080/hydration</code>
+                <button type="button" id="hydration-copy-url-btn" class="copy-btn" title="Copy hydration overlay URL">📋</button>
+              </div>
             </div>
           </details>
           <div class="hydration-actions">
@@ -1912,10 +1923,14 @@
         </div>
         <aside class="hydration-preview-pane">
           <h4 style="margin:0 0 8px;font-size:13px">Live preview</h4>
-          <div class="hydration-preview-viewport">
-            <iframe id="hydration-preview-frame" title="Hydration overlay preview"></iframe>
+          <div class="hydration-preview-viewport" title="Preview of the 1920×1080 browser source">
+            <div id="hydration-preview-stage" class="hydration-preview-stage">
+              <iframe id="hydration-preview-frame" title="Hydration overlay preview" width="1920" height="1080"></iframe>
+            </div>
           </div>
+          <p class="hydration-preview-hint">Matches the OBS browser source at the selected position.</p>
         </aside>
+      </div>
       </div>
     </div>
   </div>
