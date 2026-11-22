@@ -83,6 +83,7 @@ const {
   recordStreakShare,
   listTopStreakers,
   buildWatchStreakOverlayPayload,
+  buildWatchStreakButtonTriggerPayload,
   TWITCH_CHAT_NOTIFICATION_TYPE,
 } = require('./lib/watch-streak-alerts');
 const {
@@ -966,8 +967,7 @@ function saveWatchStreakLeaders(store) {
 }
 
 function getWatchStreakOverlayPageUrl() {
-  const port = overlayServerPort || 8080;
-  return `http://localhost:${port}/watch-streak`;
+  return getOverlayServerUrl();
 }
 
 async function processWatchStreakShare(share, options = {}) {
@@ -980,9 +980,13 @@ async function processWatchStreakShare(share, options = {}) {
     return { ok: false, reason: 'no_tier' };
   }
   const renderedText = formatAlertText(tier.textTemplate, share);
-  const overlayPayload = buildWatchStreakOverlayPayload(tier, share, renderedText);
+  const targetOverlay = config.overlay || 'main';
+  const overlayPayload = buildWatchStreakButtonTriggerPayload(tier, share, renderedText, {
+    overlayPort: overlayServerPort || 8080,
+    targetOverlay,
+  });
   lastWatchStreakAlertPayload = { ...overlayPayload, at: new Date().toISOString() };
-  broadcastToOverlay(overlayPayload, WATCH_STREAK_OVERLAY);
+  broadcastToOverlay(overlayPayload, targetOverlay);
 
   const chatTemplate = String(tier.chatMessage || '').trim();
   if (chatTemplate && !options.skipChat && !share.test) {
@@ -2966,8 +2970,17 @@ ipcMain.handle('replay-last-watch-streak-alert', async () => {
   if (!lastWatchStreakAlertPayload) {
     return { success: false, error: 'No watch streak alert to replay yet.' };
   }
-  broadcastToOverlay({ ...lastWatchStreakAlertPayload, type: 'watchStreakAlert' }, WATCH_STREAK_OVERLAY);
+  const target = lastWatchStreakAlertPayload.targetOverlay || 'main';
+  broadcastToOverlay(lastWatchStreakAlertPayload, target);
   return { success: true };
+});
+
+ipcMain.handle('open-watch-streak-alerts', async () => {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('open-watch-streak-alerts');
+    return { success: true };
+  }
+  return { success: false, error: 'Window not available' };
 });
 
 ipcMain.handle('get-watch-streak-overlay-url', async () => ({

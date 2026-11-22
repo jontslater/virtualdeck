@@ -13,6 +13,7 @@ const {
   formatAlertText,
   scopesIncludeWatchStreakChat,
   buildWatchStreakOverlayPayload,
+  buildWatchStreakButtonTriggerPayload,
   inferWatchStreakMediaType,
 } = require('./lib/watch-streak-alerts');
 
@@ -76,11 +77,22 @@ assert.strictEqual(tierMedia.mediaLayout, 'beside');
 assert.strictEqual(tierMedia.enterAnimation, 'pop');
 assert.strictEqual(tierMedia.useBuiltInCard, false);
 
+const btnPayload = buildWatchStreakButtonTriggerPayload(
+  { threshold: 10, textTemplate: 'Streak!', soundFile: 'sounds/x.mp3' },
+  { streakCount: 10, login: 'u', displayName: 'U' },
+  'Streak!',
+  { targetOverlay: 'main', overlayPort: 8080 },
+);
+assert.strictEqual(btnPayload.type, 'buttonTrigger');
+assert.strictEqual(btnPayload.targetOverlay, 'main');
+
 const mainJs = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
 assert.ok(mainJs.includes('watch-streak-config'), 'main persists watch streak config');
-assert.ok(mainJs.includes('/watch-streak'), 'overlay route for watch streak');
+assert.ok(mainJs.includes('open-watch-streak-alerts'), 'IPC opens watch streak in alert widget');
+assert.ok(mainJs.includes('buildWatchStreakButtonTriggerPayload'), 'main uses main overlay payload');
 
 const html = fs.readFileSync(path.join(__dirname, 'public/index.html'), 'utf8');
-assert.ok(html.includes('watch-streak-settings-modal'), 'settings modal in index.html');
+assert.ok(html.includes('watch-streak-alert-settings'), 'watch streak settings in alert widget');
+assert.ok(html.includes('value="watch-streak"'), 'watch streak alert type option');
 
 console.log('✅ test-watch-streak-alerts.js passed');

@@ -14,7 +14,6 @@
     'macro-edit-modal': 'closeMacroEditor',
     'macros-modal': 'closeMacrosManager',
     'raid-favorites-modal': 'closeRaidFavoritesModal',
-    'watch-streak-settings-modal': 'closeWatchStreakModal',
     'preferences-modal': 'closePreferencesModal',
     'profile-modal': 'closeProfileModal',
     'ai-audio-modal': 'closeAiAudioModal',

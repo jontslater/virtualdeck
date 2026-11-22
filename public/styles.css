@@ -5745,8 +5745,7 @@ body.resizing-chat * {
   background: #dc2626;
 }
 
-/* Tools modals (Watch Streak, Raid Favorites) — above Twitch connect banner (10050) */
-#watch-streak-settings-modal,
+/* Tools modals (Raid Favorites) — above Twitch connect banner (10050) */
 #raid-favorites-modal {
   position: fixed;
   left: 0;
@@ -5763,23 +5762,24 @@ body.resizing-chat * {
   box-sizing: border-box;
 }
 
-#watch-streak-settings-modal.hidden,
 #raid-favorites-modal.hidden {
   display: none;
 }
 
-#watch-streak-settings-modal .modal-content,
 #raid-favorites-modal .modal-content {
   z-index: 11051;
   position: relative;
 }
 
-/* Watch Streak Alerts */
-.watch-streak-modal {
-  max-width: 920px;
-  width: 95%;
-  max-height: 90vh;
+/* Watch Streak Alerts (Alert Widget section) */
+#watch-streak-alert-settings {
+  margin: 12px 0;
+  padding: 12px 14px;
+  background: var(--bg-secondary, #1a1a1a);
+  border-radius: 8px;
+  max-height: min(58vh, 520px);
   overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 .watch-streak-section {
   margin: 16px 0;

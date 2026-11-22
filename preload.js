@@ -228,6 +228,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   watchStreakHealth: async () => ipcRenderer.invoke('watch-streak-health'),
   onWatchStreakAlertFired: (callback) =>
     ipcRenderer.on('watch-streak-alert-fired', (_event, data) => callback(data)),
+  onOpenWatchStreakAlerts: (callback) =>
+    ipcRenderer.on('open-watch-streak-alerts', () => callback()),
   onTwitchOAuthProgress: (callback) => ipcRenderer.on('twitch-oauth-progress', (_event, data) => callback(data)),
   onTwitchOAuthSuccess: (callback) => ipcRenderer.on('twitch-oauth-success', (_event, data) => callback(data)),
   onRaidFavoritesHistoryUpdated: (callback) => ipcRenderer.on('raid-favorites-history-updated', (_event, data) => callback(data)),

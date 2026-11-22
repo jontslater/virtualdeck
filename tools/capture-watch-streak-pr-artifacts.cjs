@@ -197,26 +197,24 @@ async function captureElectronUi() {
     document.getElementById('vd-twitch-conn-banner')?.remove();
     document.getElementById('first-run-twitch-popup')?.classList.add('hidden');
     document.getElementById('welcome-popup-dismiss')?.click();
-    const modalEl = document.querySelector('.watch-streak-modal');
-    if (modalEl) {
-      modalEl.style.maxHeight = '85vh';
-      modalEl.style.overflow = 'auto';
-    }
-    if (window.openWatchStreakModal) window.openWatchStreakModal();
-    else {
-      document.getElementById('watch-streak-settings-modal')?.classList.remove('hidden');
-      if (window.loadWatchStreakSettingsUi) await window.loadWatchStreakSettingsUi();
-    }
+    if (window.openWatchStreakAlertWidget) await window.openWatchStreakAlertWidget();
+    else if (window.openWatchStreakModal) await window.openWatchStreakModal();
     const cb = document.getElementById('watch-streak-enabled');
     if (cb) cb.checked = true;
     document.getElementById('watch-streak-simple-mode').checked = false;
     window.watchStreakSetExpandedIndex?.(-1);
     await window.hydrateWatchStreakPreviews?.();
   });
-  await page.waitForTimeout(900);
+  await page.waitForSelector('#alert-widget:not(.hidden)', { timeout: 15000 });
+  await page.waitForSelector('#watch-streak-alert-settings', { state: 'visible', timeout: 15000 });
+  await page.waitForTimeout(600);
 
-  const modal = page.locator('#watch-streak-settings-modal .watch-streak-modal');
-  await modal.screenshot({ path: path.join(outDir, 'watch-streak-settings-collapsed.png') });
+  const widget = page.locator('#alert-widget .alert-widget-content');
+  await page.locator('.alert-type-selector').screenshot({
+    path: path.join(outDir, 'watch-streak-alert-widget-type-dropdown.png'),
+    force: true,
+  });
+  await widget.screenshot({ path: path.join(outDir, 'watch-streak-settings-collapsed.png'), force: true });
 
   await page.evaluate(() => {
     const rows = Array.from(document.querySelectorAll('.watch-streak-tier-row'));
@@ -227,7 +225,11 @@ async function captureElectronUi() {
   await page.locator('.watch-streak-tier-row.is-expanded').screenshot({
     path: path.join(outDir, 'watch-streak-settings-tier-expanded.png'),
   });
-  await modal.screenshot({ path: path.join(outDir, 'watch-streak-settings-panel.png') });
+  await widget.screenshot({ path: path.join(outDir, 'watch-streak-settings-panel.png') });
+  await page.locator('#watch-streak-alert-settings').screenshot({
+    path: path.join(outDir, 'watch-streak-alert-widget-settings.png'),
+    force: true,
+  });
 
   await page.locator('#watch-streak-per-tier-panel').screenshot({
     path: path.join(outDir, 'watch-streak-section-tiers.png'),
@@ -235,8 +237,8 @@ async function captureElectronUi() {
   await page.locator('#watch-streak-leaders-list').screenshot({
     path: path.join(outDir, 'watch-streak-top-streakers.png'),
   });
-  await page.locator('.watch-streak-section').nth(0).screenshot({
-    path: path.join(outDir, 'watch-streak-section-browser-source.png'),
+  await page.locator('#alert-overlay-selector, .alert-overlay-selector').first().screenshot({
+    path: path.join(outDir, 'watch-streak-alert-target-overlay.png'),
   });
 
   await browser.close();

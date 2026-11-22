@@ -11289,6 +11289,7 @@ function setupAlertTypeFilter() {
         'bits': 'Bits',
         'ban': 'Ban',
         'daily-checkin': 'Daily Checkin',
+        'watch-streak': 'Watch Streak',
         'first-chat-walkon': 'Walk On (First Chat)'
       };
       
@@ -11309,6 +11310,7 @@ function setupAlertTypeFilter() {
       'ban': 'Ban',
       'channel-points': 'Channel Point Redemption',
       'daily-checkin': 'Daily Checkin',
+      'watch-streak': 'Watch Streak',
       'first-chat-walkon': 'Walk On (First Chat)'
     };
     selectedAlertTypeName.textContent = typeNames[selectedType] || selectedType;
@@ -11387,6 +11389,7 @@ function setupAlertWidget() {
       bits: 'Bits',
       'channel-points': 'Channel Point Redemption',
       'daily-checkin': 'Daily Checkin',
+      'watch-streak': 'Watch Streak',
       'first-chat-walkon': 'Walk On (First Chat)',
     };
     return typeNames[alertType] || alertType;
@@ -11579,6 +11582,13 @@ function setupAlertWidget() {
       if (channelPointsSettings) {
         channelPointsSettings.style.display = selectedType === 'channel-points' ? 'block' : 'none';
       }
+
+      if (typeof window.updateWatchStreakAlertTypeVisibility === 'function') {
+        window.updateWatchStreakAlertTypeVisibility();
+        if (selectedType === 'watch-streak' && typeof window.loadWatchStreakSettingsUi === 'function') {
+          window.loadWatchStreakSettingsUi();
+        }
+      }
       
       // Update alert list to show only matching alerts
       updateAlertList();
@@ -11595,7 +11605,8 @@ function setupAlertWidget() {
           'bits': 'Bits',
           'ban': 'Ban',
           'channel-points': 'Channel Point Redemption',
-          'daily-checkin': 'Daily Checkin'
+          'daily-checkin': 'Daily Checkin',
+          'watch-streak': 'Watch Streak',
         };
         selectedAlertTypeName.textContent = typeNames[selectedType] || 'Unknown';
       }
@@ -12083,6 +12094,7 @@ function setupAlertWidget() {
       'bits': 'Bits Donation',
       'channel-points': 'Channel Point Redemption',
       'daily-checkin': 'Daily Checkin',
+      'watch-streak': 'Watch Streak',
       'first-chat-walkon': 'Walk On (First Chat)'
     };
     return typeNames[type] || type;
@@ -12249,6 +12261,12 @@ function setupAlertWidget() {
   if (saveAlertBtn) {
     saveAlertBtn.addEventListener('click', async () => {
       const type = alertTypeSelect.value;
+      if (type === 'watch-streak') {
+        if (typeof window.saveWatchStreakSettingsUi === 'function') {
+          await window.saveWatchStreakSettingsUi();
+        }
+        return;
+      }
       const text = alertTextInput.value.trim();
       let duration = parseInt(alertDurationInput.value) || 5;
       const soundFile = alertSoundInput.files[0];
@@ -13944,9 +13962,14 @@ function showAlertWidget() {
         dailyCheckinSettings.style.display = 'none';
       }
     }
+
+    if (typeof window.updateWatchStreakAlertTypeVisibility === 'function') {
+      window.updateWatchStreakAlertTypeVisibility();
+    }
     
     // Focus on the alert text input after a short delay to ensure DOM is ready
     setTimeout(() => {
+      if (alertTypeSelect?.value === 'watch-streak') return;
       const alertTextInput = document.getElementById('alert-text');
       if (alertTextInput) {
         alertTextInput.focus();

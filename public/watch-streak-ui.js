@@ -1,4 +1,4 @@
-// Watch Streak milestone alerts — dashboard settings (Tools → Watch Streak Alerts)
+// Watch Streak milestone alerts — Alert Widget (Tools menu opens Watch Streak type)
 
 const WS_ANIMATIONS = ['fade', 'slide', 'pop'];
 const WS_LAYOUTS = [
@@ -39,7 +39,7 @@ async function watchStreakMediaUrl(relativePath) {
   let origin = '';
   if (window.electronAPI?.getWatchStreakOverlayUrl) {
     const res = await window.electronAPI.getWatchStreakOverlayUrl();
-    if (res?.url) origin = res.url.replace(/\/watch-streak.*$/, '');
+    if (res?.url) origin = String(res.url).replace(/\/(overlay|watch-streak).*$/i, '');
   }
   if (!origin && window.electronAPI?.getOverlayUrl) {
     const base = await window.electronAPI.getOverlayUrl();
@@ -47,20 +47,6 @@ async function watchStreakMediaUrl(relativePath) {
   }
   if (!origin) origin = `${location.protocol}//${location.hostname}:8080`;
   return `${origin}/media/${encodeURIComponent(String(relativePath).replace(/^\/+/, ''))}`;
-}
-
-async function watchStreakOverlayUrl() {
-  let base = '';
-  if (window.electronAPI?.getWatchStreakOverlayUrl) {
-    const res = await window.electronAPI.getWatchStreakOverlayUrl();
-    if (res?.success && res.url) return res.url;
-  }
-  if (window.electronAPI?.getOverlayUrl) {
-    base = await window.electronAPI.getOverlayUrl();
-  }
-  const origin = String(base || '').replace(/\/overlay.*$/, '');
-  if (origin) return `${origin}/watch-streak`;
-  return `${location.protocol}//${location.hostname}:8080/watch-streak`;
 }
 
 function dismissTwitchConnectBannerForToolsModal() {
@@ -71,17 +57,29 @@ function dismissTwitchConnectBannerForToolsModal() {
   }
 }
 
-function openWatchStreakModal() {
-  const modal = document.getElementById('watch-streak-settings-modal');
-  if (!modal) return;
-  dismissTwitchConnectBannerForToolsModal();
-  modal.classList.remove('hidden');
-  loadWatchStreakSettingsUi();
+function updateWatchStreakAlertTypeVisibility() {
+  const alertTypeSelect = document.getElementById('alert-type');
+  const isWs = alertTypeSelect?.value === 'watch-streak';
+  const wsPanel = document.getElementById('watch-streak-alert-settings');
+  const editor = document.querySelector('.alert-settings.alert-editor-sections');
+  const actions = document.querySelector('#configuration-tab .alert-actions');
+  const previewList = document.querySelector('#configuration-tab .alert-preview-list-panel');
+  if (wsPanel) wsPanel.style.display = isWs ? 'block' : 'none';
+  if (editor) editor.style.display = isWs ? 'none' : '';
+  if (actions) actions.style.display = isWs ? 'none' : '';
+  if (previewList) previewList.style.display = isWs ? 'none' : '';
 }
 
-function closeWatchStreakModal() {
-  const modal = document.getElementById('watch-streak-settings-modal');
-  if (modal) modal.classList.add('hidden');
+function openWatchStreakAlertWidget() {
+  dismissTwitchConnectBannerForToolsModal();
+  if (typeof showAlertWidget === 'function') showAlertWidget();
+  const sel = document.getElementById('alert-type');
+  if (sel) {
+    sel.value = 'watch-streak';
+    sel.dispatchEvent(new Event('change'));
+  }
+  updateWatchStreakAlertTypeVisibility();
+  loadWatchStreakSettingsUi();
 }
 
 async function refreshWatchStreakScopeWarning() {
@@ -288,7 +286,8 @@ function collectTierFromRow(row, baseTier = {}) {
 function collectWatchStreakConfigFromForm() {
   const enabled = !!document.getElementById('watch-streak-enabled')?.checked;
   const sameAlertForEveryStreak = !!document.getElementById('watch-streak-simple-mode')?.checked;
-  const cfg = { ...(watchStreakUiConfig || {}), enabled, sameAlertForEveryStreak, tiers: [] };
+  const overlay = document.getElementById('alert-overlay-select')?.value || watchStreakUiConfig?.overlay || 'main';
+  const cfg = { ...(watchStreakUiConfig || {}), enabled, sameAlertForEveryStreak, overlay, tiers: [] };
   if (!sameAlertForEveryStreak) {
     document.querySelectorAll('.watch-streak-tier-row').forEach((row, i) => {
       const base = (watchStreakUiConfig.tiers || [])[i] || {};
@@ -336,8 +335,10 @@ async function loadWatchStreakSettingsUi() {
   const sd = document.getElementById('watch-streak-simple-duration');
   if (sd) sd.value = simple.alertDurationMs || 0;
 
-  const urlEl = document.getElementById('watch-streak-overlay-url');
-  if (urlEl) urlEl.textContent = await watchStreakOverlayUrl();
+  const overlaySel = document.getElementById('alert-overlay-select');
+  if (overlaySel && watchStreakUiConfig.overlay) {
+    overlaySel.value = watchStreakUiConfig.overlay;
+  }
 
   if (watchStreakExpandedIndex < 0 && watchStreakUiConfig.tiers?.length) {
     watchStreakExpandedIndex = -1;
@@ -406,17 +407,12 @@ async function saveWatchStreakAsset(file, tierId, mediaType) {
 
 document.addEventListener('DOMContentLoaded', () => {
   const openBtn = document.getElementById('menu-tools-watch-streak');
-  if (openBtn) openBtn.addEventListener('click', () => openWatchStreakModal());
+  if (openBtn) openBtn.addEventListener('click', () => openWatchStreakAlertWidget());
 
-  const closeBtn = document.getElementById('watch-streak-settings-close');
-  if (closeBtn) closeBtn.addEventListener('click', () => closeWatchStreakModal());
+  window.electronAPI?.onOpenWatchStreakAlerts?.(() => openWatchStreakAlertWidget());
 
-  const modal = document.getElementById('watch-streak-settings-modal');
-  if (modal) {
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) closeWatchStreakModal();
-    });
-  }
+  const alertType = document.getElementById('alert-type');
+  alertType?.addEventListener('change', () => updateWatchStreakAlertTypeVisibility());
 
   document.getElementById('watch-streak-save')?.addEventListener('click', () => saveWatchStreakSettingsUi());
 
@@ -427,16 +423,6 @@ document.addEventListener('DOMContentLoaded', () => {
     watchStreakUiConfig.tiers = [...(watchStreakUiConfig.tiers || []), { threshold: next, textTemplate: '{user} hit {count} streams!' }];
     watchStreakExpandedIndex = watchStreakUiConfig.tiers.length - 1;
     renderWatchStreakTiers();
-  });
-
-  document.getElementById('watch-streak-copy-url')?.addEventListener('click', async () => {
-    const url = await watchStreakOverlayUrl();
-    try {
-      await navigator.clipboard.writeText(url);
-      if (typeof showCustomAlert === 'function') showCustomAlert('Overlay URL copied', 'success');
-    } catch (e) {
-      console.warn(e);
-    }
   });
 
   document.getElementById('watch-streak-clear-leaders')?.addEventListener('click', async () => {
@@ -597,10 +583,12 @@ document.addEventListener('DOMContentLoaded', () => {
   window.electronAPI?.onWatchStreakAlertFired?.(() => loadWatchStreakLeadersUi());
 });
 
-window.openWatchStreakModal = openWatchStreakModal;
-window.closeWatchStreakModal = closeWatchStreakModal;
+window.openWatchStreakAlertWidget = openWatchStreakAlertWidget;
+window.openWatchStreakModal = openWatchStreakAlertWidget;
+window.updateWatchStreakAlertTypeVisibility = updateWatchStreakAlertTypeVisibility;
 window.renderWatchStreakTiers = renderWatchStreakTiers;
 window.loadWatchStreakSettingsUi = loadWatchStreakSettingsUi;
+window.saveWatchStreakSettingsUi = saveWatchStreakSettingsUi;
 window.hydrateWatchStreakPreviews = hydrateWatchStreakPreviews;
 window.watchStreakSetExpandedIndex = (index) => {
   watchStreakExpandedIndex = Number.isFinite(index) ? index : -1;
