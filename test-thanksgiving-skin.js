@@ -52,17 +52,30 @@ for (const hex of palette) {
 
 assert.ok(!/\burl\((?!data:image)/i.test(raw), 'only data:image url() references');
 assert.ok(skin.components['.stat-content'], 'stat content backing');
-assert.ok(skin.css.includes('body::before'), 'corner leaf accents');
+assert.ok(skin.components['.main-content'], 'main content banner area');
+assert.ok(skin.components['.sound-hotkey'], 'hotkey styling present');
+assert.ok(
+  skin.components['.sound-hotkey'].visibility === 'visible !important',
+  'hotkey must be visible',
+);
+assert.ok(
+  !JSON.stringify(skin.components['.sound-card']).includes('pumpkin'),
+  'no pumpkin button art',
+);
 assert.ok(
   !skin.css.match(/#[0-9A-Fa-f]{3,8}\s+[#.[]/),
   'injected skin css rules must close before the next selector',
 );
-assert.ok(skin.css.includes('base64,'), 'svg assets use base64 data urls');
+assert.ok(raw.includes('base64,'), 'photo/svg assets use base64 data urls');
+
+const attributionPath = path.join(__dirname, 'skins', 'thanksgiving-assets', 'ATTRIBUTION.md');
+assert.ok(fs.existsSync(attributionPath), 'ATTRIBUTION.md must exist for licensed photos');
 
 assertAa('Stats on cream panel', '#3B2314', '#FFF8EB');
 assertAa('Chat bubble text', '#3B2314', '#FFF8EB');
 assertAa('Menu / body text', '#3B2314', '#F3E6D3');
-assertAa('Sound button label chip', '#3B2314', '#FFF8EB');
+assertAa('Sound button label on panel', '#3B2314', '#FFF8EB');
+assertAa('Hotkey badge text on mustard', '#3B2314', '#D4A12A');
 assertAa('Stat label on cream panel', '#3B2314', '#FFF8EB');
 assertAa('Cream chat title on rust header', '#FFF8EB', '#B7412E');
 assertAa('Activity notice on cream', '#3B2314', '#F3E6D3');

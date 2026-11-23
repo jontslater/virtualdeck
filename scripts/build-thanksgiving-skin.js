@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * Builds skins/thanksgiving.json — flat cartoon harvest style (original SVG/CSS only).
- * Style inspired by warm cream / rust / mustard palettes; no traced third-party art.
+ * Builds skins/thanksgiving.json — harvest theme mirroring skins/HalloweenByTati/halloween.json structure.
+ * Photo assets live in skins/thanksgiving-assets/ (see ATTRIBUTION.md).
  */
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
+const ASSETS = path.join(ROOT, 'skins', 'thanksgiving-assets');
 const OUT = path.join(ROOT, 'skins', 'thanksgiving.json');
 
 const CREAM = '#F3E6D3';
@@ -17,23 +18,21 @@ const ORANGE = '#D4622A';
 const MUSTARD = '#D4A12A';
 const BROWN = '#5C3A22';
 
+const FILES = {
+  statsBackdrop: 'thanksgiving-stats-backdrop-1536x280.png',
+  banner: 'thanksgiving-banner-1280x520.png',
+  leafOverlay: 'thanksgiving-leaf-overlay-1280x520.png',
+};
+
+function pngDataUrl(fileName) {
+  const buf = fs.readFileSync(path.join(ASSETS, fileName));
+  return `data:image/png;base64,${buf.toString('base64')}`;
+}
+
 function svgDataUrl(svg) {
   const compact = svg.replace(/\s+/g, ' ').trim();
   return `data:image/svg+xml;base64,${Buffer.from(compact).toString('base64')}`;
 }
-
-function roundedLeaf(cx, cy, fill, rot = 0) {
-  return `<g transform="translate(${cx} ${cy}) rotate(${rot})"><path fill="${fill}" d="M0 -10c8 4 12 12 12 20-6 2-12 2-18 0 0-8 4-16 6-20z"/></g>`;
-}
-
-const background = svgDataUrl(`
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
-  <rect width="800" height="600" fill="${CREAM}"/>
-  ${roundedLeaf(48, 56, RUST, -18)}
-  ${roundedLeaf(752, 64, MUSTARD, 12)}
-  ${roundedLeaf(44, 548, ORANGE, 28)}
-  ${roundedLeaf(756, 536, RUST, -32)}
-</svg>`);
 
 function roundedFanFeather(deg, len, [c1, c2, c3]) {
   return `<g transform="rotate(${deg})">
@@ -47,15 +46,15 @@ function roundedFanFeather(deg, len, [c1, c2, c3]) {
 const turkeyFeathers = [-72, -48, -28, -8, 12, 32, 52]
   .map((deg, i) => {
     const palette = [
-      [ORANGE, RUST, MUSTARD, CHOCOLATE],
-      [RUST, ORANGE, BROWN, CHOCOLATE],
-      [MUSTARD, ORANGE, RUST, BROWN],
-      [ORANGE, MUSTARD, RUST, CHOCOLATE],
-      [RUST, MUSTARD, ORANGE, CHOCOLATE],
-      [ORANGE, RUST, MUSTARD, BROWN],
-      [MUSTARD, RUST, ORANGE, CHOCOLATE],
+      [ORANGE, RUST, MUSTARD],
+      [RUST, ORANGE, BROWN],
+      [MUSTARD, ORANGE, RUST],
+      [ORANGE, MUSTARD, RUST],
+      [RUST, MUSTARD, ORANGE],
+      [ORANGE, RUST, MUSTARD],
+      [MUSTARD, RUST, ORANGE],
     ][i];
-    return roundedFanFeather(deg, 78 + (i % 2) * 6, palette.slice(0, 3));
+    return roundedFanFeather(deg, 78 + (i % 2) * 6, palette);
   })
   .join('');
 
@@ -78,16 +77,6 @@ const turkeyCorner = svgDataUrl(`
   </g>
 </svg>`);
 
-const soundCard = svgDataUrl(`
-<svg xmlns="http://www.w3.org/2000/svg" width="106" height="96" viewBox="0 0 106 96">
-  <path fill="${ORANGE}" stroke="${RUST}" stroke-width="2.5" d="M53 50 C29 50 15 66 17 80 C19 92 34 94 53 94 C72 94 87 92 89 80 C91 66 77 50 53 50 Z"/>
-  <path fill="#C25620" d="M53 50 C41 50 32 58 30 68 C36 62 44 58 53 58 C62 58 70 62 76 68 C74 58 65 50 53 50 Z"/>
-  <path fill="#B84E1C" opacity="0.35" d="M36 78 C36 66 42 56 53 54 V88 C42 86 36 82 36 78 Z"/>
-  <path fill="#C25620" opacity="0.28" d="M70 78 C70 90 64 90 53 92 V54 C64 56 70 66 70 78 Z"/>
-  <rect x="49" y="38" width="8" height="14" rx="2" fill="${BROWN}"/>
-  <path fill="#6B8E23" d="M57 40c5 1 6 5 4 8-3 0-5-2-4-8z"/>
-</svg>`);
-
 const sliderThumb = svgDataUrl(`
 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
   <circle cx="11" cy="11" r="9" fill="${MUSTARD}" stroke="${CHOCOLATE}" stroke-width="1.5"/>
@@ -103,26 +92,16 @@ const scrollbarThumb = svgDataUrl(`
   <rect width="10" height="48" rx="5" fill="${MUSTARD}" stroke="${CHOCOLATE}" stroke-width="1"/>
 </svg>`);
 
-const fallLeaf = svgDataUrl(`
-<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-  <path fill="${RUST}" d="M16 2c7 9 9 16 9 22-5 2-9 2-14 0 0-6 2-13 5-22z"/>
-</svg>`);
-
-const img = {
-  background,
-  soundCard,
-  sliderThumb,
-  chatBgTile,
-  scrollbarThumb,
-  fallLeaf,
-  turkeyCorner,
-};
+const img = {};
+for (const [key, file] of Object.entries(FILES)) {
+  img[key] = pngDataUrl(file);
+}
+img.turkeyCorner = turkeyCorner;
+img.sliderThumb = sliderThumb;
+img.chatBgTile = chatBgTile;
+img.scrollbarThumb = scrollbarThumb;
 
 const driftCss = [
-  'body::before{',
-  'content:"";position:fixed;inset:0;pointer-events:none;z-index:2;opacity:0.42;',
-  `background:url(${img.fallLeaf}) 5% 10% / 30px no-repeat,url(${img.fallLeaf}) 94% 12% / 26px no-repeat,url(${img.fallLeaf}) 7% 93% / 28px no-repeat,url(${img.fallLeaf}) 92% 91% / 24px no-repeat;`,
-  '}',
   'body::after{',
   'content:"";position:fixed;right:268px;left:auto;bottom:78px;width:min(300px,32vw);height:min(270px,38vh);pointer-events:none;z-index:3;',
   `background:url(${img.turkeyCorner}) no-repeat center bottom/contain;`,
@@ -134,8 +113,8 @@ const driftCss = [
 const skin = {
   name: 'Thanksgiving (Cartoon)',
   description:
-    'Flat cartoon harvest theme: soft cream backdrop, rust and mustard accents, pumpkin buttons, corner turkey mascot, and WCAG-friendly dark text.',
-  version: '1.2.1',
+    'Harvest Thanksgiving theme modeled on the Halloween custom skin layout: photo banner with leaf overlay, fall stats backdrop, solid sound buttons with visible hotkeys, script headings, and corner turkey mascot.',
+  version: '1.3.0',
   author: 'VirtualDeck Team',
   variables: {
     '--bg-primary': CREAM,
@@ -272,6 +251,15 @@ const skin = {
       height: '8px !important',
       overflow: 'visible !important',
     },
+    '.main-content': {
+      background: `linear-gradient(rgba(243,230,211,0.2), rgba(243,230,211,0.5)), url(${img.leafOverlay}) center/cover no-repeat, url(${img.banner}) center/cover no-repeat !important`,
+      'border-radius': '18px !important',
+      border: `3px solid ${CHOCOLATE} !important`,
+      'box-shadow': `0 4px 0 ${MUSTARD}, 0 10px 18px rgba(59,35,20,0.12) !important`,
+      padding: '14px 12px 16px !important',
+      'min-height': '340px !important',
+      overflow: 'visible !important',
+    },
     '.queue-control-widget': {
       position: 'fixed !important',
       background: `${PANEL} !important`,
@@ -325,19 +313,22 @@ const skin = {
       color: `${CHOCOLATE} !important`,
     },
     '.sound-card': {
-      background: `url(${img.soundCard}) no-repeat center 8px / 92px auto !important`,
-      'background-color': 'transparent !important',
-      border: `2px solid ${RUST} !important`,
-      'border-radius': '22px !important',
-      overflow: 'hidden !important',
-      'min-height': 'var(--card-size) !important',
+      background: 'var(--bg-secondary) !important',
+      border: `2px solid ${CHOCOLATE} !important`,
+      'border-radius': '12px !important',
       'box-shadow': `0 3px 0 ${CHOCOLATE} !important`,
-      'justify-content': 'flex-end !important',
+      display: 'flex !important',
+      'flex-direction': 'column !important',
       'align-items': 'center !important',
-      'padding-bottom': '6px !important',
+      'justify-content': 'center !important',
+      padding: '8px 6px !important',
+      'min-height': 'var(--card-size) !important',
       'box-sizing': 'border-box !important',
     },
-    '.sound-card:hover': { filter: 'brightness(1.04)' },
+    '.sound-card:hover': {
+      background: 'var(--hover-bg) !important',
+      filter: 'brightness(1.02)',
+    },
     '.delete-x-button': {
       background: `${RUST} !important`,
       color: `${PANEL} !important`,
@@ -348,34 +339,38 @@ const skin = {
     },
     '.sound-type': {
       color: `${CHOCOLATE} !important`,
-      background: `${PANEL} !important`,
-      'border-radius': '6px !important',
-      padding: '2px 6px !important',
-      border: `1px solid ${CHOCOLATE}`,
     },
     '.sound-name': {
       color: `${CHOCOLATE} !important`,
-      background: `${PANEL} !important`,
-      'border-radius': '8px !important',
-      padding: '3px 6px !important',
-      'max-width': '92px !important',
-      display: 'inline-block !important',
-      overflow: 'hidden !important',
-      'text-overflow': 'ellipsis !important',
-      'white-space': 'nowrap !important',
-      border: `1px solid ${CHOCOLATE}`,
-      'margin-top': 'auto !important',
-      'z-index': '2 !important',
+      'font-weight': '700 !important',
+      'text-align': 'center !important',
+      background: 'transparent !important',
+      border: 'none !important',
+      'max-width': '100% !important',
+      padding: '0 4px !important',
+      'line-height': '1.25 !important',
     },
     '.sound-hotkey': {
       color: `${CHOCOLATE} !important`,
       background: `${MUSTARD} !important`,
+      border: `1px solid ${CHOCOLATE} !important`,
+      'font-size': '10px !important',
+      'font-weight': '800 !important',
+      padding: '3px 8px !important',
+      'border-radius': '6px !important',
+      display: 'inline-block !important',
+      visibility: 'visible !important',
+      opacity: '1 !important',
+      'margin-top': '4px !important',
     },
     '#twitch-stats-container': {
-      background: 'none !important',
-      border: 'none !important',
+      background: `linear-gradient(rgba(243,230,211,0.78), rgba(243,230,211,0.88)), url(${img.statsBackdrop}) center/cover no-repeat !important`,
+      border: `2px solid ${CHOCOLATE} !important`,
+      'border-radius': '16px !important',
+      padding: '10px 12px 12px !important',
       width: '100% !important',
       'max-width': '100% !important',
+      'box-sizing': 'border-box !important',
     },
     '.stats-grid': { width: '100% !important' },
     '.chat-messages': {

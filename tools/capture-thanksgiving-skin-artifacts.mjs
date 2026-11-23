@@ -141,14 +141,18 @@ const filledStats = statsBlock
   .replace('id="subscriber-count">-', 'id="subscriber-count">312')
   .replace('id="sub-points">-', 'id="sub-points">48');
 
+function soundButton({ label, hotkey }) {
+  return `<button type="button" class="sound-card sample"><span class="sound-name">${label}</span><div class="sound-hotkey">${hotkey}</div></button>`;
+}
+
 function soundGrid({ longLabel = false } = {}) {
   const label = longLabel ? 'Extra Crispy Turkey Leftovers' : 'Turkey Day';
   return `
 <div id="sound-grid">
-  <button type="button" class="sound-card sample"><span class="sound-name">${label}</span></button>
-  <button type="button" class="sound-card sample"><span class="sound-name">Gobble</span></button>
-  <button type="button" class="sound-card sample"><span class="sound-name">Pie Time</span></button>
-  <button type="button" class="sound-card sample"><span class="sound-name">Cheers</span></button>
+  ${soundButton({ label, hotkey: 'F1' })}
+  ${soundButton({ label: 'Gobble', hotkey: 'F2' })}
+  ${soundButton({ label: 'Pie Time', hotkey: 'F3' })}
+  ${soundButton({ label: 'Cheers', hotkey: 'F4' })}
 </div>`;
 }
 
@@ -182,10 +186,21 @@ ${queueBlock}
 ${pagination}`;
 }
 
-const statsHtml = pageHtml(`
+const statsHtml = pageHtml(
+  `
 ${filledStats}
 <div id="recent-activity-container" class="hidden"></div>
-`, `#twitch-stats-container { margin: 24px auto; max-width: 920px; }`);
+`,
+  `#twitch-stats-container { margin: 24px auto; max-width: 1200px; width: 100%; }`,
+);
+
+const hotkeyHtml = pageHtml(
+  `
+<div class="main-content" style="max-width: 220px; margin: 24px auto;">
+${soundButton({ label: 'Turkey Day', hotkey: 'F1' })}
+</div>`,
+  `.main-content { min-height: 180px !important; display:flex !important; justify-content:center !important; align-items:center !important; }`,
+);
 
 const deckHtml = pageHtml(deckBody());
 
@@ -213,6 +228,7 @@ const pages = {
   stats: statsHtml,
   chat: chatHtml,
   queue: queueHtml,
+  hotkey: hotkeyHtml,
 };
 
 for (const [name, html] of Object.entries(pages)) {
@@ -296,6 +312,11 @@ await page.screenshot({ path: path.join(outDir, 'thanksgiving-deck-unlocked-long
 await renderPage(page, 'stats');
 await page.locator('#twitch-stats-container').screenshot({
   path: path.join(outDir, 'thanksgiving-stats-bar-closeup.png'),
+});
+
+await renderPage(page, 'hotkey');
+await page.locator('.sound-card.sample').screenshot({
+  path: path.join(outDir, 'thanksgiving-sound-button-hotkey-closeup.png'),
 });
 
 await renderPage(page, 'chat');
