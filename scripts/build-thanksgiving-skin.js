@@ -29,29 +29,64 @@ function roundedLeaf(cx, cy, fill, rot = 0) {
 const background = svgDataUrl(`
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
   <rect width="800" height="600" fill="${CREAM}"/>
-  ${roundedLeaf(120, 80, RUST, -20)}
-  ${roundedLeaf(680, 120, MUSTARD, 15)}
-  ${roundedLeaf(200, 480, ORANGE, 30)}
-  ${roundedLeaf(620, 420, RUST, -35)}
-  ${roundedLeaf(400, 200, MUSTARD, 10)}
+  ${roundedLeaf(48, 56, RUST, -18)}
+  ${roundedLeaf(752, 64, MUSTARD, 12)}
+  ${roundedLeaf(44, 548, ORANGE, 28)}
+  ${roundedLeaf(756, 536, RUST, -32)}
 </svg>`);
 
-const statItem = svgDataUrl(`
-<svg xmlns="http://www.w3.org/2000/svg" width="480" height="120" viewBox="0 0 480 120">
-  <rect x="6" y="10" width="468" height="100" rx="18" fill="${PANEL}" stroke="${CHOCOLATE}" stroke-width="4"/>
-  <rect x="6" y="10" width="468" height="22" rx="18" fill="${MUSTARD}" opacity="0.35"/>
-  <circle cx="28" cy="21" r="5" fill="${RUST}"/>
-  <circle cx="452" cy="21" r="5" fill="${RUST}"/>
+function roundedFanFeather(deg, len, [c1, c2, c3]) {
+  return `<g transform="rotate(${deg})">
+    <ellipse cx="0" cy="-${len * 0.55}" rx="19" ry="${len * 0.52}" fill="${c1}"/>
+    <ellipse cx="0" cy="-${len * 0.42}" rx="15" ry="${len * 0.1}" fill="${c2}"/>
+    <ellipse cx="0" cy="-${len * 0.3}" rx="13" ry="${len * 0.09}" fill="${c3}"/>
+    <ellipse cx="0" cy="-${len * 0.18}" rx="11" ry="${len * 0.08}" fill="${c2}" opacity="0.85"/>
+  </g>`;
+}
+
+const turkeyFeathers = [-72, -48, -28, -8, 12, 32, 52]
+  .map((deg, i) => {
+    const palette = [
+      [ORANGE, RUST, MUSTARD, CHOCOLATE],
+      [RUST, ORANGE, BROWN, CHOCOLATE],
+      [MUSTARD, ORANGE, RUST, BROWN],
+      [ORANGE, MUSTARD, RUST, CHOCOLATE],
+      [RUST, MUSTARD, ORANGE, CHOCOLATE],
+      [ORANGE, RUST, MUSTARD, BROWN],
+      [MUSTARD, RUST, ORANGE, CHOCOLATE],
+    ][i];
+    return roundedFanFeather(deg, 78 + (i % 2) * 6, palette.slice(0, 3));
+  })
+  .join('');
+
+const turkeyCorner = svgDataUrl(`
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="280" viewBox="0 0 320 280">
+  <g transform="translate(160 248)">
+    <g transform="translate(0 -50)">${turkeyFeathers}</g>
+    <path fill="${CHOCOLATE}" d="M-52 8 C-58 -18 -22 -40 0 -44 C22 -40 58 -18 52 8 C34 30 0 34 C-34 30 -52 8 Z"/>
+    <circle cx="0" cy="-54" r="28" fill="#F0B088"/>
+    <circle cx="-11" cy="-60" r="7" fill="#FFF" stroke="${CHOCOLATE}" stroke-width="1.2"/>
+    <circle cx="11" cy="-60" r="7" fill="#FFF" stroke="${CHOCOLATE}" stroke-width="1.2"/>
+    <circle cx="-11" cy="-60" r="2.8" fill="${CHOCOLATE}"/>
+    <circle cx="11" cy="-60" r="2.8" fill="${CHOCOLATE}"/>
+    <polygon points="-6,-42 6,-42 0,-34" fill="${MUSTARD}"/>
+    <ellipse cx="12" cy="-44" rx="7" ry="4.5" fill="${RUST}"/>
+    <ellipse cx="0" cy="-36" rx="8" ry="6" fill="#E8A07A"/>
+    <rect x="-34" y="-88" width="68" height="12" rx="4" fill="${CHOCOLATE}"/>
+    <rect x="-22" y="-100" width="44" height="14" rx="3" fill="${CHOCOLATE}"/>
+    <rect x="-9" y="-96" width="18" height="9" rx="2" fill="${MUSTARD}"/>
+  </g>
 </svg>`);
 
 const soundCard = svgDataUrl(`
 <svg xmlns="http://www.w3.org/2000/svg" width="106" height="122" viewBox="0 0 106 122">
-  <ellipse cx="53" cy="70" rx="42" ry="44" fill="${CHOCOLATE}"/>
-  <ellipse cx="53" cy="68" rx="38" ry="40" fill="${ORANGE}"/>
-  <ellipse cx="53" cy="70" rx="30" ry="34" fill="#E8864A"/>
-  <path fill="none" stroke="${BROWN}" stroke-width="1.4" stroke-linecap="round" d="M53 34v68M34 48c14 10 14 32 0 42M72 48c-14 10-14 32 0 42"/>
-  <rect x="44" y="5" width="18" height="15" rx="4" fill="${BROWN}" stroke="${CHOCOLATE}" stroke-width="1.5"/>
-  <path fill="${MUSTARD}" d="M53 18c-9 0-16 4-16 9s7 9 16 9 16-4 16-9-7-9-16-9z"/>
+  <ellipse cx="53" cy="112" rx="36" ry="7" fill="${CHOCOLATE}" opacity="0.18"/>
+  <path fill="${ORANGE}" d="M53 42 C28 42 14 62 16 82 C18 100 34 108 53 108 C72 108 88 100 90 82 C92 62 78 42 53 42 Z"/>
+  <path fill="#C25620" d="M53 42 C40 42 30 52 28 64 C36 56 46 52 53 52 C60 52 70 56 78 64 C76 52 66 42 53 42 Z"/>
+  <path fill="#B84E1C" opacity="0.28" d="M37 78 C37 64 44 54 53 52 V98 C44 94 37 86 37 78 Z"/>
+  <path fill="#C25620" opacity="0.22" d="M69 78 C69 92 62 102 53 104 V52 C62 54 69 64 69 78 Z"/>
+  <rect x="48" y="10" width="10" height="16" rx="3" fill="${BROWN}"/>
+  <path fill="#6B8E23" d="M61 15c8 1 10 6 6 10-4-1-8-3-6-10z"/>
 </svg>`);
 
 const sliderThumb = svgDataUrl(`
@@ -59,17 +94,9 @@ const sliderThumb = svgDataUrl(`
   <circle cx="11" cy="11" r="9" fill="${MUSTARD}" stroke="${CHOCOLATE}" stroke-width="1.5"/>
 </svg>`);
 
-const chatHeaderLeaf = svgDataUrl(`
-<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
-  <path fill="${MUSTARD}" opacity="0.85" d="M10 1c4.5 6 5.5 10 5.5 13.5-3 1-5.5 1-8.5 0C7 11 7.5 7 10 1z"/>
-</svg>`);
-
 const chatBgTile = svgDataUrl(`
 <svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
   <rect width="96" height="96" fill="${PANEL}"/>
-  ${roundedLeaf(24, 24, ORANGE, -15)}
-  ${roundedLeaf(72, 60, RUST, 25)}
-  ${roundedLeaf(48, 80, MUSTARD, -40)}
 </svg>`);
 
 const scrollbarThumb = svgDataUrl(`
@@ -82,37 +109,10 @@ const fallLeaf = svgDataUrl(`
   <path fill="${RUST}" d="M16 2c7 9 9 16 9 22-5 2-9 2-14 0 0-6 2-13 5-22z"/>
 </svg>`);
 
-const turkeyCorner = svgDataUrl(`
-<svg xmlns="http://www.w3.org/2000/svg" width="360" height="400" viewBox="0 0 360 400">
-  <g transform="translate(180 380)">
-    <ellipse cx="0" cy="-28" rx="58" ry="40" fill="${BROWN}" stroke="${CHOCOLATE}" stroke-width="2"/>
-    <g transform="translate(0 -98)">
-      <path fill="${ORANGE}" stroke="${CHOCOLATE}" stroke-width="1.5" d="M-82 4c-16-62 2-94 40-104 6 22 4 52-6 78-8 16-22 24-34 26z"/>
-      <path fill="${RUST}" stroke="${CHOCOLATE}" stroke-width="1.2" d="M-40 2c-10-66 12-98 44-108 4 24 2 54-10 80-8 14-22 22-34 28z"/>
-      <path fill="${CHOCOLATE}" d="M0 0c-8-66 18-100 48-110 6 26 4 56-10 82-10 16-24 24-38 28z"/>
-      <path fill="${ORANGE}" stroke="${CHOCOLATE}" stroke-width="1.2" d="M40 2c10-64 32-96 44-108-6 22-8 52 2 76 8 16 22 24 34 32z"/>
-      <path fill="${RUST}" stroke="${CHOCOLATE}" stroke-width="1.5" d="M82 4c16-60 38-92 36-104-20 18-30 44-34 72-4 18-18 26-32 32z"/>
-      <path fill="none" stroke="${MUSTARD}" stroke-width="2" d="M-55-40c12 18 12 36 0 54M-18-52c10 20 10 40 0 60M18-52c-10 20-10 40 0 60M55-40c-12 18-12 36 0 54"/>
-    </g>
-    <ellipse cx="0" cy="-124" rx="32" ry="30" fill="#F0B088" stroke="${CHOCOLATE}" stroke-width="1.5"/>
-    <circle cx="-12" cy="-128" r="7" fill="#FFFFFF" stroke="${CHOCOLATE}" stroke-width="1.2"/>
-    <circle cx="12" cy="-128" r="7" fill="#FFFFFF" stroke="${CHOCOLATE}" stroke-width="1.2"/>
-    <circle cx="-12" cy="-128" r="3" fill="${CHOCOLATE}"/>
-    <circle cx="12" cy="-128" r="3" fill="${CHOCOLATE}"/>
-    <polygon points="-7,-112 7,-112 0,-102" fill="${MUSTARD}" stroke="${CHOCOLATE}" stroke-width="0.8"/>
-    <ellipse cx="16" cy="-112" rx="7" ry="5" fill="${RUST}"/>
-    <rect x="-40" y="-158" width="80" height="14" rx="4" fill="${CHOCOLATE}"/>
-    <rect x="-26" y="-172" width="52" height="16" rx="4" fill="${CHOCOLATE}"/>
-    <rect x="-10" y="-168" width="20" height="10" rx="2" fill="${MUSTARD}"/>
-  </g>
-</svg>`);
-
 const img = {
   background,
-  statItem,
   soundCard,
   sliderThumb,
-  chatHeaderLeaf,
   chatBgTile,
   scrollbarThumb,
   fallLeaf,
@@ -120,29 +120,23 @@ const img = {
 };
 
 const driftCss = [
-  '@keyframes vd-thanksgiving-drift{',
-  '0%{background-position:6% 4%,92% 8%,4% 88%,96% 82%,50% 96%}',
-  '100%{background-position:10% 8%,88% 12%,8% 92%,92% 86%,48% 100%}',
-  '}',
   'body::before{',
-  'content:"";position:fixed;inset:0;pointer-events:none;z-index:2;opacity:0.58;',
-  `background:url(${img.fallLeaf}) no-repeat,url(${img.fallLeaf}) no-repeat,url(${img.fallLeaf}) no-repeat,url(${img.fallLeaf}) no-repeat,url(${img.fallLeaf}) no-repeat;`,
-  'background-repeat:no-repeat;background-size:36px 36px,30px 30px,28px 28px,32px 32px,26px 26px;',
-  'animation:vd-thanksgiving-drift 32s ease-in-out infinite alternate;',
+  'content:"";position:fixed;inset:0;pointer-events:none;z-index:2;opacity:0.42;',
+  `background:url(${img.fallLeaf}) 5% 10% / 30px no-repeat,url(${img.fallLeaf}) 94% 12% / 26px no-repeat,url(${img.fallLeaf}) 7% 93% / 28px no-repeat,url(${img.fallLeaf}) 92% 91% / 24px no-repeat;`,
   '}',
   'body::after{',
-  'content:"";position:fixed;right:230px;left:auto;bottom:52px;width:min(360px,36vw);height:min(400px,44vh);pointer-events:none;z-index:4;',
+  'content:"";position:fixed;right:268px;left:auto;bottom:78px;width:min(300px,32vw);height:min(270px,38vh);pointer-events:none;z-index:3;',
   `background:url(${img.turkeyCorner}) no-repeat center bottom/contain;`,
   'opacity:1;',
   '}',
-  '.sound-card,.drag-toggle-btn,.page-btn,.queue-widget-btn,#twitch-chat-container,input[type="range"],.master-volume-control,.toggle-chat-btn{position:relative;z-index:6;}',
+  '.sound-card,.drag-toggle-btn,.page-btn,.queue-widget-btn,#twitch-chat-container,#twitch-stats-container,.bottom-pagination,.pagination-indicator,input[type="range"],.master-volume-control,.toggle-chat-btn{position:relative;z-index:6;}',
 ].join('');
 
 const skin = {
   name: 'Thanksgiving (Cartoon)',
   description:
     'Flat cartoon harvest theme: soft cream backdrop, rust and mustard accents, pumpkin buttons, corner turkey mascot, and WCAG-friendly dark text.',
-  version: '1.2.0',
+  version: '1.2.1',
   author: 'VirtualDeck Team',
   variables: {
     '--bg-primary': CREAM,
@@ -182,7 +176,6 @@ const skin = {
     `#twitch-chat-container{background:${PANEL} url(${img.chatBgTile}) repeat !important;border:3px solid ${CHOCOLATE} !important;border-radius:18px !important;box-shadow:0 4px 0 rgba(59,35,20,0.15) !important;overflow:hidden}`,
     `#twitch-chat-container .chat-header{background:${RUST} !important;min-height:48px;border:none !important;border-bottom:2px solid ${CHOCOLATE} !important}`,
     `#twitch-chat-container .chat-title{color:${PANEL} !important;font-family:"Segoe Script","Palatino Linotype",cursive !important;font-size:24px !important;font-weight:700 !important;text-shadow:0 1px 0 ${CHOCOLATE}}`,
-    `#twitch-chat-container .chat-title-section::before{content:"";display:inline-block;width:18px;height:18px;margin-right:8px;vertical-align:middle;background:url(${img.chatHeaderLeaf}) center/contain no-repeat}`,
     `#twitch-chat-container .toggle-chat-btn{background:${PANEL} !important;color:${CHOCOLATE} !important;border:2px solid ${CHOCOLATE} !important;border-radius:8px}`,
     `#twitch-chat-container .toggle-chat-btn .material-icons{color:${CHOCOLATE} !important;font-size:20px}`,
     `.status-indicator,.status-indicator.connected,.status-indicator.disconnected{background:${MUSTARD} !important;border:2px solid ${CHOCOLATE} !important}`,
@@ -197,7 +190,17 @@ const skin = {
   ].join(' '),
   components: {
     '.app-menu-logo': {
-      filter: 'drop-shadow(0 1px 0 rgba(59,35,20,0.2))',
+      'max-height': '48px !important',
+      'max-width': '168px !important',
+      width: 'auto !important',
+      'object-fit': 'contain !important',
+      'object-position': 'left center !important',
+      filter: 'none !important',
+    },
+    '#app-menu-left': {
+      display: 'flex !important',
+      'align-items': 'center !important',
+      gap: '4px !important',
     },
     '.menu-button:hover': {
       background: `${MUSTARD} !important`,
@@ -216,10 +219,7 @@ const skin = {
     '.hotkey-help': { color: `${CHOCOLATE} !important` },
     '.stat-item': {
       border: 'none !important',
-      background: `url(${img.statItem}) no-repeat top center / contain, ${PANEL} !important`,
-      'background-repeat': 'no-repeat, no-repeat',
-      'background-position': 'top center, center',
-      'background-size': 'contain, cover',
+      background: 'none !important',
     },
     '.stat-content': {
       background: `${PANEL} !important`,
@@ -300,6 +300,11 @@ const skin = {
       border: `2px solid ${CHOCOLATE} !important`,
     },
     '.pagination-indicator': { color: `${RUST} !important` },
+    '.bottom-pagination': {
+      background: `${PANEL} !important`,
+      border: `2px solid ${CHOCOLATE} !important`,
+      'box-shadow': '0 3px 0 rgba(59,35,20,0.12) !important',
+    },
     '.drag-toggle-btn': {
       border: `2px solid ${CHOCOLATE} !important`,
       background: `${MUSTARD} !important`,
@@ -378,7 +383,7 @@ const skin = {
       border: `2px solid ${CHOCOLATE} !important`,
     },
     body: {
-      background: `${CREAM} url(${img.background}) center/cover no-repeat !important`,
+      background: `${CREAM} !important`,
       color: `${CHOCOLATE} !important`,
     },
     '.selection-option': {

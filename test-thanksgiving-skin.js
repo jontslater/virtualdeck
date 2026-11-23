@@ -52,7 +52,7 @@ for (const hex of palette) {
 
 assert.ok(!/\burl\((?!data:image)/i.test(raw), 'only data:image url() references');
 assert.ok(skin.components['.stat-content'], 'stat content backing');
-assert.ok(skin.css.includes('vd-thanksgiving-drift'), 'leaf drift animation');
+assert.ok(skin.css.includes('body::before'), 'corner leaf accents');
 assert.ok(
   !skin.css.match(/#[0-9A-Fa-f]{3,8}\s+[#.[]/),
   'injected skin css rules must close before the next selector',

@@ -52,7 +52,9 @@ const skinCss = buildSkinCss(skin);
 
 const menuBar = (
   sliceHtml(indexHtml, '<nav id="app-menu-left"', '</nav>') + '</nav>'
-).replace('src="logo.png"', 'src="/logo.png"');
+)
+  .replace('src="logo.png"', 'src="/logo.png"')
+  .replace('alt="VirtualDeck"', 'alt=""');
 const statsBlock = sliceHtml(
   indexHtml,
   '<div id="twitch-stats-container">',
@@ -81,6 +83,8 @@ const soundControlsUnlocked = soundControlsLocked
 
 const captureAssist = `
 #button-type-modal, .modal, #profile-panel, #ai-dashboard-controls { display: none !important; }
+#app-menu-left { display: flex !important; align-items: center !important; flex-wrap: nowrap !important; gap: 4px !important; }
+.app-menu-logo { max-height: 48px !important; max-width: 168px !important; width: auto !important; object-fit: contain !important; object-position: left center !important; flex-shrink: 0 !important; filter: none !important; }
 `;
 
 const materialIconsHead = `
