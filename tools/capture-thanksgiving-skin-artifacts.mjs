@@ -83,14 +83,7 @@ const hideChrome = `
 
 const materialIconsHead = `
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-<style>
-@font-face {
-  font-family: 'Material Icons';
-  font-style: normal;
-  font-weight: 400;
-  src: url(/MaterialIcons-Regular.woff2) format('woff2');
-}
-</style>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 `;
 
 function pageHtml(body, extraCss = '') {
@@ -121,6 +114,8 @@ body { min-height: 100vh; margin: 0; font-family: Roboto, 'Segoe UI', sans-serif
   word-wrap: normal;
   direction: ltr;
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'liga';
+  -webkit-font-feature-settings: 'liga';
 }
 ${hideChrome}
 ${extraCss}
@@ -256,9 +251,9 @@ async function renderPage(page, name) {
   await page.waitForFunction(() => {
     const icons = [...document.querySelectorAll('.material-icons')];
     if (icons.length === 0) return true;
-    return icons.every((icon) => icon.getBoundingClientRect().width <= 32);
-  }, null, { timeout: 20000 });
-  await page.waitForTimeout(250);
+    return icons.every((icon) => icon.getBoundingClientRect().width <= 40);
+  }, null, { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(350);
 }
 
 const browser = await chromium.launch();

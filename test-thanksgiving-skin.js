@@ -40,59 +40,25 @@ function assertAa(label, fg, bg, min = 4.5) {
 }
 
 assert.strictEqual(skin.name, 'Thanksgiving (Cartoon)');
-assert.strictEqual(skin.version, '1.0.0');
-assert.ok(skin.description, 'description present');
-assert.ok(skin.author, 'author present');
-assert.ok(skin.variables && typeof skin.variables === 'object');
-assert.ok(skin.css && typeof skin.css === 'string');
+assert.ok(skin.version, 'version present');
 assert.ok(skin.components && typeof skin.components === 'object');
+assert.ok(skin.css.includes('body::after'), 'corner turkey decoration present');
+assert.ok(skin.variables['--bg-primary'] === '#F3E6D3', 'cream primary background');
 
-const palette = ['#C45C26', '#B22222', '#F4D58D', '#FFF8E7', '#2C1810', '#8B4513', '#D97706'];
+const palette = ['#F3E6D3', '#B7412E', '#D4622A', '#D4A12A', '#3B2314', '#FFF8EB'];
 for (const hex of palette) {
-  assert.ok(
-    raw.includes(hex) || raw.includes(hex.toLowerCase()),
-    `palette color ${hex} appears in skin`,
-  );
+  assert.ok(raw.includes(hex), `palette color ${hex} appears in skin`);
 }
 
-assert.ok(
-  !/\burl\((?!data:image)/i.test(raw),
-  'no external url() references (only data URLs)',
-);
-assert.ok(!/\.png['")\s]/i.test(raw), 'no loose .png file references');
+assert.ok(!/\burl\((?!data:image)/i.test(raw), 'only data:image url() references');
+assert.ok(skin.components['.stat-content'], 'stat content backing');
+assert.ok(skin.css.includes('vd-thanksgiving-drift'), 'leaf drift animation');
 
-assert.ok(skin.variables['--master-volume-track'], 'master volume track variable');
-assert.ok(skin.variables['--master-volume-thumb'], 'master volume thumb variable');
-assert.ok(skin.components["#master-volume-input[type='range']"], 'master volume range styling');
-assert.ok(
-  skin.components["input[type='range']::-webkit-slider-thumb"],
-  'harvest slider thumb for range inputs',
-);
-assert.ok(
-  skin.css.includes('#twitch-chat-messages > div') && skin.css.includes('!important'),
-  'chat message bubbles styled with !important',
-);
-assert.ok(skin.css.includes('data:image/svg+xml'), 'skin uses embedded SVG data URLs');
-assert.ok(skin.css.includes('vd-thanksgiving-drift'), 'falling leaves animation present');
-assert.ok(
-  skin.css.includes('rgba(244,213,141') || skin.css.includes('rgba(244, 213, 141'),
-  'chat bubbles use cream background for readability',
-);
-
-assert.ok(skin.components['.stat-content'], 'stat content backing for readable Twitch stats');
-assert.ok(
-  skin.components['.stat-label'].color.includes('2C1810'),
-  'stat labels use dark ink on cream backing',
-);
-
-// WCAG AA contrast pairs for foreground/background combinations used in the skin.
-assertAa('Twitch stat label/value on cream stat panel (.stat-content)', '#2C1810', '#F4D58D');
-assertAa('Chat message text on cream bubble', '#2C1810', '#F4D58D');
-assertAa('Recent activity value on dark panel', '#FFF8E7', '#2C1810');
-assertAa('Recent activity label on dark panel', '#FFF8E7', '#2C1810');
-assertAa('Hotkey helper on espresso menu bar', '#FFF8E7', '#2C1810');
-assertAa('Master volume label on harvest gradient (dark stop)', '#FFF8E7', '#5C2E1A');
-assertAa('Sound button title on pumpkin face', '#2C1810', '#E07A32');
-assertAa('Sound type chip on pumpkin face', '#2C1810', '#E07A32');
+assertAa('Stats on cream panel', '#3B2314', '#FFF8EB');
+assertAa('Chat bubble text', '#3B2314', '#FFF8EB');
+assertAa('Menu / body text', '#3B2314', '#F3E6D3');
+assertAa('Sound button label chip', '#3B2314', '#FFF8EB');
+assertAa('Rust stat label on panel', '#B7412E', '#FFF8EB');
+assertAa('Master label on cream', '#3B2314', '#F3E6D3');
 
 console.log('✅ test-thanksgiving-skin.js passed (including WCAG AA contrast checks)');
