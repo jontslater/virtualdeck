@@ -53,6 +53,8 @@ for (const hex of palette) {
 assert.ok(!/\burl\((?!data:image)/i.test(raw), 'only data:image url() references');
 assert.ok(skin.components['.stat-content'], 'stat content backing');
 assert.ok(skin.components['.main-content'], 'main content banner area');
+assert.ok(skin.components['#sound-grid'], 'sound grid alignment rules');
+assert.ok(skin.css.includes('main-content::before'), 'leaf garland overlay');
 assert.ok(skin.components['.sound-hotkey'], 'hotkey styling present');
 assert.ok(
   skin.components['.sound-hotkey'].visibility === 'visible !important',

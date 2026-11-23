@@ -21,7 +21,6 @@ const BROWN = '#5C3A22';
 const FILES = {
   statsBackdrop: 'thanksgiving-stats-backdrop-1536x280.png',
   banner: 'thanksgiving-banner-1280x520.png',
-  leafOverlay: 'thanksgiving-leaf-overlay-1280x520.png',
 };
 
 function pngDataUrl(fileName) {
@@ -92,6 +91,25 @@ const scrollbarThumb = svgDataUrl(`
   <rect width="10" height="48" rx="5" fill="${MUSTARD}" stroke="${CHOCOLATE}" stroke-width="1"/>
 </svg>`);
 
+function mapleLeafPath(fill, stroke = CHOCOLATE) {
+  return `<path fill="${fill}" stroke="${stroke}" stroke-width="1.15" opacity="0.95" d="M0-16 C5-11 12-2 14 7 C9 5 3 9 0 16 C-3 9 -9 5 -14 7 C-12 -2 -5 -11 0-16 Z"/>`;
+}
+
+const leafGarland = svgDataUrl(`
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="96" viewBox="0 0 1280 96">
+  ${Array.from({ length: 19 }, (_, i) => {
+    const x = 34 + i * 64;
+    const y = 46 + (i % 3) * 4;
+    const rot = -42 + (i % 6) * 14;
+    const colors = [RUST, ORANGE, MUSTARD, BROWN];
+    const fill = colors[i % colors.length];
+    const scale = 1.05 + (i % 4) * 0.12;
+    return `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${scale})">${mapleLeafPath(fill)}</g>`;
+  }).join('')}
+  <g transform="translate(28 78) rotate(-28) scale(0.95)">${mapleLeafPath(RUST)}</g>
+  <g transform="translate(1248 80) rotate(36) scale(0.92)">${mapleLeafPath(ORANGE)}</g>
+</svg>`);
+
 const img = {};
 for (const [key, file] of Object.entries(FILES)) {
   img[key] = pngDataUrl(file);
@@ -103,9 +121,13 @@ img.scrollbarThumb = scrollbarThumb;
 
 const driftCss = [
   'body::after{',
-  'content:"";position:fixed;right:268px;left:auto;bottom:78px;width:min(300px,32vw);height:min(270px,38vh);pointer-events:none;z-index:3;',
+  'content:"";position:fixed;right:212px;left:auto;bottom:112px;width:min(248px,26vw);height:min(220px,30vh);pointer-events:none;z-index:3;',
   `background:url(${img.turkeyCorner}) no-repeat center bottom/contain;`,
   'opacity:1;',
+  '}',
+  '.main-content::before{',
+  'content:"";position:absolute;top:0;left:0;right:0;height:92px;pointer-events:none;z-index:2;',
+  `background:url(${leafGarland}) top center/1280px 92px no-repeat;`,
   '}',
   '.sound-card,.drag-toggle-btn,.page-btn,.queue-widget-btn,#twitch-chat-container,input[type="range"],.master-volume-control,.toggle-chat-btn{position:relative;z-index:6;}',
 ].join('');
@@ -114,7 +136,7 @@ const skin = {
   name: 'Thanksgiving (Cartoon)',
   description:
     'Harvest Thanksgiving theme modeled on the Halloween custom skin layout: photo banner with leaf overlay, fall stats backdrop, solid sound buttons with visible hotkeys, script headings, and corner turkey mascot.',
-  version: '1.3.0',
+  version: '1.3.1',
   author: 'VirtualDeck Team',
   variables: {
     '--bg-primary': CREAM,
@@ -252,13 +274,22 @@ const skin = {
       overflow: 'visible !important',
     },
     '.main-content': {
-      background: `linear-gradient(rgba(243,230,211,0.2), rgba(243,230,211,0.5)), url(${img.leafOverlay}) center/cover no-repeat, url(${img.banner}) center/cover no-repeat !important`,
+      position: 'relative !important',
+      background: `linear-gradient(rgba(59,35,20,0.32), rgba(243,230,211,0.52)), url(${img.banner}) center/cover no-repeat !important`,
       'border-radius': '18px !important',
       border: `3px solid ${CHOCOLATE} !important`,
       'box-shadow': `0 4px 0 ${MUSTARD}, 0 10px 18px rgba(59,35,20,0.12) !important`,
-      padding: '14px 12px 16px !important',
+      padding: '20px 16px 16px !important',
       'min-height': '340px !important',
       overflow: 'visible !important',
+    },
+    '#sound-grid': {
+      'justify-content': 'flex-start !important',
+      'justify-items': 'start !important',
+      'align-content': 'start !important',
+      'z-index': '3 !important',
+      width: '100% !important',
+      'max-width': '100% !important',
     },
     '.queue-control-widget': {
       position: 'fixed !important',
@@ -364,7 +395,7 @@ const skin = {
       'margin-top': '4px !important',
     },
     '#twitch-stats-container': {
-      background: `linear-gradient(rgba(243,230,211,0.78), rgba(243,230,211,0.88)), url(${img.statsBackdrop}) center/cover no-repeat !important`,
+      background: `linear-gradient(rgba(243,230,211,0.22), rgba(243,230,211,0.38)), url(${img.statsBackdrop}) center/cover no-repeat !important`,
       border: `2px solid ${CHOCOLATE} !important`,
       'border-radius': '16px !important',
       padding: '10px 12px 12px !important',
