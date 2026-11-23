@@ -42,7 +42,8 @@ function assertAa(label, fg, bg, min = 4.5) {
 assert.strictEqual(skin.name, 'Thanksgiving (Cartoon)');
 assert.ok(skin.version, 'version present');
 assert.ok(skin.components && typeof skin.components === 'object');
-assert.ok(skin.css.includes('body::after'), 'corner turkey decoration present');
+assert.ok(!skin.css.includes('body::after'), 'no turkey mascot on body');
+assert.ok(!/turkey/i.test(raw), 'no turkey asset references in skin');
 assert.ok(skin.variables['--bg-primary'] === '#F3E6D3', 'cream primary background');
 
 const palette = ['#F3E6D3', '#B7412E', '#D4622A', '#D4A12A', '#3B2314', '#FFF8EB'];

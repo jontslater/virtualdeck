@@ -33,49 +33,6 @@ function svgDataUrl(svg) {
   return `data:image/svg+xml;base64,${Buffer.from(compact).toString('base64')}`;
 }
 
-function roundedFanFeather(deg, len, [c1, c2, c3]) {
-  return `<g transform="rotate(${deg})">
-    <ellipse cx="0" cy="-${len * 0.55}" rx="19" ry="${len * 0.52}" fill="${c1}"/>
-    <ellipse cx="0" cy="-${len * 0.42}" rx="15" ry="${len * 0.1}" fill="${c2}"/>
-    <ellipse cx="0" cy="-${len * 0.3}" rx="13" ry="${len * 0.09}" fill="${c3}"/>
-    <ellipse cx="0" cy="-${len * 0.18}" rx="11" ry="${len * 0.08}" fill="${c2}" opacity="0.85"/>
-  </g>`;
-}
-
-const turkeyFeathers = [-72, -48, -28, -8, 12, 32, 52]
-  .map((deg, i) => {
-    const palette = [
-      [ORANGE, RUST, MUSTARD],
-      [RUST, ORANGE, BROWN],
-      [MUSTARD, ORANGE, RUST],
-      [ORANGE, MUSTARD, RUST],
-      [RUST, MUSTARD, ORANGE],
-      [ORANGE, RUST, MUSTARD],
-      [MUSTARD, RUST, ORANGE],
-    ][i];
-    return roundedFanFeather(deg, 78 + (i % 2) * 6, palette);
-  })
-  .join('');
-
-const turkeyCorner = svgDataUrl(`
-<svg xmlns="http://www.w3.org/2000/svg" width="320" height="280" viewBox="0 0 320 280">
-  <g transform="translate(160 248)">
-    <g transform="translate(0 -50)">${turkeyFeathers}</g>
-    <path fill="${CHOCOLATE}" d="M-52 8 C-58 -18 -22 -40 0 -44 C22 -40 58 -18 52 8 C34 30 0 34 C-34 30 -52 8 Z"/>
-    <circle cx="0" cy="-54" r="28" fill="#F0B088"/>
-    <circle cx="-11" cy="-60" r="7" fill="#FFF" stroke="${CHOCOLATE}" stroke-width="1.2"/>
-    <circle cx="11" cy="-60" r="7" fill="#FFF" stroke="${CHOCOLATE}" stroke-width="1.2"/>
-    <circle cx="-11" cy="-60" r="2.8" fill="${CHOCOLATE}"/>
-    <circle cx="11" cy="-60" r="2.8" fill="${CHOCOLATE}"/>
-    <polygon points="-6,-42 6,-42 0,-34" fill="${MUSTARD}"/>
-    <ellipse cx="12" cy="-44" rx="7" ry="4.5" fill="${RUST}"/>
-    <ellipse cx="0" cy="-36" rx="8" ry="6" fill="#E8A07A"/>
-    <rect x="-34" y="-88" width="68" height="12" rx="4" fill="${CHOCOLATE}"/>
-    <rect x="-22" y="-100" width="44" height="14" rx="3" fill="${CHOCOLATE}"/>
-    <rect x="-9" y="-96" width="18" height="9" rx="2" fill="${MUSTARD}"/>
-  </g>
-</svg>`);
-
 const sliderThumb = svgDataUrl(`
 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
   <circle cx="11" cy="11" r="9" fill="${MUSTARD}" stroke="${CHOCOLATE}" stroke-width="1.5"/>
@@ -114,17 +71,11 @@ const img = {};
 for (const [key, file] of Object.entries(FILES)) {
   img[key] = pngDataUrl(file);
 }
-img.turkeyCorner = turkeyCorner;
 img.sliderThumb = sliderThumb;
 img.chatBgTile = chatBgTile;
 img.scrollbarThumb = scrollbarThumb;
 
 const driftCss = [
-  'body::after{',
-  'content:"";position:fixed;right:212px;left:auto;bottom:112px;width:min(248px,26vw);height:min(220px,30vh);pointer-events:none;z-index:3;',
-  `background:url(${img.turkeyCorner}) no-repeat center bottom/contain;`,
-  'opacity:1;',
-  '}',
   '.main-content::before{',
   'content:"";position:absolute;top:0;left:0;right:0;height:92px;pointer-events:none;z-index:2;',
   `background:url(${leafGarland}) top center/1280px 92px no-repeat;`,
@@ -135,8 +86,8 @@ const driftCss = [
 const skin = {
   name: 'Thanksgiving (Cartoon)',
   description:
-    'Harvest Thanksgiving theme modeled on the Halloween custom skin layout: photo banner with leaf overlay, fall stats backdrop, solid sound buttons with visible hotkeys, script headings, and corner turkey mascot.',
-  version: '1.3.1',
+    'Harvest Thanksgiving theme modeled on the Halloween custom skin layout: photo banner with leaf overlay, fall stats backdrop, solid sound buttons with visible hotkeys, and script headings.',
+  version: '1.3.2',
   author: 'VirtualDeck Team',
   variables: {
     '--bg-primary': CREAM,
