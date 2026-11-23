@@ -121,11 +121,12 @@ const driftCss = [
   '100%{background-position:18% 108%,52% 112%,82% 106%,36% 110%}',
   '}',
   'body::before{',
-  'content:"";position:fixed;inset:0;pointer-events:none;z-index:0;',
+  'content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0.28;',
   `background-image:url(${img.fallLeaf}),url(${img.fallLeaf}),url(${img.fallLeaf}),url(${img.fallLeaf});`,
   'background-repeat:no-repeat;background-size:26px 26px,22px 22px,24px 24px,20px 20px;',
-  'opacity:0.4;animation:vd-thanksgiving-drift 22s linear infinite;',
+  'animation:vd-thanksgiving-drift 22s linear infinite;',
   '}',
+  '.container,.app-menu-left,.overlay-container{position:relative;z-index:2;}',
 ].join('');
 
 const skin = {
@@ -171,6 +172,7 @@ const skin = {
     `#twitch-chat-container .chat-header{background:url(${img.chatHeader}) left top/cover no-repeat !important;min-height:44px;border:none !important}`,
     `#twitch-chat-container .chat-title{color:#FFF8E7 !important;font-weight:800;text-shadow:0 2px 0 #2C1810}`,
     `#twitch-chat-container .toggle-chat-btn{background:#F4D58D !important;color:#2C1810 !important;border:3px solid #2C1810 !important;border-radius:8px}`,
+    `#twitch-chat-container .toggle-chat-btn .material-icons{color:#2C1810 !important;font-size:20px}`,
     `.status-indicator.connected{background:#8B4513 !important;border:2px solid #2C1810}`,
     `#twitch-chat-messages > div{background:rgba(244,213,141,.96) !important;color:#2C1810 !important;border:3px solid #2C1810 !important;border-radius:14px !important;margin:8px 6px !important;padding:8px 10px !important;font-family:inherit !important}`,
     `#twitch-chat-messages > div strong{color:#2C1810 !important;border-bottom:3px solid currentColor}`,
@@ -246,6 +248,27 @@ const skin = {
     '.sound-controls': {
       background: 'rgba(44, 24, 16, 0.62) !important',
       border: 'none !important',
+    },
+    '.queue-control-widget': {
+      background: 'rgba(44, 24, 16, 0.72) !important',
+      border: '2px solid #F4D58D !important',
+      'border-radius': '10px !important',
+    },
+    '.queue-widget-title,.queue-widget-status': {
+      color: '#FFF8E7 !important',
+    },
+    '.queue-widget-btn': {
+      background: 'var(--bg-secondary) !important',
+      color: '#FFF8E7 !important',
+      border: '2px solid #2C1810 !important',
+    },
+    '.page-btn': {
+      background: 'var(--bg-secondary) !important',
+      color: '#FFF8E7 !important',
+      border: '2px solid #2C1810 !important',
+    },
+    '.pagination-indicator': {
+      color: '#F4D58D !important',
     },
     '.drag-toggle-btn': {
       border: '2px solid var(--text-primary) !important',
