@@ -1,7 +1,7 @@
 {
   "name": "Thanksgiving (Cartoon)",
   "description": "Flat cartoon harvest theme: soft cream backdrop, rust and mustard accents, pumpkin buttons, corner turkey mascot, and WCAG-friendly dark text.",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "author": "VirtualDeck Team",
   "variables": {
     "--bg-primary": "#F3E6D3",
@@ -34,10 +34,10 @@
     "--master-volume-track": "#C9A87C",
     "--master-volume-thumb": "#D4622A"
   },
-  "css": "@keyframes vd-thanksgiving-drift{0%{background-position:8% -6%,70% -10%,40% -8%}100%{background-position:12% 105%,74% 108%,44% 106%}}body::before{content:\"\";position:fixed;inset:0;pointer-events:none;z-index:1;opacity:0.32;background:url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%20%3Cpath%20fill%3D%22%23B7412E%22%20d%3D%22M16%202c7%209%209%2016%209%2022-5%202-9%202-14%200%200-6%202-13%205-22z%22%2F%3E%20%3C%2Fsvg%3E) no-repeat,url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%20%3Cpath%20fill%3D%22%23B7412E%22%20d%3D%22M16%202c7%209%209%2016%209%2022-5%202-9%202-14%200%200-6%202-13%205-22z%22%2F%3E%20%3C%2Fsvg%3E) no-repeat,url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%20%3Cpath%20fill%3D%22%23B7412E%22%20d%3D%22M16%202c7%209%209%2016%209%2022-5%202-9%202-14%200%200-6%202-13%205-22z%22%2F%3E%20%3C%2Fsvg%3E) no-repeat;background-repeat:no-repeat;background-size:28px 28px,24px 24px,22px 22px;animation:vd-thanksgiving-drift 26s linear infinite;}body::after{content:\"\";position:fixed;left:-40px;bottom:-36px;width:280px;height:320px;pointer-events:none;z-index:4;background:url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22300%22%20height%3D%22340%22%20viewBox%3D%220%200%20300%20340%22%3E%20%3Cg%20transform%3D%22translate(150%20300)%22%3E%20%3Cellipse%20cx%3D%220%22%20cy%3D%22-30%22%20rx%3D%2252%22%20ry%3D%2236%22%20fill%3D%22%235C3A22%22%2F%3E%20%3Cg%20transform%3D%22translate(0%20-95)%22%3E%20%3Cpath%20fill%3D%22%23D4622A%22%20d%3D%22M-70%200c-18-55%200-85%2035-95%208%2020%208%2045%200%2070z%22%2F%3E%20%3Cpath%20fill%3D%22%23B7412E%22%20d%3D%22M-35%200c-12-58%208-88%2038-98%206%2022%206%2048-2%2072z%22%2F%3E%20%3Cpath%20fill%3D%22%233B2314%22%20d%3D%22M0%200c-10-60%2015-92%2042-102%204%2024%202%2050-8%2074z%22%2F%3E%20%3Cpath%20fill%3D%22%23D4622A%22%20d%3D%22M35%200c12-55%2032-85%2038-95-8%2020-10%2045-2%2068z%22%2F%3E%20%3Cpath%20fill%3D%22%23B7412E%22%20d%3D%22M70%200c18-52%2038-82%2035-95-18%2018-28%2042-32%2068z%22%2F%3E%20%3C%2Fg%3E%20%3Cellipse%20cx%3D%220%22%20cy%3D%22-118%22%20rx%3D%2228%22%20ry%3D%2226%22%20fill%3D%22%23F0B088%22%2F%3E%20%3Ccircle%20cx%3D%22-10%22%20cy%3D%22-122%22%20r%3D%226%22%20fill%3D%22%23FFFFFF%22%20stroke%3D%22%233B2314%22%20stroke-width%3D%221%22%2F%3E%20%3Ccircle%20cx%3D%2210%22%20cy%3D%22-122%22%20r%3D%226%22%20fill%3D%22%23FFFFFF%22%20stroke%3D%22%233B2314%22%20stroke-width%3D%221%22%2F%3E%20%3Ccircle%20cx%3D%22-10%22%20cy%3D%22-122%22%20r%3D%222.5%22%20fill%3D%22%233B2314%22%2F%3E%20%3Ccircle%20cx%3D%2210%22%20cy%3D%22-122%22%20r%3D%222.5%22%20fill%3D%22%233B2314%22%2F%3E%20%3Cpolygon%20points%3D%22-6%2C-108%206%2C-108%200%2C-100%22%20fill%3D%22%23D4A12A%22%2F%3E%20%3Cellipse%20cx%3D%2214%22%20cy%3D%22-108%22%20rx%3D%226%22%20ry%3D%224%22%20fill%3D%22%23B7412E%22%2F%3E%20%3Crect%20x%3D%22-36%22%20y%3D%22-150%22%20width%3D%2272%22%20height%3D%2212%22%20rx%3D%224%22%20fill%3D%22%233B2314%22%2F%3E%20%3Crect%20x%3D%22-22%22%20y%3D%22-162%22%20width%3D%2244%22%20height%3D%2214%22%20rx%3D%223%22%20fill%3D%22%233B2314%22%2F%3E%20%3Crect%20x%3D%22-8%22%20y%3D%22-158%22%20width%3D%2216%22%20height%3D%228%22%20fill%3D%22%23D4A12A%22%2F%3E%20%3C%2Fg%3E%20%3C%2Fsvg%3E) no-repeat left bottom/contain;opacity:0.96;}.sound-card,.drag-toggle-btn,.page-btn,.queue-control-widget,.queue-widget-btn,.master-volume-control input,button,#twitch-chat-container,#twitch-stats-container{position:relative;z-index:5;} .app-menu-left{background:#F3E6D3 !important;border-bottom:2px solid #3B2314 !important} .menu-button{color:#3B2314 !important} #twitch-chat-container{background:#FFF8EB url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2296%22%20height%3D%2296%22%20viewBox%3D%220%200%2096%2096%22%3E%20%3Crect%20width%3D%2296%22%20height%3D%2296%22%20fill%3D%22%23FFF8EB%22%2F%3E%20%3Cg%20transform%3D%22translate(24%2024)%20rotate(-15)%22%3E%3Cpath%20fill%3D%22%23D4622A%22%20d%3D%22M0%20-10c8%204%2012%2012%2012%2020-6%202-12%202-18%200%200-8%204-16%206-20z%22%2F%3E%3C%2Fg%3E%20%3Cg%20transform%3D%22translate(72%2060)%20rotate(25)%22%3E%3Cpath%20fill%3D%22%23B7412E%22%20d%3D%22M0%20-10c8%204%2012%2012%2012%2020-6%202-12%202-18%200%200-8%204-16%206-20z%22%2F%3E%3C%2Fg%3E%20%3Cg%20transform%3D%22translate(48%2080)%20rotate(-40)%22%3E%3Cpath%20fill%3D%22%23D4A12A%22%20d%3D%22M0%20-10c8%204%2012%2012%2012%2020-6%202-12%202-18%200%200-8%204-16%206-20z%22%2F%3E%3C%2Fg%3E%20%3C%2Fsvg%3E) repeat !important;border:3px solid #3B2314 !important;border-radius:18px !important;overflow:hidden} #twitch-chat-container .chat-header{background:#B7412E url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22600%22%20height%3D%2248%22%20viewBox%3D%220%200%20600%2048%22%3E%20%3Crect%20width%3D%22600%22%20height%3D%2248%22%20rx%3D%2214%22%20fill%3D%22%23B7412E%22%2F%3E%20%3Crect%20x%3D%2212%22%20y%3D%2210%22%20width%3D%22120%22%20height%3D%228%22%20rx%3D%224%22%20fill%3D%22%23D4A12A%22%20opacity%3D%220.9%22%2F%3E%20%3C%2Fsvg%3E) left top/cover no-repeat !important;min-height:48px;border:none !important} #twitch-chat-container .chat-title{color:#D4A12A !important;font-family:\"Segoe Script\",\"Palatino Linotype\",cursive !important;font-size:22px !important;font-weight:700 !important;text-shadow:0 1px 0 #3B2314 #twitch-chat-container .toggle-chat-btn{background:#FFF8EB !important;color:#3B2314 !important;border:2px solid #3B2314 !important;border-radius:8px} #twitch-chat-container .toggle-chat-btn .material-icons{color:#3B2314 !important;font-size:20px} .status-indicator.connected{background:#D4A12A !important;border:2px solid #3B2314 #twitch-chat-messages > div{background:#FFF8EB !important;color:#3B2314 !important;border:2px solid #3B2314 !important;border-radius:14px !important;margin:8px 6px !important;padding:8px 10px !important} #twitch-chat-messages > div strong{color:#B7412E !important;border-bottom:2px solid #B7412E #twitch-chat-messages .activity-message{color:#5C3A22 !important} .chat-messages::-webkit-scrollbar{width:10px} .chat-messages::-webkit-scrollbar-track{background:#F3E6D3;border-radius:6px} .chat-messages::-webkit-scrollbar-thumb{background:url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%2248%22%20viewBox%3D%220%200%2010%2048%22%3E%20%3Crect%20width%3D%2210%22%20height%3D%2248%22%20rx%3D%225%22%20fill%3D%22%23D4A12A%22%20stroke%3D%22%233B2314%22%20stroke-width%3D%221%22%2F%3E%20%3C%2Fsvg%3E) repeat-y center/100% auto;border-radius:6px} .activity-message{color:#5C3A22 !important} .master-volume-label{color:#3B2314 !important} #twitch-stats-container .stat-label,#twitch-stats-container .stat-value{color:#3B2314 !important}",
+  "css": "@keyframes vd-thanksgiving-drift{0%{background-position:6% 4%,92% 8%,4% 88%,96% 82%,50% 96%}100%{background-position:10% 8%,88% 12%,8% 92%,92% 86%,48% 100%}}body::before{content:\"\";position:fixed;inset:0;pointer-events:none;z-index:2;opacity:0.58;background:url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDMyIDMyIj4gPHBhdGggZmlsbD0iI0I3NDEyRSIgZD0iTTE2IDJjNyA5IDkgMTYgOSAyMi01IDItOSAyLTE0IDAgMC02IDItMTMgNS0yMnoiLz4gPC9zdmc+) no-repeat,url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDMyIDMyIj4gPHBhdGggZmlsbD0iI0I3NDEyRSIgZD0iTTE2IDJjNyA5IDkgMTYgOSAyMi01IDItOSAyLTE0IDAgMC02IDItMTMgNS0yMnoiLz4gPC9zdmc+) no-repeat,url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDMyIDMyIj4gPHBhdGggZmlsbD0iI0I3NDEyRSIgZD0iTTE2IDJjNyA5IDkgMTYgOSAyMi01IDItOSAyLTE0IDAgMC02IDItMTMgNS0yMnoiLz4gPC9zdmc+) no-repeat,url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDMyIDMyIj4gPHBhdGggZmlsbD0iI0I3NDEyRSIgZD0iTTE2IDJjNyA5IDkgMTYgOSAyMi01IDItOSAyLTE0IDAgMC02IDItMTMgNS0yMnoiLz4gPC9zdmc+) no-repeat,url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDMyIDMyIj4gPHBhdGggZmlsbD0iI0I3NDEyRSIgZD0iTTE2IDJjNyA5IDkgMTYgOSAyMi01IDItOSAyLTE0IDAgMC02IDItMTMgNS0yMnoiLz4gPC9zdmc+) no-repeat;background-repeat:no-repeat;background-size:36px 36px,30px 30px,28px 28px,32px 32px,26px 26px;animation:vd-thanksgiving-drift 32s ease-in-out infinite alternate;}body::after{content:\"\";position:fixed;right:230px;left:auto;bottom:52px;width:min(360px,36vw);height:min(400px,44vh);pointer-events:none;z-index:4;background:url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzNjAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgMzYwIDQwMCI+IDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDE4MCAzODApIj4gPGVsbGlwc2UgY3g9IjAiIGN5PSItMjgiIHJ4PSI1OCIgcnk9IjQwIiBmaWxsPSIjNUMzQTIyIiBzdHJva2U9IiMzQjIzMTQiIHN0cm9rZS13aWR0aD0iMiIvPiA8ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwIC05OCkiPiA8cGF0aCBmaWxsPSIjRDQ2MjJBIiBzdHJva2U9IiMzQjIzMTQiIHN0cm9rZS13aWR0aD0iMS41IiBkPSJNLTgyIDRjLTE2LTYyIDItOTQgNDAtMTA0IDYgMjIgNCA1Mi02IDc4LTggMTYtMjIgMjQtMzQgMjZ6Ii8+IDxwYXRoIGZpbGw9IiNCNzQxMkUiIHN0cm9rZT0iIzNCMjMxNCIgc3Ryb2tlLXdpZHRoPSIxLjIiIGQ9Ik0tNDAgMmMtMTAtNjYgMTItOTggNDQtMTA4IDQgMjQgMiA1NC0xMCA4MC04IDE0LTIyIDIyLTM0IDI4eiIvPiA8cGF0aCBmaWxsPSIjM0IyMzE0IiBkPSJNMCAwYy04LTY2IDE4LTEwMCA0OC0xMTAgNiAyNiA0IDU2LTEwIDgyLTEwIDE2LTI0IDI0LTM4IDI4eiIvPiA8cGF0aCBmaWxsPSIjRDQ2MjJBIiBzdHJva2U9IiMzQjIzMTQiIHN0cm9rZS13aWR0aD0iMS4yIiBkPSJNNDAgMmMxMC02NCAzMi05NiA0NC0xMDgtNiAyMi04IDUyIDIgNzYgOCAxNiAyMiAyNCAzNCAzMnoiLz4gPHBhdGggZmlsbD0iI0I3NDEyRSIgc3Ryb2tlPSIjM0IyMzE0IiBzdHJva2Utd2lkdGg9IjEuNSIgZD0iTTgyIDRjMTYtNjAgMzgtOTIgMzYtMTA0LTIwIDE4LTMwIDQ0LTM0IDcyLTQgMTgtMTggMjYtMzIgMzJ6Ii8+IDxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0Q0QTEyQSIgc3Ryb2tlLXdpZHRoPSIyIiBkPSJNLTU1LTQwYzEyIDE4IDEyIDM2IDAgNTRNLTE4LTUyYzEwIDIwIDEwIDQwIDAgNjBNMTgtNTJjLTEwIDIwLTEwIDQwIDAgNjBNNTUtNDBjLTEyIDE4LTEyIDM2IDAgNTQiLz4gPC9nPiA8ZWxsaXBzZSBjeD0iMCIgY3k9Ii0xMjQiIHJ4PSIzMiIgcnk9IjMwIiBmaWxsPSIjRjBCMDg4IiBzdHJva2U9IiMzQjIzMTQiIHN0cm9rZS13aWR0aD0iMS41Ii8+IDxjaXJjbGUgY3g9Ii0xMiIgY3k9Ii0xMjgiIHI9IjciIGZpbGw9IiNGRkZGRkYiIHN0cm9rZT0iIzNCMjMxNCIgc3Ryb2tlLXdpZHRoPSIxLjIiLz4gPGNpcmNsZSBjeD0iMTIiIGN5PSItMTI4IiByPSI3IiBmaWxsPSIjRkZGRkZGIiBzdHJva2U9IiMzQjIzMTQiIHN0cm9rZS13aWR0aD0iMS4yIi8+IDxjaXJjbGUgY3g9Ii0xMiIgY3k9Ii0xMjgiIHI9IjMiIGZpbGw9IiMzQjIzMTQiLz4gPGNpcmNsZSBjeD0iMTIiIGN5PSItMTI4IiByPSIzIiBmaWxsPSIjM0IyMzE0Ii8+IDxwb2x5Z29uIHBvaW50cz0iLTcsLTExMiA3LC0xMTIgMCwtMTAyIiBmaWxsPSIjRDRBMTJBIiBzdHJva2U9IiMzQjIzMTQiIHN0cm9rZS13aWR0aD0iMC44Ii8+IDxlbGxpcHNlIGN4PSIxNiIgY3k9Ii0xMTIiIHJ4PSI3IiByeT0iNSIgZmlsbD0iI0I3NDEyRSIvPiA8cmVjdCB4PSItNDAiIHk9Ii0xNTgiIHdpZHRoPSI4MCIgaGVpZ2h0PSIxNCIgcng9IjQiIGZpbGw9IiMzQjIzMTQiLz4gPHJlY3QgeD0iLTI2IiB5PSItMTcyIiB3aWR0aD0iNTIiIGhlaWdodD0iMTYiIHJ4PSI0IiBmaWxsPSIjM0IyMzE0Ii8+IDxyZWN0IHg9Ii0xMCIgeT0iLTE2OCIgd2lkdGg9IjIwIiBoZWlnaHQ9IjEwIiByeD0iMiIgZmlsbD0iI0Q0QTEyQSIvPiA8L2c+IDwvc3ZnPg==) no-repeat center bottom/contain;opacity:1;}.sound-card,.drag-toggle-btn,.page-btn,.queue-widget-btn,#twitch-chat-container,input[type=\"range\"],.master-volume-control,.toggle-chat-btn{position:relative;z-index:6;} .app-menu-left{background:#F3E6D3 !important;border-bottom:2px solid #3B2314 !important} .menu-button{color:#3B2314 !important} #twitch-chat-container{background:#FFF8EB url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5NiIgaGVpZ2h0PSI5NiIgdmlld0JveD0iMCAwIDk2IDk2Ij4gPHJlY3Qgd2lkdGg9Ijk2IiBoZWlnaHQ9Ijk2IiBmaWxsPSIjRkZGOEVCIi8+IDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDI0IDI0KSByb3RhdGUoLTE1KSI+PHBhdGggZmlsbD0iI0Q0NjIyQSIgZD0iTTAgLTEwYzggNCAxMiAxMiAxMiAyMC02IDItMTIgMi0xOCAwIDAtOCA0LTE2IDYtMjB6Ii8+PC9nPiA8ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSg3MiA2MCkgcm90YXRlKDI1KSI+PHBhdGggZmlsbD0iI0I3NDEyRSIgZD0iTTAgLTEwYzggNCAxMiAxMiAxMiAyMC02IDItMTIgMi0xOCAwIDAtOCA0LTE2IDYtMjB6Ii8+PC9nPiA8ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSg0OCA4MCkgcm90YXRlKC00MCkiPjxwYXRoIGZpbGw9IiNENEExMkEiIGQ9Ik0wIC0xMGM4IDQgMTIgMTIgMTIgMjAtNiAyLTEyIDItMTggMCAwLTggNC0xNiA2LTIweiIvPjwvZz4gPC9zdmc+) repeat !important;border:3px solid #3B2314 !important;border-radius:18px !important;box-shadow:0 4px 0 rgba(59,35,20,0.15) !important;overflow:hidden} #twitch-chat-container .chat-header{background:#B7412E !important;min-height:48px;border:none !important;border-bottom:2px solid #3B2314 !important} #twitch-chat-container .chat-title{color:#FFF8EB !important;font-family:\"Segoe Script\",\"Palatino Linotype\",cursive !important;font-size:24px !important;font-weight:700 !important;text-shadow:0 1px 0 #3B2314} #twitch-chat-container .chat-title-section::before{content:\"\";display:inline-block;width:18px;height:18px;margin-right:8px;vertical-align:middle;background:url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDIwIDIwIj4gPHBhdGggZmlsbD0iI0Q0QTEyQSIgb3BhY2l0eT0iMC44NSIgZD0iTTEwIDFjNC41IDYgNS41IDEwIDUuNSAxMy41LTMgMS01LjUgMS04LjUgMEM3IDExIDcuNSA3IDEwIDF6Ii8+IDwvc3ZnPg==) center/contain no-repeat} #twitch-chat-container .toggle-chat-btn{background:#FFF8EB !important;color:#3B2314 !important;border:2px solid #3B2314 !important;border-radius:8px} #twitch-chat-container .toggle-chat-btn .material-icons{color:#3B2314 !important;font-size:20px} .status-indicator,.status-indicator.connected,.status-indicator.disconnected{background:#D4A12A !important;border:2px solid #3B2314 !important} #twitch-chat-messages > div{color:#3B2314 !important;background:transparent !important;border:none !important;margin:6px 0 !important;padding:2px 4px !important} #twitch-chat-messages > div strong{color:#B7412E !important;font-weight:700 !important} #twitch-chat-messages .activity-message,#twitch-chat-messages div.activity-message,.chat-messages .activity-message{color:#3B2314 !important;background:#FFF8EB !important;border:2px solid #B7412E !important;border-radius:10px !important;padding:6px 8px !important;font-weight:700 !important} .chat-messages::-webkit-scrollbar{width:10px} .chat-messages::-webkit-scrollbar-track{background:#F3E6D3;border-radius:6px} .chat-messages::-webkit-scrollbar-thumb{background:url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSI0OCIgdmlld0JveD0iMCAwIDEwIDQ4Ij4gPHJlY3Qgd2lkdGg9IjEwIiBoZWlnaHQ9IjQ4IiByeD0iNSIgZmlsbD0iI0Q0QTEyQSIgc3Ryb2tlPSIjM0IyMzE0IiBzdHJva2Utd2lkdGg9IjEiLz4gPC9zdmc+) repeat-y center/100% auto;border-radius:6px} .master-volume-label{color:#3B2314 !important} #twitch-stats-container .stat-label,#twitch-stats-container .stat-value{color:#3B2314 !important}",
   "components": {
     ".app-menu-logo": {
-      "display": "none"
+      "filter": "drop-shadow(0 1px 0 rgba(59,35,20,0.2))"
     },
     ".menu-button:hover": {
       "background": "#D4A12A !important",
@@ -58,24 +58,24 @@
     },
     ".stat-item": {
       "border": "none !important",
-      "background": "url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22480%22%20height%3D%22120%22%20viewBox%3D%220%200%20480%20120%22%3E%20%3Crect%20x%3D%224%22%20y%3D%224%22%20width%3D%22472%22%20height%3D%22112%22%20rx%3D%2220%22%20fill%3D%22%23FFF8EB%22%20stroke%3D%22%233B2314%22%20stroke-width%3D%223%22%2F%3E%20%3Crect%20x%3D%224%22%20y%3D%224%22%20width%3D%22472%22%20height%3D%2228%22%20rx%3D%2220%22%20fill%3D%22%23D4A12A%22%2F%3E%20%3Crect%20x%3D%224%22%20y%3D%2220%22%20width%3D%22472%22%20height%3D%2212%22%20fill%3D%22%23D4A12A%22%2F%3E%20%3Ccircle%20cx%3D%2236%22%20cy%3D%2220%22%20r%3D%226%22%20fill%3D%22%23B7412E%22%2F%3E%20%3Ccircle%20cx%3D%22444%22%20cy%3D%2220%22%20r%3D%226%22%20fill%3D%22%23B7412E%22%2F%3E%20%3C%2Fsvg%3E) no-repeat top center / contain, #FFF8EB !important",
+      "background": "url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0ODAiIGhlaWdodD0iMTIwIiB2aWV3Qm94PSIwIDAgNDgwIDEyMCI+IDxyZWN0IHg9IjYiIHk9IjEwIiB3aWR0aD0iNDY4IiBoZWlnaHQ9IjEwMCIgcng9IjE4IiBmaWxsPSIjRkZGOEVCIiBzdHJva2U9IiMzQjIzMTQiIHN0cm9rZS13aWR0aD0iNCIvPiA8cmVjdCB4PSI2IiB5PSIxMCIgd2lkdGg9IjQ2OCIgaGVpZ2h0PSIyMiIgcng9IjE4IiBmaWxsPSIjRDRBMTJBIiBvcGFjaXR5PSIwLjM1Ii8+IDxjaXJjbGUgY3g9IjI4IiBjeT0iMjEiIHI9IjUiIGZpbGw9IiNCNzQxMkUiLz4gPGNpcmNsZSBjeD0iNDUyIiBjeT0iMjEiIHI9IjUiIGZpbGw9IiNCNzQxMkUiLz4gPC9zdmc+) no-repeat top center / contain, #FFF8EB !important",
       "background-repeat": "no-repeat, no-repeat",
       "background-position": "top center, center",
       "background-size": "contain, cover"
     },
     ".stat-content": {
       "background": "#FFF8EB !important",
-      "border-radius": "12px !important",
+      "border-radius": "14px !important",
       "padding": "10px 12px 8px !important",
-      "border": "2px solid #3B2314 !important",
-      "box-shadow": "0 2px 0 rgba(59,35,20,0.12) !important",
+      "border": "3px solid #3B2314 !important",
+      "box-shadow": "0 3px 0 #3B2314, 0 8px 14px rgba(59,35,20,0.12) !important",
       "min-width": "72px !important"
     },
     ".stat-label": {
-      "color": "#B7412E !important",
-      "font-weight": "700 !important",
+      "color": "#3B2314 !important",
+      "font-weight": "800 !important",
       "text-transform": "uppercase",
-      "letter-spacing": "0.04em"
+      "letter-spacing": "0.05em"
     },
     ".stat-value": {
       "color": "#3B2314 !important",
@@ -114,15 +114,25 @@
       "overflow": "visible !important"
     },
     ".queue-control-widget": {
+      "position": "fixed !important",
       "background": "#FFF8EB !important",
-      "border": "2px solid #D4A12A !important",
-      "border-radius": "12px !important"
+      "border": "3px solid #3B2314 !important",
+      "border-radius": "14px !important",
+      "box-shadow": "0 4px 0 #D4A12A, 0 10px 18px rgba(59,35,20,0.14) !important",
+      "overflow": "visible !important",
+      "padding": "12px 12px 14px !important"
+    },
+    ".queue-widget-header": {
+      "overflow": "visible !important",
+      "min-height": "28px !important",
+      "padding-top": "2px !important"
     },
     ".queue-widget-title": {
       "color": "#B7412E !important",
       "font-family": "\"Segoe Script\",\"Palatino Linotype\",cursive !important"
     },
     ".queue-widget-status": {
+      "background": "#D4A12A !important",
       "color": "#3B2314 !important"
     },
     ".queue-widget-btn": {
@@ -140,12 +150,17 @@
     },
     ".drag-toggle-btn": {
       "border": "2px solid #3B2314 !important",
+      "background": "#D4A12A !important",
+      "color": "#3B2314 !important",
+      "font-weight": "800 !important"
+    },
+    ".drag-toggle-btn.unlocked": {
       "background": "#D4622A !important",
-      "color": "#FFF8EB !important",
-      "font-weight": "bold !important"
+      "color": "#FFF8EB !important"
     },
     ".drag-status": {
-      "color": "#3B2314 !important"
+      "color": "#3B2314 !important",
+      "font-weight": "700 !important"
     },
     ".add-card": {
       "background": "#D4A12A !important",
@@ -153,9 +168,12 @@
       "color": "#3B2314 !important"
     },
     ".sound-card": {
-      "background": "url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22106%22%20height%3D%22118%22%20viewBox%3D%220%200%20106%20118%22%3E%20%3Crect%20x%3D%2210%22%20y%3D%2218%22%20width%3D%2286%22%20height%3D%2288%22%20rx%3D%2222%22%20fill%3D%22%233B2314%22%2F%3E%20%3Crect%20x%3D%2214%22%20y%3D%2222%22%20width%3D%2278%22%20height%3D%2280%22%20rx%3D%2220%22%20fill%3D%22%23D4622A%22%2F%3E%20%3Crect%20x%3D%2220%22%20y%3D%2232%22%20width%3D%2266%22%20height%3D%2262%22%20rx%3D%2216%22%20fill%3D%22%23E07A3C%22%2F%3E%20%3Crect%20x%3D%2244%22%20y%3D%226%22%20width%3D%2218%22%20height%3D%2216%22%20rx%3D%224%22%20fill%3D%22%235C3A22%22%2F%3E%20%3C%2Fsvg%3E) no-repeat center / contain !important",
+      "background": "url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDYiIGhlaWdodD0iMTIyIiB2aWV3Qm94PSIwIDAgMTA2IDEyMiI+IDxlbGxpcHNlIGN4PSI1MyIgY3k9IjcwIiByeD0iNDIiIHJ5PSI0NCIgZmlsbD0iIzNCMjMxNCIvPiA8ZWxsaXBzZSBjeD0iNTMiIGN5PSI2OCIgcng9IjM4IiByeT0iNDAiIGZpbGw9IiNENDYyMkEiLz4gPGVsbGlwc2UgY3g9IjUzIiBjeT0iNzAiIHJ4PSIzMCIgcnk9IjM0IiBmaWxsPSIjRTg4NjRBIi8+IDxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzVDM0EyMiIgc3Ryb2tlLXdpZHRoPSIxLjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgZD0iTTUzIDM0djY4TTM0IDQ4YzE0IDEwIDE0IDMyIDAgNDJNNzIgNDhjLTE0IDEwLTE0IDMyIDAgNDIiLz4gPHJlY3QgeD0iNDQiIHk9IjUiIHdpZHRoPSIxOCIgaGVpZ2h0PSIxNSIgcng9IjQiIGZpbGw9IiM1QzNBMjIiIHN0cm9rZT0iIzNCMjMxNCIgc3Ryb2tlLXdpZHRoPSIxLjUiLz4gPHBhdGggZmlsbD0iI0Q0QTEyQSIgZD0iTTUzIDE4Yy05IDAtMTYgNC0xNiA5czcgOSAxNiA5IDE2LTQgMTYtOS03LTktMTYtOXoiLz4gPC9zdmc+) no-repeat center bottom / contain !important",
+      "background-color": "transparent !important",
       "border": "none !important",
-      "overflow": "hidden !important"
+      "overflow": "hidden !important",
+      "min-height": "var(--card-size) !important",
+      "box-shadow": "0 3px 0 #3B2314 !important"
     },
     ".sound-card:hover": {
       "filter": "brightness(1.04)",
@@ -200,12 +218,21 @@
       "background": "#FFF8EB !important",
       "color": "#3B2314 !important"
     },
+    ".activity-message,.chat-messages .activity-message,#twitch-chat-messages .activity-message": {
+      "color": "#3B2314 !important",
+      "background": "#F3E6D3 !important",
+      "border": "2px solid #B7412E !important",
+      "border-radius": "10px !important",
+      "padding": "6px 8px !important",
+      "font-weight": "700 !important",
+      "display": "block !important"
+    },
     ".status-indicator.disconnected": {
       "background": "#B7412E !important",
       "border": "2px solid #3B2314 !important"
     },
     "body": {
-      "background": "#F3E6D3 url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22800%22%20height%3D%22600%22%20viewBox%3D%220%200%20800%20600%22%3E%20%3Crect%20width%3D%22800%22%20height%3D%22600%22%20fill%3D%22%23F3E6D3%22%2F%3E%20%3Cg%20transform%3D%22translate(120%2080)%20rotate(-20)%22%3E%3Cpath%20fill%3D%22%23B7412E%22%20d%3D%22M0%20-10c8%204%2012%2012%2012%2020-6%202-12%202-18%200%200-8%204-16%206-20z%22%2F%3E%3C%2Fg%3E%20%3Cg%20transform%3D%22translate(680%20120)%20rotate(15)%22%3E%3Cpath%20fill%3D%22%23D4A12A%22%20d%3D%22M0%20-10c8%204%2012%2012%2012%2020-6%202-12%202-18%200%200-8%204-16%206-20z%22%2F%3E%3C%2Fg%3E%20%3Cg%20transform%3D%22translate(200%20480)%20rotate(30)%22%3E%3Cpath%20fill%3D%22%23D4622A%22%20d%3D%22M0%20-10c8%204%2012%2012%2012%2020-6%202-12%202-18%200%200-8%204-16%206-20z%22%2F%3E%3C%2Fg%3E%20%3Cg%20transform%3D%22translate(620%20420)%20rotate(-35)%22%3E%3Cpath%20fill%3D%22%23B7412E%22%20d%3D%22M0%20-10c8%204%2012%2012%2012%2020-6%202-12%202-18%200%200-8%204-16%206-20z%22%2F%3E%3C%2Fg%3E%20%3Cg%20transform%3D%22translate(400%20200)%20rotate(10)%22%3E%3Cpath%20fill%3D%22%23D4A12A%22%20d%3D%22M0%20-10c8%204%2012%2012%2012%2020-6%202-12%202-18%200%200-8%204-16%206-20z%22%2F%3E%3C%2Fg%3E%20%3C%2Fsvg%3E) center/cover no-repeat !important",
+      "background": "#F3E6D3 url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MDAiIGhlaWdodD0iNjAwIiB2aWV3Qm94PSIwIDAgODAwIDYwMCI+IDxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iNjAwIiBmaWxsPSIjRjNFNkQzIi8+IDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDEyMCA4MCkgcm90YXRlKC0yMCkiPjxwYXRoIGZpbGw9IiNCNzQxMkUiIGQ9Ik0wIC0xMGM4IDQgMTIgMTIgMTIgMjAtNiAyLTEyIDItMTggMCAwLTggNC0xNiA2LTIweiIvPjwvZz4gPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNjgwIDEyMCkgcm90YXRlKDE1KSI+PHBhdGggZmlsbD0iI0Q0QTEyQSIgZD0iTTAgLTEwYzggNCAxMiAxMiAxMiAyMC02IDItMTIgMi0xOCAwIDAtOCA0LTE2IDYtMjB6Ii8+PC9nPiA8ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgyMDAgNDgwKSByb3RhdGUoMzApIj48cGF0aCBmaWxsPSIjRDQ2MjJBIiBkPSJNMCAtMTBjOCA0IDEyIDEyIDEyIDIwLTYgMi0xMiAyLTE4IDAgMC04IDQtMTYgNi0yMHoiLz48L2c+IDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDYyMCA0MjApIHJvdGF0ZSgtMzUpIj48cGF0aCBmaWxsPSIjQjc0MTJFIiBkPSJNMCAtMTBjOCA0IDEyIDEyIDEyIDIwLTYgMi0xMiAyLTE4IDAgMC04IDQtMTYgNi0yMHoiLz48L2c+IDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDQwMCAyMDApIHJvdGF0ZSgxMCkiPjxwYXRoIGZpbGw9IiNENEExMkEiIGQ9Ik0wIC0xMGM4IDQgMTIgMTIgMTIgMjAtNiAyLTEyIDItMTggMCAwLTggNC0xNiA2LTIweiIvPjwvZz4gPC9zdmc+) center/cover no-repeat !important",
       "color": "#3B2314 !important"
     },
     ".selection-option": {
@@ -242,7 +269,7 @@
       "appearance": "none !important",
       "width": "22px !important",
       "height": "22px !important",
-      "background": "url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2222%22%20height%3D%2222%22%20viewBox%3D%220%200%2022%2022%22%3E%20%3Ccircle%20cx%3D%2211%22%20cy%3D%2211%22%20r%3D%229%22%20fill%3D%22%23D4A12A%22%20stroke%3D%22%233B2314%22%20stroke-width%3D%221.5%22%2F%3E%20%3C%2Fsvg%3E) no-repeat center / contain",
+      "background": "url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMiIgaGVpZ2h0PSIyMiIgdmlld0JveD0iMCAwIDIyIDIyIj4gPGNpcmNsZSBjeD0iMTEiIGN5PSIxMSIgcj0iOSIgZmlsbD0iI0Q0QTEyQSIgc3Ryb2tlPSIjM0IyMzE0IiBzdHJva2Utd2lkdGg9IjEuNSIvPiA8L3N2Zz4=) no-repeat center / contain",
       "border": "none !important",
       "box-shadow": "0 1px 2px rgba(59,35,20,0.25) !important"
     },
@@ -250,7 +277,7 @@
       "appearance": "none !important",
       "width": "22px !important",
       "height": "22px !important",
-      "background": "url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2222%22%20height%3D%2222%22%20viewBox%3D%220%200%2022%2022%22%3E%20%3Ccircle%20cx%3D%2211%22%20cy%3D%2211%22%20r%3D%229%22%20fill%3D%22%23D4A12A%22%20stroke%3D%22%233B2314%22%20stroke-width%3D%221.5%22%2F%3E%20%3C%2Fsvg%3E) no-repeat center / contain",
+      "background": "url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMiIgaGVpZ2h0PSIyMiIgdmlld0JveD0iMCAwIDIyIDIyIj4gPGNpcmNsZSBjeD0iMTEiIGN5PSIxMSIgcj0iOSIgZmlsbD0iI0Q0QTEyQSIgc3Ryb2tlPSIjM0IyMzE0IiBzdHJva2Utd2lkdGg9IjEuNSIvPiA8L3N2Zz4=) no-repeat center / contain",
       "border": "none !important"
     },
     "#master-volume-input[type='range']::-webkit-slider-thumb": {

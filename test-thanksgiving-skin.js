@@ -53,12 +53,20 @@ for (const hex of palette) {
 assert.ok(!/\burl\((?!data:image)/i.test(raw), 'only data:image url() references');
 assert.ok(skin.components['.stat-content'], 'stat content backing');
 assert.ok(skin.css.includes('vd-thanksgiving-drift'), 'leaf drift animation');
+assert.ok(
+  !skin.css.match(/#[0-9A-Fa-f]{3,8}\s+[#.[]/),
+  'injected skin css rules must close before the next selector',
+);
+assert.ok(skin.css.includes('base64,'), 'svg assets use base64 data urls');
 
 assertAa('Stats on cream panel', '#3B2314', '#FFF8EB');
 assertAa('Chat bubble text', '#3B2314', '#FFF8EB');
 assertAa('Menu / body text', '#3B2314', '#F3E6D3');
 assertAa('Sound button label chip', '#3B2314', '#FFF8EB');
-assertAa('Rust stat label on panel', '#B7412E', '#FFF8EB');
+assertAa('Stat label on cream panel', '#3B2314', '#FFF8EB');
+assertAa('Cream chat title on rust header', '#FFF8EB', '#B7412E');
+assertAa('Activity notice on cream', '#3B2314', '#F3E6D3');
+assertAa('Lock status on sound strip', '#3B2314', '#FFF8EB');
 assertAa('Master label on cream', '#3B2314', '#F3E6D3');
 
 console.log('✅ test-thanksgiving-skin.js passed (including WCAG AA contrast checks)');

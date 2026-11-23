@@ -11,10 +11,11 @@ import { chromium } from 'playwright';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
+const publicDir = path.join(root, 'public');
 const outDir = '/opt/cursor/artifacts';
 
-const stylesCss = fs.readFileSync(path.join(root, 'public/styles.css'), 'utf8');
-const indexHtml = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
+const stylesCss = fs.readFileSync(path.join(publicDir, 'styles.css'), 'utf8');
+const indexHtml = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8');
 const skin = JSON.parse(fs.readFileSync(path.join(root, 'skins', 'thanksgiving.json'), 'utf8'));
 
 function sliceHtml(html, startMarker, endMarker) {
@@ -49,7 +50,9 @@ function buildSkinCss(skinData) {
 
 const skinCss = buildSkinCss(skin);
 
-const menuBar = sliceHtml(indexHtml, '<nav id="app-menu-left"', '</nav>') + '</nav>';
+const menuBar = (
+  sliceHtml(indexHtml, '<nav id="app-menu-left"', '</nav>') + '</nav>'
+).replace('src="logo.png"', 'src="/logo.png"');
 const statsBlock = sliceHtml(
   indexHtml,
   '<div id="twitch-stats-container">',
@@ -76,9 +79,8 @@ const soundControlsUnlocked = soundControlsLocked
   .replace('Sound buttons are locked', 'Sound buttons are unlocked')
   .replace('class="drag-toggle-btn"', 'class="drag-toggle-btn unlocked"');
 
-const hideChrome = `
+const captureAssist = `
 #button-type-modal, .modal, #profile-panel, #ai-dashboard-controls { display: none !important; }
-.main-content { display: grid !important; grid-template-columns: 1fr 360px; gap: 16px; align-items: start; }
 `;
 
 const materialIconsHead = `
@@ -91,16 +93,13 @@ function pageHtml(body, extraCss = '') {
 <html lang="en" data-theme="thanksgiving">
 <head>
 <meta charset="utf-8" />
+<base href="/" />
 ${materialIconsHead}
 <style>
 ${stylesCss}
 ${skinCss}
 body { min-height: 100vh; margin: 0; font-family: Roboto, 'Segoe UI', sans-serif; }
-.container { display: block; padding: 12px; max-width: 1280px; margin: 0 auto; }
-#recent-activity-container.hidden { display: block !important; margin-top: 12px; }
-#twitch-chat-container { display: flex !important; flex-direction: column; min-height: 320px; }
-.sound-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
-.sound-card.sample { width: 106px; min-height: 122px; border: none; cursor: default; }
+.sound-card.sample { pointer-events: none; }
 .material-icons {
   font-family: 'Material Icons';
   font-weight: normal;
@@ -117,7 +116,7 @@ body { min-height: 100vh; margin: 0; font-family: Roboto, 'Segoe UI', sans-serif
   font-feature-settings: 'liga';
   -webkit-font-feature-settings: 'liga';
 }
-${hideChrome}
+${captureAssist}
 ${extraCss}
 </style>
 </head>
@@ -136,10 +135,10 @@ const filledStats = statsBlock
   .replace('id="subscriber-count">-', 'id="subscriber-count">312')
   .replace('id="sub-points">-', 'id="sub-points">48');
 
-function soundGrid({ longLabel = false, unlocked = false } = {}) {
+function soundGrid({ longLabel = false } = {}) {
   const label = longLabel ? 'Extra Crispy Turkey Leftovers' : 'Turkey Day';
   return `
-<div class="sound-grid">
+<div id="sound-grid">
   <button type="button" class="sound-card sample"><span class="sound-name">${label}</span></button>
   <button type="button" class="sound-card sample"><span class="sound-name">Gobble</span></button>
   <button type="button" class="sound-card sample"><span class="sound-name">Pie Time</span></button>
@@ -150,8 +149,8 @@ function soundGrid({ longLabel = false, unlocked = false } = {}) {
 const chatWithMessages = chatBlock.replace(
   '<div id="twitch-chat-messages" class="chat-messages"></div>',
   `<div id="twitch-chat-messages" class="chat-messages">
-    <div><strong>AutumnFan:</strong> cozy harvest stream</div>
-    <div><strong>PumpkinPete:</strong> happy thanksgiving!</div>
+    <div class="chat-message"><strong>AutumnFan:</strong> cozy harvest stream</div>
+    <div class="chat-message"><strong>PumpkinPete:</strong> happy thanksgiving!</div>
     <div class="activity-message">PumpkinPete subscribed at Tier 1</div>
   </div>`,
 );
@@ -163,39 +162,41 @@ const pagination = `
   <button class="page-btn" type="button"><span class="material-icons">arrow_forward</span></button>
 </div>`;
 
+function deckBody({ longLabel = false, unlocked = false } = {}) {
+  const controls = unlocked ? soundControlsUnlocked : soundControlsLocked;
+  return `
+${filledStats}
+<div id="recent-activity-container" class="hidden"></div>
+${controls}
+<div class="main-content">
+  ${soundGrid({ longLabel })}
+  ${chatWithMessages}
+</div>
+${queueBlock}
+${pagination}`;
+}
+
 const statsHtml = pageHtml(`
 ${filledStats}
-<div id="recent-activity-container" class="">
-  <div class="recent-activity-simple">
-    <div class="recent-item-simple"><div class="recent-label">Latest Follower:</div><div class="recent-value">AutumnFan</div></div>
-    <div class="recent-item-simple"><div class="recent-label">Latest Subscriber:</div><div class="recent-value">PumpkinPete</div></div>
-  </div>
-</div>
+<div id="recent-activity-container" class="hidden"></div>
 `, `#twitch-stats-container { margin: 24px auto; max-width: 920px; }`);
 
-const deckHtml = pageHtml(`
-${filledStats}
-${soundControlsLocked}
-<div class="main-content">
-  ${soundGrid()}
-  ${chatWithMessages}
-</div>
-${queueBlock}
-${pagination}
+const deckHtml = pageHtml(deckBody());
+
+const deckUnlockedLongHtml = pageHtml(deckBody({ longLabel: true, unlocked: true }));
+
+const chatHtml = pageHtml(chatWithMessages, `
+#twitch-chat-container { max-width: 400px; margin: 24px auto; }
 `);
 
-const deckUnlockedLongHtml = pageHtml(`
-${filledStats}
-${soundControlsUnlocked}
-<div class="main-content">
-  ${soundGrid({ longLabel: true, unlocked: true })}
-  ${chatWithMessages}
-</div>
-${queueBlock}
-${pagination}
-`);
-
-const chatHtml = pageHtml(chatWithMessages, `#twitch-chat-container { max-width: 400px; margin: 24px auto; }`);
+const queueHtml = pageHtml(
+  queueBlock,
+  `
+body { min-height: 220px; }
+.container { min-height: 220px; position: relative; }
+#queue-control-widget { position: fixed; right: 24px; bottom: 24px; }
+`,
+);
 
 const htmlDir = path.join(outDir, 'thanksgiving-capture-html');
 fs.mkdirSync(htmlDir, { recursive: true });
@@ -205,7 +206,7 @@ const pages = {
   unlocked: deckUnlockedLongHtml,
   stats: statsHtml,
   chat: chatHtml,
-  queue: pageHtml(queueBlock + '</div>'),
+  queue: queueHtml,
 };
 
 for (const [name, html] of Object.entries(pages)) {
@@ -223,11 +224,24 @@ if (!fs.existsSync(iconFont)) {
   ]);
 }
 
+const mime = {
+  '.png': 'image/png',
+  '.woff2': 'font/woff2',
+  '.css': 'text/css',
+};
+
 const server = http.createServer((req, res) => {
   const route = (req.url || '/').split('?')[0];
   if (route === '/MaterialIcons-Regular.woff2') {
     res.setHeader('Content-Type', 'font/woff2');
     res.end(fs.readFileSync(iconFont));
+    return;
+  }
+  const publicFile = path.join(publicDir, path.basename(route));
+  if (route.startsWith('/') && route !== '/' && fs.existsSync(publicFile) && fs.statSync(publicFile).isFile()) {
+    const ext = path.extname(publicFile);
+    res.setHeader('Content-Type', mime[ext] || 'application/octet-stream');
+    res.end(fs.readFileSync(publicFile));
     return;
   }
   const file = path.basename(route);
@@ -253,7 +267,15 @@ async function renderPage(page, name) {
     if (icons.length === 0) return true;
     return icons.every((icon) => icon.getBoundingClientRect().width <= 40);
   }, null, { timeout: 8000 }).catch(() => {});
-  await page.waitForTimeout(350);
+  const logo = await page.$('.app-menu-logo');
+  if (logo) {
+    await logo.evaluate((img) => img.naturalWidth > 0).catch(() => {});
+  }
+  await page.waitForFunction(() => {
+    const img = document.querySelector('.app-menu-logo');
+    return !img || (img.complete && img.naturalWidth > 0);
+  }, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(400);
 }
 
 const browser = await chromium.launch();
@@ -275,8 +297,9 @@ await page.locator('#twitch-chat-container').screenshot({
   path: path.join(outDir, 'thanksgiving-chat-panel.png'),
 });
 
-await renderPage(page, 'queue');
-await page.locator('#queue-control-widget').screenshot({
+const queuePage = await browser.newPage({ viewport: { width: 360, height: 240 } });
+await renderPage(queuePage, 'queue');
+await queuePage.locator('#queue-control-widget').screenshot({
   path: path.join(outDir, 'thanksgiving-alert-queue-widget.png'),
 });
 

@@ -18,7 +18,8 @@ const MUSTARD = '#D4A12A';
 const BROWN = '#5C3A22';
 
 function svgDataUrl(svg) {
-  return `data:image/svg+xml,${encodeURIComponent(svg.replace(/\s+/g, ' ').trim())}`;
+  const compact = svg.replace(/\s+/g, ' ').trim();
+  return `data:image/svg+xml;base64,${Buffer.from(compact).toString('base64')}`;
 }
 
 function roundedLeaf(cx, cy, fill, rot = 0) {
@@ -37,19 +38,20 @@ const background = svgDataUrl(`
 
 const statItem = svgDataUrl(`
 <svg xmlns="http://www.w3.org/2000/svg" width="480" height="120" viewBox="0 0 480 120">
-  <rect x="4" y="4" width="472" height="112" rx="20" fill="${PANEL}" stroke="${CHOCOLATE}" stroke-width="3"/>
-  <rect x="4" y="4" width="472" height="28" rx="20" fill="${MUSTARD}"/>
-  <rect x="4" y="20" width="472" height="12" fill="${MUSTARD}"/>
-  <circle cx="36" cy="20" r="6" fill="${RUST}"/>
-  <circle cx="444" cy="20" r="6" fill="${RUST}"/>
+  <rect x="6" y="10" width="468" height="100" rx="18" fill="${PANEL}" stroke="${CHOCOLATE}" stroke-width="4"/>
+  <rect x="6" y="10" width="468" height="22" rx="18" fill="${MUSTARD}" opacity="0.35"/>
+  <circle cx="28" cy="21" r="5" fill="${RUST}"/>
+  <circle cx="452" cy="21" r="5" fill="${RUST}"/>
 </svg>`);
 
 const soundCard = svgDataUrl(`
-<svg xmlns="http://www.w3.org/2000/svg" width="106" height="118" viewBox="0 0 106 118">
-  <rect x="10" y="18" width="86" height="88" rx="22" fill="${CHOCOLATE}"/>
-  <rect x="14" y="22" width="78" height="80" rx="20" fill="${ORANGE}"/>
-  <rect x="20" y="32" width="66" height="62" rx="16" fill="#E07A3C"/>
-  <rect x="44" y="6" width="18" height="16" rx="4" fill="${BROWN}"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="106" height="122" viewBox="0 0 106 122">
+  <ellipse cx="53" cy="70" rx="42" ry="44" fill="${CHOCOLATE}"/>
+  <ellipse cx="53" cy="68" rx="38" ry="40" fill="${ORANGE}"/>
+  <ellipse cx="53" cy="70" rx="30" ry="34" fill="#E8864A"/>
+  <path fill="none" stroke="${BROWN}" stroke-width="1.4" stroke-linecap="round" d="M53 34v68M34 48c14 10 14 32 0 42M72 48c-14 10-14 32 0 42"/>
+  <rect x="44" y="5" width="18" height="15" rx="4" fill="${BROWN}" stroke="${CHOCOLATE}" stroke-width="1.5"/>
+  <path fill="${MUSTARD}" d="M53 18c-9 0-16 4-16 9s7 9 16 9 16-4 16-9-7-9-16-9z"/>
 </svg>`);
 
 const sliderThumb = svgDataUrl(`
@@ -57,10 +59,9 @@ const sliderThumb = svgDataUrl(`
   <circle cx="11" cy="11" r="9" fill="${MUSTARD}" stroke="${CHOCOLATE}" stroke-width="1.5"/>
 </svg>`);
 
-const chatHeader = svgDataUrl(`
-<svg xmlns="http://www.w3.org/2000/svg" width="600" height="48" viewBox="0 0 600 48">
-  <rect width="600" height="48" rx="14" fill="${RUST}"/>
-  <rect x="12" y="10" width="120" height="8" rx="4" fill="${MUSTARD}" opacity="0.9"/>
+const chatHeaderLeaf = svgDataUrl(`
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <path fill="${MUSTARD}" opacity="0.85" d="M10 1c4.5 6 5.5 10 5.5 13.5-3 1-5.5 1-8.5 0C7 11 7.5 7 10 1z"/>
 </svg>`);
 
 const chatBgTile = svgDataUrl(`
@@ -82,26 +83,27 @@ const fallLeaf = svgDataUrl(`
 </svg>`);
 
 const turkeyCorner = svgDataUrl(`
-<svg xmlns="http://www.w3.org/2000/svg" width="300" height="340" viewBox="0 0 300 340">
-  <g transform="translate(150 300)">
-    <ellipse cx="0" cy="-30" rx="52" ry="36" fill="${BROWN}"/>
-    <g transform="translate(0 -95)">
-      <path fill="${ORANGE}" d="M-70 0c-18-55 0-85 35-95 8 20 8 45 0 70z"/>
-      <path fill="${RUST}" d="M-35 0c-12-58 8-88 38-98 6 22 6 48-2 72z"/>
-      <path fill="${CHOCOLATE}" d="M0 0c-10-60 15-92 42-102 4 24 2 50-8 74z"/>
-      <path fill="${ORANGE}" d="M35 0c12-55 32-85 38-95-8 20-10 45-2 68z"/>
-      <path fill="${RUST}" d="M70 0c18-52 38-82 35-95-18 18-28 42-32 68z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="400" viewBox="0 0 360 400">
+  <g transform="translate(180 380)">
+    <ellipse cx="0" cy="-28" rx="58" ry="40" fill="${BROWN}" stroke="${CHOCOLATE}" stroke-width="2"/>
+    <g transform="translate(0 -98)">
+      <path fill="${ORANGE}" stroke="${CHOCOLATE}" stroke-width="1.5" d="M-82 4c-16-62 2-94 40-104 6 22 4 52-6 78-8 16-22 24-34 26z"/>
+      <path fill="${RUST}" stroke="${CHOCOLATE}" stroke-width="1.2" d="M-40 2c-10-66 12-98 44-108 4 24 2 54-10 80-8 14-22 22-34 28z"/>
+      <path fill="${CHOCOLATE}" d="M0 0c-8-66 18-100 48-110 6 26 4 56-10 82-10 16-24 24-38 28z"/>
+      <path fill="${ORANGE}" stroke="${CHOCOLATE}" stroke-width="1.2" d="M40 2c10-64 32-96 44-108-6 22-8 52 2 76 8 16 22 24 34 32z"/>
+      <path fill="${RUST}" stroke="${CHOCOLATE}" stroke-width="1.5" d="M82 4c16-60 38-92 36-104-20 18-30 44-34 72-4 18-18 26-32 32z"/>
+      <path fill="none" stroke="${MUSTARD}" stroke-width="2" d="M-55-40c12 18 12 36 0 54M-18-52c10 20 10 40 0 60M18-52c-10 20-10 40 0 60M55-40c-12 18-12 36 0 54"/>
     </g>
-    <ellipse cx="0" cy="-118" rx="28" ry="26" fill="#F0B088"/>
-    <circle cx="-10" cy="-122" r="6" fill="#FFFFFF" stroke="${CHOCOLATE}" stroke-width="1"/>
-    <circle cx="10" cy="-122" r="6" fill="#FFFFFF" stroke="${CHOCOLATE}" stroke-width="1"/>
-    <circle cx="-10" cy="-122" r="2.5" fill="${CHOCOLATE}"/>
-    <circle cx="10" cy="-122" r="2.5" fill="${CHOCOLATE}"/>
-    <polygon points="-6,-108 6,-108 0,-100" fill="${MUSTARD}"/>
-    <ellipse cx="14" cy="-108" rx="6" ry="4" fill="${RUST}"/>
-    <rect x="-36" y="-150" width="72" height="12" rx="4" fill="${CHOCOLATE}"/>
-    <rect x="-22" y="-162" width="44" height="14" rx="3" fill="${CHOCOLATE}"/>
-    <rect x="-8" y="-158" width="16" height="8" fill="${MUSTARD}"/>
+    <ellipse cx="0" cy="-124" rx="32" ry="30" fill="#F0B088" stroke="${CHOCOLATE}" stroke-width="1.5"/>
+    <circle cx="-12" cy="-128" r="7" fill="#FFFFFF" stroke="${CHOCOLATE}" stroke-width="1.2"/>
+    <circle cx="12" cy="-128" r="7" fill="#FFFFFF" stroke="${CHOCOLATE}" stroke-width="1.2"/>
+    <circle cx="-12" cy="-128" r="3" fill="${CHOCOLATE}"/>
+    <circle cx="12" cy="-128" r="3" fill="${CHOCOLATE}"/>
+    <polygon points="-7,-112 7,-112 0,-102" fill="${MUSTARD}" stroke="${CHOCOLATE}" stroke-width="0.8"/>
+    <ellipse cx="16" cy="-112" rx="7" ry="5" fill="${RUST}"/>
+    <rect x="-40" y="-158" width="80" height="14" rx="4" fill="${CHOCOLATE}"/>
+    <rect x="-26" y="-172" width="52" height="16" rx="4" fill="${CHOCOLATE}"/>
+    <rect x="-10" y="-168" width="20" height="10" rx="2" fill="${MUSTARD}"/>
   </g>
 </svg>`);
 
@@ -110,7 +112,7 @@ const img = {
   statItem,
   soundCard,
   sliderThumb,
-  chatHeader,
+  chatHeaderLeaf,
   chatBgTile,
   scrollbarThumb,
   fallLeaf,
@@ -119,28 +121,28 @@ const img = {
 
 const driftCss = [
   '@keyframes vd-thanksgiving-drift{',
-  '0%{background-position:8% -6%,70% -10%,40% -8%}',
-  '100%{background-position:12% 105%,74% 108%,44% 106%}',
+  '0%{background-position:6% 4%,92% 8%,4% 88%,96% 82%,50% 96%}',
+  '100%{background-position:10% 8%,88% 12%,8% 92%,92% 86%,48% 100%}',
   '}',
   'body::before{',
-  'content:"";position:fixed;inset:0;pointer-events:none;z-index:1;opacity:0.32;',
-  `background:url(${img.fallLeaf}) no-repeat,url(${img.fallLeaf}) no-repeat,url(${img.fallLeaf}) no-repeat;`,
-  'background-repeat:no-repeat;background-size:28px 28px,24px 24px,22px 22px;',
-  'animation:vd-thanksgiving-drift 26s linear infinite;',
+  'content:"";position:fixed;inset:0;pointer-events:none;z-index:2;opacity:0.58;',
+  `background:url(${img.fallLeaf}) no-repeat,url(${img.fallLeaf}) no-repeat,url(${img.fallLeaf}) no-repeat,url(${img.fallLeaf}) no-repeat,url(${img.fallLeaf}) no-repeat;`,
+  'background-repeat:no-repeat;background-size:36px 36px,30px 30px,28px 28px,32px 32px,26px 26px;',
+  'animation:vd-thanksgiving-drift 32s ease-in-out infinite alternate;',
   '}',
   'body::after{',
-  'content:"";position:fixed;left:-40px;bottom:-36px;width:280px;height:320px;pointer-events:none;z-index:4;',
-  `background:url(${img.turkeyCorner}) no-repeat left bottom/contain;`,
-  'opacity:0.96;',
+  'content:"";position:fixed;right:230px;left:auto;bottom:52px;width:min(360px,36vw);height:min(400px,44vh);pointer-events:none;z-index:4;',
+  `background:url(${img.turkeyCorner}) no-repeat center bottom/contain;`,
+  'opacity:1;',
   '}',
-  '.sound-card,.drag-toggle-btn,.page-btn,.queue-control-widget,.queue-widget-btn,.master-volume-control input,button,#twitch-chat-container,#twitch-stats-container{position:relative;z-index:5;}',
+  '.sound-card,.drag-toggle-btn,.page-btn,.queue-widget-btn,#twitch-chat-container,input[type="range"],.master-volume-control,.toggle-chat-btn{position:relative;z-index:6;}',
 ].join('');
 
 const skin = {
   name: 'Thanksgiving (Cartoon)',
   description:
     'Flat cartoon harvest theme: soft cream backdrop, rust and mustard accents, pumpkin buttons, corner turkey mascot, and WCAG-friendly dark text.',
-  version: '1.1.1',
+  version: '1.2.0',
   author: 'VirtualDeck Team',
   variables: {
     '--bg-primary': CREAM,
@@ -177,24 +179,26 @@ const skin = {
     driftCss,
     `.app-menu-left{background:${CREAM} !important;border-bottom:2px solid ${CHOCOLATE} !important}`,
     `.menu-button{color:${CHOCOLATE} !important}`,
-    `#twitch-chat-container{background:${PANEL} url(${img.chatBgTile}) repeat !important;border:3px solid ${CHOCOLATE} !important;border-radius:18px !important;overflow:hidden}`,
-    `#twitch-chat-container .chat-header{background:${RUST} url(${img.chatHeader}) left top/cover no-repeat !important;min-height:48px;border:none !important}`,
-    `#twitch-chat-container .chat-title{color:${MUSTARD} !important;font-family:"Segoe Script","Palatino Linotype",cursive !important;font-size:22px !important;font-weight:700 !important;text-shadow:0 1px 0 ${CHOCOLATE}`,
+    `#twitch-chat-container{background:${PANEL} url(${img.chatBgTile}) repeat !important;border:3px solid ${CHOCOLATE} !important;border-radius:18px !important;box-shadow:0 4px 0 rgba(59,35,20,0.15) !important;overflow:hidden}`,
+    `#twitch-chat-container .chat-header{background:${RUST} !important;min-height:48px;border:none !important;border-bottom:2px solid ${CHOCOLATE} !important}`,
+    `#twitch-chat-container .chat-title{color:${PANEL} !important;font-family:"Segoe Script","Palatino Linotype",cursive !important;font-size:24px !important;font-weight:700 !important;text-shadow:0 1px 0 ${CHOCOLATE}}`,
+    `#twitch-chat-container .chat-title-section::before{content:"";display:inline-block;width:18px;height:18px;margin-right:8px;vertical-align:middle;background:url(${img.chatHeaderLeaf}) center/contain no-repeat}`,
     `#twitch-chat-container .toggle-chat-btn{background:${PANEL} !important;color:${CHOCOLATE} !important;border:2px solid ${CHOCOLATE} !important;border-radius:8px}`,
     `#twitch-chat-container .toggle-chat-btn .material-icons{color:${CHOCOLATE} !important;font-size:20px}`,
-    `.status-indicator.connected{background:${MUSTARD} !important;border:2px solid ${CHOCOLATE}`,
-    `#twitch-chat-messages > div{background:${PANEL} !important;color:${CHOCOLATE} !important;border:2px solid ${CHOCOLATE} !important;border-radius:14px !important;margin:8px 6px !important;padding:8px 10px !important}`,
-    `#twitch-chat-messages > div strong{color:${RUST} !important;border-bottom:2px solid ${RUST}`,
-    `#twitch-chat-messages .activity-message{color:${BROWN} !important}`,
+    `.status-indicator,.status-indicator.connected,.status-indicator.disconnected{background:${MUSTARD} !important;border:2px solid ${CHOCOLATE} !important}`,
+    `#twitch-chat-messages > div{color:${CHOCOLATE} !important;background:transparent !important;border:none !important;margin:6px 0 !important;padding:2px 4px !important}`,
+    `#twitch-chat-messages > div strong{color:${RUST} !important;font-weight:700 !important}`,
+    `#twitch-chat-messages .activity-message,#twitch-chat-messages div.activity-message,.chat-messages .activity-message{color:${CHOCOLATE} !important;background:${PANEL} !important;border:2px solid ${RUST} !important;border-radius:10px !important;padding:6px 8px !important;font-weight:700 !important}`,
     `.chat-messages::-webkit-scrollbar{width:10px}`,
     `.chat-messages::-webkit-scrollbar-track{background:${CREAM};border-radius:6px}`,
     `.chat-messages::-webkit-scrollbar-thumb{background:url(${img.scrollbarThumb}) repeat-y center/100% auto;border-radius:6px}`,
-    `.activity-message{color:${BROWN} !important}`,
     `.master-volume-label{color:${CHOCOLATE} !important}`,
     `#twitch-stats-container .stat-label,#twitch-stats-container .stat-value{color:${CHOCOLATE} !important}`,
   ].join(' '),
   components: {
-    '.app-menu-logo': { display: 'none' },
+    '.app-menu-logo': {
+      filter: 'drop-shadow(0 1px 0 rgba(59,35,20,0.2))',
+    },
     '.menu-button:hover': {
       background: `${MUSTARD} !important`,
       color: `${CHOCOLATE} !important`,
@@ -219,17 +223,17 @@ const skin = {
     },
     '.stat-content': {
       background: `${PANEL} !important`,
-      'border-radius': '12px !important',
+      'border-radius': '14px !important',
       padding: '10px 12px 8px !important',
-      border: `2px solid ${CHOCOLATE} !important`,
-      'box-shadow': '0 2px 0 rgba(59,35,20,0.12) !important',
+      border: `3px solid ${CHOCOLATE} !important`,
+      'box-shadow': `0 3px 0 ${CHOCOLATE}, 0 8px 14px rgba(59,35,20,0.12) !important`,
       'min-width': '72px !important',
     },
     '.stat-label': {
-      color: `${RUST} !important`,
-      'font-weight': '700 !important',
+      color: `${CHOCOLATE} !important`,
+      'font-weight': '800 !important',
       'text-transform': 'uppercase',
-      'letter-spacing': '0.04em',
+      'letter-spacing': '0.05em',
     },
     '.stat-value': {
       color: `${CHOCOLATE} !important`,
@@ -264,15 +268,27 @@ const skin = {
       overflow: 'visible !important',
     },
     '.queue-control-widget': {
+      position: 'fixed !important',
       background: `${PANEL} !important`,
-      border: `2px solid ${MUSTARD} !important`,
-      'border-radius': '12px !important',
+      border: `3px solid ${CHOCOLATE} !important`,
+      'border-radius': '14px !important',
+      'box-shadow': `0 4px 0 ${MUSTARD}, 0 10px 18px rgba(59,35,20,0.14) !important`,
+      overflow: 'visible !important',
+      padding: '12px 12px 14px !important',
+    },
+    '.queue-widget-header': {
+      overflow: 'visible !important',
+      'min-height': '28px !important',
+      'padding-top': '2px !important',
     },
     '.queue-widget-title': {
       color: `${RUST} !important`,
       'font-family': '"Segoe Script","Palatino Linotype",cursive !important',
     },
-    '.queue-widget-status': { color: `${CHOCOLATE} !important` },
+    '.queue-widget-status': {
+      background: `${MUSTARD} !important`,
+      color: `${CHOCOLATE} !important`,
+    },
     '.queue-widget-btn': {
       background: `${ORANGE} !important`,
       color: `${PANEL} !important`,
@@ -286,20 +302,30 @@ const skin = {
     '.pagination-indicator': { color: `${RUST} !important` },
     '.drag-toggle-btn': {
       border: `2px solid ${CHOCOLATE} !important`,
+      background: `${MUSTARD} !important`,
+      color: `${CHOCOLATE} !important`,
+      'font-weight': '800 !important',
+    },
+    '.drag-toggle-btn.unlocked': {
       background: `${ORANGE} !important`,
       color: `${PANEL} !important`,
-      'font-weight': 'bold !important',
     },
-    '.drag-status': { color: `${CHOCOLATE} !important` },
+    '.drag-status': {
+      color: `${CHOCOLATE} !important`,
+      'font-weight': '700 !important',
+    },
     '.add-card': {
       background: `${MUSTARD} !important`,
       border: `2px solid ${CHOCOLATE} !important`,
       color: `${CHOCOLATE} !important`,
     },
     '.sound-card': {
-      background: `url(${img.soundCard}) no-repeat center / contain !important`,
+      background: `url(${img.soundCard}) no-repeat center bottom / contain !important`,
+      'background-color': 'transparent !important',
       border: 'none !important',
       overflow: 'hidden !important',
+      'min-height': 'var(--card-size) !important',
+      'box-shadow': `0 3px 0 ${CHOCOLATE} !important`,
     },
     '.sound-card:hover': { filter: 'brightness(1.04)', border: 'none !important' },
     '.delete-x-button': {
@@ -337,6 +363,15 @@ const skin = {
     '.chat-messages': {
       background: `${PANEL} !important`,
       color: `${CHOCOLATE} !important`,
+    },
+    '.activity-message,.chat-messages .activity-message,#twitch-chat-messages .activity-message': {
+      color: `${CHOCOLATE} !important`,
+      background: `${CREAM} !important`,
+      border: `2px solid ${RUST} !important`,
+      'border-radius': '10px !important',
+      padding: '6px 8px !important',
+      'font-weight': '700 !important',
+      display: 'block !important',
     },
     '.status-indicator.disconnected': {
       background: `${RUST} !important`,
