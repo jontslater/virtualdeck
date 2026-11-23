@@ -85,6 +85,8 @@ const captureAssist = `
 #button-type-modal, .modal, #profile-panel, #ai-dashboard-controls { display: none !important; }
 #app-menu-left { display: flex !important; align-items: center !important; flex-wrap: nowrap !important; gap: 4px !important; }
 .app-menu-logo { max-height: 46px !important; max-width: 150px !important; width: auto !important; object-fit: contain !important; object-position: left center !important; flex-shrink: 0 !important; filter: none !important; background: #3B2314 !important; border-radius: 10px !important; padding: 3px 8px !important; }
+#twitch-stats-container, .sound-controls, .stats-grid, .main-content, #sound-grid { width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; }
+.main-content { display: flex !important; flex-direction: row !important; align-items: flex-start !important; gap: 20px !important; }
 `;
 
 const materialIconsHead = `

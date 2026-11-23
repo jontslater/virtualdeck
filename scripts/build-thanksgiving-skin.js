@@ -79,14 +79,13 @@ const turkeyCorner = svgDataUrl(`
 </svg>`);
 
 const soundCard = svgDataUrl(`
-<svg xmlns="http://www.w3.org/2000/svg" width="106" height="122" viewBox="0 0 106 122">
-  <ellipse cx="53" cy="112" rx="36" ry="7" fill="${CHOCOLATE}" opacity="0.18"/>
-  <path fill="${ORANGE}" d="M53 42 C28 42 14 62 16 82 C18 100 34 108 53 108 C72 108 88 100 90 82 C92 62 78 42 53 42 Z"/>
-  <path fill="#C25620" d="M53 42 C40 42 30 52 28 64 C36 56 46 52 53 52 C60 52 70 56 78 64 C76 52 66 42 53 42 Z"/>
-  <path fill="#B84E1C" opacity="0.28" d="M37 78 C37 64 44 54 53 52 V98 C44 94 37 86 37 78 Z"/>
-  <path fill="#C25620" opacity="0.22" d="M69 78 C69 92 62 102 53 104 V52 C62 54 69 64 69 78 Z"/>
-  <rect x="48" y="10" width="10" height="16" rx="3" fill="${BROWN}"/>
-  <path fill="#6B8E23" d="M61 15c8 1 10 6 6 10-4-1-8-3-6-10z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="106" height="96" viewBox="0 0 106 96">
+  <path fill="${ORANGE}" stroke="${RUST}" stroke-width="2.5" d="M53 50 C29 50 15 66 17 80 C19 92 34 94 53 94 C72 94 87 92 89 80 C91 66 77 50 53 50 Z"/>
+  <path fill="#C25620" d="M53 50 C41 50 32 58 30 68 C36 62 44 58 53 58 C62 58 70 62 76 68 C74 58 65 50 53 50 Z"/>
+  <path fill="#B84E1C" opacity="0.35" d="M36 78 C36 66 42 56 53 54 V88 C42 86 36 82 36 78 Z"/>
+  <path fill="#C25620" opacity="0.28" d="M70 78 C70 90 64 90 53 92 V54 C64 56 70 66 70 78 Z"/>
+  <rect x="49" y="38" width="8" height="14" rx="2" fill="${BROWN}"/>
+  <path fill="#6B8E23" d="M57 40c5 1 6 5 4 8-3 0-5-2-4-8z"/>
 </svg>`);
 
 const sliderThumb = svgDataUrl(`
@@ -129,7 +128,7 @@ const driftCss = [
   `background:url(${img.turkeyCorner}) no-repeat center bottom/contain;`,
   'opacity:1;',
   '}',
-  '.sound-card,.drag-toggle-btn,.page-btn,.queue-widget-btn,#twitch-chat-container,#twitch-stats-container,.bottom-pagination,.pagination-indicator,input[type="range"],.master-volume-control,.toggle-chat-btn{position:relative;z-index:6;}',
+  '.sound-card,.drag-toggle-btn,.page-btn,.queue-widget-btn,#twitch-chat-container,input[type="range"],.master-volume-control,.toggle-chat-btn{position:relative;z-index:6;}',
 ].join('');
 
 const skin = {
@@ -261,6 +260,9 @@ const skin = {
       overflow: 'visible !important',
       'padding-top': '10px !important',
       'padding-bottom': '10px !important',
+      width: '100% !important',
+      'max-width': '100% !important',
+      'box-sizing': 'border-box !important',
     },
     '.master-volume-control': {
       overflow: 'visible !important',
@@ -303,11 +305,6 @@ const skin = {
       border: `2px solid ${CHOCOLATE} !important`,
     },
     '.pagination-indicator': { color: `${RUST} !important` },
-    '.bottom-pagination': {
-      background: `${PANEL} !important`,
-      border: `2px solid ${CHOCOLATE} !important`,
-      'box-shadow': '0 3px 0 rgba(59,35,20,0.12) !important',
-    },
     '.drag-toggle-btn': {
       border: `2px solid ${CHOCOLATE} !important`,
       background: `${MUSTARD} !important`,
@@ -328,14 +325,19 @@ const skin = {
       color: `${CHOCOLATE} !important`,
     },
     '.sound-card': {
-      background: `url(${img.soundCard}) no-repeat center bottom / contain !important`,
+      background: `url(${img.soundCard}) no-repeat center 8px / 92px auto !important`,
       'background-color': 'transparent !important',
-      border: 'none !important',
+      border: `2px solid ${RUST} !important`,
+      'border-radius': '22px !important',
       overflow: 'hidden !important',
       'min-height': 'var(--card-size) !important',
       'box-shadow': `0 3px 0 ${CHOCOLATE} !important`,
+      'justify-content': 'flex-end !important',
+      'align-items': 'center !important',
+      'padding-bottom': '6px !important',
+      'box-sizing': 'border-box !important',
     },
-    '.sound-card:hover': { filter: 'brightness(1.04)', border: 'none !important' },
+    '.sound-card:hover': { filter: 'brightness(1.04)' },
     '.delete-x-button': {
       background: `${RUST} !important`,
       color: `${PANEL} !important`,
@@ -355,19 +357,27 @@ const skin = {
       color: `${CHOCOLATE} !important`,
       background: `${PANEL} !important`,
       'border-radius': '8px !important',
-      padding: '4px 6px !important',
+      padding: '3px 6px !important',
       'max-width': '92px !important',
       display: 'inline-block !important',
       overflow: 'hidden !important',
       'text-overflow': 'ellipsis !important',
       'white-space': 'nowrap !important',
       border: `1px solid ${CHOCOLATE}`,
+      'margin-top': 'auto !important',
+      'z-index': '2 !important',
     },
     '.sound-hotkey': {
       color: `${CHOCOLATE} !important`,
       background: `${MUSTARD} !important`,
     },
-    '#twitch-stats-container': { background: 'none !important', border: 'none !important' },
+    '#twitch-stats-container': {
+      background: 'none !important',
+      border: 'none !important',
+      width: '100% !important',
+      'max-width': '100% !important',
+    },
+    '.stats-grid': { width: '100% !important' },
     '.chat-messages': {
       background: `${PANEL} !important`,
       color: `${CHOCOLATE} !important`,
