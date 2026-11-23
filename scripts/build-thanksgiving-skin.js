@@ -190,11 +190,14 @@ const skin = {
   ].join(' '),
   components: {
     '.app-menu-logo': {
-      'max-height': '48px !important',
-      'max-width': '168px !important',
+      'max-height': '46px !important',
+      'max-width': '150px !important',
       width: 'auto !important',
       'object-fit': 'contain !important',
       'object-position': 'left center !important',
+      background: `${CHOCOLATE} !important`,
+      'border-radius': '10px !important',
+      padding: '3px 8px !important',
       filter: 'none !important',
     },
     '#app-menu-left': {

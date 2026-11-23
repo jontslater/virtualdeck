@@ -84,7 +84,7 @@ const soundControlsUnlocked = soundControlsLocked
 const captureAssist = `
 #button-type-modal, .modal, #profile-panel, #ai-dashboard-controls { display: none !important; }
 #app-menu-left { display: flex !important; align-items: center !important; flex-wrap: nowrap !important; gap: 4px !important; }
-.app-menu-logo { max-height: 48px !important; max-width: 168px !important; width: auto !important; object-fit: contain !important; object-position: left center !important; flex-shrink: 0 !important; filter: none !important; }
+.app-menu-logo { max-height: 46px !important; max-width: 150px !important; width: auto !important; object-fit: contain !important; object-position: left center !important; flex-shrink: 0 !important; filter: none !important; background: #3B2314 !important; border-radius: 10px !important; padding: 3px 8px !important; }
 `;
 
 const materialIconsHead = `
