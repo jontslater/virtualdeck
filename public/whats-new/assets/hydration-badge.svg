@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180" role="img" aria-label="Hydration gauge preview">
+  <rect width="320" height="180" rx="12" fill="#0f3460"/>
+  <circle cx="100" cy="95" r="58" fill="none" stroke="#4fc3f7" stroke-width="10" opacity="0.35"/>
+  <path d="M100 37 A58 58 0 1 1 66 118" fill="none" stroke="#4fc3f7" stroke-width="10" stroke-linecap="round"/>
+  <text x="100" y="102" text-anchor="middle" fill="#eaeaea" font-family="Segoe UI, sans-serif" font-size="22" font-weight="600">48 oz</text>
+  <text x="220" y="62" fill="#a8b2c1" font-family="Segoe UI, sans-serif" font-size="13">Hydration tracker</text>
+  <text x="220" y="82" fill="#eaeaea" font-family="Segoe UI, sans-serif" font-size="15" font-weight="600">Live preview</text>
+  <rect x="220" y="96" width="72" height="8" rx="4" fill="#16213e"/>
+  <rect x="220" y="96" width="48" height="8" rx="4" fill="#4fc3f7"/>
+</svg>

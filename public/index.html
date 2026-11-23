@@ -91,6 +91,7 @@
       <div id="menu-help-dropdown" class="menu-dropdown hidden" role="menu" aria-label="Help menu">
         <div class="menu-dropdown-content">
           <button id="menu-help-feedback" class="menu-dropdown-item" role="menuitem">Send feedback / Request a feature…</button>
+          <button id="menu-help-whats-new" class="menu-dropdown-item" role="menuitem">What&apos;s new…</button>
           <div class="menu-divider"></div>
           <button id="menu-help-commands" class="menu-dropdown-item" role="menuitem">Chat Commands</button>
           <button id="menu-help-placeholders" class="menu-dropdown-item" role="menuitem">Twitch Placeholders Guide</button>
@@ -1485,6 +1486,7 @@
         <div class="preferences-section">
           <h3>Feedback</h3>
           <div class="preference-item">
+            <button type="button" id="preferences-whats-new-btn" class="preference-button">What&apos;s new…</button>
             <button type="button" id="preferences-feedback-btn" class="preference-button">Send feedback / Request a feature…</button>
             <small>Tell us how VirtualDeck is working and what you want next. Optional email if you want a reply.</small>
           </div>
@@ -3025,6 +3027,24 @@
 
   <!-- Custom Notification System -->
   <div id="notification-container" class="notification-container"></div>
+  <!-- What's New modal -->
+  <div id="whats-new-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="whats-new-modal-title">
+    <div class="modal-content preferences-modal-content whats-new-modal-content">
+      <div class="modal-header">
+        <h2 id="whats-new-modal-title">What&apos;s new</h2>
+        <button id="whats-new-modal-close" type="button" class="modal-close" aria-label="Close">✕</button>
+      </div>
+      <div class="whats-new-modal-body">
+        <p id="whats-new-intro" class="whats-new-intro"></p>
+        <div id="whats-new-feature-list" class="whats-new-feature-list" role="list"></div>
+        <div class="whats-new-actions">
+          <button type="button" id="whats-new-all-updates" class="preference-button">See all updates</button>
+          <button type="button" id="whats-new-got-it" class="preference-button primary">Got it</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Feedback modal -->
   <div id="feedback-modal" class="hidden">
     <div class="modal-content preferences-modal-content feedback-modal-content">
@@ -3145,6 +3165,7 @@
   <script src="alert-text-render.js"></script>
   <script src="license-ui.js"></script>
   <script src="feedback-ui.js"></script>
+  <script src="whats-new-ui.js"></script>
   <script src="raven-setup-ui.js"></script>
   <script src="raven-status-notes.js"></script>
   <script src="deck-drop-utils.js"></script>

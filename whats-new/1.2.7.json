@@ -1,0 +1,20 @@
+{
+  "version": "1.2.7",
+  "headline": "Hydration tracker fixes",
+  "intro": "Polish for the hydration panel, live preview, and Twitch reward wiring.",
+  "features": [
+    {
+      "id": "hydration-widget",
+      "title": "Floating hydration panel",
+      "body": "The hydration dashboard opens as a floating widget (like other tools) so your deck layout stays put while you tune settings.",
+      "image": "whats-new/assets/hydration-badge.svg",
+      "tryAction": "hydration-panel",
+      "tryLabel": "Try it"
+    },
+    {
+      "id": "hydration-preview-url",
+      "title": "1920×1080 preview & overlay URL",
+      "body": "The in-panel preview matches your OBS browser source size, and Copy gives a real localhost hydration URL with the same control as other overlays."
+    }
+  ]
+}

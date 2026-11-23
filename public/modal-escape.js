@@ -18,6 +18,7 @@
     'profile-modal': 'closeProfileModal',
     'ai-audio-modal': 'closeAiAudioModal',
     'feedback-modal': 'closeFeedbackModal',
+    'whats-new-modal': 'closeWhatsNewModal',
     'settings-modal': 'closeSettingsModal',
     'multi-media-modal': 'closeMultiMediaModal',
     'twitch-alert-widget': 'closeTwitchAlertWidget',

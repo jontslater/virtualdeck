@@ -1,0 +1,20 @@
+{
+  "version": "1.2.6",
+  "headline": "Hydration tracker overhaul",
+  "intro": "Tune your stream hydration overlay from one place — preview included.",
+  "features": [
+    {
+      "id": "hydration-panel",
+      "title": "Tools → Hydration panel",
+      "body": "A dedicated dashboard with a live preview of your hydration browser source while you adjust gauge style, colors, sounds, and channel point rewards.",
+      "image": "whats-new/assets/hydration-badge.svg",
+      "tryAction": "hydration-panel",
+      "tryLabel": "Try it"
+    },
+    {
+      "id": "hydration-overlay",
+      "title": "Five gauge styles & effects",
+      "body": "Pick circular, bottle, minimal, and more. Sparkle and confetti effects render inside the water fill, with optional sounds and go-live reset behavior."
+    }
+  ]
+}

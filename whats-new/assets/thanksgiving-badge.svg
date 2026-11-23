@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180" role="img" aria-label="Thanksgiving theme preview">
+  <rect width="320" height="180" rx="12" fill="#2C1810"/>
+  <rect x="24" y="24" width="272" height="52" rx="8" fill="#E07A32"/>
+  <rect x="40" y="38" width="120" height="10" rx="4" fill="#F4D58D"/>
+  <rect x="40" y="54" width="80" height="10" rx="4" fill="#FFF8E7" opacity="0.9"/>
+  <ellipse cx="90" cy="130" rx="28" ry="22" fill="#C45A1B"/>
+  <path d="M90 108 C95 98 105 98 110 108" stroke="#F4D58D" stroke-width="3" fill="none"/>
+  <circle cx="200" cy="120" r="18" fill="#8B4513"/>
+  <path d="M200 102 L206 118 L194 118 Z" fill="#D4A017"/>
+  <text x="200" y="155" text-anchor="middle" fill="#FFF8E7" font-family="Segoe UI, sans-serif" font-size="12">Thanksgiving (Cartoon)</text>
+</svg>
