@@ -55,18 +55,17 @@ const statItem = svgDataUrl(`
 
 const soundCard = svgDataUrl(`
 <svg xmlns="http://www.w3.org/2000/svg" width="106" height="122" viewBox="0 0 106 122">
-  <rect x="6" y="10" width="94" height="102" rx="18" fill="#C45C26" stroke="#2C1810" stroke-width="5"/>
-  <rect x="12" y="16" width="82" height="88" rx="14" fill="#E07A32"/>
-  <ellipse cx="53" cy="108" rx="36" ry="8" fill="#2C1810" opacity="0.2"/>
-  <path fill="#5C3D2E" d="M47 6h12v14h-12z"/>
-  <path fill="#F4D58D" opacity="0.9" d="M22 32c0-8 6-14 14-14h34c8 0 14 6 14 14v8H22z"/>
-  <path fill="#8B4513" d="M28 78l-8-6 6-10 10 4-8 12zm50 0l8-6-6-10-10 4 8 12z"/>
+  <rect x="10" y="20" width="86" height="92" rx="22" fill="#2C1810"/>
+  <rect x="14" y="24" width="78" height="84" rx="20" fill="#C45C26"/>
+  <rect x="18" y="30" width="70" height="72" rx="14" fill="#E07A32"/>
+  <rect x="44" y="6" width="18" height="16" rx="4" fill="#5C3D2E"/>
 </svg>`);
 
 const sliderThumb = svgDataUrl(`
-<svg xmlns="http://www.w3.org/2000/svg" width="50" height="21" viewBox="0 0 50 21">
-  <path fill="#D97706" stroke="#2C1810" stroke-width="2" d="M8 3c6-4 14-4 20 0 8 6 14 14 14 14s-6 2-14 2H8c-8 0-14-2-14-2s6-8 14-14z"/>
-  <path fill="#B22222" d="M25 3c-2 6-2 10 0 14 2-4 2-8 0-14z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+  <circle cx="11" cy="12" r="8" fill="#D97706" stroke="#2C1810" stroke-width="1.5"/>
+  <rect x="9.5" y="2" width="3" height="4" rx="1" fill="#5C3D2E"/>
+  <path d="M11 7.5v3.5" stroke="#B22222" stroke-width="1.2" stroke-linecap="round"/>
 </svg>`);
 
 const chatHeader = svgDataUrl(`
@@ -248,6 +247,17 @@ const skin = {
     '.sound-controls': {
       background: 'rgba(44, 24, 16, 0.62) !important',
       border: 'none !important',
+      overflow: 'visible !important',
+      'padding-top': '10px !important',
+      'padding-bottom': '10px !important',
+    },
+    '.master-volume-control': {
+      overflow: 'visible !important',
+      'align-items': 'center !important',
+    },
+    '#master-volume-input.master-volume-slider': {
+      height: '8px !important',
+      overflow: 'visible !important',
     },
     '.queue-control-widget': {
       background: 'rgba(44, 24, 16, 0.72) !important',
@@ -287,6 +297,7 @@ const skin = {
     '.sound-card': {
       background: `url(${img.soundCard}) no-repeat center / contain !important`,
       border: 'none !important',
+      overflow: 'hidden !important',
     },
     '.sound-card:hover': {
       filter: 'brightness(1.08)',
@@ -312,6 +323,11 @@ const skin = {
       'border-radius': '8px !important',
       padding: '4px 6px !important',
       'text-shadow': 'none',
+      'max-width': '92px !important',
+      display: 'inline-block !important',
+      overflow: 'hidden !important',
+      'text-overflow': 'ellipsis !important',
+      'white-space': 'nowrap !important',
     },
     '.sound-hotkey': {
       color: 'var(--bg-primary) !important',
@@ -365,17 +381,37 @@ const skin = {
     },
     'input[type=\'range\']::-webkit-slider-thumb': {
       appearance: 'none !important',
-      width: '50px !important',
-      height: '21px !important',
+      width: '22px !important',
+      height: '22px !important',
       background: `url(${img.sliderThumb}) no-repeat center / contain`,
       border: 'none !important',
+      'margin-top': '0 !important',
+      'box-shadow': '0 1px 3px rgba(44, 24, 16, 0.45) !important',
     },
     'input[type=\'range\']::-moz-range-thumb': {
       appearance: 'none !important',
-      width: '50px !important',
-      height: '21px !important',
+      width: '22px !important',
+      height: '22px !important',
       background: `url(${img.sliderThumb}) no-repeat center / contain`,
       border: 'none !important',
+      'box-shadow': '0 1px 3px rgba(44, 24, 16, 0.45) !important',
+    },
+    '#master-volume-input[type=\'range\']::-webkit-slider-thumb': {
+      width: '14px !important',
+      height: '14px !important',
+      'margin-top': '-3px !important',
+      background: '#D97706 !important',
+      'background-image': 'none !important',
+      'border-radius': '50% !important',
+      border: '2px solid #2C1810 !important',
+    },
+    '#master-volume-input[type=\'range\']::-moz-range-thumb': {
+      width: '14px !important',
+      height: '14px !important',
+      background: '#D97706 !important',
+      'background-image': 'none !important',
+      'border-radius': '50% !important',
+      border: '2px solid #2C1810 !important',
     },
   },
 };

@@ -3,7 +3,9 @@
  * Captures Thanksgiving skin on real VirtualDeck markup + styles.css (Playwright).
  */
 import fs from 'fs';
+import http from 'node:http';
 import path from 'path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
 
@@ -63,15 +65,32 @@ const queueBlock = sliceHtml(
   '<div id="queue-control-widget"',
   '<!-- Profile Management Panel -->',
 );
-const soundControlsBar = sliceHtml(
+const soundControlsLocked = sliceHtml(
   indexHtml,
   '<div id="sound-controls"',
   '<!-- AI Dashboard Controls',
 );
 
+const soundControlsUnlocked = soundControlsLocked
+  .replace('🔒 Lock', '🔓 Unlock')
+  .replace('Sound buttons are locked', 'Sound buttons are unlocked')
+  .replace('class="drag-toggle-btn"', 'class="drag-toggle-btn unlocked"');
+
 const hideChrome = `
 #button-type-modal, .modal, #profile-panel, #ai-dashboard-controls { display: none !important; }
 .main-content { display: grid !important; grid-template-columns: 1fr 360px; gap: 16px; align-items: start; }
+`;
+
+const materialIconsHead = `
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+@font-face {
+  font-family: 'Material Icons';
+  font-style: normal;
+  font-weight: 400;
+  src: url(/MaterialIcons-Regular.woff2) format('woff2');
+}
+</style>
 `;
 
 function pageHtml(body, extraCss = '') {
@@ -79,16 +98,30 @@ function pageHtml(body, extraCss = '') {
 <html lang="en" data-theme="thanksgiving">
 <head>
 <meta charset="utf-8" />
+${materialIconsHead}
 <style>
 ${stylesCss}
 ${skinCss}
-body { min-height: 100vh; margin: 0; }
+body { min-height: 100vh; margin: 0; font-family: Roboto, 'Segoe UI', sans-serif; }
 .container { display: block; padding: 12px; max-width: 1280px; margin: 0 auto; }
 #recent-activity-container.hidden { display: block !important; margin-top: 12px; }
 #twitch-chat-container { display: flex !important; flex-direction: column; min-height: 320px; }
 .sound-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .sound-card.sample { width: 106px; min-height: 122px; border: none; cursor: default; }
-.material-icons { font-family: serif; font-style: normal; font-weight: bold; }
+.material-icons {
+  font-family: 'Material Icons';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+}
 ${hideChrome}
 ${extraCss}
 </style>
@@ -108,13 +141,16 @@ const filledStats = statsBlock
   .replace('id="subscriber-count">-', 'id="subscriber-count">312')
   .replace('id="sub-points">-', 'id="sub-points">48');
 
-const sampleSounds = `
+function soundGrid({ longLabel = false, unlocked = false } = {}) {
+  const label = longLabel ? 'Extra Crispy Turkey Leftovers' : 'Turkey Day';
+  return `
 <div class="sound-grid">
-  <button type="button" class="sound-card sample"><span class="sound-name">Turkey Day</span></button>
+  <button type="button" class="sound-card sample"><span class="sound-name">${label}</span></button>
   <button type="button" class="sound-card sample"><span class="sound-name">Gobble</span></button>
   <button type="button" class="sound-card sample"><span class="sound-name">Pie Time</span></button>
   <button type="button" class="sound-card sample"><span class="sound-name">Cheers</span></button>
 </div>`;
+}
 
 const chatWithMessages = chatBlock.replace(
   '<div id="twitch-chat-messages" class="chat-messages"></div>',
@@ -124,6 +160,13 @@ const chatWithMessages = chatBlock.replace(
     <div class="activity-message">PumpkinPete subscribed at Tier 1</div>
   </div>`,
 );
+
+const pagination = `
+<div id="pagination-controls" class="pagination-controls bottom-pagination">
+  <button class="page-btn" type="button"><span class="material-icons">arrow_back</span></button>
+  <span class="pagination-indicator">1 / 3</span>
+  <button class="page-btn" type="button"><span class="material-icons">arrow_forward</span></button>
+</div>`;
 
 const statsHtml = pageHtml(`
 ${filledStats}
@@ -137,44 +180,111 @@ ${filledStats}
 
 const deckHtml = pageHtml(`
 ${filledStats}
-${soundControlsBar}
+${soundControlsLocked}
 <div class="main-content">
-  ${sampleSounds}
+  ${soundGrid()}
   ${chatWithMessages}
 </div>
 ${queueBlock}
-<div id="pagination-controls" class="pagination-controls bottom-pagination">
-  <button class="page-btn" type="button"><span class="material-icons">arrow_back</span></button>
-  <span class="pagination-indicator">1 / 3</span>
-  <button class="page-btn" type="button"><span class="material-icons">arrow_forward</span></button>
+${pagination}
+`);
+
+const deckUnlockedLongHtml = pageHtml(`
+${filledStats}
+${soundControlsUnlocked}
+<div class="main-content">
+  ${soundGrid({ longLabel: true, unlocked: true })}
+  ${chatWithMessages}
 </div>
+${queueBlock}
+${pagination}
 `);
 
 const chatHtml = pageHtml(chatWithMessages, `#twitch-chat-container { max-width: 400px; margin: 24px auto; }`);
 
-fs.mkdirSync(outDir, { recursive: true });
+const htmlDir = path.join(outDir, 'thanksgiving-capture-html');
+fs.mkdirSync(htmlDir, { recursive: true });
+
+const pages = {
+  deck: deckHtml,
+  unlocked: deckUnlockedLongHtml,
+  stats: statsHtml,
+  chat: chatHtml,
+  queue: pageHtml(queueBlock + '</div>'),
+};
+
+for (const [name, html] of Object.entries(pages)) {
+  fs.writeFileSync(path.join(htmlDir, `${name}.html`), html);
+}
+
+const iconFont = path.join(root, 'tools/fonts/MaterialIcons-Regular.woff2');
+if (!fs.existsSync(iconFont)) {
+  fs.mkdirSync(path.dirname(iconFont), { recursive: true });
+  execFileSync('curl', [
+    '-fsSL',
+    '-o',
+    iconFont,
+    'https://fonts.gstatic.com/s/materialicons/v142/flUhRq6tzZclQEJ-Vdg-IuiaDsNc.woff2',
+  ]);
+}
+
+const server = http.createServer((req, res) => {
+  const route = (req.url || '/').split('?')[0];
+  if (route === '/MaterialIcons-Regular.woff2') {
+    res.setHeader('Content-Type', 'font/woff2');
+    res.end(fs.readFileSync(iconFont));
+    return;
+  }
+  const file = path.basename(route);
+  const htmlPath = path.join(htmlDir, file.endsWith('.html') ? file : 'deck.html');
+  if (!fs.existsSync(htmlPath)) {
+    res.statusCode = 404;
+    res.end('missing');
+    return;
+  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.end(fs.readFileSync(htmlPath));
+});
+
+const port = await new Promise((resolve, reject) => {
+  server.listen(0, '127.0.0.1', () => resolve(server.address().port));
+  server.on('error', reject);
+});
+
+async function renderPage(page, name) {
+  await page.goto(`http://127.0.0.1:${port}/${name}.html`, { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => {
+    const icons = [...document.querySelectorAll('.material-icons')];
+    if (icons.length === 0) return true;
+    return icons.every((icon) => icon.getBoundingClientRect().width <= 32);
+  }, null, { timeout: 20000 });
+  await page.waitForTimeout(250);
+}
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 
-await page.setContent(deckHtml, { waitUntil: 'load' });
-await page.waitForTimeout(350);
+await renderPage(page, 'deck');
 await page.screenshot({ path: path.join(outDir, 'thanksgiving-deck-main.png') });
 
-await page.setContent(statsHtml, { waitUntil: 'load' });
+await renderPage(page, 'unlocked');
+await page.screenshot({ path: path.join(outDir, 'thanksgiving-deck-unlocked-long-label.png') });
+
+await renderPage(page, 'stats');
 await page.locator('#twitch-stats-container').screenshot({
   path: path.join(outDir, 'thanksgiving-stats-bar-closeup.png'),
 });
 
-await page.setContent(chatHtml, { waitUntil: 'load' });
+await renderPage(page, 'chat');
 await page.locator('#twitch-chat-container').screenshot({
   path: path.join(outDir, 'thanksgiving-chat-panel.png'),
 });
 
-await page.setContent(pageHtml(queueBlock + '</div>'), { waitUntil: 'load' });
+await renderPage(page, 'queue');
 await page.locator('#queue-control-widget').screenshot({
   path: path.join(outDir, 'thanksgiving-alert-queue-widget.png'),
 });
 
 await browser.close();
+server.close();
 console.log('Thanksgiving skin captures written to', outDir);

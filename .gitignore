@@ -9,6 +9,9 @@ dist/
 build/
 out/
 
+# Playwright capture harness (Material Icons woff2 fetched on demand)
+tools/fonts/*.woff2
+
 # OS generated files
 .DS_Store
 .DS_Store?
